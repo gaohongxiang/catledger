@@ -2,8 +2,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
-const mapping = require('../miniprogram/pages/import-workbench/bank-mapping')
-const model = require('../miniprogram/pages/import-workbench/model')
+const mapping = require('../miniprogram/packages/finance/pages/import-workbench/bank-mapping')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 
 const preview = { schemaVersion: 1, sheetIndex: 0, headerRow: 2, headerToken: 'synthetic-header-token',
   sheets: [{ index: 0, name: '明细' }], headers: ['交易日期', '交易金额', '借贷', '摘要'].map((name, index) => ({ name, index })),

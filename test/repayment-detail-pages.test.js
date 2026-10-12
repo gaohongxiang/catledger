@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime } = require('./helpers/read-runtime')
-const paymentModel = require('../miniprogram/pages/loan-payment/model')
+const paymentModel = require('../miniprogram/packages/finance/pages/loan-payment/model')
 const transaction = { transactionId: 'synthetic-transfer', version: 1, type: 'transfer', origin: 'manual',
   amountMinor: '12000', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480,
   sourceAccount: { accountId: 'account-a', name: '合成付款账户' }, destinationAccount: { accountId: 'credit', name: '合成信用账户' } }
@@ -36,7 +36,7 @@ test('真实账单入口：已关联手工还款显示只读结果，唯一操�
   assert.equal(page.data.detail.canEditCategory, false)
   assert.equal(page.data.loanContext.showPaymentTotal, false)
   assert.equal(h.titles.at(-1), '账单详情')
-  page.openLinkedPayment(); assert.equal(h.navigation.at(-1), '/pages/loan-payment/index?paymentId=synthetic-payment')
+  page.openLinkedPayment(); assert.equal(h.navigation.at(-1), '/packages/finance/pages/loan-payment/index?paymentId=synthetic-payment')
   page.setData({ saving: true }); page.openLinkedPayment(); assert.equal(h.navigation.length, 1)
   page.setData({ saving: false })
   h.context = { state: 'none', transaction, allocations: [] }
@@ -55,7 +55,7 @@ test('还款详情真实入口：默认收起维护，展开不请求或写账�
   page.toggleManagement(); assert.equal(page.data.managementOpen, true); assert.equal(h.calls.length, reads)
   page.openLoan(event('foreign-loan')); page.allocatePlan(event('foreign-loan')); assert.equal(h.navigation.length, 0)
   page.openLoan(event(allocation.loanId)); page.allocatePlan(event(allocation.loanId))
-  assert.deepEqual(h.navigation, ['/pages/loan-detail/index?loanId=synthetic-loan', '/pages/loan-plan/index?loanId=synthetic-loan&paymentId=synthetic-payment'])
+  assert.deepEqual(h.navigation, ['/packages/finance/pages/loan-detail/index?loanId=synthetic-loan', '/packages/finance/pages/loan-plan/index?loanId=synthetic-loan&paymentId=synthetic-payment'])
   await page.editPayment()
   assert.equal(page.data.pageTitle, '修改这次还款'); assert.equal(page.data.managementOpen, false)
   assert.equal(page.data.editingPayment.paymentId, payment.paymentId)

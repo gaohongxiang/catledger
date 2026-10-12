@@ -147,7 +147,7 @@ test('信用免押生命周期、失败和到账状态不能被普通收支回�
 
 test('显式债务动作优先于分类收支，组合付款和账户引用共用服务端结果', () => {
   const { referencesForRows } = require('../src/payment-account-groups')
-  const { paymentResolutionDefaults } = require('../../../miniprogram/pages/import-workbench/model')
+  const { paymentResolutionDefaults } = require('../../../miniprogram/packages/finance/pages/import-workbench/model')
   const row = semanticRow({ rawTransactionType: '信用借还', counterparty: '1688先采后付', item: '先采后付账单付款', paymentMethod: '账户余额&测试银行储蓄卡(1234)' })
   const semantic = resolveRowSemantic(row)
   assert.equal(semantic.sourceAction, 'repayment')

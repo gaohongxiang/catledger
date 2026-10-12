@@ -1,9 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const model = require('../miniprogram/pages/loan-detail/detail-model')
-const cost = require('../miniprogram/pages/loan-detail/cost')
+const model = require('../miniprogram/packages/finance/pages/loan-detail/detail-model')
+const cost = require('../miniprogram/packages/finance/pages/loan-detail/cost')
 const { remainingSchedule } = require('../cloudfunctions/catledger-api/src/loan-installment')
-const { present } = require('../miniprogram/pages/loans/model')
+const { present } = require('../miniprogram/packages/finance/pages/loans/model')
 const session = require('../miniprogram/services/page-read-session')
 const cache = require('../miniprogram/services/read-cache')
 
@@ -104,7 +104,7 @@ test('IRR 保留零付款月份，一次性费用只计一次；年化沿用本�
 })
 
 function pageRuntime(callApi, value = loan()) {
-  const methods = require('../miniprogram/pages/loan-detail/detail-reader').create({ callApi })
+  const methods = require('../miniprogram/packages/finance/pages/loan-detail/detail-reader').create({ callApi })
   const page = { ...methods, prepareHistoricalCoverage() {}, _loanId: value.loanId, _readSession: cache.getSession(), data: { loan: value },
     setData(patch) { Object.assign(this.data, patch) } }
   page.applyDetailLoan(value)

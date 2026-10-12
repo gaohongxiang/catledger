@@ -316,7 +316,7 @@ test('逐期列表直接进入指定期的还款草稿，不打开明细或写�
  await p.load()
  const calls=h.calls.length
  for(const term of [1,2])p.recordListedPayment({currentTarget:{dataset:{term}}})
- assert.deepEqual(h.navigation,['/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=1','/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=2'])
+ assert.deepEqual(h.navigation,['/packages/finance/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=1','/packages/finance/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=2'])
  assert.equal(p.data.periodOpen,false);assert.equal(h.calls.length,calls)
  for(const term of [3,4,5,99])p.recordListedPayment({currentTarget:{dataset:{term}}})
  const event={currentTarget:{dataset:{term:2}}}

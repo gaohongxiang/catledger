@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { create, project } = require('../miniprogram/services/import-draft-session')
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 const copy = value => JSON.parse(JSON.stringify(value))
 function fixture(overrides = {}, store = new Map()) {
   let number = 0

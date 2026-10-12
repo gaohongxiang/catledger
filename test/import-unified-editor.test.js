@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
-const model = require('../miniprogram/pages/import-workbench/review-editor-model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
 const policy = require('../cloudfunctions/catledger-import/src/review/editor-policy')
 const roles = require('../cloudfunctions/catledger-import/src/editor-fields')
 const { evaluatePostability } = require('../cloudfunctions/catledger-import/src/organizer-model')

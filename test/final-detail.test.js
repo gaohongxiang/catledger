@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { buildFinalDetail } = require('../miniprogram/pages/import-workbench/final-detail')
-const model = require('../miniprogram/pages/import-workbench/model')
+const { buildFinalDetail } = require('../miniprogram/packages/finance/pages/import-workbench/final-detail')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 const data = {
   events: [
     { eventId: 'a', status: 'ready', economicNature: 'expense', amountMinor: '100', categoryId: 'food', ledgerAccountId: 'wallet' },

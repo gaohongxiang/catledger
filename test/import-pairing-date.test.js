@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('./helpers/pairing-workbench')
 const { parseLocalDateTime } = require('../cloudfunctions/catledger-import/src/parsers/normalize')
-const { evidencePartFields } = require('../miniprogram/pages/import-workbench/presentation')
+const { evidencePartFields } = require('../miniprogram/packages/finance/pages/import-workbench/presentation')
 
 const serial = '46236.5809'
 const normalizedTime = '2026-08-02 13:56:30.000'

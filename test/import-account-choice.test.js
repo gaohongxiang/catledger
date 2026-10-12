@@ -2,7 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 const editor = require('./helpers/editor-workbench')
 
 function pageFor(issue, accounts = [], importApi = {}) {
@@ -259,7 +259,7 @@ test('账户映射新建名称与类型实时校验，批量分类须选定分�
 })
 
 test('普通资金区域只渲染统一编辑字段并使用同一保存门禁', () => {
-  const root = path.join(__dirname, '../miniprogram/pages/import-workbench')
+  const root = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench')
   const markup = fs.readFileSync(path.join(root, 'review-editor-fields.wxml'), 'utf8')
   assert.match(markup, /editor.routeFields/)
   assert.match(markup, /changeEditorPart/)

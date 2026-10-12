@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const model = require('../miniprogram/pages/import-workbench/review-editor-model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
 const { create: createDraftSession } = require('../miniprogram/services/import-draft-session')
 const { setup, pair, tap: pairTap } = require('./helpers/pairing-workbench')
 const { open, tap, edit, mode, select, draft, view, plain, flush } = require('./helpers/editor-workbench')

@@ -5,7 +5,7 @@ const path = require('node:path')
 const { open, tap, input, plain, mode, nature, select, edit, view, draft, writes, flush } = require('./helpers/editor-workbench')
 
 test('资金两端均由统一模板进入全目录，旧片段表单退出', () => {
-  const root = path.join(__dirname, '../miniprogram/pages/import-workbench')
+  const root = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench')
   const markup = fs.readFileSync(path.join(root, 'review-editor-fields.wxml'), 'utf8')
   assert.match(markup, /editor.routeFields/)
   assert.match(markup, /data-target="{{item.target}}" bindtap="openDirectory"/)

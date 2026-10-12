@@ -29,8 +29,8 @@ async function measureNativeReads(state) {
   })
   await measure('same-session-home', function(){return page().loadDashboard()})
   await measure('background-home', function(){app.onHide();app.onShow();return page().loadDashboard()})
-  await navigation('navigateTo','/pages/loan-detail/index?loanId='+encodeURIComponent(state.loanId));await page().load()
-  await navigation('navigateTo','/pages/loan-plan/index?loanId='+encodeURIComponent(state.loanId))
+  await navigation('navigateTo','/packages/finance/pages/loan-detail/index?loanId='+encodeURIComponent(state.loanId));await page().load()
+  await navigation('navigateTo','/packages/finance/pages/loan-plan/index?loanId='+encodeURIComponent(state.loanId))
   await ready(function(){return !page().data.loading})
   await measure('loan-return', async function(){await navigation('navigateBack');await ready(function(){return !!page().data.loan&&!page().data.loading})})
   await measure('write-return', async function(){

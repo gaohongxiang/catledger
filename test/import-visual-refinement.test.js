@@ -4,8 +4,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8')
-const markup = read('miniprogram/pages/import-workbench/index.wxml')
-const style = read('miniprogram/pages/import-workbench/index.wxss')
+const markup = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+const style = read('miniprogram/packages/finance/pages/import-workbench/index.wxss')
 function attrs(id) {
   const tags = markup.match(/<\w[\w-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/g) || []
   const tag = tags.find(t => t.includes('data-ui="' + id + '"'))
@@ -70,7 +70,7 @@ test('分类与核对维度独立，整理、确认和完成页共用同一行�
   assert.match(markup, /recordSummary.duplicateCount/)
 })
 test('统一摘要直接编辑付款总额，组成金额与核对说明在同一模板', () => {
-  const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
   assert.match(fields, /class="(?:[^"]*\s)?editor-amount(?:\s[^"]*)?"/)
   assert.match(fields, /data-field="amountInput" bindinput="changeEditorText"/)
   assert.match(fields, /bindinput="changeEditorPart"/)
@@ -79,7 +79,7 @@ test('统一摘要直接编辑付款总额，组成金额与核对说明在同�
 })
 test('整批入账门禁保留，单笔保存使用统一派生校验', () => {
   assert.ok(markup.includes('disabled="{{busy || openIssueCount || accountStepSummary.pending > 0 || !coverage.selectedEventsReadyToPost}}"'))
-  const editor = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-edit.wxml'), 'utf8')
+  const editor = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-edit.wxml'), 'utf8')
   assert.match(editor, /bindtap="saveReviewEdit"[^>]+!reviewEditSheet.canSave/)
   assert.match(editor, /reviewEditSheet.editor.complete/)
   assert.match(markup, /bindtap="confirmDistinct"/)

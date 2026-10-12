@@ -6,10 +6,10 @@ const vm = require('node:vm')
 const { createRequire } = require('node:module')
 const root = path.join(__dirname, '..')
 const read = name => fs.readFileSync(path.join(root, name), 'utf8')
-const routes = JSON.parse(read('miniprogram/app.json')).pages
+const { routes } = require('./helpers/page-routes')
 
 function runtime(route, callApi) {
-  if (route === 'pages/import-workbench/index') return require('./helpers/paged-workbench').runtime()
+  if (route === 'packages/finance/pages/import-workbench/index') return require('./helpers/paged-workbench').runtime()
   const filename = path.join(root, 'miniprogram', route + '.js')
   const req = createRequire(filename)
   let definition
@@ -37,7 +37,7 @@ function runtime(route, callApi) {
       }
       if (name.includes('/services/login-guard')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
       if (name.includes('/theme/service')) return { bindPage() {}, currentTokens: () => ({ accent: '#BE5B24' }) }
-      if (name === './source' && route === 'pages/loan-payment/index') {
+      if (name === './source' && route === 'packages/finance/pages/loan-payment/index') {
         const source = { exports: {} }
         vm.runInNewContext(req('node:fs').readFileSync(req.resolve('./source'), 'utf8'), { module: source,
           require: dep => dep.includes('/services/catledger-api') ? api : req(dep) })
@@ -58,7 +58,7 @@ function runtime(route, callApi) {
 test('分期资料与计划响应丢失后修改表单仍恢复原请求，保存后进入权威资料', async () => {
   const account = { accountId: 'debt', name: '合成负债', type: 'credit', archived: false }
   let stored = null, attempts = 0
-  const { page, calls, chrome } = runtime('pages/loan-form/index', (action, data) => {
+  const { page, calls, chrome } = runtime('packages/finance/pages/loan-form/index', (action, data) => {
     if (action === 'catalog.get') return Promise.resolve({ uid: '1234567890', accounts: [account] })
     if (action === 'loans.create') {
       attempts++
@@ -88,7 +88,7 @@ test('分期资料与计划响应丢失后修改表单仍恢复原请求，保�
 
 test('分期首次日期不推断历史已还；旧试算响应和退出后的响应不得覆盖新输入',async()=>{
   let resolve
-  const {page}=runtime('pages/loan-form/index',action=>action==='catalog.get'?Promise.resolve({uid:'1234567890',accounts:[]}):new Promise(done=>{resolve=done}))
+  const {page}=runtime('packages/finance/pages/loan-form/index',action=>action==='catalog.get'?Promise.resolve({uid:'1234567890',accounts:[]}):new Promise(done=>{resolve=done}))
   page.onLoad({});await page.load()
   Object.assign(page.data,{principalYuan:'12000',schedule:{...page.data.schedule,terms:'12',repaymentYuan:'1100'}})
   page.scheduleInput({currentTarget:{dataset:{field:'firstPaymentDate'}},detail:{value:'2020-01-31'}})
@@ -103,21 +103,21 @@ test('分期首次日期不推断历史已还；旧试算响应和退出后的�
 
 test('新分期编辑固定原本金与历史参数；读取失败不能误建新贷款',async()=>{
   const data={name:'合成',principalYuan:'12000',paidTerms:'3',typeIndex:0,discountIndex:0,discountValue:'',schedule:{terms:'12',methodIndex:0,measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'}}
-  const value=require('../miniprogram/pages/loan-form/model').previewInput(data)
+  const value=require('../miniprogram/packages/finance/pages/loan-form/model').previewInput(data)
   const loan={...value,installmentSetup:{...value.installmentSetup,historicalPaidTerms:3},loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
-  const {page}=runtime('pages/loan-form/index',action=>Promise.resolve(action==='catalog.get'?{uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]}:{loan}))
+  const {page}=runtime('packages/finance/pages/loan-form/index',action=>Promise.resolve(action==='catalog.get'?{uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]}:{loan}))
   page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-linked'});await page.load()
   assert.equal(page.data.loan.loanId,'loan');assert.equal(page.data.sourceReady,true)
   page.input({currentTarget:{dataset:{field:'paidTerms'}},detail:{value:'12'}})
   page.scheduleInput({currentTarget:{dataset:{field:'terms'}},detail:{value:'36'}})
   assert.equal(page.data.paidTerms,'3');assert.equal(page.data.schedule.terms,'12')
-  const failed=runtime('pages/loan-form/index',()=>Promise.reject(new Error('合成读取失败')))
+  const failed=runtime('packages/finance/pages/loan-form/index',()=>Promise.reject(new Error('合成读取失败')))
   failed.page.onLoad({loanId:'loan'});await failed.page.load();await failed.page.save()
   assert.equal(failed.calls.some(c=>c.name==='loans.create'||c.name==='loans.previewPlan'),false)
 })
 
 test('贷款分页只保留当前页和五个返回游标，退出后迟到响应不回填', async () => {
-  const { page } = runtime('pages/loans/index', (_, data) => Promise.resolve({
+  const { page } = runtime('packages/finance/pages/loans/index', (_, data) => Promise.resolve({
     items: [{ loanId: data.cursor || 'first', remainingPrincipalMinor: null, status: 'unknown' }], nextCursor: 'next-' + (data.cursor || 'first')
   }))
   page.onLoad(); await page.loadLoans()
@@ -125,18 +125,18 @@ test('贷款分页只保留当前页和五个返回游标，退出后迟到响�
   for (let i = 0; i < 10; i++) await page.nextPage()
   assert.equal(page.data.items.length, 1); assert.equal(page._previous.length, 5)
   let resolve
-  const late = runtime('pages/loans/index', action => ['loans.installmentSources','loans.retainedCharges'].includes(action) ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
+  const late = runtime('packages/finance/pages/loans/index', action => ['loans.installmentSources','loans.retainedCharges'].includes(action) ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
   late.page.onLoad(); const loading = late.page.loadLoans(); await new Promise(done=>setImmediate(done));late.page.onUnload()
   resolve({ items: [{ loanId: 'private-old', remainingPrincipalMinor: '0', status: 'settled' }], nextCursor: null })
   await loading; assert.equal(late.page.data.items.length, 0)
-  const { present } = require('../miniprogram/pages/loans/model')
+  const { present } = require('../miniprogram/packages/finance/pages/loans/model')
   assert.equal(present({ remainingPrincipalMinor: '0', status: 'settled' }).principalText, '¥0.00')
 })
 
 test('贷款实际借还丢失响应后保留原金额；成功后刷新失败不重复写入', async () => {
   const loan = { loanId: 'loan', name: '合成贷款', kind: 'borrowing', version: 1 }
   let attempts = 0, created = null
-  const { page, calls } = runtime('pages/loan-payment/index', (action, data) => {
+  const { page, calls } = runtime('packages/finance/pages/loan-payment/index', (action, data) => {
     if (action === 'catalog.get') return Promise.resolve({ uid: '1234567890', accounts: [{ accountId: 'bank', name: '合成银行', type: 'bank' }], categories: [] })
     if (action === 'loans.get') return Promise.resolve({ loan })
     if (action === 'loans.record') {
@@ -162,7 +162,7 @@ test('贷款实际借还丢失响应后保留原金额；成功后刷新失败�
 test('借还表单刷新目录按身份保留选项，关闭后晚到响应不回填', async () => {
   let reversed = false
   const catalog = { uid: '1234567890', accounts: [{ accountId: 'a', type: 'bank' }, { accountId: 'b', type: 'bank' }], categories: [{ id: 'c', kind: 'expense' }, { id: 'd', kind: 'expense' }] }
-  const { page } = runtime('pages/loan-payment/index', action => {
+  const { page } = runtime('packages/finance/pages/loan-payment/index', action => {
     if (action === 'catalog.get') return Promise.resolve({ ...catalog, accounts: reversed ? catalog.accounts.slice().reverse() : catalog.accounts, categories: reversed ? catalog.categories.slice().reverse() : catalog.categories })
     return Promise.resolve({ loan: { loanId: 'loan', name: '合成贷款', kind: 'borrowing', version: 1 } })
   })
@@ -174,14 +174,14 @@ test('借还表单刷新目录按身份保留选项，关闭后晚到响应不�
   assert.equal(page.data.categories[page.data.allocations[0].interestCategoryIndex].id, 'd')
   assert.equal(page.data.allocations[0].principalYuan, '800'); assert.equal(page.data.confirmed, false)
   let resolve
-  const late = runtime('pages/loan-payment/index', () => new Promise(done => { resolve = done }))
+  const late = runtime('packages/finance/pages/loan-payment/index', () => new Promise(done => { resolve = done }))
   late.page.onLoad({ loanId: 'loan' }); const loading = late.page.load(); late.page.onUnload()
   resolve(catalog); await loading; assert.equal(late.page.data.accounts.length, 0)
 })
 
 test('实际借还表单必须明确零和构成，整数守恒支持大额而不经过浮点', () => {
-  assert.ok(routes.includes('pages/loan-payment/index'))
-  const model = require('../miniprogram/pages/loan-payment/model')
+  assert.ok(routes.includes('packages/finance/pages/loan-payment/index'))
+  const model = require('../miniprogram/packages/finance/pages/loan-payment/model')
   const data = { accountIndex: 0, accounts: [{ accountId: 'bank' }], categories: [{ id: 'expense' }], confirmed: true, kindIndex: 0,
     totalYuan: '1000', date: '2026-09-02', time: '10:00', allocations: [{ loanId: 'loan', version: 1, principalYuan: '800', interestYuan: '180', feeYuan: '20', interestIndex: 0, feeIndex: 0, interestCategoryIndex: 0, feeCategoryIndex: 0 }] }
   assert.equal(model.payload(data).totalMinor, '100000')
@@ -225,7 +225,7 @@ test('现有路由有交付记录，单笔编辑不再注册整批维护页', ()
   const inventory = read('specs/mini-1906ui-all-pages/README.md')
   const accountDetail = read('specs/mini-1910-liability-settings/README.md')
   const installment = read('specs/mini-1914-installment-flow/design.md')
-  for (const route of routes) assert.ok((route === 'pages/installment-sources/index' ? installment : route === 'pages/account-transactions/index' ? accountDetail : inventory).includes(route.split('/')[1]), route)
+  for (const route of routes) assert.ok((route === 'packages/finance/pages/installment-sources/index' ? installment : route === 'pages/account-transactions/index' ? accountDetail : inventory).includes(route.split('/').at(-2)), route)
 })
 
 test('账本与个人页：初次读取失败不冒充成功零值，成功后更新，刷新失败保留原数量', async () => {
@@ -290,7 +290,7 @@ test('统计读取中不能改月份，下一月读取失败不在新标题下�
 })
 
 test('整合PR7：移除最后一个待解析文件后，selected状态仍可继续成功文件', () => {
-  const markup = read('miniprogram/pages/import-workbench/index.wxml')
+  const markup = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
   const expr = markup.match(/data-ui="parse-result" wx:if="{{(.*?)}}"/)[1]
   assert.equal(vm.runInNewContext(expr, { phase: 'selected', files: [{ state: 'ready' }], uploadSummary: { queued: 0 } }), true)
   assert.equal(vm.runInNewContext(expr, { phase: 'selected', files: [{ state: 'queued' }], uploadSummary: { queued: 1 } }), false)
@@ -312,14 +312,14 @@ test('付款分配错误与来源展开不改变草稿或触发保存', async t 
 })
 
 test('整理数量公式常驻，保留最新账户同行选择', () => {
-  const code = read('miniprogram/pages/import-workbench/index.js')
-  const markup = read('miniprogram/pages/import-workbench/index.wxml')
+  const code = read('miniprogram/packages/finance/pages/import-workbench/index.js')
+  const markup = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
   assert.doesNotMatch(code, /toggleRecordSummary:|recordSummaryExpanded:/)
   assert.match(markup, /final-count-formulas/)
   assert.match(markup, /account-decision-create/)
   assert.doesNotMatch(markup, /account-create-fields/)
   assert.match(markup, /issueFieldsReason/)
-  assert.match(read('miniprogram/pages/import-workbench/review-editor-fields.wxml'), /editor.fieldErrors.amountInput/)
+  assert.match(read('miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), /editor.fieldErrors.amountInput/)
   assert.match(markup, /!currentIssue.paymentNeedsReview \|\| issueSourceExpanded/)
 })
 
@@ -485,7 +485,7 @@ test('贷款来源选择保留秒与时区、整组展开和有界分页，关�
   const account={accountId:'asset',name:'合成付款',type:'bank'},category={id:'cat',kind:'expense'}
   const tx=id=>({transactionId:id,type:'expense',amountMinor:'50',sourceAccount:account,occurredLocalAt:'2026-09-02T12:30:45.123',timezoneOffsetMinutes:-480})
   let resolveLate
-  const {page,calls}=runtime('pages/loan-payment/index',(action,data)=>{
+  const {page,calls}=runtime('packages/finance/pages/loan-payment/index',(action,data)=>{
     if(action==='catalog.get') return Promise.resolve({uid:'1234567890',accounts:[account],categories:[category]})
     if(action==='transactions.list') return Promise.resolve({transactions:[tx(data.cursor||'first')],nextCursor:'next'})
     if(action==='loans.source') return resolveLate ? new Promise(done=>{resolveLate=done}) : Promise.resolve({source:{transactionIds:['first','second'],fingerprint:'signed'},transactions:[tx('first'),tx('second')]})
@@ -496,7 +496,7 @@ test('贷款来源选择保留秒与时区、整组展开和有界分页，关�
   assert.equal(page.data.sourceRows.length,1);assert.equal(page.data.sourceSelectedCount,1)
   await page.inspectSource();assert.equal(page.data.sourceTransactions.length,2);assert.equal(page.data.accountIndex,0)
   Object.assign(page.data,{confirmed:true,allocations:[{loanId:'loan',version:1,principalYuan:'0.80',interestYuan:'0.18',feeYuan:'0.02',interestIndex:0,feeIndex:0,interestCategoryIndex:0,feeCategoryIndex:0}]})
-  const payload=require('../miniprogram/pages/loan-payment/model').payload(page.data)
+  const payload=require('../miniprogram/packages/finance/pages/loan-payment/model').payload(page.data)
   assert.equal(payload.occurredLocalAt,'2026-09-02T12:30:45.123');assert.equal(payload.timezoneOffsetMinutes,-480)
   assert.equal(payload.source.fingerprint,'signed');assert.equal(calls.filter(c=>c.name==='transactions.list').at(-1).data.pageSize,40)
   resolveLate=true;const late=page.inspectSource();await new Promise(done=>setImmediate(done));page.onUnload()
@@ -508,7 +508,7 @@ test('贷款更正明确进入编辑后才能提交，读取失败不重复更�
   const account={accountId:'asset',name:'合成付款',type:'bank'},category={id:'cat',kind:'expense'}
   const existing={payment:{paymentId:'old',version:1,status:'active',kind:'repayment',mode:'new',assetAccountId:'asset',totalMinor:'100',occurredLocalAt:'2026-09-02 12:30:45',timezoneOffsetMinutes:-480},
     allocations:[{loanId:'loan',loanName:'合成贷款',version:2,principalMinor:'80',interestMinor:'18',feeMinor:'2',interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:'cat',feeCategoryId:'cat'}],transactions:[]}
-  const {page,calls}=runtime('pages/loan-payment/index',(action,data)=>{
+  const {page,calls}=runtime('packages/finance/pages/loan-payment/index',(action,data)=>{
     if(action==='catalog.get') return Promise.resolve({uid:'1234567890',accounts:[account],categories:[category]})
     if(action==='loans.payment') return data.paymentId==='old'?Promise.resolve(existing):Promise.reject(new Error('合成读取失败'))
     if(action==='loans.correct') return Promise.resolve({paymentId:'new',version:1})
@@ -524,7 +524,7 @@ test('贷款更正明确进入编辑后才能提交，读取失败不重复更�
 test('期次计划保存响应丢失后沿用原请求，已确认后读取失败不会再次新增',async()=>{
  const summary={unpaidPrincipalMinor:'100',unpaidInterestMinor:'0',unpaidFeeMinor:'0',remainingPrincipalMinor:'100',principalGapMinor:'0',nextDueDate:'2026-09-20'}
  let attempts=0
- const {page,calls}=runtime('pages/loan-plan/index',(action)=>{
+ const {page,calls}=runtime('packages/finance/pages/loan-plan/index',(action)=>{
   if(action==='loans.periods')return attempts>=2?Promise.reject(new Error('合成读取失败')):Promise.resolve({loanName:'合成贷款',loanVersion:1,items:[],nextCursor:null,summary})
   if(action==='loans.get')return Promise.resolve({loan:{loanId:'loan',version:1}})
   if(action==='loans.savePeriod'){attempts++;return attempts===1?Promise.reject(Object.assign(new Error('合成响应丢失'),{code:'CLOUD_CALL_FAILED'})):Promise.resolve({periodId:'period',version:1})}
@@ -543,7 +543,7 @@ test('空计划且参数齐备时可试算并生成计划，试算失败可重�
  const preview={periods:[{periodNumber:1,dueDate:'2026-10-01',principalMinor:'5000',interestMinor:'500',feeMinor:'0'},{periodNumber:2,dueDate:'2026-11-01',principalMinor:'5000',interestMinor:'500',feeMinor:'0'}],summary:{totalPaymentMinor:'11000',totalInterestMinor:'1000',totalFeeMinor:'0'}}
  const generatedPeriod={periodId:'p1',version:1,periodNumber:1,dueDate:'2026-10-01',status:'unpaid',principalMinor:'5000',interestMinor:'500',feeMinor:'0',unpaidPrincipalMinor:'5000',unpaidInterestMinor:'500',unpaidFeeMinor:'0'}
  let previewFails=true,generated=false
- const {page,calls}=runtime('pages/loan-plan/index',(action)=>{
+ const {page,calls}=runtime('packages/finance/pages/loan-plan/index',(action)=>{
   if(action==='loans.periods')return Promise.resolve({loanName:'合成贷款',loanVersion:3,items:generated?[generatedPeriod]:[],nextCursor:null,summary})
   if(action==='loans.get')return Promise.resolve({loan})
   if(action==='loans.previewPlan')return previewFails?Promise.reject(new Error('合成试算失败')):Promise.resolve(preview)
@@ -555,7 +555,7 @@ test('空计划且参数齐备时可试算并生成计划，试算失败可重�
  await page.openPreview();assert.match(page.data.previewError,/试算失败/);assert.equal(page.data.preview,null)
  previewFails=false;await page.openPreview()
  assert.equal(page.data.preview.periodCount,2);assert.equal(page.data.preview.rows.length,2)
- assert.throws(()=>require('../miniprogram/pages/loan-plan/model').generatePayload(page.data),/确认/)
+ assert.throws(()=>require('../miniprogram/packages/finance/pages/loan-plan/model').generatePayload(page.data),/确认/)
  page.confirmGenerate({detail:{value:['confirmed']}})
  await page.generatePlan()
  const writes=calls.filter(c=>c.name==='loans.generatePlan')
@@ -565,11 +565,11 @@ test('空计划且参数齐备时可试算并生成计划，试算失败可重�
 })
 
 test('期次选择保持当前页和 40 项上限，费用分项不足不能借用本金补齐',()=>{
- const {page}=runtime('pages/loan-plan/index');page.onLoad({loanId:'loan',paymentId:'payment'})
+ const {page}=runtime('packages/finance/pages/loan-plan/index');page.onLoad({loanId:'loan',paymentId:'payment'})
  page.data.items=Array.from({length:41},(_,n)=>({periodId:'p'+n,version:1,periodNumber:n+1}))
  for(const item of page.data.items)page.addPeriod({currentTarget:{dataset:{id:item.periodId}}})
  assert.equal(page.data.allocationItems.length,40);assert.match(page.data.errorMessage,/40/)
- const model=require('../miniprogram/pages/loan-plan/model')
+ const model=require('../miniprogram/packages/finance/pages/loan-plan/model')
  const data={loanId:'loan',loanVersion:1,paymentId:'payment',paymentVersion:1,confirmed:true,paymentShare:{principalMinor:'100',interestMinor:'0',feeMinor:'0'},allocationItems:[{periodId:'p',version:1,principalYuan:'0.99',interestYuan:'0.01',feeYuan:'0'}]}
  assert.throws(()=>model.allocationPayload(data),/超过/)
  data.allocationItems[0].interestYuan='0';assert.match(model.allocationReview(data),/本金未分配 ¥0.01/)

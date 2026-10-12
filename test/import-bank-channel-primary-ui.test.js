@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime, fixture } = require('./helpers/paged-workbench')
 const { setup, pair, tap: choosePair } = require('./helpers/pairing-workbench')
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 const tap = id => ({ currentTarget: { dataset: { id } } })
 
 function channelFixture(count = 2, sourceType = 'wechat', economicNature = 'expense', reasonField = 'primaryReasonCode') {

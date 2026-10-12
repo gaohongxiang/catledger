@@ -3,6 +3,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../../miniprogram/services/read-cache')
 const root = path.join(__dirname, '..', '..', 'miniprogram')
+const { pageRoute } = require('./page-routes')
 function runtime(savedStorage, options = {}) {
   let now = 0, balance = '10000'
   const modules = new Map(), calls = [], pages = new Map(), storage = savedStorage || new Map()
@@ -80,9 +81,10 @@ function runtime(savedStorage, options = {}) {
   h.importApi = load(path.join(root, 'services/catledger-import.js'))
   h.page = name => {
     if (pages.has(name)) return pages.get(name)
-    const definition = load(path.join(root, 'pages', name, 'index.js'))
+    const route = pageRoute(name)
+    const definition = load(path.join(root, route + '.js'))
     const loading = []
-    const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), route: "pages/" + name + "/index", getTabBar: () => null,
+    const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), route, getTabBar: () => null,
       setData(patch, callback) { if (Object.hasOwn(patch, 'loading')) loading.push(patch.loading)
         for (const [key, value] of Object.entries(patch)) {
           const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data

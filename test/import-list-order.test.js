@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 const { runtime, fixture } = require('./helpers/paged-workbench')
 const at = day => '2026-09-' + String(day).padStart(2, '0') + ' 10:00:00.000'
 const event = (id, day) => ({ eventId: id, localAt: day ? at(day) : null, status: 'ready', economicNature: 'expense',

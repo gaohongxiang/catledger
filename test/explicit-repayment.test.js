@@ -5,7 +5,7 @@ const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { localServices,call,prepareSyntheticUpdate,confirmSyntheticHistoryDistinct } = require('./helpers/local-services')
 const booking = require('../cloudfunctions/catledger-api/src/repayment-booking').createRepaymentBooking(code=>Object.assign(new Error(code),{ publicCode:code }))
-const { decision } = require('../miniprogram/pages/repayment-entry/model')
+const { decision } = require('../miniprogram/packages/finance/pages/repayment-entry/model')
 test('本金、利息和费用必须明确且守恒；未知不能变成零',()=>{
   const value = { confirmed:true,mode:'defer',assetAccountId:randomUUID(),liabilityAccountId:randomUUID(),principalMinor:'800',interestMinor:'180',feeMinor:'20',
     interestTreatment:'expense',feeTreatment:'accrued',interestCategoryId:randomUUID() }

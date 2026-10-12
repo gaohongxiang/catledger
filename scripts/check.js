@@ -13,6 +13,31 @@ for (const file of files) {
 const config = JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8'))
 assert.equal(config.compileType, 'miniprogram')
 assert.ok(fs.existsSync(path.join(root, config.miniprogramRoot, 'app.json')))
+const miniRoot = path.join(root, config.miniprogramRoot)
+const app = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'))
+const packages = app.subPackages || []
+const routes = [...app.pages, ...packages.flatMap(pack => pack.pages.map(page => pack.root + '/' + page))]
+assert.equal(new Set(routes).size, routes.length, '小程序存在重复页面路径')
+for (const route of routes) for (const extension of ['js', 'json', 'wxml', 'wxss']) {
+  assert.ok(fs.existsSync(path.join(miniRoot, route + '.' + extension)), `页面文件不存在: ${route}.${extension}`)
+}
+for (const item of app.tabBar.list) assert.ok(app.pages.includes(item.pagePath), 'Tab 页必须位于主包')
+const packageOf = filename => {
+  const relative = path.relative(miniRoot, filename).split(path.sep).join('/')
+  const pack = packages.find(item => relative.startsWith(item.root + '/'))
+  return pack ? pack.root : ''
+}
+for (const file of files.filter(file => file.startsWith('miniprogram/') && file.endsWith('.js'))) {
+  const filename = path.join(root, file)
+  for (const [, specifier] of fs.readFileSync(filename, 'utf8').matchAll(/require\(['"]([^'"]+)['"]\)/g)) {
+    if (!specifier.startsWith('.')) continue
+    const base = path.resolve(path.dirname(filename), specifier)
+    const target = [base, `${base}.js`, `${base}/index.js`, `${base}.json`]
+      .find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile())
+    assert.ok(target, `小程序依赖不存在: ${file} -> ${specifier}`)
+    assert.ok(!packageOf(target) || packageOf(target) === packageOf(filename), `小程序跨分包依赖: ${file} -> ${specifier}`)
+  }
+}
 for (const name of ['catledger-api', 'catledger-import']) {
   const directory = path.join(root, config.cloudfunctionRoot, name)
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'))
@@ -20,7 +45,7 @@ for (const name of ['catledger-api', 'catledger-import']) {
 }
 
 // 工作台只允许显式注册，重复处理者不能靠对象合并顺序决定。
-const workbench = path.join(root, 'miniprogram/pages/import-workbench')
+const workbench = path.join(root, 'miniprogram/packages/finance/pages/import-workbench')
 const pageSource = fs.readFileSync(path.join(workbench, 'index.js'), 'utf8')
 const registration = pageSource.slice(pageSource.indexOf('Page({'))
 assert.ok(registration.startsWith('Page({'), '导入工作台必须显式注册 Page')

@@ -4,8 +4,9 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const { createRequire } = require('node:module')
-const model = require('../miniprogram/pages/loan-link/model')
-const paymentModel = require('../miniprogram/pages/loan-payment/model')
+const { pageRoute } = require('./helpers/page-routes')
+const model = require('../miniprogram/packages/finance/pages/loan-link/model')
+const paymentModel = require('../miniprogram/packages/finance/pages/loan-payment/model')
 const { createLoanContext } = require('../miniprogram/pages/transaction-editor/loan-context')
 const { READ_POLICIES, mutationTags } = require('../miniprogram/services/read-policy')
 const transaction = { transactionId: 'synthetic-tx', type: 'transfer', amountMinor: '1000', version: 1, origin: 'import',
@@ -20,7 +21,7 @@ const sourceResult = { source: { transactionIds: [transaction.transactionId], fi
 const copy = value => JSON.parse(JSON.stringify(value))
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function runtime(route, responder) {
-  const filename = path.join(__dirname, '../miniprogram/pages', route, 'index.js'), req = createRequire(filename)
+  const filename = path.join(__dirname, '../miniprogram', pageRoute(route) + '.js'), req = createRequire(filename)
   const calls = [], routes = [], storage = new Map()
   let definition, request = 0
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
@@ -102,10 +103,10 @@ test('从账单关联按目标借款账户查贷款，缺基准先补资料并�
   h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage()
   assert.equal(h.calls.find(c => c.name === 'loans.list').data.accountId, 'debt')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'loan' } } })
-  assert.equal(h.routes[0], '/pages/repayment-entry/index?loanId=loan&paymentId=pending-payment')
+  assert.equal(h.routes[0], '/packages/finance/pages/repayment-entry/index?loanId=loan&paymentId=pending-payment')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'unknown' } } })
-  assert.match(h.routes[1], /loan-detail\/index\?loanId=unknown&sourceTransactionId=synthetic-tx/)
-  h.page.createLoan(); assert.match(h.routes[2], /loan-form\/index\?sourceTransactionId=synthetic-tx&accountId=debt/)
+  assert.equal(h.routes[1], '/packages/finance/pages/loan-detail/index?loanId=unknown&sourceTransactionId=synthetic-tx')
+  h.page.createLoan(); assert.equal(h.routes[2], '/packages/finance/pages/loan-form/index?sourceTransactionId=synthetic-tx&accountId=debt&baselineDate=2026-08-02')
   assert.equal(h.calls.some(c => /record|create/.test(c.name)), false)
 })
 
@@ -124,7 +125,7 @@ test('再次打开信用账户已关联/更正原账直接查看当前付款，�
   let fail = false
   const h = runtime('loan-link', () => { if (fail) throw new Error('合成读取失败'); return { ...linkedContext(), state: 'replaced' } })
   h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage(); h.page.openPayment()
-  assert.equal(h.routes[0], '/pages/loan-payment/index?paymentId=payment')
+  assert.equal(h.routes[0], '/packages/finance/pages/loan-payment/index?paymentId=payment')
   assert.equal(h.calls.filter(c => c.name === 'loans.list').length, 0)
   fail = true; await h.page.firstPage(); h.page.createLoan()
   assert.match(h.page.data.errorMessage, /读取失败/); assert.equal(h.routes.length, 1)
@@ -158,7 +159,7 @@ test('新分期的编辑跳转保留正在关联的还款；从手动/导入还�
   const detail=runtime('loan-detail',()=>{throw Error('不应读取')})
   detail.page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-tx'})
   detail.page.setData({loan:{...loan,installmentSetup:{historicalPaidTerms:3}}});detail.page.edit()
-  assert.equal(detail.routes[0],'/pages/loan-form/index?loanId=loan&sourceTransactionId=synthetic-tx')
+  assert.equal(detail.routes[0],'/packages/finance/pages/loan-form/index?loanId=loan&sourceTransactionId=synthetic-tx')
   const entry=runtime('repayment-entry',()=>{throw Error('不应读取')})
   entry.page.onLoad({});entry.page.setData({debts:[{accountId:'debt'}],debtIndex:0,date:'2026-04-02'})
   entry.page.createLoan();assert.match(entry.routes[0],/accountId=debt&baselineDate=2026-04-02$/)
@@ -209,7 +210,7 @@ test('账单详情保留已有关联；none状态不开放入口，已确认借�
   await page.loadLoanContext()
   assert.equal(page.data.loanManaged, true); assert.equal(page.data.detail.canEditCategory, false)
   page.openLinkedPayment()
-  assert.equal(routes[0], '/pages/loan-payment/index?paymentId=payment')
+  assert.equal(routes[0], '/packages/finance/pages/loan-payment/index?paymentId=payment')
   result = ordinaryContext; await page.loadLoanContext()
   assert.equal(page.data.loanManaged, false); assert.equal(page.data.loanContext.state, 'none')
   page.openLoanLink(); assert.equal(routes.length, 1)
@@ -237,7 +238,7 @@ test('贷款首页真实待办数量来自服务端；零时入口隐藏',async(
   h.respond=action=>action==='loans.list'?{ok:true,data:{items:[],nextCursor:null,pendingRepaymentCount:count}}:undefined
   page.onLoad();await page.loadLoans();assert.equal(page.data.pendingRepaymentCount,0)
   count=2;await page.loadLoans(true);assert.equal(page.data.pendingRepaymentCount,2)
-  assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/pages/loans/index.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
+  assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/packages/finance/pages/loans/index.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
 })
 
 test('手动借款还款显式确认全部分项；成功离开旧记账表单，避免再记普通转账',async()=>{

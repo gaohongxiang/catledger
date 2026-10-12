@@ -7,7 +7,7 @@ const { runAccountMappingBatch } = require('../src/review/account-mapping')
 const { isEventInProjectionRefreshScope } = require('../src/review/reconciliation')
 
 const projectRoot = path.resolve(__dirname, '../../..')
-const workbenchModel = require(path.join(projectRoot, 'miniprogram/pages/import-workbench/model'))
+const workbenchModel = require(path.join(projectRoot, 'miniprogram/packages/finance/pages/import-workbench/model'))
 
 test('账户批量确认只建立一次批次上下文并只收口一次', async function () {
   assert.equal(typeof runAccountMappingBatch, 'function')
@@ -77,7 +77,7 @@ test('账户批量确认只重算直接受影响或引用同一支付方式的�
 })
 
 test('整理卡明确区分交易摘要和冻结的原始记录', function () {
-  const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.wxml'), 'utf8')
+  const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/packages/finance/pages/import-workbench/index.wxml'), 'utf8')
   assert.doesNotMatch(markup, />交易摘要<\/text>/)
   assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, />账单记录<\/text>/)
@@ -98,7 +98,7 @@ test('支付宝原始字段数组按字段名和值展示，不得出现 object 
 })
 
 test('查看原始记录在当前处理弹层内钻取，不得叠加第二个底部弹层', function () {
-  const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.wxml'), 'utf8')
+  const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/packages/finance/pages/import-workbench/index.wxml'), 'utf8')
   assert.match(markup, /class="evidence-drilldown"/)
   assert.doesNotMatch(markup, /class="sheet-layer evidence-layer"/)
 })

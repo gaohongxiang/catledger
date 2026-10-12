@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 
 test('账户证据保留原支付方式，单笔摘要可定位原记录，多笔按时间排序且去重', () => {
   const first = { eventId: 'one', localAt: '2026-08-01 12:30:00', amountMinor: '1250', flowDirection: 'outflow',

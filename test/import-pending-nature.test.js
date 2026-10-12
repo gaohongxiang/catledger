@@ -5,7 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 
 // 只隔离展示层边界：标签由现有 eventView 提供，不在这里复制性质识别规则。
-const filename = path.join(__dirname, '../miniprogram/pages/import-workbench/presentation.js')
+const filename = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/presentation.js')
 const source = fs.readFileSync(filename, 'utf8')
 function presentation() {
   const model = {

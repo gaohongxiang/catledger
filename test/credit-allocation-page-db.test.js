@@ -22,10 +22,10 @@ test('真实交易Page明确分配已有信用卡转账，复用费用、期次�
     const editor = ui.page('transaction-editor')
     editor.onLoad({ mode: 'view' }); await editor.prepareForm(); await editor.loadLoanContext()
     editor.openLoanLink()
-    assert.equal(ui.navigation.at(-1), '/pages/loan-link/index?transactionId=' + txn.transactionId)
+    assert.equal(ui.navigation.at(-1), '/packages/finance/pages/loan-link/index?transactionId=' + txn.transactionId)
     const link = ui.page('loan-link'); link.onLoad({ transactionId: txn.transactionId }); await link.firstPage()
     link.selectLoan(tap(loan.loanId))
-    assert.equal(ui.navigation.at(-1), '/pages/loan-payment/index?loanId=' + loan.loanId + '&sourceTransactionId=' + txn.transactionId)
+    assert.equal(ui.navigation.at(-1), '/packages/finance/pages/loan-payment/index?loanId=' + loan.loanId + '&sourceTransactionId=' + txn.transactionId)
     const page = ui.page('loan-payment'); page.onLoad({ loanId: loan.loanId, sourceTransactionId: txn.transactionId }); await page.load()
     page.periodInput({ currentTarget: { dataset: { index: 0 } }, detail: { value: '1' } }); await page.selectAllocationPeriod(tap(loan.loanId))
     assert.equal(page.data.allocations[0].principalYuan, '500.00')
@@ -71,7 +71,7 @@ test('真实交易Page明确分配已有信用卡转账，复用费用、期次�
       p.editAllocation({currentTarget:{dataset:{index:1,field:'principalYuan'}},detail:{value:'400'}})
       p.input({currentTarget:{dataset:{field:'unallocatedYuan'}},detail:{value:'100'}})
       p.confirm({detail:{value:['confirmed']}})
-      const payload=multi.load('pages/loan-payment/model').payload(p.data),before=(await h.api('accounts.list')).accounts
+      const payload=multi.load('packages/finance/pages/loan-payment/model').payload(p.data),before=(await h.api('accounts.list')).accounts
       const results=await Promise.allSettled([h.api('loans.record',{...payload,requestId:randomUUID()}),h.api('loans.record',{...payload,requestId:randomUUID()})])
       assert.equal(results.filter(r=>r.status==='fulfilled').length,1)
       const paid=results.find(r=>r.status==='fulfilled').value

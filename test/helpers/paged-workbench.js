@@ -4,7 +4,7 @@ const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../../miniprogram/services/read-cache')
 const { create: createDraft } = require('../../miniprogram/services/import-draft-session')
 const { workbenchSummary } = require('../../cloudfunctions/catledger-import/src/workbench-summary')
-const workbenchModel = require('../../miniprogram/pages/import-workbench/model')
+const workbenchModel = require('../../miniprogram/packages/finance/pages/import-workbench/model')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function fixture(count = 121, blocking = false) {
   const events = Array.from({ length: count }, (_, index) => ({ eventId: 'synthetic-event-' + index, version: 1, status: blocking ? 'needs_action' : 'ready',
@@ -107,7 +107,7 @@ function runtime(data = fixture(), options = {}) {
     }
     return module.exports
   }
-  load(path.join(root, 'pages/import-workbench/index.js'))
+  load(path.join(root, 'packages/finance/pages/import-workbench/index.js'))
   h.observer = load(path.join(root, 'services/read-observer.js'))
   h.createPage = (pageOptions = {}, initialView = true) => {
     const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)),

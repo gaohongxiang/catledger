@@ -2,11 +2,11 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const detail = require('../miniprogram/pages/import-workbench/detail-fields')
+const detail = require('../miniprogram/packages/finance/pages/import-workbench/detail-fields')
 const editor = require('./helpers/editor-workbench')
-const editorModel = require('../miniprogram/pages/import-workbench/review-editor-model')
+const editorModel = require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
 const policy = require('../cloudfunctions/catledger-import/src/review/editor-policy')
-const { readDetail } = require('../miniprogram/pages/import-workbench/detail-reader')
+const { readDetail } = require('../miniprogram/packages/finance/pages/import-workbench/detail-reader')
 const { transactionDrafts } = require('../cloudfunctions/catledger-import/src/finance-update-posting')
 const { eventDetailFacts } = require('../cloudfunctions/catledger-import/src/event-detail-facts')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
@@ -176,7 +176,7 @@ for (const boundary of ['close', 'hide', 'new-event']) test('完整详情尚未�
 })
 
 test('待核对与已核对使用同一字段模板，性质及输入置于原文之前', () => {
-  const dir = path.join(__dirname, '../miniprogram/pages/import-workbench')
+  const dir = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench')
   for (const file of ['review-detail.wxml', 'review-edit.wxml']) {
     const source = fs.readFileSync(path.join(dir, file), 'utf8')
     assert.ok(source.indexOf('is="review-editor-fields"') > 0)

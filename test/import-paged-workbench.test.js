@@ -159,7 +159,7 @@ test('旧入账在返回后完成，不覆盖新操作或解除新 busy，原请
 })
 
 test('原文整段按源字段展示，重复列与空值不丢；不拼接或解析跨页片段', () => {
-  const { evidencePartFields } = require('../miniprogram/pages/import-workbench/presentation')
+  const { evidencePartFields } = require('../miniprogram/packages/finance/pages/import-workbench/presentation')
   const part = JSON.stringify([{ name: '备注', value: '', column: 1 }, { name: '备注', value: '第二列原文', column: 2 }, { name: '金额', value: '0', column: 3 }])
   const fields = evidencePartFields(part, { index: 0, hasNext: false })
   assert.deepEqual(fields.map(field => field.value), ['', '第二列原文', '0'])

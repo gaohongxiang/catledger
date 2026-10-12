@@ -7,8 +7,8 @@ const { execFileSync } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const root = path.resolve(__dirname, '..')
-const indexPath = path.join(root, 'miniprogram/pages/import-workbench/index.js')
-const modelPath = path.join(root, 'miniprogram/pages/import-workbench/model.js')
+const indexPath = path.join(root, 'miniprogram/packages/finance/pages/import-workbench/index.js')
+const modelPath = path.join(root, 'miniprogram/packages/finance/pages/import-workbench/model.js')
 
 function pageRuntime(ref) {
   const source = file => ref ? execFileSync('git', ['show', ref + ':' + path.relative(root, file)], { cwd: root, encoding: 'utf8' }) : fs.readFileSync(file, 'utf8')

@@ -66,12 +66,15 @@ test('主题注册表提供六套唯一且完整的视觉方案', function () {
 test('六套主题共享收入绿与支出红的财务语义', function () {
   registry.listThemes().forEach(function (item) {
     const tokens = registry.getTheme(item.id).tokens
-    assert.equal(tokens.income, registry.FINANCIAL_SEMANTICS.income)
-    assert.equal(tokens.expense, registry.FINANCIAL_SEMANTICS.expense)
+    assert.equal(tokens.income, registry.SEMANTIC_TOKENS.income)
+    assert.equal(tokens.expense, registry.SEMANTIC_TOKENS.expense)
+    const presentation = registry.getThemePresentation(item.id)
+    assert.equal(presentation.semanticStyle, '--sem-income:#477153;--sem-expense:#B54738;')
+    assert.doesNotMatch(presentation.themeStyle, /--theme-(?:income|expense):/)
   })
 
-  assert.equal(registry.FINANCIAL_SEMANTICS.income, '#477153')
-  assert.equal(registry.FINANCIAL_SEMANTICS.expense, '#B54738')
+  assert.equal(registry.SEMANTIC_TOKENS.income, '#477153')
+  assert.equal(registry.SEMANTIC_TOKENS.expense, '#B54738')
 })
 
 test('六套主题主卡大金额与卡面保持大字对比度', function () {

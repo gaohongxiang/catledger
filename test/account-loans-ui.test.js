@@ -23,7 +23,7 @@ test('账户详情页只加载当前负债的贷款；资产账户不发贷款�
   page.openAccountLoan(event('debt-a'))
   page.createAccountLoan()
   page.openAccountLoans()
-  assert.deepEqual(h.navigation, ['/pages/loan-detail/index?loanId=debt-a', '/pages/loan-form/index?accountId=debt-a', '/pages/loans/index?accountId=debt-a'])
+  assert.deepEqual(h.navigation, ['/packages/finance/pages/loan-detail/index?loanId=debt-a', '/packages/finance/pages/loan-form/index?accountId=debt-a', '/packages/finance/pages/loans/index?accountId=debt-a'])
   assert.deepEqual(h.calls.filter(c => c.action === 'loans.list').map(c => [c.data.accountId, c.data.pageSize]), [['debt-a', 3]])
 
   h.cache.invalidate(['loans'])
@@ -70,7 +70,7 @@ test('贷款列表全程绑定账户，失效返回首屏，非法账户不降�
   assert.equal(page.data.items[0].loanId, 'first')
   assert.equal(page.data.canPrevious, false)
   page.openUnassigned(); page.createLoan()
-  assert.deepEqual(h.navigation, ['/pages/loan-link/index?accountId=debt-a', '/pages/loan-form/index?accountId=debt-a'])
+  assert.deepEqual(h.navigation, ['/packages/finance/pages/loan-link/index?accountId=debt-a', '/packages/finance/pages/loan-form/index?accountId=debt-a'])
   assert.ok(h.calls.filter(c => c.action === 'loans.list').every(c => c.data.accountId === 'debt-a'))
   const invalid = setup(), invalidPage = invalid.page('loans')
   invalidPage.onLoad({ accountId: 'unknown-or-foreign' }); invalidPage.onShow(); await invalidPage.loadLoans()

@@ -625,7 +625,7 @@ test('目录失败时交易列表仍成功，个人页已确认的连接及数�
 })
 
 test('中央记账先选择方式，游客登录后继续原选择，菜单不读取目录', async () => {
-  for (const [method, route] of [['openEditor', '/pages/transaction-editor/index'], ['chooseBill', '/pages/import-workbench/index']]) {
+  for (const [method, route] of [['openEditor', '/pages/transaction-editor/index'], ['chooseBill', '/packages/finance/pages/import-workbench/index']]) {
     const h = runtime(), component = h.component()
     h.app.approved = false
     component.openEntry()
@@ -681,7 +681,7 @@ test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且
   const draft = () => fields.map(key => page.data[key])
   const before = draft()
   page.openImport()
-  assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
+  assert.deepEqual(h.navigation, ['/packages/finance/pages/import-workbench/index'])
   h.accounts.reverse(); h.revision = '2'; h.cache.invalidate(['accountDirectory'])
   page.onShow(); await page.prepareForm()
   assert.deepEqual(draft(), before)
@@ -984,7 +984,7 @@ test('导入历史只读查看账目，跳转统一明细跨月筛选；手动�
   detail.data.transactions = managementRows(1).concat([{ transactionId: 'import', version: 1, origin: 'import', editable: false, type: 'expense' }])
   detail.toggleSelection(); await detail.selectAll(); assert.equal(detail.data.selectedCount, 2)
   h.cache.reset(); detail.onShow(); await detail.prepareAndLoad(); assert.equal(detail.data.importFilter, null)
-  page.importAgain(); assert.equal(h.navigation.at(-1), '/pages/import-workbench/index?fresh=1')
+  page.importAgain(); assert.equal(h.navigation.at(-1), '/packages/finance/pages/import-workbench/index?fresh=1')
 })
 
 test('旧服务端未确认导入范围时不展示或缓存全账本结果', async () => {

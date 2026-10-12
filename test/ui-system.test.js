@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const { pageRoute } = require('./helpers/page-routes')
 
 const root = path.join(__dirname, '..')
 
@@ -47,7 +48,7 @@ test('一级页共享稳定的页面骨架与触控基线', function () {
   assert.doesNotMatch(appStyle, /linear-gradient/)
 
   pages.forEach(function (page) {
-    const markup = read('miniprogram/pages/' + page + '/index.wxml')
+    const markup = read('miniprogram/' + pageRoute(page) + '.wxml')
     assert.match(markup, /page-canvas/)
   })
 })
@@ -77,8 +78,8 @@ test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', funct
 })
 
 test('退款与其他待整理问题复用同一卡片骨架', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const style = read('miniprogram/pages/import-workbench/index.wxss')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+  const style = read('miniprogram/packages/finance/pages/import-workbench/index.wxss')
   const pendingStart = template.indexOf('<block wx:if="{{activeReviewStatus === \'pending\'}}">')
   const pendingEnd = template.indexOf('<block wx:elif="{{activeReviewStatus === \'completed\'}}">')
   const pendingMarkup = template.slice(pendingStart, pendingEnd)
@@ -91,8 +92,8 @@ test('退款与其他待整理问题复用同一卡片骨架', function () {
 })
 
 test('已排除分类由整行展开收起且不保留原生按钮白边', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const style = read('miniprogram/pages/import-workbench/index.wxss')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+  const style = read('miniprogram/packages/finance/pages/import-workbench/index.wxss')
   const excludedStart = template.indexOf('<block wx:if="{{activeReviewTab === \'review\' && activeReviewStatus === \'excluded\'}}">')
   const excludedEnd = template.indexOf('<block wx:if="{{activeReviewTab === \'review\' && activeReviewStatus === \'duplicate\'}}">', excludedStart)
   const excludedMarkup = template.slice(excludedStart, excludedEnd)
@@ -105,7 +106,7 @@ test('已排除分类由整行展开收起且不保留原生按钮白边', funct
 })
 
 test('待整理同层展示原文，保留主记录选择并将确认与证据置于滚动区', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
   const start = template.indexOf('<scroll-view class="review-editor-body"')
   const end = template.indexOf('<view class="sheet-actions">', start)
   const content = template.slice(start, end)
@@ -123,8 +124,8 @@ test('待整理同层展示原文，保留主记录选择并将确认与证据�
 })
 
 test('原始交易在当前弹层内下钻并由底部按钮返回处理', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const style = read('miniprogram/pages/import-workbench/index.wxss')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+  const style = read('miniprogram/packages/finance/pages/import-workbench/index.wxss')
   const drilldownStart = template.indexOf('<view wx:if="{{evidenceSheet}}" class="evidence-drilldown">')
   const drilldownEnd = template.indexOf('<block wx:else>', drilldownStart)
   const drilldownMarkup = template.slice(drilldownStart, drilldownEnd)
@@ -137,20 +138,20 @@ test('原始交易在当前弹层内下钻并由底部按钮返回处理', funct
 })
 
 test('问题处理操作区全宽对齐且超额还款时禁用保存', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/transaction-review.js') + read('miniprogram/pages/import-workbench/posting-flow.js')
-  const style = read('miniprogram/pages/import-workbench/index.wxss')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+  const source = read('miniprogram/packages/finance/pages/import-workbench/index.js') + read('miniprogram/packages/finance/pages/import-workbench/transaction-review.js') + read('miniprogram/packages/finance/pages/import-workbench/posting-flow.js')
+  const style = read('miniprogram/packages/finance/pages/import-workbench/index.wxss')
 
   assert.match(template, /保存本组选择 · {{issueScopeCount}} 笔/)
-  assert.match(read('miniprogram/pages/import-workbench/review-edit.wxml'), /!reviewEditSheet.canSave/)
-  assert.match(read('miniprogram/pages/import-workbench/review-editor-model.js'), /分配金额超出总额/)
+  assert.match(read('miniprogram/packages/finance/pages/import-workbench/review-edit.wxml'), /!reviewEditSheet.canSave/)
+  assert.match(read('miniprogram/packages/finance/pages/import-workbench/review-editor-model.js'), /分配金额超出总额/)
   assert.match(style, /\.sheet-actions \{[^}]*width: 100%;/)
   assert.match(style, /\.sheet-confirm-wide \{[^}]*width: 100%;[^}]*max-width: none;/)
 })
 
 test('最终入账展示财务与相同记录拆分并提供入账后的去向', function () {
-  const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/transaction-review.js') + read('miniprogram/pages/import-workbench/posting-flow.js')
+  const template = read('miniprogram/packages/finance/pages/import-workbench/index.wxml')
+  const source = read('miniprogram/packages/finance/pages/import-workbench/index.js') + read('miniprogram/packages/finance/pages/import-workbench/transaction-review.js') + read('miniprogram/packages/finance/pages/import-workbench/posting-flow.js')
 
   assert.match(template, /本批支出/)
   assert.match(template, /本批收入/)
@@ -193,8 +194,8 @@ test('收支构成以彩色分段带为主视觉，环形图退场，当日格�
   const source = read('miniprogram/pages/statistics/index.js')
   const model = read('miniprogram/pages/statistics/model.js')
 
-  assert.match(template, /wx:for="{{expenseCategories}}"[^>]*class="band-segment" style="width: {{item\.barWidth}}; background: {{item\.bandColor}};/)
-  assert.match(template, /wx:for="{{incomeCategories}}"[^>]*class="band-segment"/)
+  assert.match(template, /<block wx:for="{{expenseCategories}}"[^>]*>\s*<view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item\.barWidth}}; background: {{item\.bandColor}};/)
+  assert.match(template, /<block wx:for="{{incomeCategories}}"[^>]*>\s*<view wx:if="{{item.barWidth !== '0%'}}" class="band-segment"/)
   assert.doesNotMatch(template, /ring-image|ring-wrap|charts\.expenseRing\.src|charts\.incomeRing\.src/)
   assert.match(style, /\.band \{[^}]*border-radius:\s*999rpx/)
   assert.doesNotMatch(style, /\.ring-image|\.ring-wrap/)
@@ -273,7 +274,7 @@ test('账户详情独立页：余额大卡、流水入口、负债贷款区与�
   assert.match(markup, /class="ad-actions"/)
   assert.match(markup, /sheet-mask/)
   assert.match(source, /require\('\.\.\/accounts\/model'\)/)
-  assert.match(source, /require\('\.\.\/loans\/model'\)/)
+  assert.match(source, /require\('\.\.\/\.\.\/services\/loan-present'\)/)
   assert.match(source, /accounts\.update/)
   assert.match(source, /accounts\.correctBalance/)
   assert.match(source, /accounts\.archive/)
@@ -339,7 +340,8 @@ test('首页卡片外沿与文字使用内收的双基线', function () {
 
   assert.match(template, /class="home-header home-content-line"/)
   assert.match(template, /class="home-flow"/)
-  assert.match(style, /\.home-content-line,[\s\S]*\.home-flow[\s\S]*padding-left:\s*20rpx/)
+  assert.match(style, /\.home-content-line,[\s\S]*\.home-flow[\s\S]*padding-left:\s*var\(--layout-space-4\)/)
+  assert.match(read('miniprogram/app.wxss'), /--layout-space-4:\s*20rpx;/)
 })
 
 test('首页月度摘要直接展示在净值卡右栏，无数据显示 —', function () {
@@ -402,36 +404,36 @@ test('page-head 统一全部页面页头，徽章按需只留真实业务上下�
   // import-workbench 页头按用户要求移除（导航标题「导入账单」即页头，步骤卡即主视觉），不加 page-head
   const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail']
   pages.forEach(function (page) {
-    const markup = read('miniprogram/pages/' + page + '/index.wxml')
-    const config = read('miniprogram/pages/' + page + '/index.json')
+    const markup = read('miniprogram/' + pageRoute(page) + '.wxml')
+    const config = read('miniprogram/' + pageRoute(page) + '.json')
     assert.match(markup, /<page-head[\s>]/, page + ' 缺少 page-head')
     assert.match(config, /"page-head":\s*"\/components\/page-head\/index"/, page + ' 未注册 page-head')
   })
   const badged = ['loan-link', 'loan-plan']
   badged.forEach(function (page) {
-    assert.match(read('miniprogram/pages/' + page + '/index.wxml'), /<page-head[^>]*badge="/, page + ' 应保留业务徽章')
+    assert.match(read('miniprogram/' + pageRoute(page) + '.wxml'), /<page-head[^>]*badge="/, page + ' 应保留业务徽章')
   })
   pages.filter(function (page) { return badged.indexOf(page) < 0 }).forEach(function (page) {
-    assert.doesNotMatch(read('miniprogram/pages/' + page + '/index.wxml'), /<page-head[^>]*badge=/, page + ' 不应再带徽章')
+    assert.doesNotMatch(read('miniprogram/' + pageRoute(page) + '.wxml'), /<page-head[^>]*badge=/, page + ' 不应再带徽章')
   })
   const about = read('miniprogram/pages/about/index.wxml')
   assert.doesNotMatch(about, /<page-head[^>]*badge=/, 'about 不应再带徽章')
   assert.match(read('miniprogram/components/page-head/index.wxml'), /wx:if="\{\{badge\}\}"/)
   assert.match(read('miniprogram/components/page-head/index.wxss'), /\.ph-plain \.ph-top/)
   ;['index', 'statistics', 'data-privacy'].forEach(function (page) {
-    const markup = read('miniprogram/pages/' + page + '/index.wxml')
+    const markup = read('miniprogram/' + pageRoute(page) + '.wxml')
     const headers = markup.match(/<section-header[^>]*>/g) || []
     assert.ok(headers.length > 0, page + ' 应保留页内小节')
     headers.forEach(function (tag) { assert.match(tag, /compact/, page + ' section-header 仅允许 compact：' + tag) })
   })
-  assert.doesNotMatch(read('miniprogram/pages/loans/index.wxml'), /section-header/)
+  assert.doesNotMatch(read('miniprogram/packages/finance/pages/loans/index.wxml'), /section-header/)
 })
 
 test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
   assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="还没有账目"/)
   assert.match(read('miniprogram/pages/transactions/index.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
-  assert.match(read('miniprogram/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
-  assert.match(read('miniprogram/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
+  assert.match(read('miniprogram/packages/finance/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
+  assert.match(read('miniprogram/packages/finance/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
   assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
   assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
   assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
@@ -452,13 +454,13 @@ test('empty-cat 升级场景卡：径向光圈、星点与 hide-art 无图变体
 test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
   assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.graph-surface \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.composition-card \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
-  const sheetFiles = ['miniprogram/pages/statistics/index.wxss', 'miniprogram/pages/categories/index.wxss', 'miniprogram/app.wxss', 'miniprogram/components/login-sheet/index.wxss', 'miniprogram/pages/import-workbench/index.wxss']
+  const sheetFiles = ['miniprogram/pages/statistics/index.wxss', 'miniprogram/pages/categories/index.wxss', 'miniprogram/app.wxss', 'miniprogram/components/login-sheet/index.wxss', 'miniprogram/packages/finance/pages/import-workbench/index.wxss']
   sheetFiles.forEach(function (file) {
     assert.match(read(file), /border-radius:\s*var\(--theme-radius-xl, 32rpx\) var\(--theme-radius-xl, 32rpx\) 0 0/, file)
   })
-  assert.match(read('miniprogram/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.record-sheet \{[^}]*border-radius: 30rpx/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.record-sheet \{[^}]*border-radius: 30rpx/)
 })
 
 test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，编辑逻辑不变', function () {
@@ -510,8 +512,8 @@ test('按压回弹：按钮体系与可点卡片统一 scale 回弹', function (
   assert.match(appStyle, /\.primary-button:active,[\s\S]*?transform:\s*scale\(var\(--motion-press-scale/)
   assert.match(appStyle, /\.primary-button\[disabled\][\s\S]*?opacity:\s*\.65/)
   assert.match(read('miniprogram/components/list-row/index.wxss'), /\.lr-active \{\s*transform:\s*scale\(var\(--motion-press-scale/)
-  assert.match(read('miniprogram/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
-  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
 })
 
 test('校验抖动：login-sheet、profile、loan-detail 三处接入', function () {
@@ -522,12 +524,12 @@ test('校验抖动：login-sheet、profile、loan-detail 三处接入', function
   assert.match(read('miniprogram/pages/profile/index.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxml'), /nicknameShake \? 'login-nickname-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxss'), /@keyframes login-nickname-shake/)
-  const loanDetailMarkup = read('miniprogram/pages/loan-detail/index.wxml')
+  const loanDetailMarkup = read('miniprogram/packages/finance/pages/loan-detail/index.wxml')
   assert.match(loanDetailMarkup, /fieldError === 'account' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /fieldError === 'principal' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /fieldError === 'schedule' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /errorMessage && !fieldError/)
-  assert.match(read('miniprogram/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
+  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
 })
 
 test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻页不入场', function () {

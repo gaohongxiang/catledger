@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
+const { pageRoute } = require('./helpers/page-routes')
 
 const root = path.resolve(__dirname, '..')
 
@@ -11,12 +12,13 @@ function read(relativePath) {
 
 test('protected subpages share the same login sheet component', () => {
   for (const page of ['accounts', 'categories', 'transaction-editor', 'statistics', 'import-workbench']) {
-    const config = JSON.parse(read(`miniprogram/pages/${page}/index.json`))
+    const directory = path.posix.dirname(pageRoute(page))
+    const config = JSON.parse(read(`miniprogram/${directory}/index.json`))
     assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
-    assert.match(read(`miniprogram/pages/${page}/index.wxml`), /id="page-login-sheet"/)
+    assert.match(read(`miniprogram/${directory}/index.wxml`), /id="page-login-sheet"/)
     const controller = page === 'import-workbench' ? 'runtime' : 'index'
-    if (page === 'import-workbench') assert.match(read(`miniprogram/pages/${page}/index.js`), /onLoad:\s*runtime\.onLoad/)
-    assert.match(read(`miniprogram/pages/${page}/${controller}.js`), /loginGuard\.run/)
+    if (page === 'import-workbench') assert.match(read(`miniprogram/${directory}/index.js`), /onLoad:\s*runtime\.onLoad/)
+    assert.match(read(`miniprogram/${directory}/${controller}.js`), /loginGuard\.run/)
   }
   const tabConfig = JSON.parse(read('miniprogram/custom-tab-bar/index.json'))
   assert.equal(tabConfig.usingComponents['login-sheet'], '/components/login-sheet/index')

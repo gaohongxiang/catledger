@@ -54,7 +54,7 @@ Page({
     if (!loan) return
     if((this.data.context.state==='allocatable'||this.data.context.retained)&&loan.canLink){wx.navigateTo({url:'/packages/finance/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
     const target = loan.canLink ? 'repayment-entry' : 'loan-detail'
-    wx.navigateTo({ url: '/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
+    wx.navigateTo({ url: '/packages/finance/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
   },
   createLoan() {
     if (this.data.loading || this.data.errorMessage || !this.data.context || this.data.context.state !== 'candidate' || this.data.context.targetAccount.inactive) return

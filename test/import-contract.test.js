@@ -42,20 +42,20 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
 })
 
 test('小程序导入调用只使用已登记动作，各导入入口复用独立工作台', function () {
-  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'pairing-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'pairing-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench', file), 'utf8')).join('\n')
   const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })
   const tab = fs.readFileSync(path.join(__dirname, '../miniprogram/custom-tab-bar/index.js'), 'utf8')
   const editor = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/transaction-editor/index.js'), 'utf8')
   assert.match(tab, /'\/pages\/transaction-editor\/index'/)
-  assert.match(tab, /'\/pages\/import-workbench\/index'/)
-  assert.match(editor, /url: '\/pages\/import-workbench\/index'/)
+  assert.match(tab, /'\/packages\/finance\/pages\/import-workbench\/index'/)
+  assert.match(editor, /url: '\/packages\/finance\/pages\/import-workbench\/index'/)
   assert.doesNotMatch(tab + editor, /chooseMessageFile/)
 })
 
 test('旧版云函数动作错误显示为版本过旧而不是尚未开放', function () {
-  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench', file), 'utf8')).join('\n')
   const serverErrors = fs.readFileSync(path.join(__dirname, '../cloudfunctions/catledger-import/src/errors.js'), 'utf8')
   assert.match(page, /UNSUPPORTED_ACTION:\s*'导入服务版本过旧，请更新云函数后重试'/)
   assert.match(page, /ERROR_MESSAGES\[error && error\.code\]/)
@@ -64,9 +64,9 @@ test('旧版云函数动作错误显示为版本过旧而不是尚未开放', fu
 })
 
 test('导入工作台沿用按需登录与主题组件', function () {
-  const config = require('../miniprogram/pages/import-workbench/index.json')
-  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
-  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
+  const config = require('../miniprogram/packages/finance/pages/import-workbench/index.json')
+  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench', file), 'utf8')).join('\n')
+  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/index.wxml'), 'utf8')
   assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
   assert.match(source, /loginGuard\.run/)
   assert.match(source, /loginGuard\.run\(this, this\.openFilePicker\.bind\(this\)\)/)
@@ -75,11 +75,11 @@ test('导入工作台沿用按需登录与主题组件', function () {
 })
 
 test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 post/skip', function () {
-  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
-  const modelSource = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/model.js'), 'utf8')
-  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
+  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench', file), 'utf8')).join('\n')
+  const modelSource = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/model.js'), 'utf8')
+  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/index.wxml'), 'utf8')
   // 结构约束与 CSS 的换行排版无关。
-  const styles = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxss'), 'utf8').replace(/\s+/g, ' ')
+  const styles = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/index.wxss'), 'utf8').replace(/\s+/g, ' ')
   const repository = fs.readFileSync(path.join(__dirname, '../cloudfunctions/catledger-import/src/import-repository.js'), 'utf8')
   // 文件数量/重复选择/并发与单文件重试由 import-upload-flow 的真实 Page 验证。
   assert.match(source, /phase: 'uploading', busy: true, errorMessage: ''/)
@@ -182,12 +182,12 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /入账前不改动正式账户/)
   assert.doesNotMatch(markup, /class="account-issue-label">选择账户归属/)
   assert.match(source, /this\.stepPatch\(step\)/)
-  const presentation = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/presentation.js'), 'utf8')
+  const presentation = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/presentation.js'), 'utf8')
   assert.match(presentation, /model\.reviewIssueRows\(state\.hydratedIssues/)
   assert.doesNotMatch(source, /refundChoices/)
   assert.match(markup, /class="review-status-tab \{\{activeReviewStatus/)
   assert.match(markup, /wx:for="\{\{reviewGroups\}\}"/)
-  assert.deepEqual(require('../miniprogram/pages/import-workbench/model').reviewStatusTabs().map(tab => tab.label),
+  assert.deepEqual(require('../miniprogram/packages/finance/pages/import-workbench/model').reviewStatusTabs().map(tab => tab.label),
     ['待核对', '已核对', '重复交易', '已排除'])
   assert.doesNotMatch(markup, /class="review-subtabs"/)
   assert.doesNotMatch(source, /switchReviewGroup|visibleReviewGroups|activeReviewGroupType/)
@@ -198,7 +198,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(source, /_continuousIssueType|continuousType/)
   assert.match(markup, /\{\{issue\.label\}\}/)
   assert.match(markup, /\{\{preview\.amountText\}\}/)
-  const editorFields = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  const editorFields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
   assert.match(editorFields, /正在核验候选/)
   assert.match(editorFields, /bindtap="selectEditorRefund"/)
   assert.match(editorFields, /sheet.refundCanPending/)
@@ -215,7 +215,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   for (const [accountId, label, expected] of [['', '付款账户', '选择付款账户'], ['synthetic-account', '还入账户', '修改还入账户']]) {
     assert.equal(vm.runInNewContext(accountLabel, { item: { accountId, label } }, { timeout: 200 }), expected)
   }
-  const labels = require('../miniprogram/pages/import-workbench/detail-fields').accountLabels
+  const labels = require('../miniprogram/packages/finance/pages/import-workbench/detail-fields').accountLabels
   assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).from, '还入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).to, '付款账户')

@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const model = require('../miniprogram/pages/import-workbench/model')
+const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
 
 function repayment(label = '平安银行信用卡') {
   return { economicNature: 'repayment', ledgerAccountId: 'wallet',

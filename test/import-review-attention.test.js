@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { reviewAttention, VERSION } = require('../cloudfunctions/catledger-import/src/review-attention')
-const presentation = require('../miniprogram/pages/import-workbench/presentation')
+const presentation = require('../miniprogram/packages/finance/pages/import-workbench/presentation')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const issue = (id, type, reason, extra = {}) => ({ issueId: id, issueType: type, primaryReasonCode: reason,
   status: 'open', version: 2, blocking: true, memberCount: 1, candidateCount: 0, ...extra })
