@@ -17,7 +17,7 @@
   },
   "projectname": "catledger",
   "setting": {
-    "bigPackageSizeSupport": true,
+    "bigPackageSizeSupport": false,
     "checkInvalidKey": true,
     "compileHotReLoad": true,
     "es6": true,
