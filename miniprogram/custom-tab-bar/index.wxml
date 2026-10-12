@@ -21,19 +21,19 @@
 
 <view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} ui-refined" style="{{themeStyle}}">
   <view class="tab-side tab-side-left">
-    <view
-      wx:for="{{tabs}}"
-      wx:key="pagePath"
-      wx:if="{{index < 2}}"
-      class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
-      data-index="{{index}}"
-      bindtap="switchTab"
-    >
-      <view class="tab-icon-wrap">
-        <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+    <block wx:for="{{tabs}}" wx:key="pagePath">
+      <view
+        wx:if="{{index < 2}}"
+        class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
+        data-index="{{index}}"
+        bindtap="switchTab"
+      >
+        <view class="tab-icon-wrap">
+          <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+        </view>
+        <text class="tab-label">{{item.text}}</text>
       </view>
-      <text class="tab-label">{{item.text}}</text>
-    </view>
+    </block>
   </view>
 
   <view class="record-entry" role="button" aria-label="选择记账方式" bindtap="openEntry">
@@ -44,18 +44,18 @@
   </view>
 
   <view class="tab-side tab-side-right">
-    <view
-      wx:for="{{tabs}}"
-      wx:key="pagePath"
-      wx:if="{{index >= 2}}"
-      class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
-      data-index="{{index}}"
-      bindtap="switchTab"
-    >
-      <view class="tab-icon-wrap">
-        <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+    <block wx:for="{{tabs}}" wx:key="pagePath">
+      <view
+        wx:if="{{index >= 2}}"
+        class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
+        data-index="{{index}}"
+        bindtap="switchTab"
+      >
+        <view class="tab-icon-wrap">
+          <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+        </view>
+        <text class="tab-label">{{item.text}}</text>
       </view>
-      <text class="tab-label">{{item.text}}</text>
-    </view>
+    </block>
   </view>
 </view>

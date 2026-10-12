@@ -24,7 +24,7 @@
       <view class="composition-column">
       <button class="composition-choice {{categoryKind === 'expense' ? 'composition-selected' : ''}}" data-kind="expense" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'expense' ? '收起支出分类' : '展开支出分类'}}">
         <text class="band-label">支出</text>
-        <view class="band" aria-hidden="true"><view wx:for="{{expenseCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
+        <view class="band" aria-hidden="true"><block wx:for="{{expenseCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
         <ticker-number class="composition-amount expense-color money-number" value="{{expenseText}}" />
         <text class="composition-toggle">{{categoryKind === 'expense' ? '收起分类' : '展开分类'}}</text>
       </button>
@@ -32,7 +32,7 @@
       <view class="composition-column">
       <button class="composition-choice {{categoryKind === 'income' ? 'composition-selected' : ''}}" data-kind="income" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'income' ? '收起收入分类' : '展开收入分类'}}">
         <text class="band-label">收入</text>
-        <view class="band" aria-hidden="true"><view wx:for="{{incomeCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
+        <view class="band" aria-hidden="true"><block wx:for="{{incomeCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
         <ticker-number class="composition-amount income-color money-number" value="{{incomeText}}" />
         <text class="composition-toggle">{{categoryKind === 'income' ? '收起分类' : '展开分类'}}</text>
       </button>

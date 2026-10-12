@@ -4,7 +4,7 @@
   <view wx:for="{{items}}" wx:key="updateId" class="history-entry">
     <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status {{item.transactionCount ? 'history-status-ok' : 'history-status-muted'}}">{{item.transactionCount ? item.transactionCount + ' 笔账目' : item.deletedTransactionCount ? '账目已删除' : '无账目'}}</text></view>
     <text class="history-copy">{{item.timeText}} · {{item.sourceCount}} 个文件</text>
-    <text wx:for="{{item.files}}" wx:for-item="file" wx:key="*this" wx:if="{{index > 0}}" class="history-copy history-file">{{file}}</text>
+    <block wx:for="{{item.files}}" wx:for-item="file" wx:key="*this"><text wx:if="{{index > 0}}" class="history-copy history-file">{{file}}</text></block>
     <view class="history-actions">
       <button class="history-link" data-id="{{item.updateId}}" bindtap="viewTransactions" disabled="{{busy}}">查看账目</button>
       <button wx:if="{{item.deletedTransactionCount || item.status === 'undone'}}" class="history-link" bindtap="importAgain" disabled="{{busy}}">重新导入</button>
