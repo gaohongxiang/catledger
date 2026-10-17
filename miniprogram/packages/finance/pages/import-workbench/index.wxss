@@ -788,6 +788,75 @@ button::after { border: 0; }
 }
 .review-decision-heading.review-completed-heading { justify-content: space-between; background: var(--ui-surface); }
 .review-completed-side { display: flex; align-items: center; gap: 4rpx; flex: 0 0 auto; }
+/* 已核对：同账户＋同期次的分期本金／利息／手续费合并为一张卡 */
+.review-decision-card.installment-card { background: var(--ui-surface); }
+.installment-row { padding-left: 20rpx; padding-right: 20rpx; }
+.review-preview-headline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8rpx; }
+.review-preview-role {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-right: 10rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: var(--font-caption, 22rpx);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ui-accent-strong);
+  background: var(--ui-surface-muted, rgba(0, 0, 0, .05));
+  border: 1rpx solid var(--ui-line);
+}
+.review-role-principal { color: var(--sem-expense, #b54738); border-color: var(--sem-expense, #b54738); }
+.review-role-interest { color: #9a6b1f; border-color: #9a6b1f; }
+.review-role-fee { color: var(--ui-muted); }
+/* 归属没判出来的费用行：列表上就要看出“还没指定”，用户才知道要点哪一行。 */
+.review-preview-pending {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 8rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: var(--font-caption, 22rpx);
+  line-height: 1.5;
+  color: var(--ui-accent-strong);
+  background: var(--ui-accent-soft);
+}
+.review-installment-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 20rpx;
+  border-top: 2rpx dashed var(--ui-line);
+}
+.review-installment-total-label { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
+.review-installment-total-amount { color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 600; }
+.review-installment-total-amount.row-expense { color: var(--sem-expense, #b54738); }
+/* 待核对：本期次还没指定归属的利息挂在每张计划卡里，点一笔就把它归到这张卡的计划。
+   本金标题标明计划，卡头保留性质与当前待办，块内只留可直接点的利息行。 */
+.review-attribution-pending { margin-top: var(--layout-space-3); padding: var(--layout-space-3) var(--layout-space-4);
+  border-radius: var(--theme-radius-small); background: var(--ui-accent-soft); }
+.review-attribution-pending .review-pending-row:first-child { margin-top: 0; }
+.review-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--layout-space-2);
+  padding: 10rpx var(--layout-space-3);
+  border-radius: var(--theme-radius-small);
+  background: var(--ui-surface);
+}
+.review-pending-copy { display: flex; flex-direction: column; min-width: 0; }
+.review-pending-title { font-size: var(--font-caption, 26rpx); color: var(--ui-ink); }
+.review-pending-amount { margin-top: 4rpx; font-size: var(--font-caption, 24rpx); color: var(--ui-muted); }
+.review-pending-flag { flex-shrink: 0; margin-left: var(--layout-space-3); font-size: var(--font-caption, 24rpx); color: var(--ui-accent-strong); }
+.review-installment-partial-note {
+  display: block;
+  padding: 12rpx 20rpx 14rpx;
+  color: var(--ui-subtle);
+  font-size: var(--font-caption, 22rpx);
+  border-top: 2rpx dashed var(--ui-line);
+}
 .category-edit-sheet .mapping-field { width: 100%; margin: 24rpx 0; text-align: left; }
 .category-edit-sheet .review-preview-row { margin-top: var(--layout-space-5); }
 .review-inline-action {
@@ -830,7 +899,6 @@ button::after { border: 0; }
 .review-decision-copy,
 .review-preview-copy { min-width: 0; flex: 1; }
 .review-decision-title,
-.review-decision-note,
 .review-preview-title,
 .review-preview-meta,
 .review-preview-more { display: block; }
@@ -958,18 +1026,6 @@ button::after { border: 0; }
   padding: 4rpx 10rpx;
   border-radius: var(--theme-radius-small, 12rpx);
 }
-.review-decision-note {
-  display: none;
-  min-width: 0;
-  flex: 1;
-  margin: 0;
-  overflow: hidden;
-  color: var(--ui-muted);
-  font-size: var(--font-caption, 24rpx);
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .review-decision-previews { padding-top: 0; border: 0; border-radius: 0; }
 .review-audit-list { margin-top: 18rpx; }
 .excluded-group-list { width: 100%; margin-top: 18rpx; }
@@ -1066,15 +1122,6 @@ button::after { border: 0; }
   gap: var(--layout-space-2);
   padding: 10rpx 18rpx 13rpx;
   background: var(--ui-surface-muted);
-}
-.review-audit-badge {
-  flex: 0 0 auto;
-  padding: 5rpx 9rpx;
-  color: var(--ui-accent-strong);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 1;
-  background: var(--ui-accent-soft);
-  border-radius: var(--theme-radius-small, 12rpx);
 }
 .review-tabs {
   display: flex;
@@ -1724,8 +1771,7 @@ button::after { border: 0; }
   background: var(--ui-line);
 }
 .aggregate-route-card { margin-bottom: 18rpx; background: var(--ui-surface); }
-.repayment-allocation,
-.payment-allocation { overflow: hidden; border-top: 2rpx solid var(--ui-line); }
+.repayment-allocation { overflow: hidden; border-top: 2rpx solid var(--ui-line); }
 .repayment-allocation-heading {
   display: flex;
   align-items: baseline;
@@ -2418,7 +2464,6 @@ button::after { border: 0; }
   border: 0;
 }
 .repayment-remove-icon { width: 24rpx; height: 24rpx; }
-.repayment-allocation-add { padding: 16rpx 0; font-size: var(--font-caption, 24rpx); color: var(--ui-accent-strong); }
 
 /* 主任务与核对状态分两层，分类沿用同一证据行。 */
 .review-main-tabs { display: flex; margin-top: var(--layout-space-3); border-bottom: 2rpx solid var(--ui-line); }
@@ -2450,8 +2495,6 @@ button::after { border: 0; }
 .category-decision-card { margin-bottom: var(--layout-space-3); }
 .review-audit-row[bindtap], .review-audit-card[bindtap] { min-height: 96rpx; }
 .excluded-record-reason, .excluded-record-status { white-space: normal; }
-
-.category-completed-title { overflow: hidden; text-overflow: ellipsis; }
 
 /* 表单行用上缘分隔；表单与账单证据的边界由证据区单独绘制。 */
 .review-editor-sheet .mapping-field { border-bottom: 0; border-top: 1rpx solid var(--ui-line); }
@@ -2855,20 +2898,6 @@ button::after { border: 0; }
 /* 性质、金额与来源摘要置前，待补字段保持单一入口；长内容不挤压按钮。 */
 .detail-nature-first { margin-bottom: var(--layout-space-3); padding: 16rpx 22rpx 18rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
 .repayment-summary-card { margin-bottom: 0; border-bottom: 0; border-radius: var(--theme-radius-medium, 18rpx) var(--theme-radius-medium, 18rpx) 0 0; }
-.route-vertical { margin: 0 0 8rpx; padding: var(--layout-space-4); border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
-.route-vertical-point { display: flex; align-items: stretch; gap: var(--layout-space-3); }
-.route-vertical-rail { display: flex; flex-direction: column; align-items: center; flex: 0 0 16rpx; width: 16rpx; padding-top: 10rpx; }
-.route-vertical-dot { flex: 0 0 auto; width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--ui-muted); }
-.route-vertical-dot-accent { background: var(--ui-accent-strong); }
-.route-vertical-line { flex: 1; width: 2rpx; min-height: 28rpx; background: var(--ui-line); }
-.route-vertical-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; padding-bottom: var(--layout-space-5); }
-.route-vertical-point:last-child .route-vertical-body { padding-bottom: 0; }
-.route-vertical-label { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
-.route-vertical-name { color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
-.review-editor-sheet .route-vertical-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); box-sizing: border-box; width: 100%; max-width: none; min-height: 72rpx; margin: 4rpx 0 0; padding: 12rpx 20rpx; border: 1rpx dashed var(--ui-accent); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.4; text-align: left; white-space: normal; }
-.route-vertical-pick::after { border: 0; }
-.review-editor-sheet .route-vertical-pick-filled { border-style: solid; border-color: var(--ui-line); background: transparent; color: var(--ui-ink); }
-.route-vertical-chevron { flex: 0 0 auto; font-size: 32rpx; font-weight: 400; line-height: 1; }
 .issue-summary-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4rpx 20rpx; }
 .issue-summary-picker { display: flex; align-items: center; min-width: 0; min-height: 88rpx; }
 .issue-summary-nature { display: inline-flex; align-items: center; gap: 6rpx; min-height: 0; padding: 6rpx 20rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; font-weight: 500; line-height: 1.5; }

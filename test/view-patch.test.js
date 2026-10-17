@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { changedData } = require('../miniprogram/services/view-patch')
+const { changedData } = require('../miniprogram/packages/finance/services/view-patch')
 test('同长度列表只传改变的叶字段，不重建未改变的输入行', () => {
   const before = { rows: [{ id: 'a', name: '输入中' }, { id: 'b', name: '旧' }] }
   assert.deepEqual(changedData(before, { rows: [{ id: 'a', name: '输入中' }, { id: 'b', name: '新' }] }), { 'rows[1].name': '新' })

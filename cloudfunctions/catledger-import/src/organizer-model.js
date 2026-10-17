@@ -6,6 +6,7 @@ const { SEMANTIC_HARD_BLOCKERS } = require('./semantic-policy')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { economicNatureForSemantic } = require('./economic-nature')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
+const { REASON_CODE: INSTALLMENT_ATTRIBUTION_REASON, needsAttribution } = require('./installment-plan')
 
 const UPDATE_STATUS = Object.freeze({
   DRAFT: 'draft',
@@ -123,6 +124,10 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   const editor = event.fieldSources && event.fieldSources.editorOverrides
   if (editor && editor.version === 1 && editor.incompleteComposition) reasons.push('editor_composition_incomplete')
   if (editor && editor.sourceCorrection && editor.sourceCorrection.periodNumber === null) reasons.push('installment_origin_required')
+  // 判不出归属的费用行留下的结论。用户指定计划（sourceCorrection.planLabel）后它才消失，
+  // 所以这是归属的事实，不是可忽略的提示。本金行不写这个原因码：它自己没有归属问题，
+  // 靠“同组待核对事项的成员”身份一起出现在待核对里，指定完不留过期状态。
+  if (needsAttribution(event)) reasons.push(INSTALLMENT_ATTRIBUTION_REASON)
   if (eventAllocation(event).kind === 'conflict') reasons.push('funds_allocation_conflict')
   if (openBlockingIssues > 0) reasons.push('blocking_issue_open')
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
@@ -259,6 +264,10 @@ function classifyReviewIssue(event) {
   }
   if (reasons.has('installment_origin_required') || reasons.has('installment_composition_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: 'installment_origin_required' }
+  }
+  // 期次来源确定之后才谈归属：一笔费用要先知道是哪一期的，才谈得上属于哪个计划。
+  if (reasons.has('installment_attribution_required')) {
+    return { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: 'installment_attribution_required' }
   }
   // 资金动作已经明确了一个可复用的付款工具、但该工具尚未归属账本账户时，
   // 先在账户步骤确认它。确认后再生成只询问另一端的资金流转问题。

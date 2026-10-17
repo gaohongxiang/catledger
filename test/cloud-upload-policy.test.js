@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const uploadPolicy = require('../miniprogram/services/cloud-upload-policy')
+const uploadPolicy = require('../miniprogram/packages/finance/services/cloud-upload-policy')
 
 function task() {
   return { onProgressUpdate: function () {}, abort: function () {} }

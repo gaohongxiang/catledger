@@ -60,7 +60,7 @@ async function measure(source, c, sql, kind, issueId) {
   const { runtime } = require(path.join(source, 'test/helpers/read-runtime'))
   const ui = runtime(), pending = new Set()
   ui.uid = ui.app.globalData.uid = c.uid; ui.rawResponse = true
-  const viewSessionSource = fs.readFileSync(path.join(source, 'miniprogram/services/import-view-session.js'), 'utf8')
+  const viewSessionSource = fs.readFileSync(path.join(source, 'miniprogram/packages/finance/services/import-view-session.js'), 'utf8')
   const cacheObservable = /observer\.record\(\s*['"]cache['"]/.test(viewSessionSource)
   const observer = ui.load('services/read-observer'), originalRecord = observer.record
   let sample, started, requests

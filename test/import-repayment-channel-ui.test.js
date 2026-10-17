@@ -156,7 +156,8 @@ test('还款渠道模型固定金额、时间、归属和目标，两种方向�
     updated = model.change(row, updated, 'note', '合成补充说明')
     const result = model.derive(row, updated, { accounts: [credit, bank] })
     assert.equal(result.canSave, true)
-    assert.equal(result.showStructure, false)
+    // 来源组合固定了两端：两组都不能再拆，加号不出现在界面上。
+    assert.ok(result.fundsEndpoints.length === 2 && result.fundsEndpoints.every(endpoint => !endpoint.open))
     assert.equal(result.showLoan, false)
     assert.deepEqual(result.payload.fields, { [payer]: bank.accountId, note: '合成补充说明' })
     assert.equal(result.payload.decisions, undefined)
@@ -266,7 +267,7 @@ test('真实 Page 隐藏固定编辑入口，旧控件事件不改渠道事实�
   edit(page, 'amountInput', '100.00')
   edit(page, 'date', '2026-10-01')
   mode(page, 'owner', 'other')
-  mode(page, 'composition', 'payment')
+  page.addFundsAccount(tap({ endpoint: 'payer' }))
   mode(page, 'repaymentMode', 'loan')
   assert.equal(select(page, 'reviewCounterparty', { ...credit, accountId: 'synthetic-other-credit' }), false)
   assert.equal(page.reviewEditorDirectory('editorLoan'), null)

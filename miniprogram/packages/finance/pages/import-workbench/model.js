@@ -1,5 +1,5 @@
 const bankSuggestion = require('./bank-suggestion')
-const { fundsAccountLabels } = require('./detail-fields')
+const { fundsAccountLabels, natureLabel } = require('./detail-fields')
 
 function reviewStatusTabs(tabs = []) {
   return [['pending', '待核对'], ['completed', '已核对'], ['duplicate', '重复交易'], ['excluded', '已排除']]
@@ -392,6 +392,8 @@ function issueView(issue) {
   if (missingFundsSide === 'to') label = fundsLabels.to + '待确认'
   const historicalDuplicate = issue.primaryReasonCode === 'historical_duplicate_candidate'
   if (historicalDuplicate) label = '疑似已经入账'
+  // 费用归属和本金来源是两个不同的问题：一个是“这笔费用属于哪个计划”，一个是“本金从哪来”。
+  if (issue.primaryReasonCode === 'installment_attribution_required') label = '利息待归属'
   const reasons = (issue.reasonCodes || []).concat(subject && subject.reasonCodes || [])
   const bankChannelCandidate = issue.issueType === 'same_event' && (issue.primaryReasonCode === 'bank_channel_same_event_candidate' ||
     (issue.reasonCodes || []).includes('bank_channel_same_event_candidate'))
@@ -402,7 +404,7 @@ function issueView(issue) {
   if (refundSourceConflict) label = '退款与原订单状态冲突'
   else if (statusUnknown) label = '账单状态尚待核对'
   const issueHelp = installmentPrincipal
-    ? '这是本期分期本金出账，不代表实际还款。请确认所属信用卡并选择“分期本金出账”；入账后可关联或新建分期计划。'
+    ? '这是账单列出的本期分期本金，不代表实际还款。请确认所属信用卡并选择“' + natureLabel(subject) + '”；入账后可关联或新建分期计划。'
     : refundSourceConflict
     ? '同一来源订单显示原消费已关闭或失败，却另有退款到账。请对照下方两条原始记录，核实实际扣款及退款；证据补齐前可不计入本次账本，不能暂记待关联退款。'
     : statusUnknown
@@ -619,7 +621,8 @@ function reviewIssueRows(issues) {
     return Object.assign({}, view, {
       sortLocalAt: issueDate(issue),
       groupStart,
-      groupLabel: ISSUE_GROUP_LABELS[issue.issueType] || view.label,
+      groupLabel: issue.primaryReasonCode === 'installment_attribution_required'
+        ? '利息待归属' : ISSUE_GROUP_LABELS[issue.issueType] || view.label,
       groupCount: counts[issue.issueType] || 0
     })
   })
@@ -677,7 +680,7 @@ function categoryIssueCards(issues, query) {
       subjects: previews,
       hiddenSubjectCount: Math.max(0, issue.subjectCount - previews.length),
       merchant: merchant + (issue.subjectCount > 1 ? '等 · 同类交易' : ''),
-      natureLabel: subject.economicNature === 'income' ? '收入' : '支出',
+      natureLabel: natureLabel(subject),
       searchText: [merchant].concat(allSubjects.map(function (event) {
         return event.displayTitle + ' ' + event.displayMeta
       })).join(' ').toLowerCase()
@@ -694,8 +697,7 @@ function categorizedEventRows(events, categories, query) {
       ['ready', 'needs_action', 'posted', 'corrected'].includes(event.status)
   }).map(function (event) {
     return Object.assign({}, eventView(event), {
-      categoryName: event.categoryName || names.get(event.categoryId) || '',
-      natureLabel: event.economicNature === 'income' ? '收入' : '支出'
+      categoryName: event.categoryName || names.get(event.categoryId) || ''
     })
   }).filter(function (event) {
     return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword)
@@ -750,7 +752,7 @@ function organizerRecordState(events, issues, categories, query, options) {
     return Object.assign({}, summaryOnly ? { eventId: event.eventId, economicNature: event.economicNature } : event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
       pendingReview: pendingReview, needsCategory: needsCategory,
       categoryName: event.categoryName || names.get(event.categoryId) || '',
-      natureLabel: natureLabelOf(event.economicNature)
+      natureLabel: natureLabel(event)
     })
   })
   const reviewPending = annotated.filter(function (event) { return event.pendingReview })
@@ -801,34 +803,96 @@ function workflowPosition(status, groups) {
   return { currentStep: 4, unlockedStep: 4 }
 }
 
-function natureLabelOf(nature) {
-  return { income: '收入', expense: '支出', fee: '手续费', repayment: '还款', internal_transfer: '内部转账',
-    refund: '退款', borrow: '借款', balance_adjustment: '余额调整', unknown: '性质待确认' }[nature] || '性质待确认'
+const INSTALLMENT_ROLES = Object.freeze({ principal: '本金', interest: '利息', fee: '手续费' })
+const INSTALLMENT_ROLE_KEYS = Object.freeze({ principal: 'principal', interest: 'interest', fee: 'fee' })
+const INSTALLMENT_PERIOD_SUFFIX = /第\s*\d{1,3}\s*期(?:\s*[／/]\s*共\s*\d{1,3}\s*期|\s*共\s*\d{1,3}\s*期)?\s*$/u
+
+// 期次基线键：账户 + 期次 + 总期数。用于圈定「同一张卡的同一期账单」，不含分期计划，
+// 因为账单原文的利息行不带计划名，归属要等本金行一起看才能定。
+// 整理阶段已按「来源账户＋期次＋总期数」算好并随事件下发；旧批次缺这个字段时才按账本账户回退。
+function installmentGroupKey(event) {
+  const installment = event && event.installment
+  if (!installment || !installment.creditStatement || !INSTALLMENT_ROLES[installment.component]) return ''
+  if (installment.groupKey) return installment.groupKey
+  if (!event.ledgerAccountId) return ''
+  return [event.ledgerAccountId, installment.periodNumber, installment.totalTerms == null ? '' : installment.totalTerms].join('|')
+}
+
+// 计划名 = 摘要去掉期次后缀。本金摘要（如「电销现分按月收12期第12期共12期」）由此得到计划名；
+// 利息摘要（如「分期付款利息第12期共12期」）不含计划名，只能得到泛称，故不能据此归属。
+// 服务端已按同一口径算好并下发 planName，这里只作为旧批次的回退。
+function installmentPlanOf(title) {
+  const text = String(title || '')
+  return text.replace(INSTALLMENT_PERIOD_SUFFIX, '').replace(/[\s·]+$/u, '') || text
+}
+
+// 利息／手续费行的摘要若完整包含某个本金计划名（如「电销现分按月收12期」）即可直接归属；
+// 只认本金摘要里的计划名原文，不做相似匹配，避免把「分期付款利息」这类泛称当计划。
+function planFromTitle(title, plans) {
+  const text = String(title || '')
+  return (plans || []).find(function (plan) { return plan && text.includes(plan) }) || ''
+}
+
+// 分期出账行的展示口径：角色、计划名、期次、来源各出现一次，卡片上不重复同一句话。
+function installmentParts(event, installment, title, sourceText) {
+  const role = INSTALLMENT_ROLES[installment.component] || ''
+  if (!role) return null
+  const period = '第' + installment.periodNumber + '期' + (installment.totalTerms ? '／共' + installment.totalTerms + '期' : '')
+  const plan = String(installment.planName || '').trim() || installmentPlanOf(title)
+  return {
+    installmentRole: role,
+    installmentRoleKey: INSTALLMENT_ROLE_KEYS[installment.component] || '',
+    installmentPeriod: period,
+    installmentPlan: plan || title,
+    installmentMeta: [period, sourceText].filter(Boolean).join(' · '),
+    installmentKey: installmentGroupKey(event)
+  }
+}
+
+const EVENT_TITLE_FALLBACK = Object.freeze({ repayment: '信用卡还款', internal_transfer: '账户转账', refund: '退款', expense: '支出', income: '收入' })
+
+function displayTitleOf(event) {
+  const evidence = event && event.primaryEvidence || {}
+  return [evidence.item, evidence.counterparty].find(function (value) {
+    return value && !/^(?:[\s/／—-]+|不详|未知)$/.test(value)
+  }) || EVENT_TITLE_FALLBACK[event && event.economicNature] || '待确认事件'
 }
 
 function eventView(event) {
   const evidence = event.primaryEvidence || {}
-  const displayTitle = [evidence.item, evidence.counterparty].find(function (value) {
-    return value && !/^(?:[\s/／—-]+|不详|未知)$/.test(value)
-  }) || ({ repayment: '信用卡还款', internal_transfer: '账户转账', refund: '退款', expense: '支出', income: '收入' }[event.economicNature]) || '待确认事件'
+  const displayTitle = displayTitleOf(event)
   const localAt = String(event.localAt || '')
   const dateText = localAt.slice(0, 16).replace(/^\d{4}-/u, '').replace(' ', ' · ')
   const sourceText = { alipay: '支付宝', wechat: '微信', bank: '银行' }[evidence.sourceType] || ''
   const detailText = evidence.counterparty && evidence.counterparty !== displayTitle ? evidence.counterparty : ''
   const installment = event.installment && event.installment.creditStatement ? event.installment : null
-  const installmentLabel = installment && { principal: '分期本金出账', interest: '分期利息', fee: '分期手续费' }[installment.component] || ''
+  const attribution = event.installmentAttribution || {}
+  const installmentParts_ = installment ? installmentParts(event, installment, displayTitle, sourceText) : null
+  const installmentLabel = installmentParts_ ? natureLabel(event) : ''
   const installmentMeta = installmentLabel && [installmentLabel, '第' + installment.periodNumber + '期' + (installment.totalTerms ? '／共' + installment.totalTerms + '期' : '')].join(' · ')
+  const displayMeta = [dateText, installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
+  const displayDetailMeta = [installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
   return Object.assign({}, event, {
     amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
     displayTitle: event.summaryExpenseMinor == null ? displayTitle : event.repaymentChannel ? '还款手续费' : '还款利息及费用',
-    displayMeta: [dateText, installmentMeta || detailText, sourceText].filter(Boolean).join(' · '),
+    displayMeta: displayMeta,
     displayDate: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(5, 10) : '',
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',
-    displayDetailMeta: [installmentMeta || detailText, sourceText].filter(Boolean).join(' · '),
+    displayDetailMeta: displayDetailMeta,
+    ...(installmentParts_ ? { installmentRole: installmentParts_.installmentRole, installmentRoleKey: installmentParts_.installmentRoleKey, installmentPeriod: installmentParts_.installmentPeriod,
+      installmentPlan: installmentParts_.installmentPlan, installmentKey: installmentParts_.installmentKey,
+      // 归属结论：人工确认优先，其次是整理阶段按「摘要写明计划名／本期次唯一本金」判定的结果。
+      // 两者都没有时留空，由卡片层回退本地口径——只有未重新整理的旧批次会走到这一步。
+      installmentPlanLabel: String(installment.planLabel || '').trim() || String(attribution.planLabel || '').trim(),
+      // 归属上下文：判不出归属的费用行带候选计划供用户指定；本金行带的是本组上下文，
+      // 它的编辑器据此列出本期次还没指定归属的利息。两者都不带时就是没有归属问题。
+      installmentAttribution: attribution.role === 'principal' || (attribution.plans || []).length ? attribution : null,
+      rowTitle: installmentParts_.installmentPlan, rowMeta: installmentParts_.installmentMeta, rowSource: sourceText,
+      rowRole: installmentParts_.installmentRole, rowRoleKey: installmentParts_.installmentRoleKey } : {}),
     ...(installmentLabel ? { installmentNote: (installment.component === 'principal' ? '本期本金出账，仅保留分期来源，不记实际还款。' : '本期分期费用，按账单记一次支出。') + '入账后可在“补充分期记录”中关联或新建分期计划。' } : {}),
     directionClass: event.flowDirection === 'inflow' ? 'row-income' : event.flowDirection === 'outflow' ? 'row-expense' : '',
-    natureLabel: installmentLabel || event.natureLabel || natureLabelOf(event.economicNature)
+    natureLabel: natureLabel(event)
   })
 }
 
@@ -1038,6 +1102,10 @@ module.exports = {
   buildRepaymentAllocationDraft,
   filterAccountSelectorOptions,
   amountText,
+  addMinor,
+  installmentGroupKey,
+  installmentPlanOf,
+  planFromTitle,
   categoriesForNature,
   evidenceFields,
   eventView,

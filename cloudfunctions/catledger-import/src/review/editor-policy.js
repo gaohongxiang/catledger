@@ -80,13 +80,30 @@ function prepare(event, data) {
   if (principal && (nature !== 'repayment' || next.counterpartyLedgerAccountId || data.composition || Object.keys(decisions).length)) fail()
   if (has(data, 'sourceCorrection')) {
     if (!before.installment || before.installment.creditStatement !== true) fail()
-    object(data.sourceCorrection, ['periodNumber', 'totalTerms'])
+    object(data.sourceCorrection, ['periodNumber', 'totalTerms', 'planLabel'])
     const correction = { ...(editor.sourceCorrection || {}), ...data.sourceCorrection }
-    for (const value of Object.values(correction)) if (value !== null && (!Number.isInteger(value) || value < 1 || value > 600)) fail()
+    for (const [key, value] of Object.entries(correction)) {
+      // planLabel 的显式 null 要在外层 null 分支之前处理：外层 continue 会把 null 键原样
+      // 留在 correction 里，而“保留 null”是 periodNumber 的语义（清期次、重挂归属），
+      // 不是 planLabel 的——planLabel 必须删键表示清除。
+      if (key === 'planLabel' && value === null) { delete correction.planLabel; continue }
+      if (value === null) continue
+      if (key === 'planLabel') {
+        // 计划归属只能取自本期次已识别到的本金计划，不接受客户端自造的字符串。
+        const candidates = before.installmentAttribution && before.installmentAttribution.plans || []
+        if (typeof value !== 'string' || value.length > 120 || !candidates.some(item => item.planName === value)) fail()
+        continue
+      }
+      if (!Number.isInteger(value) || value < 1 || value > 600) fail()
+    }
     const terms = has(correction, 'totalTerms') ? correction.totalTerms : before.installment.totalTerms
     const period = has(correction, 'periodNumber') ? correction.periodNumber : before.installment.periodNumber
     if (period && terms && period > terms) fail()
-    editor.sourceCorrection = correction; next.manualFieldMask |= FIELD_MASK.sourceCorrection
+    // 清除后 correction 可能变空：人工确认整体消失，必须连 sourceCorrection 键一起删，
+    // 否则残留空对象会让下游把“存在 sourceCorrection”当成“仍有人工指定”。
+    if (Object.keys(correction).length) editor.sourceCorrection = correction
+    else delete editor.sourceCorrection
+    next.manualFieldMask |= FIELD_MASK.sourceCorrection
   }
   if (data.composition) next = composition.apply(next, data.composition, acknowledgements)
   if (changingOwnership) {
@@ -130,7 +147,8 @@ function prepare(event, data) {
   // 只清除派生缺项；来源、身份、同笔等硬阻断交由原验证器和专用决定维护。
   const derived = new Set(['blocking_issue_open','ledger_account_required','economic_nature_required','core_fields_missing',
     'category_required','postability_direction_conflict','transfer_account_required','repayment_account_required','borrow_account_required',
-    'repayment_ownership_required','repayment_other_treatment_required','repayment_ownership_invalid','loan_repayment_required','editor_composition_incomplete'])
+    'repayment_ownership_required','repayment_other_treatment_required','repayment_ownership_invalid','loan_repayment_required','editor_composition_incomplete',
+    'installment_attribution_required'])
   next.reasonCodes = (next.reasonCodes || []).filter(reason => !derived.has(reason) && !reason.startsWith('repayment_allocation_'))
   return next
 }

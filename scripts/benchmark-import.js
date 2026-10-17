@@ -16,7 +16,7 @@ function pageRuntime(ref) {
   vm.runInNewContext(source(modelPath), { module, require: createRequire(modelPath) })
   let definition
   vm.runInNewContext(source(indexPath), { Page: value => { definition = value }, getApp: () => ({ globalData: {} }),
-    require: name => name === './paged' ? { enhance: value => value } : name === './model' ? module.exports : ['./presentation', './final-detail', '../../services/view-patch'].includes(name) ? createRequire(indexPath)(name) : {} })
+    require: name => name === './paged' ? { enhance: value => value } : name === './model' ? module.exports : ['./presentation', './final-detail', '../../../services/view-patch'].includes(name) ? createRequire(indexPath)(name) : {} })
   return Object.assign({}, definition, { _accountUiDrafts: new Map(), data: JSON.parse(JSON.stringify(definition.data)), bytes: 0,
     setData(patch) {
       this.bytes += Buffer.byteLength(JSON.stringify(patch))

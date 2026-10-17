@@ -24,6 +24,16 @@ function setup() {
   return h
 }
 
+test('已核对详情打开即同步具备只读 editor，不在读取完成前回退到纯键值列表', async () => {
+  const h = setup(), page = h.page
+  await page.setStep({ currentStep: 3, activeReviewStatus: 'completed' })
+  const pending = page.openReviewDetails(tap(h.events[0].eventId))
+  assert.ok(page.data.reviewDetailSheet, '详情表应已同步打开')
+  assert.ok(page.data.reviewDetailSheet.editor, 'editor 应同步预构建，无需等待异步读取')
+  assert.ok(page.data.reviewDetailSheet.draft, 'draft 应同步预构建')
+  return pending
+})
+
 test('详情自动展开全部来源和原始字段；服务端分批读取不变成用户翻页，查看不写入', async () => {
   const h = setup(), page = h.page
   await page.openReviewDetails(tap(h.events[0].eventId))

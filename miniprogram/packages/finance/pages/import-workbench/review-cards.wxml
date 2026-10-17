@@ -1,0 +1,31 @@
+<!-- 各页签共用卡头；pending 的 label 已由展示层合成性质与真实待办，其余只读 natureLabel。 -->
+<template name="review-card-heading">
+  <view class="review-decision-heading {{completed ? 'review-completed-heading' : ''}}">
+    <view class="review-decision-copy"><text class="review-decision-title">{{pending ? card.label : card.natureLabel}}{{statusText ? ' · ' + statusText : ''}}{{reviewPending ? ' · 待核对' : ''}}</text></view>
+    <view wx:if="{{categoryEditable}}" class="review-decision-action category-edit-action" data-id="{{card.eventId}}" catchtap="openCategoryEdit" aria-role="button" aria-label="修改分类"><text class="review-action-button">修改分类</text><chevron-icon size="{{22}}" /></view>
+    <button wx:elif="{{categoryWaiting}}" class="review-inline-action" data-id="{{card.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button>
+    <view wx:else class="{{completed ? 'review-completed-side' : 'review-decision-action'}}">
+      <text wx:if="{{card.groupCount > 1 && card.groupPos !== 'middle' && card.groupPos !== 'last'}}" class="review-action-count money-number">同组 {{card.groupCount}} 笔</text>
+      <text class="review-action-button">{{card.batchDecision || '查看'}}</text><chevron-icon size="{{22}}" />
+    </view>
+  </view>
+</template>
+
+<!-- 行内容只消费同一份事件投影；点击与组边界由外层卡片保留，避免改变操作范围。 -->
+<template name="review-record-content">
+  <view wx:if="{{record.displayDate && !audit}}" class="review-preview-date"><text class="review-preview-day money-number">{{record.displayDate}}</text></view>
+  <view class="review-preview-copy">
+    <view class="review-preview-headline">
+      <text wx:if="{{record.rowRole}}" class="review-preview-role review-role-{{record.rowRoleKey}}">{{record.rowRole}}</text>
+      <text class="review-preview-title">{{record.rowTitle || record.displayTitle}}</text>
+      <text wx:if="{{record.installmentPending}}" class="review-preview-pending">待指定</text>
+    </view>
+    <text class="review-preview-meta">{{excluded ? record.natureLabel + ' · ' : ''}}{{audit ? record.displayMeta : (record.rowMeta || record.displayDetailMeta || record.displayMeta)}}</text>
+    <text wx:if="{{allowPairing && record.pairingDecision}}" class="review-text-action" data-id="{{record.eventId}}" catchtap="openDuplicateEdit">修改同笔判断</text>
+    <block wx:if="{{excluded}}">
+      <text class="review-preview-meta excluded-record-reason">排除原因：{{record.exclusionReasonText}}</text>
+      <text wx:if="{{record.sourceStatus}}" class="review-preview-meta excluded-record-status">原账单状态：{{record.sourceStatus}}</text>
+    </block>
+  </view>
+  <text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
+</template>

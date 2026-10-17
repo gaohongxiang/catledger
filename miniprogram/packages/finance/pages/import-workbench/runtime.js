@@ -1,11 +1,11 @@
 const { publicError, errorText } = require('./presentation')
-const { setChangedData } = require('../../../../services/view-patch')
+const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
 const presentation = require('./presentation')
 const draftSessions = require('../../../../services/import-draft-session')
 const api = require('../../../../services/catledger-import')
 const ledgerApi = require('../../../../services/catledger-api')
-const viewSession = require('../../../../services/import-view-session')
+const viewSession = require('../../services/import-view-session')
 const loginGuard = require('../../../../services/login-guard')
 const themeService = require('../../../../theme/service')
 const readCache = require('../../../../services/read-cache')
@@ -585,16 +585,23 @@ module.exports = {
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         patch.accountMappings = this.mappingState().mappings.map(compactMapping)
-      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, false))) }] : []
+      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(
+        presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))) }] : []
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,
           label: group.label, note: group.note, count: group.count, expanded: false, events: [], loading: false, error: '', page: null }))
       }
       else { const categoryNames = model.categoryNames(this.data.categories)
-        patch[kind] = events.map(event => presentation.listRecord(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
+        if (kind === 'reviewedEvents') {
+          // 已核对：同账户＋同期次的分期本金／利息／手续费合并成一张卡，跨页不完整时不给合计。
+          patch.reviewedEvents = presentation.buildReviewedCards(events, {
+            pageEdges: { hasPrevious: response.page.hasPrevious, hasNext: response.page.hasNext } })
+        } else {
+          patch[kind] = events.map(event => presentation.listRecord(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
               categoryName: event.categoryName || categoryNames.get(event.categoryId) || '',
-              auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' }))) }
+              auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' })))
+        } }
       if (!quiet) patch.pageLoading = false
       patch.duplicateReviewLoaded = true
       setChangedData(this, patch)

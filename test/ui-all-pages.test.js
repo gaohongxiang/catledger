@@ -299,7 +299,7 @@ test('整合PR7：移除最后一个待解析文件后，selected状态仍可继
 test('付款分配错误与来源展开不改变草稿或触发保存', async t => {
   const editor = require('./helpers/editor-workbench')
   const { h, page, accounts } = await editor.open(t, { economicNature: 'expense' })
-  editor.mode(page, 'composition', 'payment')
+  page.addFundsAccount(editor.tap({ endpoint: 'payer' }))
   editor.select(page, 'editorPart0', accounts[0]); editor.select(page, 'editorPart1', accounts[0])
   assert.equal(editor.view(page).canSave, false)
   const before = JSON.stringify(editor.draft(page))

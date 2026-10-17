@@ -5,7 +5,7 @@ const { record, errorText } = require('./presentation')
 const model = require('./review-editor-model')
 const { readDetail } = require('./detail-reader')
 const { previewFields } = require('./inline-evidence')
-const { setChangedData } = require('../../../../services/view-patch')
+const { setChangedData } = require('../../services/view-patch')
 const ACTION = 'financeUpdates.setReview'
 const TEXT_FIELDS = new Set(['amountInput','date','time','counterparty','note','evidenceNote','principalInput','interestInput','feeInput','periodInput','totalTermsInput'])
 function current(page, token) {
@@ -25,7 +25,8 @@ function packetFor(page, eventId) {
 }
 function refresh(page) {
   const token = page._reviewEditToken
-  const view = token.view = model.derive(token.row, token.draft, { accounts: [...token.accounts.values()], categories: [...token.categories.values()] })
+  const view = token.view = model.derive(token.row, token.draft, { accounts: [...token.accounts.values()],
+    categories: [...token.categories.values()], siblings: token.siblings || [] })
   const labels = view.accountFields
   const { payload, ...visibleEditor } = view
   const { dirty, dormant, acknowledgedChanges, ...visibleDraft } = token.draft
@@ -105,6 +106,8 @@ module.exports = {
       if (!current(this, token)) return
       if (!row || !['ready', 'needs_action'].includes(row.status)) throw Error('交易已变化，请返回刷新列表')
       token.row = row
+      // 同组行只在打开时取一次：分期归属区据此列出本期次还没指定归属的利息。
+      token.siblings = (this._businessData && this._businessData.events || []).map(record)
       const packet = packetFor(this, eventId)
       token.payload = packet && packet.payload
       token.draft = packet ? model.restore(row, packet.payload) : model.create(row)
@@ -119,10 +122,32 @@ module.exports = {
         'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }) })
       refresh(this)
+      // 从待核对卡的“归入本计划”进来时把归属预选成那张卡的计划：用户看到的就是这笔费用要归到哪，
+      // 关系仍要点保存才成立——归属会改写这笔费用的解读，不能靠一次误触生效。
+      const preset = event.currentTarget.dataset.planLabel
+      if (preset && (token.view.attribution?.plans || []).some(item => item.planName === preset)) update(this, 'planLabel', preset)
       if (packet) this.setData({ 'reviewEditSheet.canSave': true })
       token.suggestionRead = this.loadEditorSuggestions()
       token.evidenceRead = evidence(this, token)
     } catch (error) { if (current(this, token)) this.setData({ 'reviewEditSheet.loading': false, 'reviewEditSheet.error': errorText(error) }) }
+  },
+  // 待核对计划卡里的“归入本计划”：打开这笔利息的编辑器并把归属预选成这张卡的计划。
+  assignPendingInterest(event) {
+    const data = event.currentTarget.dataset
+    if (!data.id || !data.plan || this.data.busy) return
+    return this.openReviewEdit({ currentTarget: { dataset: { id: data.id, focusIssueId: data.issueId || '', planLabel: data.plan } } })
+  },
+  // 本金编辑器里的“归入本计划”：先保存本笔的改动，再打开那笔利息并把归属预选成本计划。
+  openEditorPendingInterest(event) {
+    const token = this._reviewEditToken
+    const data = event.currentTarget.dataset
+    if (!current(this, token) || !data.id || !data.plan || this.data.reviewEditSheet.saving) return
+    if (Object.keys(token.draft.dirty).length) {
+      this.setData({ 'reviewEditSheet.error': '请先保存本笔修改，再指定利息归属；归属不会顺带保存本笔字段' })
+      return
+    }
+    this.closeReviewEdit()
+    return this.assignPendingInterest({ currentTarget: { dataset: { id: data.id, plan: data.plan } } })
   },
   changeEditorText(event) {
     const key = event.currentTarget.dataset.field
@@ -177,28 +202,89 @@ module.exports = {
   },
   changeEditorMode(event) {
     const { field, value } = event.currentTarget.dataset
+    // 资金结构不再是一个可点的模式：拆开/收起来自账户行的加号与删除，composition 只由 addFundsAccount
+    // 和 removeFundsAccount 改写，界面没有直接切换它的入口。
     const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'], repaymentMode: ['ordinary','loan'],
-      composition: ['single','payment','repayment'], loanMode: ['defer','associate'], interestTreatment: ['expense','accrued'], feeTreatment: ['expense','accrued'],
+      loanMode: ['defer','associate'], interestTreatment: ['expense','accrued'], feeTreatment: ['expense','accrued'],
       repaymentChannelConfirmed: [true, false] }
     if (!choices[field]?.includes(value)) return
     const token = this._reviewEditToken
     if (!editable(this, token) || field === 'owner' && value === 'other' && token.draft.composition === 'repayment') return
     this.closeDirectory(); update(this, field, value)
   },
-  changeEditorPart(event) {
+  // 分期费用归属：只能从服务端下发的候选计划里选，避免客户端自造计划名。
+  selectEditorInstallmentPlan(event) {
+    const token = this._reviewEditToken
+    if (!editable(this, token)) return
+    const plan = (token.view.attribution?.plans || []).find(item => item.planName === event.currentTarget.dataset.plan)
+    if (plan) update(this, 'planLabel', plan.planName)
+  },
+  // 清除人工指定的归属：保存时 sourceCorrection.planLabel 以 null 下发，服务端删键后
+  // 归属退回待定，事件连同所在整组回到待核对。已自动判出的结论不改，用户仍可改选别的计划。
+  clearEditorInstallmentPlan() {
+    const token = this._reviewEditToken
+    if (!editable(this, token)) return
+    update(this, 'planLabel', '')
+  },
+  // 资金路径的账户级操作。加号往当前端点组追加一行账户；composition 只在这里被读写，
+  // 模板不再需要知道“组合支付/多个还入”这两个模式名。能否点、是否已在分摊都由视图的
+  // split/addable 决定，事件层不另判一遍，免得文案和实际行为各说一套。
+  addFundsAccount(event) {
+    const token = this._reviewEditToken, side = event.currentTarget.dataset.endpoint
+    if (!editable(this, token) || !['payer', 'payee'].includes(side)) return
+    const endpoint = (token.view.fundsEndpoints || []).find(item => item.key === side)
+    if (!endpoint || !endpoint.addable) return
+    this.closeDirectory()
+    if (endpoint.split) {
+      if (token.draft.parts.length >= 20) return
+      return update(this, 'parts', token.draft.parts.concat({ accountId: '', amountInput: '' }))
+    }
+    // 加号是「再加一个账户」：这一端已选的账户留在第一行，不是清空重来。
+    const keep = (endpoint.accounts[0] && endpoint.accounts[0].accountId) || ''
+    // 另一端若正停在只有一行的多账户上，它的账户要写回单账户字段，否则切换会丢。
+    const otherKey = side === 'payer' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+    const otherSide = (token.view.fundsEndpoints || []).find(item => item.key !== side)
+    const otherKeep = otherSide && otherSide.multi && !otherSide.split && otherSide.accounts[0]
+      ? otherSide.accounts[0].accountId || '' : ''
+    const target = side === 'payer' ? 'payment' : 'repayment'
+    // 已经是这一端的多账户、只是还没到两行：直接补一行，别重播种。
+    if (token.draft.composition === target) return update(this, 'parts', token.draft.parts.concat({ accountId: '', amountInput: '' }))
+    update(this, 'composition', target)
+    if (token.draft.composition !== target) return
+    // 分摊至少两行：历史分配或播种只给到一行时补齐，第一行沿用已有账户。
+    // 历史分配可能是上一次留下的空行，所以「行数够」不等于「已经有账户」——两行全空时也要把
+    // 这一端已选的账户放回第一行，否则点一次加号就看着像账户丢了。
+    const restored = token.draft.parts
+    const seeded = restored.some(part => part.accountId)
+    if (restored.length < 2 || !seeded) {
+      const first = restored[0] || { accountId: '', amountInput: '' }
+      update(this, 'parts', [{ accountId: first.accountId || keep, amountInput: first.amountInput || '' },
+        { accountId: restored[1] ? restored[1].accountId || '' : '', amountInput: restored[1] ? restored[1].amountInput || '' : '' }])
+    }
+    if (otherKeep && !token.draft[otherKey]) update(this, otherKey, otherKeep)
+  },
+  changeFundsAmount(event) {
     const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
     if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index]) return
     update(this, 'parts', token.draft.parts.map((part, i) => i === index ? { ...part, amountInput: String(event.detail.value) } : part))
   },
-  addEditorPart() {
-    const token = this._reviewEditToken
-    if (!editable(this, token) || token.draft.composition === 'single' || token.draft.parts.length >= 20) return
-    update(this, 'parts', token.draft.parts.concat({ accountId: '', amountInput: '' }))
-  },
-  removeEditorPart(event) {
+  // 分摊至少要有两行：删到只剩一行就收回单账户，这一端留剩下的那个账户；
+  // 一个账户时总额必然全走它，不再需要金额输入。两端各自的账户都按原样放回。
+  removeFundsAccount(event) {
     const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
-    if (!editable(this, token) || !Number.isInteger(index)) return
-    update(this, 'parts', token.draft.parts.filter((_, i) => i !== index))
+    if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index]) return
+    const parts = token.draft.parts.filter((_, i) => i !== index)
+    if (parts.length > 1) return update(this, 'parts', parts)
+    const side = event.currentTarget.dataset.endpoint === 'payee' ? 'payee' : 'payer'
+    const keep = (parts[0] && parts[0].accountId) || ''
+    // composition 回 single 会按「不猜保留哪一端」清空两端；撤回前先记下另一端的账户。
+    const field = (token.view.accountFields || []).find(item => item.key === (side === 'payee' ? 'account' : 'counterparty'))
+    const otherKey = field && field.target === 'reviewCounterparty' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+    const other = token.draft[otherKey] || ''
+    update(this, 'composition', 'single')
+    if (token.draft.composition !== 'single') return
+    update(this, side === 'payee' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId', keep)
+    if (other) update(this, otherKey, other)
   },
   clearEditorChoice(event) {
     const token = this._reviewEditToken, key = event.currentTarget.dataset.field

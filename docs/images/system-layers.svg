@@ -1,0 +1,56 @@
+<svg viewBox="0 0 680 504" width="680" height="504" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="680" height="504" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<text x="74" y="56" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#888780">用户</text>
+<text x="74" y="142" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#888780">客户端</text>
+<text x="74" y="248" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#888780">云函数</text>
+<text x="74" y="364" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#888780">存储</text>
+
+<rect x="124" y="28" width="516" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="382" y="56" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#444441">导入账单 · 手工记账 · 管理已有账目</text>
+
+<path d="M382 84L382 104" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="124" y="104" width="516" height="76" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="382" y="132" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">微信原生小程序</text>
+<text x="382" y="154" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">展示 · 输入 · 文件选择 · 分页 · 请求恢复</text>
+
+<path d="M382 180L382 190" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M255 190L518 190" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M255 190L255 200" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M518 190L518 200" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="124" y="200" width="254" height="96" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="251" y="228" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">catledger-api</text>
+<text x="251" y="252" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">身份 · 账户 · 分类 · 交易</text>
+<text x="251" y="272" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">统计 · 贷款 · 导出</text>
+
+<rect x="398" y="200" width="242" height="96" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="519" y="228" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">catledger-import</text>
+<text x="519" y="252" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">上传意图 · 解析 · 整理</text>
+<text x="519" y="272" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">核对 · 整批入账</text>
+
+<path d="M251 296L251 316" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M519 296L519 316" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="124" y="316" width="254" height="96" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="251" y="344" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">CloudBase MySQL</text>
+<text x="251" y="368" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">正式账本 · 来源 · 决定</text>
+<text x="251" y="388" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">关系 · 版本 · 回执</text>
+
+<rect x="398" y="316" width="242" height="96" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="519" y="344" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">私有云存储</text>
+<text x="519" y="368" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">待解析、短期追溯的原件</text>
+<text x="519" y="388" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">数据库不存文件二进制</text>
+
+<text x="382" y="444" text-anchor="middle" font-size="12" fill="#5F5E5A">只有 MySQL 里的正式交易改变余额与收支；上传、解析、整理完成都不等于已记账</text>
+<text x="382" y="466" text-anchor="middle" font-size="12" fill="#5F5E5A">判断来自确定性代码、来源模板、已确认映射和用户选择</text>
+<text x="382" y="488" text-anchor="middle" font-size="12" fill="#5F5E5A">没有运行中的 AI 决策主链</text>
+</g>
+</svg>

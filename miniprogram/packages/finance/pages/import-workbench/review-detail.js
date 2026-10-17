@@ -14,6 +14,16 @@ function current(page, token) {
     cache.getSession() === token.scope && getApp().hasLoginApproval())
 }
 
+// 已核对列表可能把同账户＋同期次的分期行合并成一张卡，真实事件 id 落在卡片的 rows 里。
+function reviewedEventIds(reviewedEvents) {
+  const ids = new Set()
+  ;(reviewedEvents || []).forEach(function (item) {
+    if (item.eventId) ids.add(item.eventId)
+    ;(item.rows || []).forEach(function (row) { if (row.eventId) ids.add(row.eventId) })
+  })
+  return ids
+}
+
 async function readSource(page, token, index) {
   if (!current(page, token)) return
   const source = token.sources[index]
@@ -98,10 +108,19 @@ module.exports = {
     const duplicate = (this.data.duplicateReviewEvents || []).some(item => item.eventId === eventId)
     const token = this._reviewDetailToken = { session, eventId, version: session.summary.viewVersion,
       scope: cache.getSession(), sources: [], reading: new Set() }
+    // 同步预构建只读 editor，让详情打开瞬间即渲染与待核对一致的富布局，避免读取完成前回退到纯键值列表。
+    let draft0 = null, editor0 = null
+    if (row) {
+      try {
+        draft0 = editorModel.create(row)
+        editor0 = editorModel.derive(row, draft0, { accounts: (this.data.accounts || []).concat(this.data.accountDrafts || []), categories: this.data.categories || [] })
+      } catch (_) { draft0 = null; editor0 = null }
+    }
     this.setData({ reviewDetailSheet: { eventId, sources: [], sourceCount: 0, loading: true, error: '', stale: false,
+      draft: draft0, editor: editor0,
       fields: row ? fieldsFor(row, { accounts: (this.data.accounts || []).concat(this.data.accountDrafts || []), categories: this.data.categories || [] }) : [],
       fieldsLoading: true, fieldsError: '', installmentNote: row && eventView(row).installmentNote || '',
-      reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && (this.data.reviewedEvents || []).some(item => item.eventId === eventId),
+      reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && reviewedEventIds(this.data.reviewedEvents).has(eventId),
       canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision ||
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })

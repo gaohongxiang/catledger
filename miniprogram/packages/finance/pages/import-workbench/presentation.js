@@ -12,7 +12,10 @@ function record(event) {
   const view = model.eventView(event), result = {}
   ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
-    'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+    'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision',
+    'amountMinor', 'rowTitle', 'rowMeta', 'rowSource', 'rowRole', 'rowRoleKey', 'installmentRole',
+    'installmentPeriod', 'installmentPlan', 'installmentKey', 'installmentNote', 'installmentPlanLabel',
+    'installmentAttribution'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
   if (event.status === 'excluded') {
     result.exclusionReasonText = model.exclusionReasonText(event)
     result.sourceStatus = String(event.primaryEvidence && event.primaryEvidence.status || '').trim()
@@ -44,14 +47,19 @@ function card(issue) {
 // 卡片只传实际渲染的摘要，避免增加多项提示后五十笔超过原生更新预算。
 function pendingPreview(row) {
   const result = {}
-  for (const key of ['eventId', 'displayDate', 'amountText', 'directionClass', 'pairingDecision', 'natureLabel', 'detailRequired']) {
+  for (const key of ['eventId', 'displayDate', 'amountText', 'directionClass', 'pairingDecision', 'natureLabel', 'detailRequired',
+    'rowRole', 'rowRoleKey', 'installmentRole', 'installmentPeriod', 'installmentPlan', 'installmentKey',
+    'installmentPlanLabel', 'installmentAttribution']) {
     if (row[key] !== undefined) result[key] = row[key]
   }
-  for (const [key, value] of [['displayTitle', row.displayTitle], ['displayDetailMeta', row.displayDetailMeta || row.displayMeta]]) {
+  for (const [key, value] of [['displayTitle', row.displayTitle], ['displayDetailMeta', row.displayDetailMeta || row.displayMeta],
+    ['rowTitle', row.rowTitle], ['rowMeta', row.rowMeta]]) {
     if (typeof value !== 'string') continue
     result[key] = value.length > 40 ? value.slice(0, 40) + '…' : value
     if (value.length > 40) result.detailRequired = true
   }
+  // 判不出归属的费用行在列表上就要看出“还没指定”，否则用户不知道该点哪一行。
+  result.installmentPending = Boolean(result.rowRoleKey) && result.rowRoleKey !== 'principal' && !String(result.installmentPlanLabel || '').trim()
   return result
 }
 
@@ -63,11 +71,18 @@ const BEFORE_NATURE_REASONS = new Set(['refund_source_conflict', 'row_status_unk
   'core_fields_conflict', 'row_semantic_conflict', 'postability_direction_conflict', 'source_group_conflict', 'core_fields_missing',
   'same_event_candidate', 'bank_channel_same_event_candidate', 'historical_duplicate_candidate'])
 
+function cardNatureLabel(rows) {
+  // 同一分期计划的本息卡由本金代表性质；仅费用或混合交易则保留实际成员的性质。
+  const principal = rows.length && rows.every(row => row.rowRoleKey) && rows.find(row => row.rowRoleKey === 'principal')
+  if (principal) return principal.natureLabel
+  const labels = [...new Set(rows.map(row => row.natureLabel || '性质待确认'))]
+  return labels.length === 1 ? labels[0] : labels.length ? '多种性质' : '性质待确认'
+}
+
 // 基础核验和同笔判断在前，性质居中，具体字段在后；只插入性质，不重排服务端待办。
 // 顺序由服务端当前视图给出。旧服务端只展示真实的当前问题，不预测后续步骤。
 function pendingReviewCard(view, attention, issue) {
-  const labels = [...new Set((view.subjects || []).map(subject => subject.natureLabel || '性质待确认'))]
-  const natureLabel = labels.length === 1 ? labels[0] : labels.length ? '多种性质' : '性质待确认'
+  const natureLabel = cardNatureLabel(view.subjects || [])
   const unknown = ['性质待确认', '待确认', '暂不确定'].includes(natureLabel)
   const valid = attention && attention.version === 'review-attention-v1' &&
     (attention.issueId || '') === (view.issueId || '') && Array.isArray(attention.steps) && attention.steps.length > 0 &&
@@ -86,11 +101,13 @@ function pendingReviewCard(view, attention, issue) {
     : [joinSteps(steps.slice(0, natureIndex)), natureLabel, joinSteps(steps.slice(natureIndex))].filter(Boolean).join('｜')
   const { groupCount, ...rest } = view
   const scopeCount = groupCount || view.subjectCount || 1
+  const subjects = (view.subjects || []).map(pendingPreview)
   return Object.assign({}, rest, {
     natureLabel, scopeCount,
-    // 补充说明在卡片上不显示，不重复传输；完整原文和问题说明仍留在业务详情。
-    decisionText: '', subjects: (view.subjects || []).map(pendingPreview),
-    label: label + (scopeCount > 1 ? '（同组 ' + scopeCount + ' 笔）' : ''),
+    // 卡片不再渲染补充说明；完整原文和问题说明仍留在业务详情。
+    decisionText: '', subjects: subjects,
+    // 组数标记只给真正连成一张卡的行（同笔候选）；独立卡片各自是一笔交易，标“同组”反而误读。
+    label: label + (scopeCount > 1 && view.groupKey ? '（同组 ' + scopeCount + ' 笔）' : ''),
     batchDecision: view.issueId ? '处理' : '查看详情'
   })
 }
@@ -99,16 +116,20 @@ function pendingCard(event, category) {
   const issue = event.pendingIssue
   const view = issue ? model.issueView(Object.assign({}, issue, { subject: event })) : {}
   const count = issue ? Math.max(1, Number(issue.memberCount || 1) - Number(issue.candidateCount || 0)) : 1
+  const subject = listRecord(event)
   const result = {
     eventId: event.eventId, issueId: issue && issue.issueId || '',
     label: view.label || (category ? '待分类 · 先核对交易' : '待核对交易'),
     decisionText: view.decisionText || '',
     batchDecision: issue ? (category ? '分类' : '处理') : category ? '去核对' : '查看详情',
-    groupKey: issue && issue.issueId || '',
+    // 只有“同笔候选”这类事项的成员才是一组待判断的记录，才该连成一张卡；分类页签同理。
+    // 账户确认等事项的成员是几十笔各自独立的交易，拿事项 id 当分组键会把它们粘成一片，
+    // 每笔的边界就看不出来了——它们是同一个问题，不是同一笔钱。
+    groupKey: issue && (issue.issueType === 'same_event' || issue.issueType === 'category_assignment') ? issue.issueId : '',
     groupCount: count,
     groupPos: '',
     subjectCount: 1, hiddenSubjectCount: 0,
-    natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
+    natureLabel: subject.natureLabel, subjects: [subject]
   }
   return category ? result : pendingReviewCard(result, event.reviewAttention, issue)
 }
@@ -125,9 +146,207 @@ function linkGroupRows(cards) {
   return cards
 }
 
+// 待核对里的分期组：一个本金计划一张卡（与已核对的一计划一卡同一口径），本金行是卡片的入口。
+// 归属没定的利息不属于任何计划，因此不单独占一张卡，而是作为“本期次待指定”的行挂在每张计划卡里：
+// 用户看到的是“这张卡是哪个计划、本期次还有哪几笔利息要挑给它”，点一下就带着这张卡的计划打开那一笔。
+// 全部指定完，整组一起离开待核对，在已核对里按计划合并回一计划一卡。
+// 拆分范围限定在同一个待核对事项内：事项决定这组行要一起被处理，卡片只是它的呈现。
+function splitInstallmentCards(cards) {
+  const groups = new Map()
+  ;(cards || []).forEach(function (card, index) {
+    // 按期次分组，不限定在同一事项内：老批次里本金和利息各是一条单笔事项，
+    // 按事项分组会让同一计划的本息永远合不到一张卡——用户看到的就是“本金一张、利息一张”。
+    const key = (card.subjects[0] || {}).installmentKey
+    if (!key) return
+    const groupKey = key
+    if (!groups.has(groupKey)) groups.set(groupKey, { index: index, cards: [], rows: [] })
+    const group = groups.get(groupKey)
+    group.cards.push(card)
+    group.rows.push(card.subjects[0])
+  })
+  const split = new Map()
+  const dropped = new Set()
+  groups.forEach(function (group) {
+    if (!group.rows.some(row => row.rowRoleKey)) return
+    // 计划名：本金行取自己的计划，费用行取已确认的归属。归属未定的费用没有计划，只能当候选。
+    const planOf = row => String(row.rowRoleKey === 'principal' ? row.installmentPlan || '' : row.installmentPlanLabel || '').trim()
+    const buckets = new Map()
+    const pending = []
+    group.rows.forEach(function (row) {
+      const plan = planOf(row)
+      if (row.rowRoleKey && !plan) return pending.push(row)
+      if (!plan) return
+      if (!buckets.has(plan)) buckets.set(plan, [])
+      buckets.get(plan).push(row)
+    })
+    // 一个计划也要并成一张卡：本金是入口，本期次的费用挂在同一张卡里，一个计划的本息一眼看完。
+    // 只有连计划行都没有时才保持原状（费用行自己找不到可挂的本金卡）。
+    if (!buckets.size) return
+    const plans = []
+    buckets.forEach(function (rows, plan) { plans.push({ plan: plan, rows: rows }) })
+    plans.sort(function (left, right) {
+      return Number(!left.rows.some(row => row.rowRoleKey === 'principal')) - Number(!right.rows.some(row => row.rowRoleKey === 'principal')) ||
+        left.plan.localeCompare(right.plan)
+    })
+    plans.forEach(function (item) {
+      const rows = item.rows.slice().sort(function (left, right) {
+        return Number(right.rowRoleKey === 'principal') - Number(left.rowRoleKey === 'principal') ||
+          String(left.displayDate || '').localeCompare(String(right.displayDate || '')) ||
+          String(left.eventId).localeCompare(String(right.eventId))
+      })
+      // 卡的基底取本金所在的那张：卡头点击打开的是本金的待办；没有本金行时才落到首张。
+      // 卡头沿用性质与当前待办；计划名已在本金标题中展示，不能覆盖性质。
+      const base = group.cards[Math.max(0, group.rows.indexOf(rows[0]))]
+      const card = Object.assign({}, base, {
+        eventId: rows[0].eventId,
+        installmentKey: rows[0].installmentKey,
+        installmentPlan: item.plan,
+        subjects: rows,
+        scopeCount: rows.length,
+        groupCount: rows.length,
+        ...(pending.length ? { installmentPendingRows: pending.map(row => ({
+          eventId: row.eventId, plan: item.plan, title: row.rowTitle || row.displayTitle || '分期费用',
+          amountText: row.amountText, displayDate: row.displayDate || '' })) } : {})
+      })
+      const list = split.get(group.index) || []
+      list.push(card)
+      split.set(group.index, list)
+    })
+    // 原始卡片不再单独出现：本金与已归利息已经进了各自的计划卡，归属未定的费用挂在卡内。
+    group.cards.forEach(function (card) { dropped.add(card) })
+  })
+  if (!split.size) return cards
+  const result = []
+  ;(cards || []).forEach(function (card, index) {
+    const splitCards = split.get(index)
+    if (splitCards) result.push.apply(result, splitCards)
+    else if (!dropped.has(card)) result.push(card)
+  })
+  return result
+}
+
 function excludedGroups(events, expanded) {
   return model.excludedEventGroups(events, expanded).map(group => Object.assign({}, group, {
     events: group.expanded ? group.events.map(listRecord) : [] }))
+}
+
+// 把渲染用金额（¥x.xx）还原成最小货币单位字符串；记录本身带 amountMinor 时优先用原值，避免四舍五入。
+function minorOf(record) {
+  if (/^\d+$/.test(String(record.amountMinor == null ? '' : record.amountMinor))) return String(record.amountMinor)
+  const cleaned = String(record.amountText || '').replace(/[^\d.]/g, '')
+  if (!cleaned) return '0'
+  const parts = cleaned.split('.')
+  return (parts[0].replace(/^0+(?=\d)/u, '') + (parts[1] || '').padEnd(2, '0')).replace(/^0+(?=\d)/u, '')
+}
+
+// 分期卡片：一个分期计划的一期一张卡，卡内是本期的本金／利息／手续费。
+function installmentCard(id, plan, rows, options) {
+  options = options || {}
+  let totalMinor = '0'
+  rows.forEach(function (row) { totalMinor = model.addMinor(totalMinor, minorOf(row)) })
+  const complete = options.complete !== false
+  return {
+    eventId: (rows.find(row => row.rowRoleKey === 'principal') || rows[0]).eventId,
+    cardId: 'installment:' + id,
+    isInstallmentCard: true,
+    installmentKey: id,
+    installmentPlan: plan,
+    installmentPeriod: rows[0].installmentPeriod || '',
+    natureLabel: cardNatureLabel(rows),
+    directionClass: rows[0].directionClass || '',
+    needsCategory: rows.some(function (row) { return row.needsCategory }),
+    periodComplete: complete,
+    // 归属未定的卡片不给合计：数字加总只会误导，等用户确认计划后再显示。
+    amountText: complete && !options.noTotal ? model.amountText(totalMinor) : '',
+    planNote: options.note || (complete && !options.noTotal && !rows.some(row => row.rowRoleKey === 'principal') ? '所属计划：' + plan : ''),
+    rows: rows.map(function (row) { return Object.assign({}, row, { isInstallmentRow: true }) })
+  }
+}
+
+// 把一个期次组拆成「一计划一卡」。计划名只能从本金摘要取：账单原文的利息行只有期次，
+// 不带计划名，所以利息归属按「人工确认 → 摘要包含计划名 → 本期次唯一本金」的顺序判定，
+// 判不出来就单独成卡说明原因，不按金额或顺序猜。
+function installmentCards(group, whole) {
+  const first = group.rows[0]
+  const firstPlan = first.installmentPlan || first.rowTitle || first.displayTitle
+  if (!whole) return [installmentCard(group.key, firstPlan, group.rows, { complete: false })]
+  const plans = []
+  group.rows.forEach(function (row) {
+    if (row.rowRoleKey !== 'principal') return
+    const plan = row.installmentPlan || row.rowTitle || row.displayTitle
+    if (plan && !plans.includes(plan)) plans.push(plan)
+  })
+  const buckets = new Map()
+  const assign = function (plan, row) {
+    if (!buckets.has(plan)) buckets.set(plan, [])
+    buckets.get(plan).push(row)
+  }
+  const ambiguous = []
+  const orphan = []
+  group.rows.forEach(function (row) {
+    const title = row.rowTitle || row.displayTitle
+    if (row.rowRoleKey === 'principal') return assign(row.installmentPlan || title, row)
+    const confirmed = String(row.installmentPlanLabel || '').trim()
+    if (confirmed) return assign(confirmed, row)
+    const named = model.planFromTitle(title, plans)
+    if (named) return assign(named, row)
+    if (plans.length === 1) return assign(plans[0], row)
+    if (plans.length > 1) return ambiguous.push(row)
+    orphan.push(row)
+  })
+  const cards = []
+  buckets.forEach(function (rows, plan) { cards.push(installmentCard(group.key + '|' + plan, plan, rows, {})) })
+  if (ambiguous.length) {
+    cards.push(installmentCard(group.key + '|?', '利息待归属', ambiguous,
+      { noTotal: true, note: '本期次有 ' + plans.length + ' 个分期计划，账单未标明这笔费用属于哪一个。' }))
+  }
+  if (orphan.length) {
+    cards.push(installmentCard(group.key + '|!', '利息待归属', orphan,
+      { noTotal: true, note: '本期次没有识别到分期本金行，无法判断这笔费用的归属。' }))
+  }
+  return cards
+}
+
+// 已核对列表：同一账户、同一期次、同一分期计划的行合成一张卡，卡内分行并给出本期合计。
+// 跨页不完整（本页未含该期全部行，或贴着还有上一／下一页的边界）时保持整组一张卡并明确提示，
+// 不按不完整的本金数推断归属，也不给合计。
+function buildReviewedCards(events, options) {
+  options = options || {}
+  const fullEvents = options.fullEvents && options.fullEvents.length ? options.fullEvents : events
+  const pageEdges = options.pageEdges || null
+  const records = events.map(listRecord)
+  const groups = new Map()
+  records.forEach(function (record, index) {
+    const key = record.installmentKey
+    if (!key) return
+    if (!groups.has(key)) groups.set(key, { key: key, rows: [], minIndex: index, maxIndex: index })
+    const group = groups.get(key)
+    group.rows.push(record)
+    group.minIndex = Math.min(group.minIndex, index)
+    group.maxIndex = Math.max(group.maxIndex, index)
+  })
+  if (!groups.size) return records
+  const fullCounts = new Map()
+  fullEvents.map(listRecord).forEach(function (record) {
+    if (record.installmentKey) fullCounts.set(record.installmentKey, (fullCounts.get(record.installmentKey) || 0) + 1)
+  })
+  const isWhole = function (group) {
+    if (group.rows.length !== (fullCounts.get(group.key) || group.rows.length)) return false
+    if (!pageEdges) return true
+    const atStart = group.minIndex === 0 && pageEdges.hasPrevious
+    const atEnd = group.maxIndex === records.length - 1 && pageEdges.hasNext
+    return !(atStart || atEnd)
+  }
+  const cards = []
+  const emitted = new Set()
+  records.forEach(function (record) {
+    if (!record.installmentKey) { cards.push(record); return }
+    const group = groups.get(record.installmentKey)
+    if (emitted.has(group.key)) return
+    emitted.add(group.key)
+    cards.push.apply(cards, installmentCards(group, isWhole(group)))
+  })
+  return cards
 }
 
 function windowRows(rows, index) {
@@ -171,7 +390,8 @@ function reviewLists(state, business, data, index) {
   } else if (kind === 'excluded') {
     const expanded = (data.excludedReviewGroups || []).filter(group => group.expanded).map(group => group.key)
     patch.excludedReviewGroups = excludedGroups(window.rows, expanded)
-  } else patch[kind] = window.rows.map(listRecord)
+  } else if (kind === 'reviewedEvents') patch.reviewedEvents = buildReviewedCards(window.rows, { fullEvents: rows })
+  else patch[kind] = window.rows.map(listRecord)
   return patch
 }
 
@@ -220,4 +440,4 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, excludedGroups, evidencePartFields, PAGE_SIZE }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE }

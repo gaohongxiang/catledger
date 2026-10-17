@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
-const { MAX_PAGES, MAX_BYTES } = require('../miniprogram/services/import-view-session')
+const { MAX_PAGES, MAX_BYTES } = require('../miniprogram/packages/finance/services/import-view-session')
 const event = (id, direction = 0, scope = 'issue') => ({ currentTarget: { dataset: { id, direction, scope } } })
 const fields = [{ name: '交易摘要', value: '合成商户' }, { name: '备注', value: '' }, { name: '备注', value: '重复列保留' }, { name: '金额', value: '0' }]
 

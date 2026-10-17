@@ -9,7 +9,7 @@
       <block wx:elif="{{reviewEditSheet.record}}">
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
         <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
-        <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围） ›</button>
+        <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围）<text class="app-chevron">›</text></button>
         <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />
         <view wx:for="{{reviewEditSheet.sources}}" wx:key="evidenceId" class="evidence-card">
           <view class="evidence-card-head"><text class="evidence-role">原始交易{{reviewEditSheet.sources.length > 1 ? ' ' + (index + 1) : ''}} · 只读</text></view>

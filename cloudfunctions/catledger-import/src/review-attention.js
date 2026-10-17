@@ -53,6 +53,8 @@ function reasonStep(reason, event) {
     return step('refund', reason === 'refund_amount_exceeded' ? '退款金额超额待核对' : '退款关系待确认', 70)
   }
   if (['installment_origin_required', 'installment_composition_required'].includes(reason)) return step('installment', '分期来源／组成待确认', 80)
+  // 同一期次多个计划时，费用归属要用户指定；与上面的期次来源问题分开成两个步骤。
+  if (reason === 'installment_attribution_required') return step('installment_attribution', '利息待归属', 80)
   if (reason === 'balance_adjustment_mapping_required') return step('adjustment', '余额调整待核对', 50)
   return null
 }

@@ -98,6 +98,10 @@ async function saveEditor(connection, uid, data, requestDigest, update, event) {
   await updateMappingMemberVersions(connection, uid, event.updateId, saved)
   await updateMappingMemberVersions(connection, uid, event.updateId, saved, true)
   await createFollowUpIssues(connection, uid, event.updateId, saved)
+  // 归属保存后的增量补建可能只建出单笔事项（清除指定、来回改归属时尤其如此），散件必须
+  // 立刻收回“一期次一条、本金在前”——否则本金失去事项成员身份掉进已核对，本息分居两个页签。
+  // 组内归属都已指定时 collapse 自身会跳过，不影响正常指定的收尾路径。
+  await require('./issue-store').collapseInstallmentIssues(connection, uid, event.updateId, actionId)
   await recalculateUpdateCounts(connection, uid, event.updateId, Number(update.version) + 1, actionId, Number(update.version), 0)
   return { ...await commandResult(connection, uid, event.updateId), event: saved[0] }
 }

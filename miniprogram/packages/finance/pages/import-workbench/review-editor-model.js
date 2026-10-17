@@ -4,11 +4,13 @@ const bankAccounts = require('./bank-suggestion')
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const MOVEMENTS = ['internal_transfer', 'borrow', 'repayment']
 const ASSETS = ['cash', 'bank', 'wallet', 'other_asset'], DEBTS = ['credit', 'other_liability']
-const NATURES = [{ value: 'expense', label: '支出' }, { value: 'income', label: '收入' },
-  { value: 'refund', label: '退款' }, { value: 'internal_transfer', label: '内部转账' },
-  { value: 'repayment', label: '还款' }, { value: 'borrow', label: '借款到账' },
-  { value: 'fee', label: '利息／手续费' }, { value: 'unknown', label: '暂不确定' }]
+const NATURES = ['expense', 'income', 'refund', 'internal_transfer', 'repayment', 'borrow', 'fee', 'unknown']
+  .map(value => ({ value, label: detail.natureLabel({ economicNature: value }) }))
 const categoryKind = nature => nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
+// 与 cloudfunctions semantic-plan-upgrade 的 flowDirection 重算规则同源：
+// 转账类不计收支（中性墨色），收入退款为流入（绿），其余含“暂不确定”为流出（红）。
+const flowClass = nature => ['repayment', 'borrow', 'internal_transfer'].includes(nature) ? ''
+  : ['income', 'refund'].includes(nature) ? 'row-income' : 'row-expense'
 const repaymentChannelOf = row => row.repaymentChannel || row.editorFacts?.repaymentChannel || null
 const repaymentTargetKey = row => row.sourceDirection === 'income' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
 const repaymentPayerKey = row => row.sourceDirection === 'income' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
@@ -48,10 +50,15 @@ function create(row) {
     composition: facts.composition || 'single', parts: parts.map(part => ({ ...part, accountId: part.accountId || '', amountInput: yuan(part.amountMinor) })),
     evidenceNote: facts.incompleteComposition?.evidenceNote || row.paymentResolution?.evidenceNote || facts.evidenceNote || '',
     periodInput: String(row.installment?.periodNumber || ''), totalTermsInput: String(row.installment?.totalTerms || ''),
+    // 计划归属：空表示用户没有改动；只在用户主动选择时才进入 sourceCorrection。
+    planLabel: '',
     refund: null, dirty: {}, dormant: {}, acknowledgedChanges: [] }
   if (channel) Object.assign(draft, { economicNature: 'repayment', amountInput: yuan(channel.totalMinor),
     [repaymentTargetKey(row)]: channel.targetAccountId, owner: 'self', composition: 'single', parts: [], repaymentMode: 'ordinary',
     repaymentChannelConfirmed: channel.confirmed !== false })
+  // 端点组一定有账户行：服务端可能声明了多账户组成却还没给任何分配（未完成组成），
+  // 旧版本删到 0 条的草稿也是这个形态。留一条空行，端点组就不会只剩标题。
+  if (draft.composition !== 'single' && !draft.parts.length) draft.parts = [{ accountId: '', amountInput: '' }]
   return draft
 }
 function change(row, draft, key, value) {
@@ -123,6 +130,68 @@ function accountFields(row, draft, catalog) {
       invalid: Boolean(account && (account.archivedAt || account.unavailable || allowedTypes && !allowedTypes.includes(account.type))) }
   })
 }
+// 分期归属区。费用行得到的是「这笔利息属于哪个计划」的单选；本金行得到的是本组上下文，
+// 列出本期次还没指定归属的利息，点一笔就带着本计划去打开那一笔。
+// 候选计划与分组上下文都由服务端随事件下发，客户端不自己推断，避免两处口径不一致。
+function attributionOf(row, draft, catalogs) {
+  const attribution = row.installmentAttribution
+  if (!attribution) return null
+  const periodLabel = '第' + attribution.periodNumber + '期' + (attribution.totalTerms ? '／共' + attribution.totalTerms + '期' : '')
+  if (attribution.role === 'principal') {
+    // 只列同一期次的利息。分组键与服务端同源（整理阶段已写进 installment.groupKey），
+    // 不带这个限定就会把其它期次甚至其它计划的未归属利息也列到本卡里。
+    const groupKey = String(row.installmentKey || attribution.groupKey || '')
+    const pending = ((catalogs || {}).siblings || []).filter(item => item.eventId !== row.eventId && item.rowRoleKey &&
+      item.rowRoleKey !== 'principal' && !String(item.installmentPlanLabel || '').trim() &&
+      Boolean(groupKey) && String(item.installmentKey || '') === groupKey)
+    if (!pending.length) return null
+    return { role: 'principal', required: false, planLabel: row.installment && row.installment.planName || '',
+      periodLabel: periodLabel, hint: '本期次还有 ' + pending.length + ' 笔利息没指定归属，逐笔把它归到本计划。',
+      pending: pending.map(item => ({ eventId: item.eventId, roleLabel: item.rowRole || '分期费用',
+        title: item.rowTitle || item.displayTitle || '分期费用', amountText: item.amountText || '' })) }
+  }
+  if (!(attribution.plans || []).length) return null
+  const selected = draft.dirty.planLabel ? draft.planLabel : row.installment && row.installment.planLabel || ''
+  return { role: 'charge', required: !selected, periodLabel: periodLabel,
+    hint: '本期次有 ' + attribution.plans.length + ' 个分期计划，账单没写明这笔利息属于哪一个，请选它归属的计划。',
+    plans: attribution.plans.map(item => ({ planName: item.planName,
+      amountText: item.amountMinor == null || item.amountMinor === '' ? '' : '¥' + yuan(item.amountMinor),
+      selected: item.planName === selected })) }
+}
+
+// 资金路径是「端点组」的列表：付款端、还入端，每组一个标题加一份账户清单。
+// composition 退成内部存储，只表示哪一组展开成多账户；界面上不再有单账户/组合支付/多个还入的三选一，
+// 两端用同一套「组标题 + 缩进账户行」表达，加账户就是往当前组里追加一行。
+// 一次只允许一端是多账户：两端同时多会产生 N×M 的配对，而一笔账只能拆成 N 笔单向交易。
+// principalOf 之外的字段顺序、target 命名都沿用 accountFields，事件绑定不需要另开一套。
+function fundsEndpointsOf(draft, fields, accounts, { channel, principal, other }) {
+  const side = draft.composition === 'payment' ? 'payer' : draft.composition === 'repayment' ? 'payee' : ''
+  // 只有一个账户时不构成分摊：那一端按单账户显示，另一端也照常可以拆。
+  const splitSide = side && draft.parts.length > 1 ? side : ''
+  const nameOf = part => (accounts.find(account => account.accountId === part.accountId) || {}).name ||
+    part.label || part.name || '原账户已不可用'
+  // 组合支付只对支出和还款开放，多个还入只对还款开放；来源组合、分期本金、代还固定单账户。
+  const openPayer = !channel && !principal && !other && ['expense', 'repayment'].includes(draft.economicNature)
+  const openPayee = !channel && !principal && !other && draft.economicNature === 'repayment'
+  const group = (key, field, open) => {
+    const multi = side === key
+    if (!field && !multi) return null
+    const list = multi
+      ? draft.parts.map((part, index) => ({ index, target: 'editorPart' + index, accountId: part.accountId || '',
+        name: part.accountId ? nameOf(part) : '', amountInput: part.amountInput || '', removable: true, readonly: false, invalid: false }))
+      : [{ index: 0, target: field.target, accountId: field.accountId || '', name: field.name, amountInput: '',
+        removable: false, readonly: Boolean(field.readonly), invalid: Boolean(field.invalid) }]
+    return { key, label: field ? field.label : key === 'payer' ? '付款账户' : '还入账户', multi, accounts: list,
+      // 真正在分摊才有金额列：只剩一个账户时总额必然全走它，金额和删除都不必出现。
+      split: multi && list.length > 1,
+      required: !multi && !list[0].accountId, open,
+      // 另一端已经真的拆开时这一端的加号保留位置但不可点，避免两端同时多账户。
+      addable: open && (multi ? list.length < 20 : !splitSide) }
+  }
+  return [group('payer', fields.find(field => field.key === 'account'), openPayer),
+    group('payee', fields.find(field => field.key === 'counterparty'), openPayee)].filter(Boolean)
+}
+
 function derive(row, draft, catalogs = {}) {
   const errors = [], missing = [], fieldErrors = {}, accounts = catalogs.accounts || [], categories = catalogs.categories || []
   const invalid = (field, message) => {
@@ -266,23 +335,36 @@ function derive(row, draft, catalogs = {}) {
   if (effectiveNature === 'refund' && draft.refund) decisions.refund = draft.refund
   if (effectiveNature === 'refund' && !draft.refund && row.detailFacts?.refund?.status !== 'confirmed' && row.detailFacts?.refund?.status !== 'pending') missing.push('退款关联')
   let sourceCorrection
-  if (row.installment && (draft.dirty.periodInput || draft.dirty.totalTermsInput)) {
-    sourceCorrection = { periodNumber: draft.periodInput ? Number(draft.periodInput) : null, totalTerms: draft.totalTermsInput ? Number(draft.totalTermsInput) : null }
-    for (const value of Object.values(sourceCorrection)) if (value !== null && (!Number.isInteger(value) || value < 1 || value > 600)) invalid('sourceCorrection', '期次需为 1～600 的整数')
+  if (row.installment && (draft.dirty.periodInput || draft.dirty.totalTermsInput || draft.dirty.planLabel)) {
+    sourceCorrection = { periodNumber: draft.periodInput ? Number(draft.periodInput) : null, totalTerms: draft.totalTermsInput ? Number(draft.totalTermsInput) : null,
+      // 计划归属只在用户主动选择时才提交，否则每次打开编辑器都会被当成“有修改”。
+      ...(draft.dirty.planLabel ? { planLabel: draft.planLabel || null } : {}) }
+    for (const [key, value] of Object.entries(sourceCorrection)) {
+      if (key === 'planLabel') continue
+      if (value !== null && (!Number.isInteger(value) || value < 1 || value > 600)) invalid('sourceCorrection', '期次需为 1～600 的整数')
+    }
     if (sourceCorrection.periodNumber && sourceCorrection.totalTerms && sourceCorrection.periodNumber > sourceCorrection.totalTerms) invalid('sourceCorrection', '本期期号不能大于总期数')
     if (sourceCorrection.periodNumber === null) missing.push('分期期号')
   }
   if (channel) for (const key of Object.keys(output)) if (![repaymentPayerKey(row), 'counterparty', 'note'].includes(key)) delete output[key]
   const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition)
-  const options = principal ? [{ value: 'repayment', label: '分期本金出账' }] : channel ? [{ value: 'repayment', label: '还款' }] : NATURES.filter(item => {
+  const options = (principal || channel ? NATURES.filter(item => item.value === 'repayment') : NATURES.filter(item => {
     if (draft.composition === 'repayment') return item.value === 'repayment'
     if (draft.composition === 'payment') return ['expense', 'repayment'].includes(item.value)
     return true
-  })
+  })).map(item => ({ ...item, label: detail.natureLabel(principal || item.value === row.economicNature
+    ? { ...row, economicNature: item.value } : { economicNature: item.value }) }))
   return { supported, chargeRows: draft.chargeAllocations.map((part, index) => ({ ...part, index, amountInput: part.amountInput == null ? yuan(part.amountMinor) : part.amountInput })), readonlyReason: facts?.lockedReason || (!facts ? '需更新导入服务后才能编辑' : ''),
     natureOptions: options, natureIndex: Math.max(0, options.findIndex(item => item.value === draft.economicNature)),
-    natureLabel: principal ? '分期本金出账' : options.find(item => item.value === draft.economicNature)?.label || '性质待确认',
+    natureLabel: options.find(item => item.value === draft.economicNature)?.label || detail.natureLabel({}),
+    directionClass: flowClass(effectiveNature),
     routeFields, bankSuggestion,
+    // 端点组是资金路径唯一的渲染模型：组标题、账户清单、加号可用性都在这里定，模板不再判 composition。
+    fundsEndpoints: fundsEndpointsOf(draft, fields, accounts, { channel: Boolean(channel), principal, other }),
+    // 真的拆成多还入才提示“多个还入账户”的约束；只有一行时它读起来自相矛盾。
+    splitRepayment: draft.composition === 'repayment' && draft.parts.length > 1,
+    // 标题只说清这一块是什么：结构切换已经不在界面上，不再需要“资金结构”这个中间态。
+    routeTitle: principal ? '分期所属账户' : fields.length > 1 ? '资金路径' : '资金账户',
     repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor),
       confirmed: channel.confirmed !== false,
       ...(channel.confirmed === false ? { confirmationText: '确认还入「' + (routeFields.find(field => field.label === '还入账户')?.name || channel.targetAccountName || '此账户') + '」，' +
@@ -290,18 +372,17 @@ function derive(row, draft, catalogs = {}) {
     title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
     summaryParty: draft.counterparty,
     summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
-    showStructure: !channel && !principal && ['expense','repayment'].includes(draft.economicNature) && !other,
     source: Boolean(row.installment),
+    attribution: attributionOf(row, draft, catalogs),
     needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && original.composition !== 'single',
     loanFields: ['principal','interest','fee'].map((key, index) => ({ key: key + 'Input', label: ['本金','利息','费用'][index], value: draft[key + 'Input'] })),
     refundOriginalText: (row.detailFacts?.refund?.originals || []).map(item => [item.note, item.localAt, item.amountMinor == null ? '' : '¥' + yuan(item.amountMinor)].filter(Boolean).join(' · ')).join('；'),
     refundCategory: row.detailFacts?.refund?.originals?.[0]?.categoryName || '',
-    partFields: draft.parts.map((part, index) => ({ ...part, index, name: accounts.find(account => account.accountId === part.accountId)?.name || part.label || part.name || (part.accountId ? '原账户已不可用' : '选择账户') })),
     interestCategoryName: categories.find(item => item.categoryId === draft.interestCategoryId)?.name || '',
     feeCategoryName: categories.find(item => item.categoryId === draft.feeCategoryId)?.name || '',
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
     showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: !channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
-    refund: effectiveNature === 'refund', principal, showComposition: draft.composition !== 'single',
+    refund: effectiveNature === 'refund', principal,
     fieldErrors, errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
     canSave: supported && Boolean(changed) && errors.length === 0,
     complete: missing.length === 0 && !(facts?.blockingReasons || []).length && !(row.reasonCodes || []).some(reason => ['row_status_unknown','identity_conflict','same_event_candidate','refund_source_conflict','core_fields_conflict'].includes(reason)),
@@ -343,6 +424,11 @@ function restore(row, payload) {
     }
   }
   if (decisions.refund) draft.refund = { ...decisions.refund }
+  // 计划归属要连“已改动”一起恢复，否则重试前再编辑会把这个选择丢掉。
+  if (payload.sourceCorrection && has(payload.sourceCorrection, 'planLabel')) {
+    draft.planLabel = payload.sourceCorrection.planLabel || ''
+    draft.dirty = { ...draft.dirty, planLabel: true }
+  }
   if (payload.sourceCorrection) for (const [key, field] of [['periodNumber','periodInput'], ['totalTerms','totalTermsInput']]) {
     if (has(payload.sourceCorrection, key)) draft[field] = payload.sourceCorrection[key] == null ? '' : String(payload.sourceCorrection[key])
   }

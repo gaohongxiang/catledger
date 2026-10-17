@@ -113,11 +113,11 @@ test('唯一候选与多候选都不自动确认，显式选择只改变本笔�
 
 test('整理阶段组合支付按金额与说明区分完整和待核对草稿', async t => {
   const { page, accounts } = await editor.open(t, { economicNature: 'expense', amountMinor: '1000' })
-  editor.mode(page, 'composition', 'payment')
+  page.addFundsAccount(editor.tap({ endpoint: 'payer' }))
   assert.equal(editor.view(page).complete, false)
   for (const [index, amount] of [[0, '6.00'], [1, '4.00']]) {
     editor.select(page, 'editorPart' + index, accounts[index])
-    page.changeEditorPart({ ...editor.tap({ index }), detail: { value: amount } })
+    page.changeFundsAmount({ ...editor.tap({ index }), detail: { value: amount } })
   }
   assert.equal(editor.view(page).complete, false)
   assert.equal(editor.view(page).payload.composition.incomplete, true)
@@ -125,10 +125,10 @@ test('整理阶段组合支付按金额与说明区分完整和待核对草稿',
   assert.equal(editor.view(page).complete, true)
   assert.deepEqual(editor.plain(editor.view(page).payload.composition.parts.map(part => part.amountMinor)), ['600', '400'])
   for (const value of ['10.01', '1.001', '-1']) {
-    page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value } })
+    page.changeFundsAmount({ ...editor.tap({ index: 1 }), detail: { value } })
     assert.equal(editor.view(page).canSave, false)
   }
-  page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value: '' } })
+  page.changeFundsAmount({ ...editor.tap({ index: 1 }), detail: { value: '' } })
   assert.equal(editor.view(page).complete, false)
   assert.equal(editor.view(page).payload.composition.parts[1].amountMinor, null)
 })
@@ -180,15 +180,32 @@ test('来源账户组不显示组合支付入口，普通选择器仍按账户�
   assert.equal(model.issueView({ ...issue, issueType: 'shared_fields' }).paymentNeedsReview, true)
 })
 
-test('补充还入账户只改草稿，删除或清空分配重新计算缺口', async t => {
+test('补充还入账户只改草稿，删到只剩一个账户就收回单账户', async t => {
   const { h, page, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0', amountMinor: '10000' })
-  editor.mode(page, 'composition', 'repayment'); editor.select(page, 'editorPart0', drafts[0])
-  page.changeEditorPart({ ...editor.tap({ index: 0 }), detail: { value: '100.00' } })
-  assert.equal(editor.view(page).complete, true)
-  page.addEditorPart(); assert.equal(editor.view(page).complete, false)
-  page.removeEditorPart(editor.tap({ index: 1 })); assert.equal(editor.view(page).complete, true)
-  page.changeEditorPart({ ...editor.tap({ index: 0 }), detail: { value: '' } })
+  page.addFundsAccount(editor.tap({ endpoint: 'payee' })); editor.select(page, 'editorPart0', drafts[0])
+  page.changeFundsAmount({ ...editor.tap({ index: 0 }), detail: { value: '100.00' } })
   assert.equal(editor.view(page).complete, false)
+  page.removeFundsAccount(editor.tap({ endpoint: 'payee', index: 1 }))
+  assert.equal(editor.draft(page).composition, 'single')
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, drafts[0].accountId)
+  assert.equal(editor.view(page).complete, true)
+  page.addFundsAccount(editor.tap({ endpoint: 'payee' })); assert.equal(editor.view(page).complete, false)
+  page.removeFundsAccount(editor.tap({ endpoint: 'payee', index: 1 })); assert.equal(editor.view(page).complete, true)
+  page.clearEditorChoice(editor.tap({ field: 'counterpartyLedgerAccountId' }))
+  assert.equal(editor.view(page).complete, false)
+  assert.equal(editor.writes(h).length, 0)
+})
+
+test('加号沿用这一端已选账户，收回单账户时两端账户都放回', async t => {
+  const { h, page } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0',
+    counterpartyLedgerAccountId: 'draft-1', amountMinor: '10000' })
+  page.addFundsAccount(editor.tap({ endpoint: 'payee' }))
+  assert.deepEqual(editor.plain(editor.draft(page).parts.map(part => part.accountId)), ['draft-1', ''])
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, '')
+  page.removeFundsAccount(editor.tap({ endpoint: 'payee', index: 1 }))
+  assert.equal(editor.draft(page).composition, 'single')
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, 'draft-1')
+  assert.equal(editor.draft(page).ledgerAccountId, 'account-0')
   assert.equal(editor.writes(h).length, 0)
 })
 
@@ -261,9 +278,10 @@ test('账户映射新建名称与类型实时校验，批量分类须选定分�
 test('普通资金区域只渲染统一编辑字段并使用同一保存门禁', () => {
   const root = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench')
   const markup = fs.readFileSync(path.join(root, 'review-editor-fields.wxml'), 'utf8')
-  assert.match(markup, /editor.routeFields/)
-  assert.match(markup, /changeEditorPart/)
-  assert.match(markup, /editor.partFields/)
+  assert.match(markup, /editor\.fundsEndpoints/)
+  assert.match(markup, /changeFundsAmount/)
+  assert.match(markup, /funds-account-row/)
+  assert.doesNotMatch(markup, /editor\.routeFields|editor\.partFields/)
   const sheet = fs.readFileSync(path.join(root, 'review-edit.wxml'), 'utf8')
   assert.match(sheet, /reviewEditSheet.canSave/)
   assert.match(sheet, /saveReviewEdit/)
@@ -286,11 +304,11 @@ test('组合金额使用整数差额，多账户仅全部动作分配，空白�
 
 test('修改分配金额只更新对应叶字段，不把另一行输入重新下发', async t => {
   const { page, accounts } = await editor.open(t, { economicNature: 'expense', amountMinor: '10000' })
-  editor.mode(page, 'composition', 'payment')
+  page.addFundsAccount(editor.tap({ endpoint: 'payer' }))
   editor.select(page, 'editorPart0', accounts[0]); editor.select(page, 'editorPart1', accounts[1])
   const patches = [], original = page.setData
   page.setData = function (patch) { patches.push(patch); original.call(this, patch) }
-  page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value: '50.' } })
+  page.changeFundsAmount({ ...editor.tap({ index: 1 }), detail: { value: '50.' } })
   assert.equal(editor.draft(page).parts[1].amountInput, '50.')
   assert.ok(patches.some(patch => patch['reviewEditSheet.draft.parts[1].amountInput'] === '50.'))
   assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'reviewEditSheet.draft.parts' || key.includes('parts[0]'))))

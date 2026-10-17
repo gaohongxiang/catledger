@@ -526,8 +526,14 @@ function publicEvent(row) {
     ...(fieldSources.installment && fieldSources.installment.creditStatement === true ? { installment: {
       creditStatement: true, factKind: 'billing', component: fieldSources.installment.component,
       periodNumber: installment.periodNumber, totalTerms: installment.totalTerms || null,
-      originKind: fieldSources.installment.originKind || 'unconfirmed'
+      originKind: fieldSources.installment.originKind || 'unconfirmed',
+      // 计划名由服务端从本金摘要派生下发，客户端不再自行截断摘要，避免两处规则漂移。
+      planName: require('./installment-plan').planNameFromItem(row.item),
+      planLabel: String(installment.planLabel || '').trim(),
+      // 分组键由整理阶段落库下发；旧批次没有这个字段时由客户端按同一口径回退计算。
+      groupKey: String(installment.groupKey || '').trim()
     } } : {}),
+    ...(fieldSources.installmentAttribution ? { installmentAttribution: fieldSources.installmentAttribution } : {}),
     sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
     ...(repaymentOwnership.bankRepayment({ fieldSources }) || repaymentOwnership.decisionFor({ fieldSources }) ? {

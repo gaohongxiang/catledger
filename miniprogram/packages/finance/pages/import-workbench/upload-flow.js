@@ -1,5 +1,5 @@
 const importApi = require('../../../../services/catledger-import')
-const cloudUpload = require('../../../../services/cloud-upload-policy')
+const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../../../services/login-guard')
 const model = require('./model')
 const bankMapping = require('./bank-mapping')

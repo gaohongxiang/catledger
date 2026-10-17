@@ -1,6 +1,6 @@
 const model = require('./model')
 const detail = require('./detail-fields')
-const { setChangedData } = require('../../../../services/view-patch')
+const { setChangedData } = require('../../services/view-patch')
 
 // 组面板只承担账户映射、批量分类及关系核对；普通字段由统一编辑器维护。
 function refreshIssueFieldsDraft() {

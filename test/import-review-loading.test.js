@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
-const { create, MAX_PAGES, MAX_BYTES } = require('../miniprogram/services/import-view-session')
+const { create, MAX_PAGES, MAX_BYTES } = require('../miniprogram/packages/finance/services/import-view-session')
 
 const tap = (id = 'synthetic-issue', direction = 0) => ({ currentTarget: { dataset: { id, direction } } })
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }

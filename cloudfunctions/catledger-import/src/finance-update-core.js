@@ -3,6 +3,7 @@ const { discardUpdateGraph } = require('./discarded-update')
 const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
 const { PLAN_VERSION } = require('./domain-versions')
 const { synchronizeHistoricalReviews } = require('./review/reconciliation')
+const { collapseInstallmentIssues } = require('./review/issue-store')
 const { buildOrganizePlan } = require('./organizer-planner')
 const { importError } = require('./errors')
 const {
@@ -42,10 +43,21 @@ function createFinanceUpdateCore({ getPool }) {
       throw importError('CONFLICT')
     }
     if (current.status === 'review' && current.planVersion === PLAN_VERSION) {
-      if (await synchronizeHistoricalReviews(connection, uid, updateId)) {
-        const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
-          actionType: 'organize', requestDigest, reasons: ['historical_duplicates_checked'] })
-        await connection.execute(`UPDATE catledger_finance_updates u JOIN (SELECT uid, update_id,
+      const historicalChanged = await synchronizeHistoricalReviews(connection, uid, updateId)
+      const reasons = historicalChanged ? ['historical_duplicates_checked'] : []
+      let actionId
+      const createAction = () => insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
+        actionType: 'organize', requestDigest, reasons })
+      // 事项成员决定待核对页签。修复与批次版本必须一起提交，否则旧视图和游标仍被当作有效。
+      // 只有真正需要写入时才建立本次动作；正常重开工作台保持幂等。
+      const installmentChanged = await collapseInstallmentIssues(connection, uid, updateId, null, { beforeChange: async () => {
+        reasons.push('installment_attribution_reconciled')
+        actionId = await createAction()
+        return actionId
+      } })
+      if (historicalChanged || installmentChanged) {
+        if (!actionId) actionId = await createAction()
+        const [result] = await connection.execute(`UPDATE catledger_finance_updates u JOIN (SELECT uid, update_id,
           SUM(status = 'ready') AS ready, SUM(status = 'needs_action') AS pending, SUM(status = 'excluded') AS excluded
           FROM catledger_economic_events WHERE uid = ? AND update_id = ? GROUP BY uid, update_id) counts
           ON counts.uid = u.uid AND counts.update_id = u.update_id
@@ -53,6 +65,7 @@ function createFinanceUpdateCore({ getPool }) {
             u.needs_action_event_count = counts.pending, u.excluded_event_count = counts.excluded
           WHERE u.uid = ? AND u.update_id = ? AND u.version = ?`,
         [uid, updateId, version + 1, actionId, uid, updateId, version])
+        if (result.affectedRows !== 1) throw importError('CONFLICT')
       }
       return commandResult(connection, uid, updateId, data)
     }

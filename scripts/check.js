@@ -53,7 +53,17 @@ assert.ok(!/enhance|Object\.assign|\.\.\./.test(registration), '页面入口禁�
 const handlers = [...registration.matchAll(/^  (\w+)(?::|\()/gm)].map(match => match[1])
 assert.equal(new Set(handlers).size, handlers.length, '导入工作台存在重复处理者')
 for (const lifecycle of ['onLoad', 'onShow', 'onHide', 'onUnload']) assert.ok(handlers.includes(lifecycle), `缺少生命周期 ${lifecycle}`)
-const markup = fs.readFileSync(path.join(workbench, 'index.wxml'), 'utf8')
+const checkedMarkup = new Set()
+function readPageMarkup(filename) {
+  if (checkedMarkup.has(filename)) return ''
+  checkedMarkup.add(filename)
+  assert.ok(fs.existsSync(filename), `页面模板不存在: ${path.relative(root, filename)}`)
+  const source = fs.readFileSync(filename, 'utf8')
+  const references = [...source.matchAll(/<(?:import|include)\b[^>]*\bsrc="([^"]+)"/g)]
+  return source + references.map(([, reference]) => readPageMarkup(reference.startsWith('/')
+    ? path.join(miniRoot, reference) : path.resolve(path.dirname(filename), reference))).join('\n')
+}
+const markup = readPageMarkup(path.join(workbench, 'index.wxml'))
 for (const [, handler] of markup.matchAll(/(?:bind|catch)(?::)?[\w-]+="([A-Za-z]\w*)"/g)) {
   assert.ok(handlers.includes(handler), `导入工作台丢失 WXML 处理者 ${handler}`)
 }

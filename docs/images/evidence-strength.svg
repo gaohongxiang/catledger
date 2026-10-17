@@ -1,0 +1,53 @@
+<svg viewBox="0 0 680 482" width="680" height="482" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="680" height="482" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="40" y="40" width="320" height="68" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="200" y="61" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">同一来源身份</text>
+<text x="200" y="85" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">稳定 ID 相同，仍核验核心字段</text>
+<path d="M360 74L400 74" fill="none" stroke="#3B6D11" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="400" y="40" width="240" height="68" rx="8" fill="none" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="520" y="61" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">复用原记录，不重复记账</text>
+<text x="520" y="85" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">冲突转人工，不静默覆盖</text>
+
+<rect x="40" y="124" width="320" height="68" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="200" y="145" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">跨来源强证据</text>
+<text x="200" y="169" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">共同订单号，或已核验的稳定规则</text>
+<path d="M360 158L400 158" fill="none" stroke="#3B6D11" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="400" y="124" width="240" height="68" rx="8" fill="none" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="520" y="145" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">认定为同一笔</text>
+<text x="520" y="169" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">两份原文都保留</text>
+
+<rect x="40" y="208" width="320" height="68" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="200" y="229" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">弱线索，只作候选</text>
+<text x="200" y="253" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">同额同日同商户；同账户同分钟同渠道</text>
+<path d="M360 242L400 242" fill="none" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="400" y="208" width="240" height="68" rx="8" fill="none" stroke="#854F0B" stroke-width="0.5"/>
+<text x="520" y="229" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">生成候选，逐对确认</text>
+<text x="520" y="253" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">候选不减少交易数</text>
+
+<rect x="40" y="292" width="320" height="68" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="200" y="313" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">没有可用证据</text>
+<text x="200" y="337" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">只有相似，不构成同一笔</text>
+<path d="M360 326L400 326" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="400" y="292" width="240" height="68" rx="8" fill="none" stroke="#888780" stroke-width="0.5"/>
+<text x="520" y="313" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">各自独立保留</text>
+<text x="520" y="337" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">同额也不合并</text>
+
+<rect x="40" y="386" width="10" height="10" rx="2" fill="#3B6D11"/>
+<text x="58" y="391" font-size="12" fill="#5F5E5A">系统可自动确定</text>
+<rect x="200" y="386" width="10" height="10" rx="2" fill="#BA7517"/>
+<text x="218" y="391" font-size="12" fill="#5F5E5A">待用户确认</text>
+<rect x="360" y="386" width="10" height="10" rx="2" fill="#888780"/>
+<text x="378" y="391" font-size="12" fill="#5F5E5A">独立保留</text>
+
+<text x="40" y="424" font-size="12" fill="#5F5E5A">还款另按到账与扣款两端核对，平台扣款大于银行到账时，差额不自动认作手续费</text>
+<text x="40" y="446" font-size="12" fill="#5F5E5A">退款找不到原消费时保留待关联与真实到账，不伪造冲减分类</text>
+<text x="40" y="468" font-size="12" fill="#5F5E5A">同额、同日、同商户单独都不构成同笔证据，证据不足时宁可多留一条</text>
+</g>
+</svg>

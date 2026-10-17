@@ -108,7 +108,7 @@ test('分期本金只按来源处理，不伪造实际还款和强制计划待�
     reasonCodes: ['ledger_account_required', 'repayment_account_required', 'loan_repayment_required'] })
   const result = reviewAttention(row, [issue('account', 'account_mapping', 'ledger_account_required')])
   assert.deepEqual(labels(result), ['所属信用卡待确认'])
-  assert.equal(presentation.pendingCard({ ...row, ...result }, false).label, '分期本金出账｜所属信用卡待确认')
+  assert.equal(presentation.pendingCard({ ...row, ...result }, false).label, '分期出账｜所属信用卡待确认')
 })
 
 test('仅有缺口而没有真实入口时不伪造 issueId；原数据不被修改', () => {

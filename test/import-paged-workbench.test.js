@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/services/import-view-session')
+const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/packages/finance/services/import-view-session')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const event = (direction, id) => ({ currentTarget: { dataset: { direction, id } } })
 

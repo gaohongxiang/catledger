@@ -30,7 +30,7 @@ for (const nature of ['expense','income','refund','internal_transfer','borrow','
     const manual = { ...row, economicNature: 'unknown', reasonCodes: ['economic_nature_required'] }
     const autoView = model.derive(publicRow(row), model.create(publicRow(row)), catalog)
     const manualView = change(manual, [['economicNature', nature]])
-    for (const key of ['natureLabel','routeFields','categoryKind','showOwnership','showLoan','refund','showStructure']) assert.deepEqual(manualView[key], autoView[key], key)
+    for (const key of ['natureLabel','routeFields','fundsEndpoints','categoryKind','showOwnership','showLoan','refund']) assert.deepEqual(manualView[key], autoView[key], key)
     assert.equal(manualView.payload.fields.economicNature, nature)
     assert.equal(JSON.stringify(row).includes('editorFacts'), false, '派生不能修改源对象')
   })
@@ -228,7 +228,7 @@ test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前
   draft = model.change(row, draft, 'owner', 'other')
   draft = model.change(row, draft, 'otherTreatment', 'expense')
   const other = model.derive(row, draft, catalog)
-  assert.equal(other.showComposition, false); assert.equal(other.payload.composition?.parts, undefined)
+  assert.ok(other.fundsEndpoints.every(endpoint => !endpoint.multi)); assert.equal(other.payload.composition?.parts, undefined)
   assert.equal(other.payload.decisions.repayment, undefined)
   draft = model.change(row, draft, 'owner', 'self')
   assert.equal(draft.composition, 'payment'); assert.equal(draft.parts[1].accountId, bank.accountId)
@@ -289,4 +289,75 @@ test('UE25 真实 Page 候选总数、失败与两范围检查共同决定暂记
   page.selectEditorRefund(tap({ mode: 'pending' }))
   assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'pending')
   page.onUnload()
+})
+
+test('金额方向色按有效性质派生，与服务端 flowDirection 重算规则同源', () => {
+  const expected = { expense: 'row-expense', fee: 'row-expense', unknown: 'row-expense',
+    income: 'row-income', refund: 'row-income', internal_transfer: '', repayment: '', borrow: '' }
+  for (const nature of Object.keys(expected)) {
+    assert.equal(change(base(nature), []).directionClass, expected[nature], nature + ' 的方向色')
+  }
+})
+
+test('切换性质后方向色同步变化；代还记为支出按支出着色', () => {
+  assert.equal(change(base('repayment'), [['economicNature', 'expense']]).directionClass, 'row-expense')
+  assert.equal(change(base('income'), [['economicNature', 'expense']]).directionClass, 'row-expense')
+  assert.equal(change(base('expense'), [['economicNature', 'income']]).directionClass, 'row-income')
+  const other = change(base('repayment', { repaymentOwnership: { owner: 'other', treatment: 'expense' } }), [])
+  assert.equal(other.directionClass, 'row-expense')
+  const keep = change(base('repayment', { repaymentOwnership: { owner: 'other', treatment: 'pending' } }), [])
+  assert.equal(keep.directionClass, 'row-expense')
+})
+
+test('路由分组标题区分单端与双端，分期本金另列', () => {
+  assert.equal(change(base('expense'), []).routeTitle, '资金账户')
+  assert.equal(change(base('income'), []).routeTitle, '资金账户')
+  assert.equal(change(base('internal_transfer'), []).routeTitle, '资金路径')
+  assert.equal(change(base('borrow'), []).routeTitle, '资金路径')
+  const installment = { creditStatement: true, component: 'principal', periodNumber: 3, totalTerms: 12 }
+  const row = base('repayment', { fieldSources: { installment } })
+  assert.equal(model.derive(publicRow({ ...row, installment }), model.create(publicRow({ ...row, installment })), catalog).routeTitle, '分期所属账户')
+})
+
+test('组合支付后仍可切回单账户：端点组不随账户行数量消失', () => {
+  const row = publicRow(base('expense'))
+  let draft = model.create(row)
+  draft = model.change(row, draft, 'composition', 'payment')
+  const payment = model.derive(row, draft, catalog)
+  // 支出只有付款端一组：账户清单来自 parts，组本身不依赖 routeFields 是否有内容。
+  assert.equal(payment.routeFields.length, 0)
+  assert.equal(payment.fundsEndpoints.length, 1)
+  assert.equal(payment.fundsEndpoints[0].key, 'payer')
+  assert.equal(payment.fundsEndpoints[0].multi, true)
+  assert.equal(payment.fundsEndpoints[0].accounts.length, 2)
+  assert.equal(payment.routeTitle, '资金账户')
+  draft = model.change(row, draft, 'composition', 'single')
+  const back = model.derive(row, draft, catalog)
+  assert.equal(back.fundsEndpoints.length, 1)
+  assert.equal(back.fundsEndpoints[0].multi, false)
+  assert.equal(back.routeTitle, '资金账户')
+  assert.equal(back.routeFields.length, 1)
+})
+
+test('资金路径只按端点组渲染，模板不再判断结构模式', () => {
+  const text = require('node:fs').readFileSync(require('node:path').join(__dirname,
+    '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  assert.match(text, /editor\.fundsEndpoints\.length/)
+  assert.doesNotMatch(text, /showStructure|showComposition|editor\.routeFields|editor\.partFields/)
+})
+
+test('声明了多账户组成却没有任何分配时，端点组仍留一条空行', () => {
+  const row = base('expense', { fieldSources: { paymentResolution: { version: 1 },
+    editorOverrides: { version: 1, composition: 'payment', incompleteComposition: { parts: [] } } } })
+  const draft = model.create(publicRow(row))
+  assert.equal(draft.composition, 'payment')
+  assert.equal(draft.parts.length, 1)
+  assert.equal(draft.parts[0].accountId, '')
+  const view = model.derive(publicRow(row), draft, catalog)
+  assert.equal(view.fundsEndpoints.length, 1)
+  assert.equal(view.fundsEndpoints[0].multi, true)
+  assert.equal(view.fundsEndpoints[0].accounts.length, 1)
+  // 只有一个账户就不算分摊：不出金额列，按单账户的样子显示。
+  assert.equal(view.fundsEndpoints[0].split, false)
+  assert.equal(view.payload.composition.incomplete, true)
 })

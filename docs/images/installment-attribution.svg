@@ -1,0 +1,67 @@
+<svg viewBox="0 0 680 540" width="680" height="540" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="680" height="540" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="40" y="20" width="330" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="205" y="42" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">一行利息：分期付款利息第12期共12期</text>
+<text x="205" y="60" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">原文只到期次，没有计划标识</text>
+
+<path d="M205 76L205 96" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="96" width="330" height="60" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="205" y="119" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">① 用户指定过这笔的计划？</text>
+<text x="205" y="138" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">上一次核对里人工确认过归属</text>
+
+<path d="M205 156L205 176" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="176" width="330" height="60" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="205" y="199" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">② 费用摘要写明了计划名？</text>
+<text x="205" y="218" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">摘要含本金计划名即视为写明</text>
+
+<path d="M205 236L205 256" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="256" width="330" height="60" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="205" y="279" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">③ 本期次有几个候选计划？</text>
+<text x="205" y="298" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">按计划名去重后的个数，不是本金行数</text>
+
+<rect x="420" y="96" width="220" height="140" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text x="530" y="142" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#085041">归属已确定</text>
+<text x="530" y="166" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">本息同卡</text>
+<text x="530" y="188" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">可合计、可整组入账</text>
+
+<path d="M370 126L420 126" fill="none" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="395" y="115" text-anchor="middle" font-size="12" fill="#5F5E5A">是</text>
+<path d="M370 206L420 206" fill="none" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="395" y="195" text-anchor="middle" font-size="12" fill="#5F5E5A">是</text>
+
+<path d="M205 316L205 340" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M132 340L548 340" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M132 340L132 364" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M340 340L340 364" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M548 340L548 364" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="364" width="184" height="88" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text x="132" y="392" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#085041">1 个 → 归属它</text>
+<text x="132" y="416" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">唯一计划即唯一可能</text>
+<text x="132" y="436" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">自动，不打扰用户</text>
+
+<rect x="248" y="364" width="184" height="88" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="340" y="392" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">≥2 个 → 不猜</text>
+<text x="340" y="416" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">进待核对「利息待归属」</text>
+<text x="340" y="436" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">挂进每张计划卡 · 不给合计</text>
+
+<rect x="456" y="364" width="184" height="88" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="548" y="392" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#791F1F">0 个 → 不猜</text>
+<text x="548" y="416" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#A32D2D">不产出归属待办</text>
+<text x="548" y="436" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#A32D2D">无候选可指定，也不合计</text>
+
+<text x="340" y="478" text-anchor="middle" font-size="12" fill="#5F5E5A">候选来自同一来源账户＋同一期次的全部本金行，计划名只取本金摘要</text>
+<text x="340" y="500" text-anchor="middle" font-size="12" fill="#5F5E5A">跨页不完整时整组一卡，不按不完整的计划数推断归属，也不给合计</text>
+<text x="340" y="522" text-anchor="middle" font-size="12" fill="#5F5E5A">判定在服务端整理阶段完成，客户端只消费结论、不重算</text>
+</g>
+</svg>

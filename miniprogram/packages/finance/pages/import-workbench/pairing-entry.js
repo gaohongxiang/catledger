@@ -1,5 +1,5 @@
 const readCache = require('../../../../services/read-cache')
-const { setChangedData } = require('../../../../services/view-patch')
+const { setChangedData } = require('../../services/view-patch')
 const { SUGGESTED_PAGE_SIZE } = require('./pairing-review')
 
 const owner = () => { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }

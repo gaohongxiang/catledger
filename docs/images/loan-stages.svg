@@ -1,0 +1,31 @@
+<svg viewBox="0 0 680 228" width="680" height="228" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="228" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<text x="143" y="36" text-anchor="middle" font-size="12" fill="#5F5E5A">第 1–6 期</text>
+<text x="348" y="36" text-anchor="middle" font-size="12" fill="#5F5E5A">第 7–8 期</text>
+<text x="548" y="36" text-anchor="middle" font-size="12" fill="#5F5E5A">第 9 期以后</text>
+
+<rect x="40" y="48" width="210" height="12" rx="6" fill="#97C459"/>
+<rect x="250" y="48" width="200" height="12" rx="6" fill="#FAC775"/>
+<rect x="450" y="48" width="190" height="12" rx="6" fill="#85B7EB"/>
+
+<rect x="40" y="76" width="206" height="80" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="143" y="100" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">首次：导入第 6 期</text>
+<text x="143" y="122" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">1–6 期默认勾选已还</text>
+<text x="143" y="140" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">保存创建即提交</text>
+
+<rect x="254" y="76" width="192" height="80" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="350" y="100" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">后来：导入第 8 期</text>
+<text x="350" y="122" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">询问第 7、8 期是否已还</text>
+<text x="350" y="140" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">已选未还不被重置</text>
+
+<rect x="454" y="76" width="186" height="80" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="547" y="100" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">之后：没有新文件</text>
+<text x="547" y="122" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">点该行「记本期还款」</text>
+<text x="547" y="140" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">直接记本期，不再追问</text>
+
+<text x="40" y="188" font-size="12" fill="#5F5E5A">每期只出现一行：待选择的直接在「还款」列勾选，其余行有「记本期还款」，已还显示「已还」</text>
+<text x="40" y="210" font-size="12" fill="#5F5E5A">后到同一笔费用同额只补来源，差额按影响预览确认；不因新期次到来重写旧确认</text>
+</g>
+</svg>

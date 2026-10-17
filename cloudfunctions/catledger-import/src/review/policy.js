@@ -25,7 +25,8 @@ const ISSUE_RESOLVED_REASONS = Object.freeze({
   ]),
   identity_conflict: new Set(['identity_conflict', 'identity_review_required']),
   field_conflict: new Set(['core_fields_conflict']),
-  installment_origin: new Set(['installment_origin_required', 'installment_composition_required', 'economic_nature_required', 'core_fields_missing'])
+  installment_origin: new Set(['installment_origin_required', 'installment_composition_required', 'installment_attribution_required',
+    'economic_nature_required', 'core_fields_missing'])
 })
 
 function validateDecision(value) {

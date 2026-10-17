@@ -73,7 +73,7 @@ test('统一摘要直接编辑付款总额，组成金额与核对说明在同�
   const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
   assert.match(fields, /class="(?:[^"]*\s)?editor-amount(?:\s[^"]*)?"/)
   assert.match(fields, /data-field="amountInput" bindinput="changeEditorText"/)
-  assert.match(fields, /bindinput="changeEditorPart"/)
+  assert.match(fields, /bindinput="changeFundsAmount"/)
   assert.match(fields, /maxlength="300" data-field="evidenceNote"/)
   assert.doesNotMatch(markup, /payment-resolution-form|changePaymentRow/)
 })

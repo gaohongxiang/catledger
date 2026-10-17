@@ -145,9 +145,11 @@ const initialData = Object.assign({}, pairingReview.initialData, {
       primaryEventId: '',
       newAccountName: '',
       accountTypeIndex: 2
-    },
-    themeClass: '',
-    themeStyle: ''
+    }
+    // 主题注入值（themeClass／themeStyle）刻意不放进 initialData：它们由 theme/service 的
+    // bindPage 按当前主题注入，属于环境值而不是页面状态。一旦成为重置字段，onShow 在登录态
+    // 尚未就绪时的 setData(initialData) 就会把已注入的主题冲成空，而登录静默完成后只回调
+    // resumeInitialLoad、不会再触发 onShow，主题就补不回来，页面永久掉回默认白底。
   })
 
 // 每个页面处理者只有一个明确归属；不依赖对象覆盖顺序。
@@ -207,6 +209,11 @@ Page({
   searchReviewIssues: transactionReview.searchReviewIssues,
   reviewBeforeCategory: transactionReview.reviewBeforeCategory,
   openPendingRecord: transactionReview.openPendingRecord,
+  openPreviewRow: transactionReview.openPreviewRow,
+  assignPendingInterest: reviewEdit.assignPendingInterest,
+  openEditorPendingInterest: reviewEdit.openEditorPendingInterest,
+  selectEditorInstallmentPlan: reviewEdit.selectEditorInstallmentPlan,
+  clearEditorInstallmentPlan: reviewEdit.clearEditorInstallmentPlan,
   viewTransactions: postingFlow.viewTransactions,
   viewStatistics: postingFlow.viewStatistics,
   completeCategories: postingFlow.completeCategories,
@@ -318,9 +325,9 @@ Page({
   loadEditorSuggestions: reviewEdit.loadEditorSuggestions,
   selectEditorSuggestion: reviewEdit.selectEditorSuggestion,
   changeEditorMode: reviewEdit.changeEditorMode,
-  changeEditorPart: reviewEdit.changeEditorPart,
-  addEditorPart: reviewEdit.addEditorPart,
-  removeEditorPart: reviewEdit.removeEditorPart,
+  addFundsAccount: reviewEdit.addFundsAccount,
+  changeFundsAmount: reviewEdit.changeFundsAmount,
+  removeFundsAccount: reviewEdit.removeFundsAccount,
   clearEditorChoice: reviewEdit.clearEditorChoice,
   loadEditorCharges: reviewEdit.loadEditorCharges,
   selectEditorCharge: reviewEdit.selectEditorCharge,

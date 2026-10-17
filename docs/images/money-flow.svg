@@ -1,0 +1,39 @@
+<svg viewBox="0 0 680 336" width="680" height="336" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="680" height="336" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="140" y="40" width="400" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="340" y="62" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">一笔资金活动</text>
+<text x="340" y="82" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">由资金的左右两端决定口径，不由摘要里的收入支出字样决定</text>
+
+<path d="M340 96L340 120" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M133 120L551 120" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M133 120L133 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M342 120L342 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M551 120L551 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="140" width="186" height="96" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="133" y="164" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">一端在账本外</text>
+<text x="133" y="188" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">消费、工资、手续费</text>
+<text x="133" y="208" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">计入支出或收入</text>
+
+<rect x="247" y="140" width="186" height="96" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340" y="164" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">两端都在账本内</text>
+<text x="340" y="188" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">转账、还款、借款、退款冲减</text>
+<text x="340" y="208" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">资金移动，不重复计收支</text>
+
+<rect x="454" y="140" width="186" height="96" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="547" y="164" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">没有真实资金移动</text>
+<text x="547" y="188" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">余额校正、分期进度</text>
+<text x="547" y="208" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">只改余额或资料，不伪装收入</text>
+
+<text x="40" y="272" font-size="12" fill="#5F5E5A">金额用整数分保存、接口传十进制字符串，不拿浮点小数反复相加</text>
+<text x="40" y="294" font-size="12" fill="#5F5E5A">现金账户不产生或加深负余额；信用额度是资料，不是资产</text>
+<text x="40" y="316" font-size="12" fill="#5F5E5A">贷款本金明细不再叠加到同一负债账户余额；余额调整是独立类型，不伪装成收入或支出</text>
+</g>
+</svg>

@@ -13,8 +13,8 @@ function repaymentPreview(result,repaymentRows){
   return {...preview,rows:preview.rows.map(r=>({...r,repaymentChoice:choices.has(r.periodNumber),repaymentPaid:choices.get(r.periodNumber)===true}))}
 }
 Page({
-  ...require('../../../../services/historical-charge-coverage').methods,
-  data:{...require('../../../../services/historical-charge-coverage').initial,repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+  ...require('../../services/historical-charge-coverage').methods,
+  data:{...require('../../services/historical-charge-coverage').initial,repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
     discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },

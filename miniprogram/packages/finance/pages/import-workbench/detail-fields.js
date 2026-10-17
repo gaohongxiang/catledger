@@ -15,10 +15,11 @@ function principalOf(row) {
   const item = installmentOf(row)
   return Boolean(item && item.creditStatement === true && item.component === 'principal')
 }
+// 交易性质名称的唯一入口：列表各页签、详情和编辑器都按当前事实取名，不能被计划标题或旧展示值覆盖。
 function natureLabel(row) {
   const installment = installmentOf(row)
   if (installment && installment.creditStatement) {
-    const label = { principal: '分期本金出账', interest: '分期利息', fee: '分期手续费' }[installment.component]
+    const label = { principal: '分期出账', interest: '分期利息', fee: '分期手续费' }[installment.component]
     if (label) return label
   }
   return NATURE_LABELS[row.economicNature] || NATURE_LABELS.unknown
@@ -33,7 +34,10 @@ function accountLabels(row) {
   const { from, to } = fundsAccountLabels(nature)
   // 普通双端事件的 ledgerAccountId 是原账单账户；入账时 income 来源会反向。
   // 组合支付/合并还款有自己的规范分配，不套用普通来源方向。
-  const allocated = row.editorComposition ? row.editorComposition !== 'single' : row.paymentResolution || (row.repaymentAllocations || []).length ||
+  // 草稿态（editorComposition 存在）一律不算 allocated：编辑器里把某一端拆成多账户只是同一笔的
+  // 分配方式，不会改变两端谁收谁付。早先按「已分配」关掉 reverse，会让点开加号的那一端标题
+  // 从「还入账户」翻成「付款账户」，原账户也跟着换到另一行。
+  const allocated = row.editorComposition ? false : row.paymentResolution || (row.repaymentAllocations || []).length ||
     row.fieldSources && (row.fieldSources.paymentResolution || (row.fieldSources.repaymentAllocations || []).length)
   const reverse = dual && !allocated && row.sourceDirection === 'income'
   return { from: dual ? (reverse ? to : from) : ['income', 'refund'].includes(nature) ? '收款账户'

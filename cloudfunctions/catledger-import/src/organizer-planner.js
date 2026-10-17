@@ -19,12 +19,19 @@ const {
   projectSourceFunds
 } = require('./source-funds')
 const { getRowSemantic } = require('./row-semantic-resolver')
-const { EVENT_STATUS, RELATION_STATUS, RELATION_TYPE, classifyReviewIssue, needsCategory } = require('./organizer-model')
+const { EVENT_STATUS, RELATION_STATUS, RELATION_TYPE, REVIEW_ISSUE_TYPE, classifyReviewIssue, needsCategory } = require('./organizer-model')
 const { unique } = require('./organizer-values')
 
 const { representativeEvent } = require('./economic-event-builder')
 const { sameEventCandidateGroups, buildRelations } = require('./relation-resolver')
 const { normalizedText, stableReferences, compatibleCore, groupEvidence } = require('./evidence-matching')
+const {
+  REASON_CODE: INSTALLMENT_ATTRIBUTION_REASON,
+  attributionFor,
+  effectiveInstallment,
+  needsAttribution,
+  groupKeyOf: installmentGroupKeyOf
+} = require('./installment-plan')
 
 function exactAccountName(value) {
   return String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN')
@@ -170,9 +177,64 @@ function sharedReviewDecisionSignature(event, classification) {
   )
 }
 
+// 分期费用行的归属要看到同期次的全部本金，单事件层面判不出来，所以放在整批事件都生成之后。
+// 判不出归属的费用行降为待核对：待核对视图由服务端按 needs_action 筛选，客户端挪不动事件，
+// 所以“进待核对”必须在整理阶段落地。用户在核对里指定计划后该原因码被清掉，事件自然回到已核对。
+//
+// 整组一起进待核对：本金行留在已核对会让本息分离，用户也没法在同一张卡里把利息配到本金上。
+// 本金行不写原因码——它没有自己的归属问题，写下来只会留下一个随用户操作立即过期的快照；
+// 它靠“同组事项的成员”身份出现在待核对里（见 buildReviewIssues），事项收尾时一起离开。
+function applyInstallmentAttribution(events) {
+  events.forEach((event) => {
+    // 分组键在这里就落到事件上：来源账户身份不落库，读取层算不回来，客户端也不能自己拼，
+    // 否则整理期和展示期会按不同口径分组。
+    if (!effectiveInstallment(event)) return
+    const key = installmentGroupKeyOf(event)
+    if (key) event.fieldSources.installment = { ...event.fieldSources.installment, groupKey: key }
+  })
+  const attributions = attributionFor(events)
+  events.forEach((event) => {
+    if (!effectiveInstallment(event)) return
+    if ([EVENT_STATUS.EXCLUDED, EVENT_STATUS.POSTED, EVENT_STATUS.CORRECTED].includes(event.status)) return
+    const attribution = attributions.get(event.eventId)
+    // 归属是整理的产物，不是账单事实：这一轮没算出来就必须把上一轮的结论清掉。
+    // 否则用户把利息指定完再重新整理，本金行还挂着“本期次还有待指定”的旧上下文。
+    if (attribution) event.fieldSources.installmentAttribution = attribution
+    else delete event.fieldSources.installmentAttribution
+    // 判不出来、而本期次确实有可选项的费用行才拦下来等用户指定；
+    // 没有候选就无从指定，那是来源侧的问题，不在这里制造死结。
+    if (!attribution || !needsAttribution(event)) return
+    event.reasonCodes = unique([...event.reasonCodes, INSTALLMENT_ATTRIBUTION_REASON])
+    if (event.status === EVENT_STATUS.READY) event.status = EVENT_STATUS.NEEDS_ACTION
+  })
+}
+
+// 同一期次的分期行：金额、日期、卡号和行序都没有区分度，只有「同组」这一个事实，
+// 所以待核对必须让用户看到整组——本金锚在上面，本期次的费用都列在同一条事项里。
+function installmentGroupMembers(events) {
+  const groups = new Map()
+  ;(events || []).forEach((event) => {
+    const attribution = event.fieldSources && event.fieldSources.installmentAttribution
+    const key = attribution && attribution.groupKey || installmentGroupKeyOf(event)
+    if (!key) return
+    if (![EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status)) return
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(event)
+  })
+  // 本金置前：事项的 sort_order=0 就是这张卡的门面，应当是用户可以点进去的锚点。
+  groups.forEach((members) => members.sort((left, right) => (
+    Number(right.fieldSources.installment.component === 'principal') -
+    Number(left.fieldSources.installment.component === 'principal')) ||
+    String(left.eventId).localeCompare(String(right.eventId))))
+  return groups
+}
+
 function buildReviewIssues(updateId, events, relations, candidateGroups, idFactory) {
   const candidateByEvent = new Map()
   candidateGroups.forEach((group) => group.events.forEach((event) => candidateByEvent.set(event.eventId, group.candidateKey)))
+  // 同一个期次的本金和费用必须落在一个事项里：用户在一条待核对事项里看到整组的本息，
+  // 指定完归属后整组一起离开；拆成多条只会让“哪笔利息属于哪个计划”无从对照。
+  const installmentGroups = installmentGroupMembers(events)
   const buckets = new Map(), relationsByEvent = new Map()
   for (const relation of relations) {
     for (const eventId of new Set([relation.sourceEventId, relation.targetEventId])) {
@@ -209,18 +271,26 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
       const currentClassification = descriptor.classification
       let signature = descriptor.signature || event.eventKey
       if (currentClassification.issueType === 'same_event') signature = candidateByEvent.get(event.eventId) || event.eventKey
-      if (currentClassification.issueType === 'account_mapping' && !descriptor.signature) {
+      if (currentClassification.primaryReason === 'installment_attribution_required') {
+        // 同一期次的待归属费用合到一个事项：用户要在一个界面里看到本期次的全部计划和全部待归属费用。
+        signature = (event.fieldSources.installmentAttribution || {}).groupKey || event.eventKey
+      } else if (currentClassification.issueType === 'account_mapping' && !descriptor.signature) {
         signature = event.accountGroupingKey || paymentReferenceKey(event.sourceType, event.paymentMethodKey) || event.eventKey
       } else if (SHARED_DECISION_ISSUE_TYPES.has(currentClassification.issueType)) {
         signature = sharedReviewDecisionSignature(event, currentClassification)
       }
       const key = digestParts(REVIEW_ISSUE_VERSION, updateId, currentClassification.issueType, signature)
       const bucket = buckets.get(key) || { key, classification: currentClassification, subjects: [], relations: [], subjectKeys: new Set(), relationIds: new Set() }
-      const subjectKey = event.eventId + ':' + descriptor.memberRole
-      if (!bucket.subjectKeys.has(subjectKey)) {
+      const pushSubject = (member, memberRole) => {
+        const subjectKey = member.eventId + ':' + memberRole
+        if (bucket.subjectKeys.has(subjectKey)) return
         bucket.subjectKeys.add(subjectKey)
-        bucket.subjects.push({ event, memberRole: descriptor.memberRole })
+        bucket.subjects.push({ event: member, memberRole })
       }
+      if (currentClassification.primaryReason === 'installment_attribution_required') {
+        // 整组进同一个事项：本金在前（事项门面＝本金行），其余费用依次列出。
+        (installmentGroups.get(signature) || [event]).forEach((member) => pushSubject(member, descriptor.memberRole))
+      } else pushSubject(event, descriptor.memberRole)
       ;(relationsByEvent.get(event.eventId) || []).filter((relation) => (
         currentClassification.primaryReason === 'bank_channel_same_event_candidate' ? false :
         currentClassification.issueType === 'refund_relation'
@@ -235,6 +305,24 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
         })
       buckets.set(key, bucket)
     })
+  })
+
+  // 整组分期事项不能挂在 classification 上：分期行只要还缺账户，organizer-model 就会先把它判成
+  // account_mapping（primaryReason=ledger_account_required），上面那条 installment 分支因此永远不进，
+  // 事项就建不出来——本金随之失去唯一的待核对凭据，账户一确认就掉进已核对，本息分居两个页签。
+  // 这里改按「本期次确实有判不出归属的费用行」独立判定，与 applyInstallmentAttribution 写原因码同源。
+  installmentGroups.forEach((groupMembers, groupKey) => {
+    if (!groupMembers.some((member) => (member.reasonCodes || []).includes(INSTALLMENT_ATTRIBUTION_REASON))) return
+    const classification = { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: INSTALLMENT_ATTRIBUTION_REASON }
+    const key = digestParts(REVIEW_ISSUE_VERSION, updateId, classification.issueType, groupKey)
+    const bucket = buckets.get(key) || { key, classification, subjects: [], relations: [], subjectKeys: new Set(), relationIds: new Set() }
+    groupMembers.forEach((member) => {
+      const subjectKey = member.eventId + ':subject'
+      if (bucket.subjectKeys.has(subjectKey)) return
+      bucket.subjectKeys.add(subjectKey)
+      bucket.subjects.push({ event: member, memberRole: 'subject' })
+    })
+    buckets.set(key, bucket)
   })
 
   const issues = []
@@ -388,6 +476,7 @@ function buildOrganizePlan({ updateId, rows, paymentMappings = [], accounts = []
   })
   const candidateGroups = sameEventCandidateGroups(events)
   const relations = buildRelations(updateId, events, idFactory)
+  applyInstallmentAttribution(events)
   const review = buildReviewIssues(updateId, events, relations, candidateGroups, idFactory)
   // 所有实际生效的账户归属都必须在账户步骤可见、可修改；不能因为来自
   // 历史映射就在界面中隐藏，否则错误映射会静默进入后续整理。
@@ -422,8 +511,10 @@ module.exports = {
   RELATION_KEY_VERSION,
   REVIEW_ISSUE_VERSION,
   buildOrganizePlan,
+  applyInstallmentAttribution,
   buildConfirmedAccountIssues,
   buildReviewIssues,
+  installmentGroupMembers,
   compatibleHistoricalMappings,
   compatibleCore,
   inferExactAccountMappings,

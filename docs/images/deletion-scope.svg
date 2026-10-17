@@ -1,0 +1,38 @@
+<svg viewBox="0 0 680 310" width="680" height="310" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="680" height="310" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="190" y="40" width="300" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340" y="62" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">这笔账是谁创建的？</text>
+<text x="340" y="82" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">看原始创建归属与当前有效使用</text>
+
+<path d="M340 96L340 120" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M134 120L552 120" fill="none" stroke="#888780" stroke-width="1.5"/>
+<path d="M134 120L134 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M343 120L343 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M552 120L552 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="40" y="140" width="188" height="100" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="134" y="166" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#791F1F">撤销账务影响</text>
+<text x="134" y="192" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#A32D2D">计划独占创建</text>
+<text x="134" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#A32D2D">未被有效来源认领</text>
+
+<rect x="249" y="140" width="188" height="100" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="343" y="166" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">保留账目</text>
+<text x="343" y="192" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">先独立存在、后来关联</text>
+<text x="343" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">或后来被有效来源认领</text>
+
+<rect x="458" y="140" width="182" height="100" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="549" y="166" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">阻断整次操作</text>
+<text x="549" y="192" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">共享付款、独立退款</text>
+<text x="549" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">或旧创建归属无法证明</text>
+
+<text x="40" y="268" font-size="12" fill="#5F5E5A">一次性覆盖多期只撤销父项一次；费用与配套余额保全一起撤销，资产、负债和净资产都不变</text>
+<text x="40" y="290" font-size="12" fill="#5F5E5A">无法证明旧创建归属时不猜，提示待核对；重建必须用新的 loanId，不复用会被撤销的身份</text>
+</g>
+</svg>

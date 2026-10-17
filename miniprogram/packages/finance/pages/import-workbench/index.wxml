@@ -1,4 +1,5 @@
 <import src="detail-fields.wxml" />
+<import src="review-cards.wxml" />
 <template name="record-count-formula">
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <text class="record-count-equation">有效交易 {{activeCount}}＝全部 {{totalCount}}－已排除 {{excludedCount}}－重复 {{duplicateCount}}</text>
@@ -304,17 +305,22 @@
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">
             <button wx:for="{{item.issues}}" wx:for-item="issue" wx:key="eventId" class="review-decision-card {{issue.groupPos ? 'card-group-' + issue.groupPos : ''}}" data-id="{{issue.eventId}}" data-issue-id="{{issue.issueId}}" bindtap="openPendingRecord" aria-label="{{issue.batchDecision}} {{issue.label}}">
-              <view class="review-decision-heading">
-                <view class="review-decision-copy"><text class="review-decision-title">{{issue.label}}</text><text class="review-decision-note">{{issue.decisionText}}</text></view>
-                <view class="review-decision-action"><text wx:if="{{issue.groupCount > 1 && issue.groupPos !== 'middle' && issue.groupPos !== 'last'}}" class="review-action-count money-number">同组 {{issue.groupCount}} 笔</text><text class="review-action-button">{{issue.batchDecision}}</text><chevron-icon size="{{22}}" /></view>
-              </view>
+              <template is="review-card-heading" data="{{card: issue, pending: true}}" />
               <view class="review-preview-list review-decision-previews">
-                <view wx:for="{{issue.subjects}}" wx:for-item="preview" wx:key="eventId" class="review-preview-row">
-                  <view wx:if="{{preview.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{preview.displayDate}}</text></view>
-                  <view class="review-preview-copy"><text class="review-preview-title">{{preview.displayTitle}}</text><text class="review-preview-meta">{{preview.displayDetailMeta || preview.displayMeta}}</text><text wx:if="{{preview.pairingDecision}}" class="review-text-action" data-id="{{preview.eventId}}" catchtap="openDuplicateEdit">修改同笔判断</text></view>
-                  <text class="review-preview-amount money-number {{preview.directionClass}}">{{preview.amountText}}</text>
+                <view wx:for="{{issue.subjects}}" wx:for-item="preview" wx:key="eventId" class="review-preview-row {{preview.rowRole ? 'installment-row' : ''}}" data-id="{{preview.eventId}}" data-card-id="{{issue.eventId}}" data-issue-id="{{issue.issueId}}" catchtap="openPreviewRow">
+                  <template is="review-record-content" data="{{record: preview, allowPairing: true}}" />
                 </view>
                 <text wx:if="{{issue.hiddenSubjectCount}}" class="review-preview-more">另有 {{issue.hiddenSubjectCount}} 笔将应用同一决定</text>
+              </view>
+              <view wx:if="{{issue.installmentPendingRows}}" class="review-attribution-pending">
+                <view class="review-pending-row" wx:for="{{issue.installmentPendingRows}}" wx:for-item="pending" wx:key="eventId"
+                  data-id="{{pending.eventId}}" data-plan="{{pending.plan}}" data-issue-id="{{issue.issueId}}" catchtap="assignPendingInterest">
+                  <view class="review-pending-copy">
+                    <text class="review-pending-title">{{pending.displayDate}} {{pending.title}}</text>
+                    <text class="review-pending-amount money-number">{{pending.amountText}}</text>
+                  </view>
+                  <text class="review-pending-flag">归入本计划 ›</text>
+                </view>
               </view>
             </button>
           </view>
@@ -324,13 +330,19 @@
       <block wx:elif="{{activeReviewStatus === 'completed'}}">
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
         <skeleton-rows wx:if="{{pageLoading && !reviewedEvents.length}}" rows="{{3}}" />
-        <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看已核对交易">
-          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">{{item.natureLabel}}{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
-          <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
-            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
-            <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
-            <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
-          </view></view>
+        <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card {{item.isInstallmentCard ? 'installment-card' : 'category-decision-card'}}" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看已核对交易">
+          <template is="review-card-heading" data="{{card: item, completed: true, statusText: item.needsCategory ? '待分类' : ''}}" />
+          <view class="review-preview-list review-decision-previews">
+            <view wx:for="{{item.rows || [item]}}" wx:for-item="row" wx:key="eventId" class="review-preview-row {{row.rowRole ? 'installment-row' : ''}}" data-id="{{row.eventId}}" catchtap="openReviewDetails" aria-label="查看{{row.rowRole || '交易'}}明细">
+              <template is="review-record-content" data="{{record: row}}" />
+            </view>
+            <view wx:if="{{item.periodComplete && item.amountText}}" class="review-installment-total">
+              <text class="review-installment-total-label">本期合计</text>
+              <text class="review-installment-total-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
+            </view>
+            <text wx:elif="{{item.isInstallmentCard && !item.periodComplete}}" class="review-installment-partial-note">含跨页部分，合计待翻页后查看</text>
+            <text wx:if="{{item.planNote}}" class="review-installment-partial-note">{{item.planNote}}</text>
+          </view>
         </view>
         <view wx:if="{{!pageLoading && !pageError && !reviewedEvents.length}}" class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '暂无已核对交易'}}</text></view>
       </block>
@@ -346,25 +358,18 @@
       <block wx:if="{{activeCategoryStatus === 'pending'}}">
         <skeleton-rows wx:if="{{pageLoading && !categoryCards.length && !categoryWaitingEvents.length}}" rows="{{3}}" />
         <view wx:for="{{categoryCards}}" wx:key="eventId" class="review-decision-card category-decision-card {{item.groupPos ? 'card-group-' + item.groupPos : ''}}" data-id="{{item.eventId}}" data-issue-id="{{item.issueId}}" bindtap="openPendingRecord" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
-          <view class="review-decision-heading">
-            <view class="review-decision-copy"><text class="review-decision-title">{{item.issueId ? item.natureLabel + '待分类' : item.label}}</text></view>
-            <view class="review-decision-action"><text wx:if="{{item.groupCount > 1 && item.groupPos !== 'middle' && item.groupPos !== 'last'}}" class="review-action-count money-number">同组 {{item.groupCount}} 笔</text><text class="review-action-button">{{item.batchDecision}}</text><chevron-icon size="{{22}}" /></view>
-          </view>
+          <template is="review-card-heading" data="{{card: item, statusText: item.issueId ? '待分类' : '待分类 · 先核对交易'}}" />
           <view class="review-preview-list review-decision-previews">
             <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row" data-id="{{record.eventId}}" catchtap="openEvidence" aria-role="button" aria-label="查看交易证据">
-              <view wx:if="{{record.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{record.displayDate}}</text></view>
-              <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayDetailMeta || record.displayMeta}}</text></view>
-              <text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
+              <template is="review-record-content" data="{{record: record}}" />
             </view>
             <text wx:if="{{item.hiddenSubjectCount}}" class="review-preview-more">另有 {{item.hiddenSubjectCount}} 笔将应用同一分类</text>
           </view>
         </view>
         <view wx:for="{{categoryWaitingEvents}}" wx:key="eventId" class="review-decision-card category-decision-card">
-          <view class="review-decision-heading"><text class="review-decision-title">待分类 · 先核对交易</text><button class="review-inline-action" data-id="{{item.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button></view>
+          <template is="review-card-heading" data="{{card: item, categoryWaiting: true, statusText: '待分类 · 先核对交易'}}" />
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
-            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
-            <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
-            <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
+            <template is="review-record-content" data="{{record: item}}" />
           </view></view>
         </view>
         <view wx:if="{{!pageLoading && !pageError && !categoryCards.length && !categoryWaitingEvents.length}}" class="tab-empty"><text class="tab-empty-title">{{categoryEventCount ? '没有匹配的交易' : '当前分类已完成'}}</text><text class="tab-empty-copy">{{categoryEventCount ? '试试其他商户或交易关键词。' : (verificationIssueCount ? '收支确定后可能需补分类。' : '分类已整理完。')}}</text></view>
@@ -372,15 +377,9 @@
       <block wx:elif="{{activeCategoryStatus === 'completed' || activeCategoryStatus === 'none'}}">
         <skeleton-rows wx:if="{{pageLoading && !(activeCategoryStatus === 'completed' ? categorizedEvents.length : noCategoryEvents.length)}}" rows="{{3}}" />
         <view wx:for="{{activeCategoryStatus === 'completed' ? categorizedEvents : noCategoryEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
-          <view class="review-decision-heading review-completed-heading">
-            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? (item.categoryName ? item.natureLabel + ' · ' + item.categoryName : item.natureLabel) : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view>
-            <view wx:if="{{activeCategoryStatus === 'completed' && update.status === 'review'}}" class="review-decision-action category-edit-action" data-id="{{item.eventId}}" catchtap="openCategoryEdit" aria-role="button" aria-label="修改分类"><text class="review-action-button">修改分类</text><chevron-icon size="{{22}}" /></view>
-            <view wx:else class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
-          </view>
+          <template is="review-card-heading" data="{{card: item, completed: true, categoryEditable: activeCategoryStatus === 'completed' && update.status === 'review', statusText: activeCategoryStatus === 'completed' ? item.categoryName : '无需分类', reviewPending: item.pendingReview}}" />
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
-            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
-            <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
-            <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
+            <template is="review-record-content" data="{{record: item}}" />
           </view></view>
         </view>
         <view wx:if="{{!pageLoading && !pageError && !(activeCategoryStatus === 'completed' ? categorizedEvents.length : noCategoryEvents.length)}}" class="tab-empty"><text class="tab-empty-title">{{categoryQuery ? '没有匹配的交易' : '暂无这类交易'}}</text></view>
@@ -398,7 +397,7 @@
             <text wx:if="{{item.loading}}" class="record-list-note">正在读取交易</text>
             <view wx:if="{{item.error}}" class="excluded-group-error"><text>{{item.error}}</text><button class="text-action" data-key="{{item.key}}" data-direction="retry" bindtap="changeExcludedGroupPage">重试</button></view>
             <view wx:for="{{item.events}}" wx:for-item="record" wx:key="eventId" class="review-audit-row" data-id="{{record.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看原始证据">
-              <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayMeta}}</text><text class="review-preview-meta excluded-record-reason">排除原因：{{record.exclusionReasonText}}</text><text wx:if="{{record.sourceStatus}}" class="review-preview-meta excluded-record-status">原账单状态：{{record.sourceStatus}}</text></view><text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
+              <template is="review-record-content" data="{{record: record, audit: true, excluded: true}}" />
             </view>
             <view wx:if="{{item.page && (item.page.canFirst || item.page.hasNext)}}" class="list-pagination excluded-group-pagination">
               <button class="stage-previous" data-key="{{item.key}}" data-direction="first" bindtap="changeExcludedGroupPage" disabled="{{item.loading || !item.page.canFirst}}">首页</button>
@@ -417,11 +416,8 @@
       <view wx:elif="{{duplicateReviewError}}" class="tab-empty"><text class="tab-empty-copy">{{duplicateReviewError}}</text><button class="text-action" bindtap="loadDuplicateRecords">重试</button></view>
       <view wx:elif="{{duplicateReviewEvents.length}}" class="review-audit-list">
         <view wx:for="{{duplicateReviewEvents}}" wx:key="eventId" class="review-audit-card" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看重复交易与原始来源">
-          <view class="review-decision-heading review-completed-heading">
-            <text class="review-audit-badge">重复来源 {{item.duplicateCount}} 条</text>
-            <view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
-          </view>
-          <view class="review-audit-row"><view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayMeta}}</text></view><text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text></view>
+          <template is="review-card-heading" data="{{card: item, completed: true, statusText: '重复来源 ' + item.duplicateCount + ' 条'}}" />
+          <view class="review-audit-row"><template is="review-record-content" data="{{record: item, audit: true}}" /></view>
           <view class="review-audit-footer"><text class="review-audit-note">{{item.auditNote}}</text></view>
         </view>
       </view>

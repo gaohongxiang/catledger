@@ -1,0 +1,40 @@
+<svg viewBox="0 0 680 402" width="680" height="402" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="402" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="40" y="40" width="560" height="52" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<circle cx="76" cy="66" r="13" fill="#185FA5"/>
+<text x="76" y="66" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">5</text>
+<text x="106" y="60" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">事件级决定</text>
+<text x="106" y="78" dominant-baseline="central" font-size="12" fill="#185FA5">这一笔单独指定的账户</text>
+<text x="584" y="66" text-anchor="end" dominant-baseline="central" font-size="12" fill="#185FA5">最高</text>
+
+<rect x="40" y="100" width="560" height="52" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<circle cx="76" cy="126" r="13" fill="#185FA5"/>
+<text x="76" y="126" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">4</text>
+<text x="106" y="120" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">本批决定</text>
+<text x="106" y="138" dominant-baseline="central" font-size="12" fill="#185FA5">这次导入里已经确认的账户</text>
+
+<rect x="40" y="160" width="560" height="52" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="76" cy="186" r="13" fill="#888780"/>
+<text x="76" y="186" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">3</text>
+<text x="106" y="180" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">历史明确映射</text>
+<text x="106" y="198" dominant-baseline="central" font-size="12" fill="#5F5E5A">以前明确确认过的对应关系</text>
+
+<rect x="40" y="220" width="560" height="52" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="76" cy="246" r="13" fill="#888780"/>
+<text x="76" y="246" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">2</text>
+<text x="106" y="240" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">历史别名</text>
+<text x="106" y="258" dominant-baseline="central" font-size="12" fill="#5F5E5A">同一支付工具用过的别名</text>
+
+<rect x="40" y="280" width="560" height="52" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="76" cy="306" r="13" fill="#888780"/>
+<text x="76" y="306" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">1</text>
+<text x="106" y="300" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">精确推断</text>
+<text x="106" y="318" dominant-baseline="central" font-size="12" fill="#5F5E5A">从原文直接推出的账户线索</text>
+<text x="584" y="306" text-anchor="end" dominant-baseline="central" font-size="12" fill="#5F5E5A">最低</text>
+
+<text x="40" y="360" font-size="12" fill="#5F5E5A">序号越大优先级越高，高的一级覆盖低的；保存时仍要验证账户真实可用，历史类型不兼容不能沿用</text>
+<text x="40" y="382" font-size="12" fill="#5F5E5A">同级出现多个候选时明确处理，不以数组最后一项为准；合并还款名称不是账户，不为它建虚构账户</text>
+</g>
+</svg>

@@ -196,8 +196,10 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /class="[^"]*refund-issue-row/)
   assert.match(markup, /class="review-decision-card(?:\s|")/)
   assert.doesNotMatch(source, /_continuousIssueType|continuousType/)
-  assert.match(markup, /\{\{issue\.label\}\}/)
-  assert.match(markup, /\{\{preview\.amountText\}\}/)
+  const cardMarkup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-cards.wxml'), 'utf8')
+  assert.match(markup, /is="review-card-heading" data="\{\{card: issue, pending: true\}\}"/)
+  assert.match(cardMarkup, /pending \? card\.label : card\.natureLabel/)
+  assert.match(cardMarkup, /\{\{record\.amountText\}\}/)
   const editorFields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
   assert.match(editorFields, /正在核验候选/)
   assert.match(editorFields, /bindtap="selectEditorRefund"/)
@@ -209,11 +211,11 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(styles, /\.review-decision-card/)
   assert.match(styles, /\.relation-selected \{ background: var\(--ui-accent-soft/)
   // 标签随真实资金角色和是否已填变化，不约束模板表达式的具体写法。
-  const accountButton = (editorFields.match(/<button\b[^>]*>/g) || []).find(tag => tag.includes('data-target="{{item.target}}"'))
+  const accountButton = (editorFields.match(/<button\b[^>]*>/g) || []).find(tag => tag.includes('data-target="{{account.target}}"'))
   assert.ok(accountButton)
   const accountLabel = accountButton.match(/aria-label="\{\{(.*?)\}\}"/)[1]
   for (const [accountId, label, expected] of [['', '付款账户', '选择付款账户'], ['synthetic-account', '还入账户', '修改还入账户']]) {
-    assert.equal(vm.runInNewContext(accountLabel, { item: { accountId, label } }, { timeout: 200 }), expected)
+    assert.equal(vm.runInNewContext(accountLabel, { account: { accountId }, endpoint: { label } }, { timeout: 200 }), expected)
   }
   const labels = require('../miniprogram/packages/finance/pages/import-workbench/detail-fields').accountLabels
   assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')

@@ -1,5 +1,5 @@
 const { publicError } = require('./presentation')
-const { setChangedData } = require('../../../../services/view-patch')
+const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
 const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')

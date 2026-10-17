@@ -1,5 +1,5 @@
-const cache = require('./read-cache')
-const observer = require('./read-observer')
+const cache = require('../../../services/read-cache')
+const observer = require('../../../services/read-observer')
 const MAX_PAGES = 32
 const MAX_BYTES = 256 * 1024
 const MAX_HISTORY = 8

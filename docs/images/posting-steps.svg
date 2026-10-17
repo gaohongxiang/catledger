@@ -1,0 +1,44 @@
+<svg viewBox="0 0 680 414" width="680" height="414" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="414" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<rect x="40" y="40" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="68" cy="62" r="12" fill="#888780"/>
+<text x="68" y="62" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">1</text>
+<text x="94" y="62" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">幂等与重放</text>
+<text x="250" y="62" dominant-baseline="central" font-size="12" fill="#5F5E5A">核对状态、规则与计划版本，识别原请求重放</text>
+
+<rect x="40" y="92" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="68" cy="114" r="12" fill="#888780"/>
+<text x="68" y="114" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">2</text>
+<text x="94" y="114" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">锁事件与来源</text>
+<text x="250" y="114" dominant-baseline="central" font-size="12" fill="#5F5E5A">查归宿、证据、未决阻塞与可入账性</text>
+
+<rect x="40" y="144" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="68" cy="166" r="12" fill="#888780"/>
+<text x="68" y="166" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">3</text>
+<text x="94" y="166" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">锁内复查</text>
+<text x="250" y="166" dominant-baseline="central" font-size="12" fill="#5F5E5A">历史重复、关系与目标有效性，变化则退回核对</text>
+
+<rect x="40" y="196" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="68" cy="218" r="12" fill="#888780"/>
+<text x="68" y="218" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">4</text>
+<text x="94" y="218" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">物化可达草稿</text>
+<text x="250" y="218" dominant-baseline="central" font-size="12" fill="#5F5E5A">查账户、分类、现金、分配、退款与贷款关系</text>
+
+<rect x="40" y="248" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="68" cy="270" r="12" fill="#888780"/>
+<text x="68" y="270" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">5</text>
+<text x="94" y="270" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">新建或复用交易</text>
+<text x="250" y="270" dominant-baseline="central" font-size="12" fill="#5F5E5A">按经济性质记账，保存来源、事件与映射关系</text>
+
+<rect x="40" y="300" width="600" height="44" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<circle cx="68" cy="322" r="12" fill="#3B6D11"/>
+<text x="68" y="322" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">6</text>
+<text x="94" y="322" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">共同提交</text>
+<text x="250" y="322" dominant-baseline="central" font-size="12" fill="#3B6D11">结果、版本、修订与首次回执一起提交</text>
+
+<text x="40" y="374" font-size="12" fill="#5F5E5A">六步在同一个用户范围事务内完成，任一步失败整组回滚；重试原请求不会重复记一笔</text>
+<text x="40" y="396" font-size="12" fill="#5F5E5A">本节说明业务检查，不授权重排原有 SQL 锁序；created 与 reused 分开记录，供维护使用</text>
+</g>
+</svg>

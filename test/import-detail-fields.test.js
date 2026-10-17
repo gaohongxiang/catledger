@@ -61,7 +61,7 @@ test('单端账户随性质命名，组合支付及合并还款保留分配并�
 })
 test('分期本金只显示来源字段，不误呈现为已发生的还款；零金额不当作缺失', () => {
   const value = fields({ ...row('repayment'), installment: { creditStatement: true, component: 'principal', periodNumber: 3, totalTerms: 12 }, amountMinor: '0' })
-  assert.equal(value.nature.value, '分期本金出账')
+  assert.equal(value.nature.value, '分期出账')
   assert.equal(value.account.label, '所属信用卡')
   assert.equal(value.counterparty, undefined)
   assert.equal(value.amount.value, '¥0.00')
@@ -183,7 +183,7 @@ test('待核对与已核对使用同一字段模板，性质及输入置于原�
     assert.ok(source.indexOf('is="review-editor-fields"') < source.indexOf('class="evidence-card"'))
   }
   const fields = fs.readFileSync(path.join(dir, 'review-editor-fields.wxml'), 'utf8')
-  assert.ok(fields.indexOf('changeReviewedNature') < fields.indexOf('editor.routeFields'))
+  assert.ok(fields.indexOf('changeReviewedNature') < fields.indexOf('editor.fundsEndpoints'))
 })
 
 test('真实 Page 保留空与明确零的区别，原始凭据不被空文本编辑修改', async t => {
@@ -217,7 +217,7 @@ test('退款分类继承原消费；组合还款隐藏消费分类，返回支�
   const { page } = await editor.open(t, { economicNature: 'refund', detailFacts: { refund: { status: 'confirmed', originals: [{ categoryName: '合成原分类', amountMinor: '100' }] } } })
   assert.equal(editor.view(page).categoryKind, '')
   assert.equal(editor.view(page).refundCategory, '合成原分类')
-  editor.nature(page, 'expense'); editor.mode(page, 'composition', 'payment'); editor.nature(page, 'repayment')
+  editor.nature(page, 'expense'); page.addFundsAccount(editor.tap({ endpoint: 'payer' })); editor.nature(page, 'repayment')
   assert.equal(editor.view(page).categoryKind, '')
   editor.nature(page, 'expense'); assert.equal(editor.view(page).categoryKind, 'expense')
 })

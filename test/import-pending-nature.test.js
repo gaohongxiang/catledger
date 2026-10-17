@@ -25,13 +25,13 @@ function presentation() {
 function event(label) {
   return { eventId: 'event-1', economicNature: 'repayment', projectedNatureLabel: label,
     amountText: '100.00', displayTitle: '合成交易', pendingIssue: {
-      issueId: 'issue-1', label: '转入账户待确认', decisionText: '缺失提示保持原文',
+      issueId: 'issue-1', issueType: 'transfer_accounts', label: '转入账户待确认', decisionText: '缺失提示保持原文',
       memberCount: 3, candidateCount: 1
     } }
 }
 
 for (const label of ['收入', '支出', '内部转账', '借款', '还款', '退款', '费用',
-  '余额调整', '待确认', '分期本金出账', '分期利息', '分期手续费']) {
+  '余额调整', '待确认', '分期出账', '分期利息', '分期手续费']) {
   test('待核对复用已有性质标签：' + label, () => {
     const input = event(label)
     const before = JSON.stringify(input)
@@ -39,7 +39,7 @@ for (const label of ['收入', '支出', '内部转账', '借款', '还款', '�
     assert.equal(result.natureLabel, label)
     assert.equal(result.batchDecision, '处理')
     assert.equal(result.subjects[0].natureLabel, label)
-    assert.equal(result.label, (label === '待确认' ? '' : label + '｜') + '转入账户待确认' + (label === '待确认' ? ' · 性质待确认' : '') + '（同组 2 笔）')
+    assert.equal(result.label, (label === '待确认' ? '' : label + '｜') + '转入账户待确认' + (label === '待确认' ? ' · 性质待确认' : ''))
     assert.equal(result.decisionText, '', '不再发送已隐藏的重复说明')
     assert.equal(result.scopeCount, 2)
     assert.equal(result.groupCount, undefined)
@@ -69,10 +69,10 @@ test('修正性质后以新投影刷新，不复用旧标签', () => {
   assert.equal(before.eventId, after.eventId)
 })
 
-test('分类卡片保留原收支类别和操作文案', () => {
+test('分类卡片保留交易性质和操作文案，不把费用性质覆盖成支出', () => {
   const view = presentation()
   const input = Object.assign(event('分期利息'), { economicNature: 'fee' })
-  assert.equal(view.pendingCard(input, true).natureLabel, '支出')
+  assert.equal(view.pendingCard(input, true).natureLabel, '分期利息')
   assert.equal(view.pendingCard(input, true).batchDecision, '分类')
   delete input.pendingIssue
   assert.equal(view.pendingCard(input, true).batchDecision, '去核对')
@@ -92,21 +92,21 @@ function fallbackCard(view, labels) {
 test('兼容问题列表也显示性质，不改变原核对提示', () => {
   const result = fallbackCard(presentation(), ['退款', '退款'])
   assert.equal(result.batchDecision, '处理')
-  assert.equal(result.label, '判断是否同一笔｜退款（同组 2 笔）')
+  assert.equal(result.label, '判断是否同一笔｜退款')
   assert.equal(result.decisionText, '')
   assert.equal(result.subjects.length, 2)
 })
 
 test('混合性质或部分未知的旧问题组不能用首笔性质代表整组', () => {
   const view = presentation()
-  assert.equal(fallbackCard(view, ['支出', '退款']).label, '判断是否同一笔｜多种性质（同组 2 笔）')
-  assert.equal(fallbackCard(view, ['支出', undefined]).label, '判断是否同一笔｜多种性质（同组 2 笔）')
+  assert.equal(fallbackCard(view, ['支出', '退款']).label, '判断是否同一笔｜多种性质')
+  assert.equal(fallbackCard(view, ['支出', undefined]).label, '判断是否同一笔｜多种性质')
 })
 
 test('已核对记录仍使用原性质展示，不附加待核对操作', () => {
-  const result = presentation().reviewLists({ reviewedEvents: [event('分期本金出账')] }, {}, {
+  const result = presentation().reviewLists({ reviewedEvents: [event('分期出账')] }, {}, {
     activeReviewTab: 'review', activeReviewStatus: 'completed'
   }, 0)
-  assert.equal(result.reviewedEvents[0].natureLabel, '分期本金出账')
+  assert.equal(result.reviewedEvents[0].natureLabel, '分期出账')
   assert.equal(result.reviewedEvents[0].batchDecision, undefined)
 })

@@ -254,6 +254,13 @@ module.exports = {
     return this.openReviewDetails({ currentTarget: { dataset: { id: data.id } } })
   },
 
+  // 卡片内的预览行也是入口：分期卡里一行就是一笔，点利息那一行直接打开它去指定计划；
+  // 其余卡片的行与卡片是同一笔，落到同一个入口，行为不变。
+  openPreviewRow: function (event) {
+    const data = event.currentTarget.dataset
+    return this.openPendingRecord({ currentTarget: { dataset: { id: data.id || data.cardId, issueId: data.issueId } } })
+  },
+
   updateIssueReadiness: function () {
     const token = this._issueEvidenceToken
     if (!issueCurrent(this, token)) return
