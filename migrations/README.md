@@ -12,7 +12,7 @@
 
 `0033_import_file_display_name.sql` 为导入文件增加可空显示名称；原文件名、格式、对象键、内容摘要和来源快照保持。旧记录为NULL并继续显示原名，信息表守卫支持原SQL重跑。完整导出升为schemaVersion 33，非空别名随原文件和来源关系进行双库恢复验证；已有运行账号表权限可复用。部署新版导入／导出代码前须先完成本迁移，线上执行与发布仍按独立授权处理。
 
-`0034_local_import_review.sql` 为 FinanceUpdate 增加 `review_mode`，并建立按用户隔离的完整快照、最终决定和复核补充对象/分块表。原模式默认 `server`；迁移不生成正式账户、交易或余额变化，使用显式可重入DDL。完整私有导出升为schemaVersion 34，导出清单包含模式、新表和文本块，非空快照经过双库恢复验证。API增加两表SELECT，import按 [runtime-role-grants](../scripts/runtime-role-grants.js) 与 [权限契约](../cloudfunctions/catledger-import/src/runtime-permission-contract.js) 获得对象SELECT/INSERT/UPDATE、分块SELECT/INSERT和两表废弃回收DELETE；不扩大正式交易删除或原文字段改写权限。部署两函数和新版小程序前，先迁移并核验这些最小权限；线上迁移、授权与部署必须另有当前会话授权。
+`0034_local_import_review.sql` 为 FinanceUpdate 增加 `review_mode`，并建立按用户隔离的完整快照、最终决定和复核补充对象/分块表。原模式默认 `server`；迁移不生成正式账户、交易或余额变化，使用显式可重入DDL。完整私有导出升为schemaVersion 34，导出清单包含模式、新表和文本块，非空快照经过双库恢复验证。API增加两表SELECT，import按 [runtime-role-grants](../scripts/runtime-role-grants.js) 与 [权限契约](../cloudfunctions/catledger-import/src/runtime-permission-contract.js) 获得对象SELECT/INSERT/UPDATE、分块SELECT/INSERT和两表清理DELETE；DELETE用于成功入账同事务清理及废弃回收，不扩大正式交易删除或原文字段改写权限。部署两函数和新版小程序前，先迁移并核验这些最小权限；线上迁移、授权与部署必须另有当前会话授权。
 
 ## 运行账号最小权限
 

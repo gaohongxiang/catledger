@@ -232,10 +232,10 @@ test('v3 单事务故障注入：新账户、交易、退款、贷款、映射�
     const interest=snapshot.facts.charges.find(row=>row.chargeKey==='period:1:interest'),fee=snapshot.facts.charges.find(row=>row.chargeKey==='upfront:fee'),current=snapshot.facts.loans.find(row=>row.loanId===loan.loanId)
     model.edit({eventId:ids[2],editorVersion:1,fields:{economicNature:'repayment',amountMinor:'100000',counterpartyLedgerAccountId:debt},decisions:{repayment:{confirmed:true,mode:'associate',loanId:loan.loanId,loanVersion:current.version,assetAccountId:wallet,liabilityAccountId:debt,principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',interestTreatment:'accrued',feeTreatment:'accrued',chargeAllocations:[{chargeId:interest.chargeId,component:'interest',amountMinor:'8000'},{chargeId:fee.chargeId,component:'fee',amountMinor:'2000'}]}}})
     const request=await stage(services,model.finalState())
-    const tables=['accounts','transactions','loans','loan_payments','loan_repayment_details','loan_payment_allocations','loan_payment_transactions','loan_charge_allocations','loan_charges','import_account_mappings','finance_update_account_drafts','finance_update_account_mapping_drafts','finance_updates','economic_events','economic_event_relations','economic_event_transactions','review_issues','review_issue_members','finance_actions','mutation_receipts','users']
+    const tables=['accounts','transactions','loans','loan_payments','loan_repayment_details','loan_payment_allocations','loan_payment_transactions','loan_charge_allocations','loan_charges','import_account_mappings','finance_update_account_drafts','finance_update_account_mapping_drafts','finance_updates','economic_events','economic_event_relations','economic_event_transactions','review_issues','review_issue_members','finance_actions','mutation_receipts','users','import_review_objects','import_review_chunks']
     async function dump(){const result={};for(const table of tables){const [rows]=await lab.owner.execute('SELECT * FROM catledger_'+table+' WHERE uid=?',[uid]);result[table]=rows.map(row=>JSON.stringify(row)).sort()}return result}
     const before=await dump()
-    for(const [label,pattern]of [['账户创建',/INSERT INTO catledger_accounts\s/],['交易写入',/INSERT INTO catledger_transactions\s/],['退款关系',/INSERT INTO catledger_economic_event_relations\s/],['贷款收费清偿',/INSERT INTO catledger_loan_charge_allocations/],['映射记忆',/INSERT INTO catledger_import_account_mappings/],['成功回执',/UPDATE catledger_mutation_receipts/]])await t.test(label,async()=>{
+    for(const [label,pattern]of [['账户创建',/INSERT INTO catledger_accounts\s/],['交易写入',/INSERT INTO catledger_transactions\s/],['退款关系',/INSERT INTO catledger_economic_event_relations\s/],['贷款收费清偿',/INSERT INTO catledger_loan_charge_allocations/],['映射记忆',/INSERT INTO catledger_import_account_mappings/],['临时对象清理',/DELETE FROM catledger_import_review_objects/],['成功回执',/UPDATE catledger_mutation_receipts/]])await t.test(label,async()=>{
       failure=pattern;hits=0
       await assert.rejects(call(services.import,'financeUpdates.post',request),{publicCode:'INTERNAL_ERROR'})
       failure=null;assert.ok(hits>0,'必须真正命中指定写入阶段')
@@ -300,34 +300,74 @@ test('本地配对：编辑/合并/拆分保留身份，多候选不同笔共用
   } finally { await lab.close() }
 })
 
-test('修改后的快照外历史：整批退回新候选，保留其他选择，人工确认后重新原子提交', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async () => {
+test('快照外历史退回：冷恢复后使用新请求提交，成功事务清理全部临时对象，原回执仍可重放', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async t => {
   const lab = await isolatedMysql()
   try {
     const grants = require('../scripts/runtime-role-grants'), services = localServices({ apiPool: await lab.role('api', grants.api), importPool: await lab.role('import', grants.importer) })
     const user = await call(services.api, 'bootstrap'), account = await call(services.api, 'accounts.create', { requestId: randomUUID(), name: '微信零钱', type: 'wallet' })
     const prepared = await prepareSyntheticUpdate(services, 2, randomUUID())
-    const { model, snapshot } = await prepareLocal(services, prepared.updateId)
+    const { snapshot } = await prepareLocal(services, prepared.updateId)
+    const disk = require('./helpers/local-review').filesystem(); t.after(disk.cleanup)
+    const files = require('../miniprogram/packages/finance/services/import-local-files')
+    const session = require('../miniprogram/packages/finance/services/import-local-session')
+    const options = { ...disk, scope: 'synthetic:' + user.uid, updateId: prepared.updateId }, posts = []
+    const callNetwork = async (action, data) => {
+      if (action === 'financeUpdates.post') posts.push(structuredClone(data))
+      try { return await call(services.import, action, data) }
+      catch (error) { error.code = error.publicCode; throw error }
+    }
+    let store = files.create(options)
+    await store.download(snapshot.header, callNetwork)
+    const create = () => session.create({ files: store, restored: store.restore(), requestId: randomUUID,
+      callNetwork, saveReceipt() {}, cleanup() {}, queueAbandon() {} })
+    let current = create()
     const categoryId = snapshot.facts.categories.find(row => row.kind === 'expense').categoryId
     assert.equal(snapshot.facts.history.length, 0)
-    const ids = [...model.events.keys()]
-    model.edit({ eventId: ids[0], editorVersion: 1, fields: { amountMinor: '200', categoryId, note: '应保留修改' } })
-    model.edit({ eventId: ids[1], editorVersion: 1, fields: { categoryId, note: '不受影响的选择' } })
-    assert.equal(model.needsCheck.has(ids[0]), true)
+    const ids = [...current.model.events.keys()]
+    current.call('financeUpdates.setReview', { eventId: ids[0], editorVersion: 1, fields: { amountMinor: '200', categoryId, note: '应保留修改' } })
+    current.call('financeUpdates.setReview', { eventId: ids[1], editorVersion: 1, fields: { categoryId, note: '不受影响的选择' } })
+    assert.equal(current.model.needsCheck.has(ids[0]), true)
     const history = await call(services.api, 'transactions.create', { requestId: randomUUID(), type: 'expense', sourceAccountId: account.accountId,
       amountMinor: '200', categoryId, occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480, note: '合成新增历史' })
-    const rejected = await postLocal(services, model)
+    const rejected = await current.post()
     assert.equal(rejected.outcome, 'recheck')
-    assert.ok(rejected.supplement.history.some(row => row.transactionId === history.transactionId))
+    const supplemental = (await download(services, rejected.recheck.objectId)).facts
+    assert.ok(supplemental.history.some(row => row.transactionId === history.transactionId))
+    const rejectedReceipt = await call(services.import, 'financeUpdates.post', posts[0])
+    assert.equal(rejectedReceipt.outcome, 'recheck')
     const [[before]] = await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=?', [user.uid])
     assert.equal(Number(before.count), 1)
-    model.applySupplement(rejected.supplement)
-    assert.equal(model.choices.events.get(ids[1]).editor.fields.note, '不受影响的选择')
-    const issue = rejected.supplement.issues.find(row => row.primaryReasonCode === 'historical_duplicate_candidate')
+    store = files.create(options); current = create()
+    assert.equal(current.status.frozen, false)
+    await assert.rejects(current.post(), { code: 'LOCAL_RECHECK_REQUIRED' })
+    assert.equal(posts.length, 1, '未重核前不能创建或发送下一次提交')
+    assert.equal(current.model.choices.events.get(ids[1]).editor.fields.note, '不受影响的选择')
+    const issue = supplemental.issues.find(row => row.primaryReasonCode === 'historical_duplicate_candidate')
     assert.deepEqual(issue.subjectEventIds, [ids[0]])
-    model.review({ issueId: issue.issueId, decision: 'confirm_distinct' })
-    assert.equal(model.invalid.size, 0)
-    const posted = await postLocal(services, model)
-    assert.equal(posted.status, 'posted', JSON.stringify(posted.supplement?.problems))
+    current.call('reviewIssues.resolve', { issueId: issue.issueId, decision: 'confirm_distinct' })
+    assert.equal(current.model.invalid.size, 0)
+    // An unused upload and another batch must not change cleanup scope.
+    const unused = await stage(services, current.model.finalState())
+    const other = await prepareSyntheticUpdate(services, 1, randomUUID())
+    const otherSnapshot = await prepareLocal(services, other.updateId)
+    const posted = await current.post()
+    assert.equal(posted.status, 'posted')
+    assert.equal(posts.length, 2)
+    assert.notEqual(posts[1].requestId, posts[0].requestId)
+    assert.notEqual(posts[1].uploadId, posts[0].uploadId)
+    assert.notEqual(posts[1].payloadDigest, posts[0].payloadDigest)
+    const objectIds = [snapshot.header.objectId, rejected.recheck.objectId, unused.uploadId, ...posts.map(row => row.uploadId)]
+    const [[remaining]] = await lab.owner.execute(`SELECT
+      (SELECT COUNT(*) FROM catledger_import_review_objects WHERE uid=? AND update_id=?) AS objects,
+      (SELECT COUNT(*) FROM catledger_import_review_chunks WHERE uid=? AND object_id IN (${objectIds.map(() => '?').join(',')})) AS chunks`,
+    [user.uid, prepared.updateId, user.uid, ...objectIds])
+    assert.equal(Number(remaining.objects), 0)
+    assert.equal(Number(remaining.chunks), 0)
+    assert.deepEqual(await call(services.import, 'financeUpdates.post', posts[0]), rejectedReceipt)
+    assert.deepEqual(await call(services.import, 'financeUpdates.post', posts[1]), posted)
+    assert.deepEqual(await call(services.import, 'imports.commandResult', { requestId: posts[1].requestId, commandAction: 'financeUpdates.post' }), posted)
+    await assert.rejects(download(services, snapshot.header.objectId), { publicCode: 'SNAPSHOT_INCOMPLETE' })
+    assert.equal((await download(services, otherSnapshot.snapshot.header.objectId)).facts.events.length, 1)
     const [[after]] = await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=?', [user.uid])
     assert.equal(Number(after.count), 3)
   } finally { await lab.close() }

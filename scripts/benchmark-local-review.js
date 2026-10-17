@@ -85,7 +85,7 @@ async function client(options) {
 async function main() {
   const pairing=process.argv[2]==='--pairs',pairCount=pairing?Number(process.argv[3]):0
   const rows=pairing?pairCount*2:Number(process.argv[2]||24990)
-  if (pairing?![100,1000].includes(pairCount):![1000,5000,24990].includes(rows)) throw Error('invalid benchmark size')
+  if (pairing?![100,1000].includes(pairCount):![1000,3000,5000,24990].includes(rows)) throw Error('invalid benchmark size')
   emit({stage:'environment',node:process.version,platform:process.platform,arch:process.arch,heapLimitMb:heapMb})
   const { isolatedMysql } = require('./isolated-mysql'), { localServices, syntheticBill, call } = require('../test/helpers/local-services')
   const lab = await isolatedMysql(), root = fs.mkdtempSync(path.join(os.tmpdir(),'catledger-capacity-'))
@@ -153,8 +153,12 @@ async function main() {
     if(Number(ledger.count)!==expected||String(ledger.amount)!==String(amount))throw Error('ledger mismatch')
     const replay=await net('financeUpdates.post',request)
     require('node:assert/strict').deepEqual(replay,receipt)
+    const [[remaining]]=await lab.owner.execute(`SELECT
+      (SELECT COUNT(*) FROM catledger_import_review_objects WHERE uid=?) AS objects,
+      (SELECT COUNT(*) FROM catledger_import_review_chunks WHERE uid=?) AS chunks`,[uid,uid])
+    if(Number(remaining.objects)||Number(remaining.chunks))throw Error('temporary review objects retained after posting')
     if(maxRequestBytes>65536||maxResponseBytes>262144)throw Error('wire budget exceeded')
-    emit({stage:'verified',rows,pairCount,transactions:Number(ledger.count),maxRequestBytes,maxResponseBytes,finalRequestBytes:bytes(request),decisionChunks:packed.chunkCount,serverMaxRssKiB:process.resourceUsage().maxRSS})
+    emit({stage:'verified',rows,pairCount,transactions:Number(ledger.count),temporaryObjects:Number(remaining.objects),temporaryChunks:Number(remaining.chunks),maxRequestBytes,maxResponseBytes,finalRequestBytes:bytes(request),decisionChunks:packed.chunkCount,serverMaxRssKiB:process.resourceUsage().maxRSS})
   } finally { await lab.close(); fs.rmSync(root,{recursive:true,force:true}) }
 }
 if(process.argv[2]==='--download-client')downloadClient(JSON.parse(process.argv[3]),JSON.parse(process.argv[4])).catch(error=>{console.error(error);process.exitCode=1;process.disconnect()})

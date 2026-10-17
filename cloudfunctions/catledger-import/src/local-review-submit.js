@@ -212,7 +212,13 @@ async function post(context, postInTransaction) {
       await reconciliation.recalculateUpdateCounts(connection, uid, input.updateId, input.version, actionId, input.version, batch.duplicateEvidenceDelta)
       await connection.query('SAVEPOINT local_post')
       postingStarted = true
-      return await postInTransaction(connection, uid, { updateId: input.updateId, version: input.version }, digest)
+      const result = await postInTransaction(connection, uid, { updateId: input.updateId, version: input.version }, digest)
+      // Transport copies include raw evidence. Remove every generation/upload
+      // in the same commit as the ledger and receipt; chunks cascade with them.
+      // Receipt replay is checked before loading objects, so recovery needs no
+      // retained snapshot. A delete or receipt failure rolls everything back.
+      await connection.execute('DELETE FROM catledger_import_review_objects WHERE uid=? AND update_id=?', [uid, input.updateId])
+      return result
     } catch (error) {
       batchState.end(connection)
       // Unexpected DB/process failures roll back the outer transaction, leaving
