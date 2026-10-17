@@ -130,6 +130,7 @@
         <button wx:for="{{sheet.refundChoices}}" wx:key="id" class="relation-row" data-id="{{item.id}}" bindtap="selectEditorRefund" disabled="{{disabled || sheet.refundLoading}}"><view><text>{{item.note || '原消费'}}</text><text class="sheet-copy">{{item.localAt}} · 可退 {{item.amountText}}</text></view><text>{{draft.refund.id === item.id ? '已选' : '选择'}}</text></button>
         <button wx:if="{{sheet.refundMore}}" class="review-text-action" data-kind="{{sheet.refundKind}}" data-more="true" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">下一页候选</button>
         <text wx:if="{{sheet.refundTotal === 0 && !sheet.refundLoading}}" class="sheet-copy">本范围没有可关联记录；本批和历史都核验后才可暂记。</text>
+        <text wx:if="{{sheet.refundHistoryPending}}" class="sheet-copy">当前草稿未覆盖全部历史候选，将在整批入账时复核；暂记待关联不会自动确认账本中没有原消费。</text>
         <button wx:if="{{sheet.refundCanPending}}" class="review-text-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled}}">暂记待关联退款</button>
         <button class="review-text-action" data-mode="unlinked" bindtap="selectEditorRefund" disabled="{{disabled}}">清除本笔关联，保留待核对</button>
       </block>

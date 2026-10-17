@@ -2,6 +2,8 @@ const { assertBudget } = require('./performance-contract')
 const { importError } = require('./errors')
 
 async function commandResult(connection, uid, updateId) {
+  const batch = require('./local-review-batch').get(connection)
+  if (batch) return { update: batch.update, posting: null }
   const repository = require('./finance-update-repository')
   const update = repository.publicUpdate(await repository.selectUpdate(connection, uid, updateId))
   const [[posting]] = await connection.execute(`SELECT created_transaction_count AS createdTransactionCount,
@@ -17,6 +19,8 @@ function operationReceipt(result, action, receiptId) {
   return assertBudget({ protocolVersion: 2, kind: 'operation-receipt', receiptId, action,
     updateId: update.updateId, appliedVersion: update.version, status: update.status,
     counts: update.counts, update, posting: result.posting || null,
+    ...(result.snapshot ? { snapshot: result.snapshot } : {}),
+    ...(result.outcome ? { outcome: result.outcome, recheck: result.recheck } : {}),
     ...(result.pairing ? { pairing: result.pairing } : {}),
     ...(result.event ? { event: { eventId: result.event.eventId, version: result.event.version, status: result.event.status } } : {}),
     invalidates: ['summary', 'events', 'issues', 'members', 'options', 'evidence'].concat(result.pairing ? ['pairings'] : []) }, 'receipt')

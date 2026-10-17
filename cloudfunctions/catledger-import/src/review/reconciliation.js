@@ -26,6 +26,7 @@ function isEventInProjectionRefreshScope(row, scope) {
 }
 
 async function refreshProjectedEvents(connection, uid, updateId, actionId, scope = null) {
+  if (require('../local-review-batch').defer(connection, actionId)) return []
   const [rows] = await connection.execute(
     `SELECT event_id AS eventId, field_sources_json AS fieldSources
        FROM catledger_economic_events
@@ -40,6 +41,7 @@ async function refreshProjectedEvents(connection, uid, updateId, actionId, scope
     : null
   const eventIds = rows
     .filter((row) => isEventInProjectionRefreshScope(row, normalizedScope))
+    .filter((row) => Boolean(parseJson(row.fieldSources, {}).fundsProjection))
     .map((row) => row.eventId)
   const events = await selectDomainEvents(connection, uid, updateId, eventIds, { forUpdate: true })
   const projected = events.filter((event) => event.fieldSources && event.fieldSources.fundsProjection)
@@ -112,6 +114,7 @@ async function synchronizeHistoricalReviews(connection, uid, updateId) {
 }
 
 async function recalculateUpdateCounts(connection, uid, updateId, nextVersion, actionId, expectedVersion, duplicateEvidenceDelta = 0) {
+  if (require('../local-review-batch').defer(connection, actionId, duplicateEvidenceDelta)) return
   await synchronizeHistoricalReviews(connection, uid, updateId)
   await synchronizeDraftReachability(connection, uid, updateId)
   const [[counts]] = await connection.execute(

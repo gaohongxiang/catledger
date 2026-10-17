@@ -9,6 +9,8 @@ const {
 const { DRAFT_TABLES } = require('../src/discarded-update')
 const BASE_GRANTS = [
   ...DRAFT_TABLES.map(table => 'GRANT DELETE ON `catledger`.`'+table+'` TO `catledger_app`@`%`'),
+  'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_import_review_objects` TO `catledger_app`@`%`',
+  'GRANT SELECT, INSERT ON `catledger`.`catledger_import_review_chunks` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, UPDATE (`row_id`) ON `catledger`.`catledger_import_rows` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_finance_update_sources` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_bank_channel_decisions` TO `catledger_app`@`%`',

@@ -39,7 +39,8 @@ async function stageAccountDraft(connection, uid, updateId, value, actionId) {
     }
     return existing[0].draftAccountId
   }
-  const draftAccountId = randomUUID()
+  const batch = require('./local-review-batch').get(connection)
+  const draftAccountId = batch ? require('./local-review-identity').accountId(batch.snapshotId, accountName.name, type) : randomUUID()
   await connection.execute(
     `INSERT INTO catledger_finance_update_account_drafts
        (uid, draft_account_id, update_id, name, normalized_name, type,

@@ -1,6 +1,6 @@
 const { paymentAccountDetails, paymentComponents } = require('./payment-account')
 const { ledgerAccountReference } = require('./account-reference')
-const { profileForRow } = require('./profiles')
+const { profileForRow } = require('./profiles/index')
 
 const { RESOLUTION_STATUS, MONEY_EFFECT, SOURCE_ACTION } = require('./semantic-types')
 const { mergeRuleOutputs } = require('./rule-evaluator')

@@ -1,4 +1,4 @@
-const { createHash } = require('node:crypto')
+const { sha256 } = require('../portable-digest')
 const clean = value => String(value == null ? '' : value).normalize('NFKC').trim()
 
 // 银行账单的固定本金摘要；不把泛称“现分”、金额或相邻利息行当作归属证据。
@@ -35,7 +35,7 @@ function installmentEvidence(row) {
   const named = text.match(/(?:分期(?:计划)?(?:编号|号)|计划编号|合同(?:编号|号))\s*[:：#]?\s*([\p{L}\p{N}_-]{2,80})/u)
   const reference = clean(explicit.reference) || named && named[1] || ''
   return { schema: 2, creditStatement: true, factKind:'billing', originKind:principal ? principal.originKind : /现金分期|现金借款|取现分期/.test(text)?'cash_borrowing':'unconfirmed', periodNumber, totalTerms, component: components[0],
-    referenceKey: reference ? createHash('sha256').update('bank-installment-v1:' + reference).digest('hex') : null,
+    referenceKey: reference ? sha256('bank-installment-v1:' + reference) : null,
     referenceLabel: reference.slice(0, 120) || null }
 }
 

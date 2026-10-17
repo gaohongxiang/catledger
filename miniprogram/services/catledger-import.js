@@ -8,6 +8,11 @@ const client = cloudFunctionClient.createCloudFunctionClient({
 })
 
 function callImport(action, data) {
+  const local = require('./import-local-router').route(action, data)
+  if (local) return Promise.resolve(local.value)
+  return callNetwork(action, data)
+}
+function callNetwork(action, data) {
   const tags = mutationTags(action)
   return tags.length ? cache.mutate(tags, () => client.call(action, data)) : cache.guard(() => client.call(action, data))
 }
@@ -17,5 +22,6 @@ module.exports = {
   readPage: function (action, data) { return callImport(action, Object.assign({}, data, { protocolVersion: 2 })) },
   command: function (action, data) { return callImport(action, data) },
   callImport: callImport,
+  callNetwork,
   createRequestId: cloudFunctionClient.createRequestId
 }

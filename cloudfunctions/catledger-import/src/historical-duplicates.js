@@ -1,10 +1,8 @@
 const { randomUUID } = require('node:crypto')
-const { digestParts } = require('./digest')
+const { REASON, VERSION, groupKey } = require('./historical-match-policy')
 const { importError } = require('./errors')
 const { chunks, insertMany } = require('./sql-batch')
 
-const REASON = 'historical_duplicate_candidate'
-const VERSION = 'historical-review-v1'
 const MAX_MATCHES = 10000
 
 async function staleHistoricalLinks(connection, uid, updateId) {
@@ -60,9 +58,7 @@ async function historicalGroups(connection, uid, updateId) {
     if (!groups.has(row.eventId)) groups.set(row.eventId, { ...row, candidates: [] })
     groups.get(row.eventId).candidates.push({ transactionId: row.transactionId, version: Number(row.transactionVersion) })
   }
-  return [...groups.values()].map(group => ({ ...group, key: digestParts(VERSION, group.eventId,
-    group.accountId, group.otherAccountId || '', group.flowDirection, String(group.amountMinor), group.utcAt,
-    ...group.candidates.map(row => `${row.transactionId}:${row.version}`)) }))
+  return [...groups.values()].map(group => ({ ...group, key: groupKey(group) }))
 }
 
 async function historicalIssues(connection, uid, updateId) {

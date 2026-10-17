@@ -1,4 +1,4 @@
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 
 const VERSION = 'excluded-event-groups-v2'
 const UNKNOWN_ACCOUNTS = new Set(['未提供', '未填写', '未注明', '未标明', '未知', '不详', '无', '暂无', '该账户',

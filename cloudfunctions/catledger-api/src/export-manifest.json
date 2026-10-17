@@ -64,11 +64,51 @@
       "error_code",
       "created_at",
       "updated_at",
-      "side_effects_json"
+      "side_effects_json",
+      "review_mode"
     ],
     "json": [
       "side_effects_json"
     ]
+  },
+  {
+    "name": "catledger_import_review_objects",
+    "keys": [
+      "object_id"
+    ],
+    "columns": [
+      "object_id",
+      "update_id",
+      "snapshot_id",
+      "object_kind",
+      "base_version",
+      "rule_version",
+      "protocol_version",
+      "state",
+      "chunk_count",
+      "byte_count",
+      "content_digest",
+      "metadata_json",
+      "created_at"
+    ],
+    "json": [
+      "metadata_json"
+    ]
+  },
+  {
+    "name": "catledger_import_review_chunks",
+    "keys": [
+      "object_id",
+      "part_index"
+    ],
+    "columns": [
+      "object_id",
+      "part_index",
+      "byte_count",
+      "content_digest",
+      "content_text"
+    ],
+    "json": []
   },
   {
     "name": "catledger_import_account_mappings",

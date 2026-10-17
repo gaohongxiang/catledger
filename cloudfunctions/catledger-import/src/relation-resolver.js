@@ -1,4 +1,4 @@
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 const { RELATION_KEY_VERSION } = require('./domain-versions')
 const { EVENT_STATUS, RELATION_TYPE, RELATION_STATUS, evaluatePostability } = require('./organizer-model')
 const { ECONOMIC_NATURE, unique } = require('./organizer-values')

@@ -1,5 +1,5 @@
 // 费用键属于原合同收费项，金额、请求号和方案版本都不能改变其身份。
-const { createHash } = require('node:crypto')
+const { sha256 } = require('./portable-digest')
 const fail = code => { throw Object.assign(new Error(code), { publicCode: code }) }
 const parse = value => typeof value === 'string' ? JSON.parse(value) : value
 const today = (now = Date.now()) => new Date(now + 8 * 3600000).toISOString().slice(0, 10)
@@ -21,7 +21,7 @@ function reference(label) {
   if (typeof label !== 'string' || label.trim().length > 80) fail('VALIDATION_ERROR')
   const text = label.normalize('NFKC').trim()
   if (!text) fail('VALIDATION_ERROR')
-  return createHash('sha256').update('bank-installment-v1:' + text).digest('hex')
+  return sha256('bank-installment-v1:' + text)
 }
 function authorization(data) {
   if (!['auto','once','paused'].includes(data.mode) || !['continue','catch_up'].includes(data.historyChoice) ||

@@ -1,5 +1,5 @@
 const { paymentEvidenceFields } = require('./payment-resolution')
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 const { EVENT_KEY_VERSION } = require('./domain-versions')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { semanticBlockers } = require('./semantic-policy')

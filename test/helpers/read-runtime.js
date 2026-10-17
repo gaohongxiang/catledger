@@ -64,11 +64,16 @@ function runtime(savedStorage, options = {}) {
   }
   function load(filename) {
     if (filename.endsWith('/services/read-cache.js')) return cache
+    // These fixtures exercise legacy request recovery. Full snapshot/file
+    // recovery uses the real manager in import-local-migration/page tests.
+    if (filename.endsWith('/services/import-local-manager.js')) return options.localReview || {
+      restore: () => null, settleLegacy: async view => ({ view }), prepare: async view => view
+    }
     if (filename.includes('/theme/')) return { install() {}, bindPage() {}, bindTabBar() {}, currentPresentation: () => ({}), currentTokens: () => ({ accent: '#000' }) }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-      module, exports: module.exports, getApp: () => app, wx, console,
+      module, exports: module.exports, getApp: () => app, getCurrentPages: () => h.currentPages || [], wx, console,
       setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, Date: options.Date || Date,
       App: definition => { module.exports = definition }, Page: definition => { module.exports = definition }, Component: definition => { module.exports = definition },
       require: name => load(path.resolve(path.dirname(filename), name + (path.extname(name) ? '' : '.js')))

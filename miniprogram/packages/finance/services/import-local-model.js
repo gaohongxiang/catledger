@@ -1,0 +1,574 @@
+const rules = require('../domain/import-review/organizer-model')
+const editor = require('../domain/import-review/review/editor-policy')
+const policy = require('../domain/import-review/review/policy')
+const identity = require('../domain/import-review/local-review-identity')
+const matching = require('../domain/import-review/bank-channel-matching')
+const accountPolicy = require('../domain/import-review/review/account-mapping-policy')
+const { createMappingIndex } = require('../domain/import-review/source-funds')
+const { paymentReferenceKey } = require('../domain/import-review/payment-account')
+const { publicEvent } = require('../domain/import-review/review-presentation')
+const historyPolicy = require('../domain/import-review/historical-match-policy')
+const clone = value => JSON.parse(JSON.stringify(value))
+const fail = message => { throw Object.assign(new Error(message || '这项选择需重新核对'), { code: 'LOCAL_RECHECK_REQUIRED' }) }
+const active = event => event && ['ready','needs_action'].includes(event.status)
+const distinct = value => [...new Set(value)]
+const sourceOf = event => event.fieldSources || {}
+const KINDS = ['accounts','events','pairings','reviews','duplicates']
+const editableIssues = new Set(['shared_fields','transfer_accounts','category_assignment','refund_relation'])
+
+function create(facts) {
+  const base = new Map(facts.events.map(event => [event.eventId, event]))
+  const events = new Map(base), rows = new Map(facts.rows.map(row => [row.rowId, row]))
+  const evidence = new Map(facts.evidence.map(row => [row.evidenceId, { ...row }]))
+  const byEvent = new Map(), baseEvidence = new Map(), issueEvents = new Map(), relations = new Map(facts.relations.map(row => [row.relationId, { ...row }]))
+  const issues = new Map(facts.issues.map(row => [row.issueId, clone(row)])), members = new Map()
+  const accounts = new Map(facts.accounts.concat(facts.accountDrafts).map(row => [row.accountId, { ...row }]))
+  const drafts = new Map(facts.accountDrafts.map(row => [row.accountId, row]))
+  const categories = new Map(facts.categories.map(row => [row.categoryId, row]))
+  const choices = Object.fromEntries(KINDS.map(kind => [kind, new Map()]))
+  const links = facts.links.map(row => ({ ...row })), needsCheck = new Set(), invalid = new Map()
+  let revision = 0, supplemental = null, summaryCache = null
+  let coverageByEvent = new Map(facts.historyCoverage.duplicates.map(row => [row.eventId, row]))
+  const historyIndex = new Map(), historySignatures = new Map()
+  let historyDiscarded=[]
+  function indexHistory(){
+    historyIndex.clear()
+    for(const row of (supplemental||facts).history)for(const key of ['outflow:'+row.sourceAccountId,'inflow:'+row.destinationAccountId,'neutral:'+row.sourceAccountId+':'+row.destinationAccountId]){
+      const id=key+':'+row.amountMinor;if(!historyIndex.has(id))historyIndex.set(id,[]);historyIndex.get(id).push(row)
+    }
+  }
+  indexHistory()
+  const dirtyEvents = new Set(), dirtyIssues = new Set(), dirtyRows = new Set()
+  const subjectPositions = new WeakMap()
+  function removeSubject(issue, id) {
+    const ids = issue.subjectEventIds
+    let positions = subjectPositions.get(ids)
+    if (!positions) { positions = new Map(ids.map((value, index) => [value, index])); subjectPositions.set(ids, positions) }
+    const index = positions.get(id)
+    if (index == null) return
+    const last = ids.pop(); positions.delete(id)
+    if (index < ids.length) { ids[index] = last; positions.set(last, index) }
+    dirtyIssues.add(issue.issueId)
+  }
+  const relationIds = new Map(), relationNodes = new Map()
+  function indexRelation(relation) {
+    for(const id of relationNodes.get(relation.relationId)||[])relationIds.get(id)?.delete(relation.relationId)
+    const ids=[relation.sourceEventId,relation.targetEventId]
+    relationNodes.set(relation.relationId,ids)
+    for(const id of ids){if(!relationIds.has(id))relationIds.set(id,new Set());relationIds.get(id).add(relation.relationId)}
+  }
+  for(const relation of relations.values())indexRelation(relation)
+  const related = id => [...(relationIds.get(id)||[])].map(key=>relations.get(key))
+  // Candidate buckets keep a field edit from scanning the entire import. Account
+  // decisions intentionally touch the exact group's members, even across pages.
+  const buckets = new Map(), eventBuckets = new Map(), bucketBanks = new Map(), eventBank = new Map()
+  const pairs = new Map(), eventPairs = new Map(), suggestedPairs = new Set(), pairSignatures = new Map()
+  function rowIds(id) { return (byEvent.get(id) || []).filter(row => row.evidenceRole !== 'discarded').map(row => row.rowId) }
+  for (const row of evidence.values()) {
+    if (!byEvent.has(row.eventId)) byEvent.set(row.eventId, [])
+    byEvent.get(row.eventId).push(row)
+    if (!baseEvidence.has(row.eventId)) baseEvidence.set(row.eventId, [])
+    baseEvidence.get(row.eventId).push({ ...row })
+  }
+  for (const row of facts.members) {
+    if (!members.has(row.issueId)) members.set(row.issueId, [])
+    members.get(row.issueId).push({ ...row })
+    if (row.objectType === 'event' && row.memberRole !== 'candidate') {
+      if (!issueEvents.has(row.objectId)) issueEvents.set(row.objectId, new Set())
+      issueEvents.get(row.objectId).add(row.issueId)
+    }
+  }
+  function hydrate(event) {
+    return { ...event, sourceType: rows.get(rowIds(event.eventId)[0])?.sourceType,
+      relationEvidence: { rows: rowIds(event.eventId).map(id => {
+        const link = (byEvent.get(event.eventId) || []).find(row => row.rowId === id)
+        return { ...rows.get(id), identityKind: link.identityKind }
+      }) }, ledgerAccountFacts: accounts.get(event.ledgerAccountId), counterpartyAccountFacts: accounts.get(event.counterpartyLedgerAccountId) }
+  }
+  function bucket(event) {
+    if (!active(event)) return null
+    // The repayment pair's debit includes a fee: amount is deliberately not a
+    // bucket discriminator. The authoritative matcher still verifies all facts.
+    return event.economicNature === 'repayment' ? 'repayment:' + String(event.localAt || '').slice(0,10)
+      : [event.ledgerAccountId || '', event.amountMinor, event.currency, String(event.localAt || '').slice(0,16)].join(':')
+  }
+  function indexEvent(event) {
+    const old = eventBuckets.get(event.eventId), key = bucket(event)
+    if (old) { buckets.get(old)?.delete(event.eventId); if (eventBank.get(event.eventId)) bucketBanks.set(old,(bucketBanks.get(old)||0)-1) }
+    eventBuckets.delete(event.eventId)
+    const bank = rows.get(rowIds(event.eventId)[0])?.sourceType === 'bank'; eventBank.set(event.eventId,bank)
+    if (key) { if (!buckets.has(key)) buckets.set(key, new Set()); buckets.get(key).add(event.eventId); eventBuckets.set(event.eventId, key); if(bank)bucketBanks.set(key,(bucketBanks.get(key)||0)+1) }
+    return old
+  }
+  function pairSignature(event) {
+    if (!event) return ''
+    return JSON.stringify([active(event),event.ledgerAccountId,event.counterpartyLedgerAccountId,event.amountMinor,event.currency,event.utcAt,
+      event.economicNature,event.flowDirection,event.manualFieldMask&128?event.categoryId:null,
+      event.reasonCodes.filter(code=>!['blocking_issue_open','same_event_candidate','relation_ambiguous',matching.REASON].includes(code)).sort(),
+      event.fieldSources.bankChannelDistinctPairs,event.fieldSources.repaymentOwnership,event.fieldSources.editorOverrides?.composition,
+      Boolean(event.fieldSources.loanRepayment||event.fieldSources.paymentResolution||event.fieldSources.installment||event.fieldSources.mergeOrigins)])
+  }
+  function eventIssues(id) { return [...(issueEvents.get(id) || [])].map(key => issues.get(key)).filter(Boolean) }
+  function addIssue(event, type, reason, key, group = [event.eventId]) {
+    const issueId = key || identity.stableId('issue', facts.snapshotId, type, reason, ...group)
+    let issue = issues.get(issueId)
+    if (!issue) {
+      issue = { issueId, issueType: type, primaryReasonCode: reason, reasonCodes: [reason], status: 'open', blocking: type !== 'category_assignment',
+        version: 1, memberCount: group.length, candidateCount: 0, subjectEventIds: group, localDerived: true }
+      issues.set(issueId, issue)
+      members.set(issueId, group.map((id, index) => ({ memberId: identity.stableId(issueId, id), issueId,
+        objectType: 'event', objectId: id, objectVersion: events.get(id)?.version || 1, memberRole: 'subject', sortOrder: index })))
+      for (const id of group) { if (!issueEvents.has(id)) issueEvents.set(id, new Set()); issueEvents.get(id).add(issueId) }
+    } else { issue.status = 'open'; issue.blocking = type !== 'category_assignment'; issue.version++ }
+    dirtyIssues.add(issueId)
+    return issue
+  }
+  function sourceIds(ids) { return distinct(ids.flatMap(rowIds)).sort() }
+  function scope(issue, ids = issue.subjectEventIds) {
+    return { key: issue.issueId, issueId: issue.issueId, issueType: issue.issueType, reasonCode: issue.primaryReasonCode,
+      eventIds: [...ids], sourceIds: sourceIds(ids) }
+  }
+  function dependencies(ids) {
+    const result = new Set(ids)
+    for (const id of ids) for (const relation of related(id)) {
+      result.add(relation.sourceEventId); result.add(relation.targetEventId)
+    }
+    for (const key of ids) for (const pairKey of eventPairs.get(key) || []) {
+      const pair = pairs.get(pairKey); if (pair) { result.add(pair.bank.eventId); result.add(pair.platform.eventId) }
+    }
+    return result
+  }
+  function context(id) {
+    return { relations: related(id),
+      transactionLinks: links.filter(row => row.eventId === id) }
+  }
+  function covered(event) {
+    const old = coverageByEvent.get(event.eventId)
+    return old && ['amountMinor','utcAt','ledgerAccountId','counterpartyLedgerAccountId','flowDirection'].every(key => old[key] === event[key])
+  }
+  function refreshHistory(event) {
+    const signature=JSON.stringify([active(event),event.ledgerAccountId,event.counterpartyLedgerAccountId,event.flowDirection,event.amountMinor,event.utcAt])
+    if(historySignatures.get(event.eventId)===signature)return
+    historySignatures.set(event.eventId,signature)
+    // The original covered candidate set already includes server-only identity
+    // and fee exclusions. Field changes use only the downloaded references.
+    if(covered(event))return
+    const prior=eventIssues(event.eventId).filter(issue=>issue.primaryReasonCode===historyPolicy.REASON)
+    for(const issue of prior){issue.status='superseded';issue.blocking=false;dirtyIssues.add(issue.issueId)}
+    for(const [key,choice]of choices.reviews)if(choice.reasonCode===historyPolicy.REASON&&choice.eventIds.includes(event.eventId)){
+      choices.reviews.delete(key);historyDiscarded.push({kind:'reviews',key,value:null})
+    }
+    const key=event.flowDirection+':'+event.ledgerAccountId+(event.flowDirection==='neutral'?':'+event.counterpartyLedgerAccountId:'')+':'+event.amountMinor
+    const linked=new Set(rowIds(event.eventId).map(id=>rows.get(id)?.existingTransactionId).filter(Boolean))
+    const installment = event.fieldSources.installment, catalog = supplemental || facts
+    if (installment) for (const contract of catalog.contracts.filter(row => row.accountId === event.ledgerAccountId && row.referenceKey === installment.referenceKey)) {
+      for (const charge of catalog.charges) if (charge.contractId === contract.contractId && charge.chargeKey === `period:${installment.periodNumber}:${installment.component}` && charge.transactionId) linked.add(charge.transactionId)
+    }
+    const candidates=(historyIndex.get(key)||[]).filter(row=>!linked.has(row.transactionId)&&historyPolicy.matches(event,row)).map(row=>({transactionId:row.transactionId,version:Number(row.version)})).sort((a,b)=>a.transactionId.localeCompare(b.transactionId))
+    if(!candidates.length)return
+    const group={eventId:event.eventId,accountId:event.ledgerAccountId,otherAccountId:event.counterpartyLedgerAccountId,flowDirection:event.flowDirection,amountMinor:event.amountMinor,utcAt:event.utcAt,candidates}
+    const issue=addIssue(event,'same_event',historyPolicy.REASON,identity.stableId('history',historyPolicy.groupKey(group)))
+    issue.localDerived=false;issue.candidateCount=candidates.length
+    members.set(issue.issueId,[{memberId:identity.stableId(issue.issueId,event.eventId),objectType:'event',objectId:event.eventId,objectVersion:event.version,memberRole:'subject'},
+      ...candidates.map(row=>({memberId:identity.stableId(issue.issueId,row.transactionId),objectType:'transaction',objectId:row.transactionId,objectVersion:row.version,memberRole:'candidate'}))])
+  }
+  function derive(id) {
+    let event = events.get(id); if (!event) {
+      const old=eventBuckets.get(id);if(old){buckets.get(old)?.delete(id);if(eventBank.get(id))bucketBanks.set(old,(bucketBanks.get(old)||0)-1);eventBuckets.delete(id)}
+      return
+    }
+    event = { ...event, fieldSources: { ...event.fieldSources }, reasonCodes: [...event.reasonCodes] }
+    refreshHistory(event)
+    const relevant = eventIssues(id)
+    const open = relevant.filter(issue => issue.status === 'open' && issue.blocking &&
+      !editableIssues.has(issue.issueType) && !issue.localDerived && issue.issueType !== 'account_mapping')
+    event.reasonCodes = event.reasonCodes.filter(reason => reason !== 'blocking_issue_open')
+    if (active(event)) {
+      const evaluated = rules.evaluatePostability(event, { ...context(id), openBlockingIssues: open.length })
+      Object.assign(event, evaluated)
+    }
+    for (const issue of relevant) if (issue.localDerived && issue.primaryReasonCode !== matching.REASON) {
+      issue.status = 'superseded'; issue.blocking = false
+    }
+    if (active(event) && (event.status === 'needs_action' || rules.needsCategory(event))) {
+      const classification = rules.classifyReviewIssue(event)
+      const existing = relevant.find(issue => issue.status === 'open' && issue.primaryReasonCode === classification.primaryReason)
+      if (!existing) addIssue(event, classification.issueType, classification.primaryReason)
+    }
+    const refundCoverage = event.economicNature === 'refund' && (supplemental || facts).historyCoverage.refunds.find(row => row.eventId === id)
+    const refundUncovered = event.economicNature === 'refund' && (!refundCoverage?.complete || ['amountMinor','utcAt','ledgerAccountId'].some(key => refundCoverage[key] !== event[key]))
+    if (active(event) && (!covered(event) || refundUncovered)) needsCheck.add(id); else needsCheck.delete(id)
+    events.set(id, event); indexEvent(event)
+  }
+  function rebuildPairs(ids, oldKeys = []) {
+    const keys = new Set([...oldKeys, ...ids.map(id => eventBuckets.get(id)).filter(Boolean)])
+    const affected = new Set(ids)
+    for (const key of keys) if (bucketBanks.get(key)) for(const id of buckets.get(key)||[])affected.add(id)
+    for (const id of affected) for (const key of eventPairs.get(id) || []) {
+      const pair = pairs.get(key)
+      if (pair) { affected.add(pair.bank.eventId); affected.add(pair.platform.eventId); pairs.delete(key);suggestedPairs.delete(key) }
+    }
+    for (const id of affected) eventPairs.set(id, new Set())
+    for (const key of keys) {
+      if (!bucketBanks.get(key)) continue
+      const available = [...(buckets.get(key) || [])].map(id => events.get(id)).filter(Boolean).map(hydrate)
+      for (const pair of matching.bankChannelEdges(available)) {
+        if (pairs.size >= 10000 && !pairs.has(pair.pairKey)) throw Object.assign(new Error('同笔候选超过当前容量，请缩小来源后重新准备'), { code: 'LOCAL_REVIEW_CAPACITY' })
+        pairs.set(pair.pairKey, pair)
+        for (const event of [pair.bank,pair.platform]) {
+          affected.add(event.eventId)
+          if (!eventPairs.has(event.eventId)) eventPairs.set(event.eventId, new Set())
+          eventPairs.get(event.eventId).add(pair.pairKey)
+        }
+      }
+    }
+    for (const id of affected) {
+      const event = events.get(id); if (!event) continue
+      const pending = (eventPairs.get(id) || new Set()).size
+      const reasonCodes = event.reasonCodes.filter(code => code !== matching.REASON)
+      if (pending) reasonCodes.push(matching.REASON)
+      events.set(id, { ...event, reasonCodes, fieldSources: { ...event.fieldSources, bankChannelCandidate: pending ? { version:matching.VERSION } : undefined } })
+      for (const issue of eventIssues(id)) if (issue.primaryReasonCode === matching.REASON) { issue.status = 'superseded'; issue.blocking = false }
+      if (pending) {
+        const group = distinct([...eventPairs.get(id)].flatMap(key => { const pair = pairs.get(key); return [pair.bank.eventId,pair.platform.eventId] })).sort()
+        addIssue(event, 'same_event', matching.REASON, null, group)
+      }
+      derive(id)
+      pairSignatures.set(id,pairSignature(events.get(id)))
+    }
+    for(const id of affected)for(const key of eventPairs.get(id)||[]){const pair=pairs.get(key);if(eventPairs.get(pair.bank.eventId)?.size===1&&eventPairs.get(pair.platform.eventId)?.size===1)suggestedPairs.add(key);else suggestedPairs.delete(key)}
+    return affected
+  }
+  function validateReferences(event) {
+    const references = require('../domain/import-review/workbench-summary').accountIds(event)
+    for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
+    if (!require('../domain/import-review/editor-fields').accountRolesValid(event, accounts)) fail('账户类型与资金方向不一致')
+    if (event.categoryId) {
+      const category = categories.get(event.categoryId)
+      if (!category || category.archivedAt || category.kind !== editor.kind(event.economicNature)) fail('分类不可用，请重新选择')
+    }
+  }
+  function refundCandidates(event, kind) {
+    const history = (supplemental || facts).refundCandidates || []
+    const candidates = kind === 'event' ? [...events.values()].filter(row => row.eventId !== event.eventId && active(row) &&
+      ['expense','fee'].includes(row.economicNature) && !sourceOf(row).paymentResolution && !sourceOf(row).loanRepayment && !sourceOf(row).installment &&
+      !row.reasonCodes.some(code => ['row_status_unknown','refund_source_conflict'].includes(code)))
+      .map(row => ({ id: row.eventId, version: row.version, kind, localAt: row.localAt, utcAt: row.utcAt, amountMinor: row.amountMinor,
+        currency: row.currency, note: row.fieldSources.editorOverrides?.note || row.primaryEvidence?.item || '', remainingMinor: row.amountMinor }))
+      : history
+    return candidates.filter(row => row.utcAt && event.utcAt && row.utcAt <= event.utcAt && row.currency === event.currency).map(row => {
+      let used = 0n
+      if (kind === 'event') { for (const relation of related(row.id)) if (relation.relationType === 'refund_of' && relation.status === 'confirmed' &&
+        relation.targetEventId === row.id && relation.sourceEventId !== event.eventId && active(events.get(relation.sourceEventId))) used += BigInt(events.get(relation.sourceEventId).amountMinor)
+      } else if (kind === 'transaction') { for (const link of links) if (link.role === 'refund_original' && link.transactionId === row.id && link.eventId !== event.eventId && active(events.get(link.eventId))) used += BigInt(events.get(link.eventId).amountMinor) }
+      return { ...row, remainingMinor: String(BigInt(row.remainingMinor || 0) - used) }
+    }).filter(row => event.amountMinor != null && BigInt(row.remainingMinor) >= BigInt(event.amountMinor))
+  }
+  function applyRefund(current, next, data) {
+    const choice = data.decisions?.refund
+    if (choice || next.economicNature !== 'refund') {
+      for (const relation of related(next.eventId)) if (relation.sourceEventId === next.eventId && relation.relationType === 'refund_of') relation.status = 'rejected'
+      for (let i = links.length - 1; i >= 0; i--) if (links[i].eventId === next.eventId && links[i].role === 'refund_original') links.splice(i, 1)
+      delete next.fieldSources.refundRelation
+    }
+    if (!choice) return
+    if (choice.mode === 'link') {
+      const target = refundCandidates(next, choice.kind).find(row => row.id === choice.id)
+      if (!target || choice.kind === 'transaction' && target.version !== choice.version) fail('原消费或可退额度已变化，请重新选择')
+      if (choice.kind === 'event') {
+        const id = identity.stableId('refund', next.eventId, choice.id)
+        relations.set(id, { relationId: id, relationType: 'refund_of', status: 'confirmed', sourceEventId: next.eventId,
+          targetEventId: choice.id, amountMinor: next.amountMinor, currency: next.currency, version: 1, manual: true })
+        indexRelation(relations.get(id))
+      } else links.push({ eventId: next.eventId, transactionId: choice.id, transactionVersion: choice.version, role: 'refund_original' })
+    } else if (choice.mode === 'pending') {
+      if (refundCandidates(next,'event').length || refundCandidates(next,'transaction').length) fail('仍有可关联的原消费，请先核对')
+      next.fieldSources.refundRelation = { version: rules.REFUND_RELATION_STATE_VERSION, status: 'pending', confirmedBy: 'user' }
+      const coverage = (supplemental || facts).historyCoverage.refunds.find(row => row.eventId === next.eventId)
+      if (!coverage || !coverage.complete || ['amountMinor','utcAt','ledgerAccountId'].some(key => coverage[key] !== next[key])) needsCheck.add(next.eventId)
+    }
+  }
+  function finish(ids) {
+    const affected = dependencies([...ids])
+    const oldKeys = [...affected].map(id => eventBuckets.get(id)).filter(Boolean)
+    for (const id of affected) derive(id)
+    const changed=[...affected].filter(id=>pairSignature(events.get(id))!==pairSignatures.get(id))
+    if(changed.length)for (const id of rebuildPairs(changed, oldKeys)) affected.add(id)
+    const touchedRelations=new Set([...affected].flatMap(id=>[...(relationIds.get(id)||[])]))
+    for (const key of touchedRelations) { const relation=relations.get(key); if (relation.relationType === 'refund_of' && relation.status === 'confirmed' && (affected.has(relation.targetEventId)||affected.has(relation.sourceEventId))) {
+      const refund = events.get(relation.sourceEventId), original = events.get(relation.targetEventId)
+      const used=related(relation.targetEventId).filter(row=>row.relationType==='refund_of'&&row.status==='confirmed'&&row.targetEventId===relation.targetEventId&&active(events.get(row.sourceEventId)))
+        .reduce((total,row)=>total+BigInt(events.get(row.sourceEventId).amountMinor||0),0n)
+      if (active(refund) && (!active(original) || !['expense','fee'].includes(original.economicNature)||!original.utcAt||!refund.utcAt||original.utcAt>refund.utcAt||
+        original.amountMinor==null||refund.amountMinor==null||used>BigInt(original.amountMinor))) {
+        relation.status = 'proposed'; invalid.set(refund.eventId, '原消费已变化，请重新确认退款关系'); derive(refund.eventId)
+      }
+    } }
+    for (const id of affected) {
+      dirtyEvents.add(id)
+      for (const issueId of issueEvents.get(id) || []) dirtyIssues.add(issueId)
+      for (const row of (baseEvidence.get(id) || []).concat(byEvent.get(id) || [])) dirtyRows.add(row.rowId)
+    }
+    revision++; summaryCache = null
+  }
+  function mergeEditor(old, next) {
+    return { ...old, ...next, fields: { ...old?.fields, ...next.fields }, decisions: { ...old?.decisions, ...next.decisions },
+      acknowledgedChanges: distinct([...(old?.acknowledgedChanges || []), ...(next.acknowledgedChanges || [])]) }
+  }
+  function edit(data) {
+    const current = events.get(data.eventId); if (!current) fail()
+    if (data.eventVersion != null && data.eventVersion !== current.version) fail('这笔记录已变化，请重新打开')
+    let next = editor.prepare(current, data)
+    validateReferences(next)
+    applyRefund(current, next, data)
+    if (data.decisions?.repaymentChannel) {
+      const value = next.fieldSources.repaymentChannelResolution
+      next.fieldSources.repaymentChannelResolution = { ...value, repaymentConfirmed: true,
+        feeCategoryId: [...categories.values()].find(row => row.systemKey === 'finance__service' && !row.archivedAt)?.categoryId || null }
+    }
+    next.version = current.version + 1; events.set(current.eventId, next)
+    for (const issue of eventIssues(current.eventId)) if (editableIssues.has(issue.issueType) &&
+      !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode)) {
+      removeSubject(issue, current.eventId)
+      if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false }
+    }
+    const old = choices.events.get(current.eventId)
+    const { requestId, updateId, updateVersion, eventVersion, eventId, ...value } = data
+    const decision = { key: current.eventId, eventId: current.eventId, sourceIds: sourceIds([current.eventId]), editor: mergeEditor(old?.editor, value) }
+    choices.events.set(current.eventId, decision); invalid.delete(current.eventId)
+    if (current.fieldSources.mergeOrigins && ['ledgerAccountId','counterpartyLedgerAccountId','amountMinor','utcAt','economicNature','flowDirection'].some(key => current[key] !== next[key])) {
+      invalid.set(current.eventId, '配对依据已变化，请拆分后重新核对')
+      next.fieldSources = { ...next.fieldSources, bankChannelResolution: undefined, repaymentChannelResolution: undefined }
+    }
+    finish([current.eventId])
+    return [{ kind: 'events', key: decision.key, value: decision },...historyDiscarded.splice(0)]
+  }
+  function mapAccount(input) {
+    if(input.paymentRuleAction || input.fields?.paymentRuleAction) fail('本次导入只能排除当前范围，不能设置永久忽略')
+    const issue = issues.get(input.issueId); if (!issue || issue.issueType !== 'account_mapping') fail()
+    const decision = { ...scope(issue), decision: input.decision, fields: clone(input.fields || {}) }
+    const value = input.fields?.mappingAccountDraft || input.fields?.ledgerAccountDraft
+    let id = input.fields?.mappingAccountId || input.fields?.ledgerAccountId
+    if (value) {
+      id = [...drafts.values()].find(row => row.name.normalize('NFKC').trim() === value.name.normalize('NFKC').trim())?.accountId || identity.accountId(facts.snapshotId, value.name, value.type)
+      const account = { ...value, accountId: id, nature: ['credit','other_liability'].includes(value.type) ? 'liability' : 'asset', isDraft: true }
+      accounts.set(id, account); drafts.set(id, account)
+    }
+    const index = createMappingIndex(facts.paymentMappings || []), affected = []
+    for (const member of members.get(issue.issueId) || []) if (member.objectType === 'event' && member.memberRole !== 'candidate') {
+      const current = events.get(member.objectId); if (!current) continue
+      const ref = accountPolicy.mappingReferenceForMember(current, member.memberRole)
+      if (ref) index.set(paymentReferenceKey(ref), id)
+      const next = input.decision === 'exclude_events' ? { ...current, status: 'excluded', reasonCodes: distinct([...current.reasonCodes,'manual_exclusion','account_mapping_excluded']) }
+        : accountPolicy.applyMappedAccount({ ...current, status: 'needs_action', reasonCodes: policy.resolvedReasons('account_mapping', current.reasonCodes)
+          .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) }, member.memberRole, id, index)
+      if (input.decision !== 'exclude_events') validateReferences(next)
+      next.version = current.version + 1; events.set(current.eventId, next); affected.push(current.eventId)
+      invalid.delete(current.eventId)
+    }
+    issue.status = 'resolved'; issue.blocking = false; issue.version++
+    if (issue.accountContext) issue.accountContext.accountId = id || null
+    choices.accounts.set(decision.key, decision); finish(affected)
+    return [{ kind: 'accounts', key: decision.key, value: decision },...historyDiscarded.splice(0)]
+  }
+  function pair(input) {
+    const candidate = pairs.get(input.pairKey || input.key); if (!candidate) fail('配对条件已变化，请重新核对')
+    const bank = events.get(candidate.bank.eventId), platform = events.get(candidate.platform.eventId)
+    const decision = { key: candidate.pairKey, sourceIds: sourceIds([bank.eventId,platform.eventId]), bankEventId: bank.eventId,
+      platformEventId: platform.eventId, decision: input.decision,
+      memberEditors: Object.fromEntries([bank.eventId,platform.eventId].filter(id => choices.events.has(id)).map(id => [id,clone(choices.events.get(id).editor)])),
+      ...(input.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) }
+    if (input.decision === 'distinct') {
+      for (const current of [bank,platform]) events.set(current.eventId, { ...current, version: current.version + 1,
+        fieldSources: { ...current.fieldSources, bankChannelDistinctPairs: distinct([...(current.fieldSources.bankChannelDistinctPairs || []), candidate.pairKey]) } })
+    } else if (input.decision === 'same') {
+      const hydrated = { ...candidate, bank: hydrate(bank), platform: hydrate(platform) }
+      const primary = candidate.pairKind === 'repayment' ? require('../domain/import-review/review/pair-primary-policy').repaymentPrimary(hydrated, 'local')
+        : require('../domain/import-review/review/pair-primary-policy').ordinaryPrimary([hydrated.bank,hydrated.platform], platform.eventId, 'local')
+      if (decision.repaymentConfirmed && primary.fieldSources.repaymentChannelResolution) {
+        primary.fieldSources.repaymentChannelResolution.repaymentConfirmed = true
+        primary.fieldSources.repaymentChannelResolution.feeCategoryId = [...categories.values()].find(row => row.systemKey === 'finance__service' && !row.archivedAt)?.categoryId || null
+      }
+      primary.version = platform.version + 1
+      primary.reasonCodes = policy.resolvedReasons('same_event', primary.reasonCodes)
+      for (const row of byEvent.get(bank.eventId) || []) { row.eventId = platform.eventId; if (row.evidenceRole !== 'discarded') row.evidenceRole = 'supporting' }
+      byEvent.set(platform.eventId, (byEvent.get(platform.eventId) || []).concat(byEvent.get(bank.eventId) || [])); byEvent.delete(bank.eventId)
+      for (const relation of related(bank.eventId)) {
+        if (relation.sourceEventId === bank.eventId) relation.sourceEventId = platform.eventId
+        if (relation.targetEventId === bank.eventId) relation.targetEventId = platform.eventId
+        if (relation.sourceEventId === relation.targetEventId) relation.status = 'rejected'
+        indexRelation(relation)
+      }
+      events.set(platform.eventId, primary); events.delete(bank.eventId)
+      for (const issue of eventIssues(bank.eventId)) {
+        issue.subjectEventIds = distinct(issue.subjectEventIds.map(id => id === bank.eventId ? platform.eventId : id))
+        if (!issueEvents.has(platform.eventId)) issueEvents.set(platform.eventId, new Set())
+        issueEvents.get(platform.eventId).add(issue.issueId)
+        for (const member of members.get(issue.issueId) || []) if (member.objectId === bank.eventId) member.objectId = platform.eventId
+      }
+      if (choices.events.has(platform.eventId)) choices.events.get(platform.eventId).sourceIds = decision.sourceIds
+    } else fail()
+    choices.pairings.set(decision.key, decision); finish([bank.eventId,platform.eventId])
+    const changes = [{ kind: 'pairings', key: decision.key, value: decision },...historyDiscarded.splice(0)]
+    if (choices.events.has(platform.eventId)) changes.push({ kind: 'events', key: platform.eventId, value: choices.events.get(platform.eventId) })
+    return changes
+  }
+  function review(input) {
+    const issue = issues.get(input.issueId); if (!issue) fail()
+    const ids = input.selection?.mode === 'include' ? input.selection.eventIds : input.selection?.mode === 'all_except'
+      ? issue.subjectEventIds.filter(id => !input.selection.eventIds.includes(id)) : input.eventIds || issue.subjectEventIds
+    if (ids.some(id => !issue.subjectEventIds.includes(id))) fail()
+    if (input.decision === 'apply_fields') {
+      const changes = []
+      for (const id of ids) changes.push(...edit({ eventId: id, editorVersion: 1, fields: input.fields }))
+      return changes
+    }
+    if (['link_refund','mark_refund_pending'].includes(input.decision)) return edit({ eventId: ids[0], editorVersion: 1,
+      decisions: { refund: input.decision === 'link_refund' ? { mode: 'link', kind: 'event', id: input.targetEventId,
+        version: events.get(input.targetEventId)?.version } : { mode: 'pending' } } })
+    const decision = { ...scope(issue, ids), decision: input.decision, input: clone(input) }
+    delete decision.input.requestId; delete decision.input.updateId; delete decision.input.updateVersion; delete decision.input.issueVersion
+    if (issue.primaryReasonCode === 'historical_duplicate_candidate') decision.candidates = (members.get(issue.issueId) || [])
+      .filter(row => row.objectType === 'transaction').map(row => ({ id: row.objectId, version: Number(row.objectVersion) }))
+    if (input.decision === 'exclude_events' || input.decision === 'link_existing_transaction') for (const id of ids) {
+      const current = events.get(id)
+      events.set(id, { ...current, status: 'excluded', version: current.version + 1,
+        reasonCodes: distinct([...current.reasonCodes,input.decision === 'exclude_events' ? 'manual_exclusion' : 'linked_existing_transaction']) })
+    } else if (input.decision === 'confirm_distinct') for (const id of ids) {
+      const event = events.get(id); events.set(id, { ...event, reasonCodes: policy.resolvedReasons(issue.issueType, event.reasonCodes), version: event.version + 1 })
+    } else if (input.decision === 'confirm_same') {
+      const candidate = [...pairs.values()].find(row => ids.includes(row.bank.eventId) && ids.includes(row.platform.eventId))
+      if (candidate) return pair({ pairKey: candidate.pairKey, decision: 'same' })
+      fail('请通过原始来源逐对核对这组记录')
+    } else if (input.decision === 'discard_evidence') {
+      const row = evidence.get(input.evidenceId); if (!row || !ids.includes(row.eventId)) fail()
+      row.evidenceRole = 'discarded'
+    } else fail()
+    issue.status = ids.length === issue.subjectEventIds.length ? 'resolved' : 'open'; issue.blocking = issue.status === 'open'; issue.version++
+    if (issue.status === 'open') issue.subjectEventIds = issue.subjectEventIds.filter(id => !ids.includes(id))
+    const prior = choices.reviews.get(decision.key)
+    if (input.decision === 'exclude_events' && prior?.decision === 'exclude_events') {
+      decision.eventIds = distinct([...prior.eventIds,...decision.eventIds]); decision.sourceIds = distinct([...prior.sourceIds,...decision.sourceIds]).sort()
+    }
+    choices.reviews.set(decision.key, decision); for (const id of ids) invalid.delete(id); finish(ids)
+    return [{ kind: 'reviews', key: decision.key, value: decision }]
+  }
+  function publicRow(id) {
+    const event = events.get(id); if (!event) return null
+    const first = (byEvent.get(id) || []).find(row => row.evidenceRole === 'primary') || (byEvent.get(id) || [])[0]
+    const row = first && rows.get(first.rowId), source = facts.sources.find(source => source.batchId === row?.batchId)
+    const category = categories.get(event.categoryId)
+    const result = publicEvent({ ...event, categoryName: category?.name, parentCategoryName: category?.parentName,
+      primaryRowId: row?.rowId, sourceType: row?.sourceType, fileName: source?.fileName, rowNumber: row?.rowNumber,
+      counterparty: row?.counterparty, item: row?.item, paymentMethod: row?.paymentMethod, sourceStatus: row?.rawStatus,
+      sourceNote: row?.sourceNote, evidenceCount: (byEvent.get(id) || []).length,
+      duplicateEvidenceCount: (byEvent.get(id) || []).filter(row => ['duplicate','supporting'].includes(row.evidenceRole)).length })
+    const attention = require('../domain/import-review/review-attention').reviewAttention(result, eventIssues(id))
+    const reason = invalid.get(id)
+    const conflict = reason && ({ account_unavailable: '账户已停用或不可用，请重新选择',
+      category_unavailable: '分类已停用或不可用，请重新选择',
+      REFUND_AMOUNT_EXCEEDED: '可退金额已变化，请重新核对退款关系',
+      LOAN_SOURCE_MISMATCH: '贷款来源已变化，请重新核对',
+      LOAN_CHARGE_CONFLICT: '贷款费用已变化，请重新选择费用',
+      CONFLICT: '关联对象已变化，请重新核对',
+      LOCAL_RECHECK_REQUIRED: '关联信息已变化，请重新核对',
+      HISTORY_REVIEW_REQUIRED: '发现新的历史候选，请重新核对',
+      VALIDATION_ERROR: '当前决定与最新账本不符，请重新核对' }[reason] ||
+      (/^[a-zA-Z_]+$/.test(reason) ? '账本信息已变化，请重新核对' : reason))
+    if (conflict) attention.reviewAttention.steps.unshift({ key: 'local_recheck', label: conflict })
+    return { ...result, timezoneOffsetMinutes: event.timezoneOffsetMinutes, ...attention,
+      ...(needsCheck.has(id) ? { serverReviewPending: true } : {}), ...(conflict ? { localConflict: conflict } : {}) }
+  }
+  function splitOrigins(eventId) {
+    const event = events.get(eventId); if (!event) fail()
+    if (event.fieldSources.mergeOrigins?.length) return event.fieldSources.mergeOrigins.map(origin => ({ ...origin,
+      event: { ...origin.event, eventId: origin.event.eventId || identity.splitEventId(facts.update.updateId, origin.rowIds), updateId: facts.update.updateId } }))
+    const raw = rowIds(eventId).map(id => rows.get(id))
+    let seq = 0
+    const plan = require('../domain/import-review/organizer-plan-policy').buildOrganizePlan({ updateId: facts.update.updateId, rows: raw,
+      paymentMappings: facts.paymentMappings || [], accounts: [...accounts.values()], idFactory: () => identity.stableId('split-plan',eventId,String(seq++)) })
+    const primary = (byEvent.get(eventId) || []).find(row => row.evidenceRole === 'primary')
+    return plan.events.map(item => ({ rowIds: item.fieldSources.rowIds,
+      event: { ...item, eventId: item.fieldSources.rowIds.includes(primary?.rowId) ? eventId : identity.splitEventId(facts.update.updateId, item.fieldSources.rowIds) } }))
+  }
+  function reviseDuplicate(input) {
+    const event = events.get(input.eventId); if (!event) fail()
+    if (input.decision === 'same') {
+      // Restore just this explicit distinct edge before testing it again.
+      const other = events.get(input.otherEventId); if (!other) fail()
+      for (const current of [event,other]) events.set(current.eventId, { ...current, fieldSources: { ...current.fieldSources,
+        bankChannelDistinctPairs: (current.fieldSources.bankChannelDistinctPairs || []).filter(key => key !== input.pairKey) } })
+      rebuildPairs([event.eventId,other.eventId]); return pair({ pairKey: input.pairKey, decision: 'same', repaymentConfirmed: input.repaymentConfirmed })
+    }
+    const decision = { key: event.eventId, eventId: event.eventId, sourceIds: sourceIds([event.eventId]), decision: input.decision }
+    if (input.decision === 'reopen') {
+      events.set(event.eventId, { ...event, status: 'needs_action', reasonCodes: event.reasonCodes.filter(code => !['linked_existing_transaction','already_posted'].includes(code)) })
+      for (let i=links.length-1;i>=0;i--) if (links[i].eventId === event.eventId && links[i].role === 'historical_primary') links.splice(i,1)
+      for (const [key, choice] of choices.reviews) if (choice.eventIds.includes(event.eventId) && choice.reasonCode === 'historical_duplicate_candidate') choices.reviews.delete(key)
+      choices.duplicates.set(decision.key, decision); finish([event.eventId]); return [{ kind:'duplicates', key:decision.key, value:decision }]
+    }
+    if (input.decision !== 'distinct') fail()
+    const origins = splitOrigins(event.eventId)
+    if (origins.length < 2 || origins.some(origin => origin.event.existingTransactionIds?.length)) fail('同一来源身份不能拆成多笔入账')
+    const changes = [], sources = byEvent.get(event.eventId) || [], ids = []
+    const localPair = [...choices.pairings.values()].find(pair => pair.decision === 'same' && pair.platformEventId === event.eventId)
+    if (localPair) { choices.pairings.delete(localPair.key); changes.push({ kind: 'pairings', key: localPair.key, value: null }) }
+    else { choices.duplicates.set(decision.key, decision); changes.push({ kind: 'duplicates', key: decision.key, value: decision }) }
+    byEvent.delete(event.eventId)
+    for (const origin of origins) {
+      const id = origin.event.eventId, old = origin.event
+      let restored = { ...old, status: 'needs_action', version: (events.get(id)?.version || old.version || 1) + 1,
+        fieldSources: { ...old.fieldSources, mergeOrigins: undefined, bankChannelResolution: undefined, repaymentChannelResolution: undefined, bankChannelCandidate: undefined },
+        reasonCodes: policy.resolvedReasons('same_event', old.reasonCodes || []) }
+      const choice = choices.events.get(id)
+      if (choice) {
+        try { restored = { ...editor.prepare(restored, choice.editor), version: restored.version } }
+        catch (_) { choices.events.delete(id); changes.push({ kind:'events',key:id,value:null }); invalid.set(id,'拆分后原组成或关系已失效，请重新核对') }
+      }
+      events.set(id, restored); if (!base.has(id)) base.set(id, old)
+      const grouped = sources.filter(row => origin.rowIds.includes(row.rowId))
+      grouped.forEach((row,i) => { row.eventId = id; row.evidenceRole = i ? 'supporting' : 'primary' })
+      byEvent.set(id,grouped); ids.push(id)
+      if (choice && choices.events.has(id)) { choice.sourceIds = origin.rowIds; changes.push({kind:'events',key:id,value:choice}) }
+    }
+    for (const relation of related(event.eventId)) relation.status = 'proposed'
+    const candidates = matching.bankChannelEdges(ids.map(id => hydrate(events.get(id))))
+    for (const candidate of candidates) for (const item of [candidate.bank,candidate.platform]) {
+      const current = events.get(item.eventId)
+      events.set(item.eventId,{...current,fieldSources:{...current.fieldSources,bankChannelDistinctPairs:distinct([...(current.fieldSources.bankChannelDistinctPairs||[]),candidate.pairKey])}})
+    }
+    finish(ids)
+    return changes
+  }
+  function applySupplement(value) {
+    supplemental = value
+    coverageByEvent = new Map(value.historyCoverage.duplicates.map(row => [row.eventId,row]))
+    for (const id of accounts.keys()) if(!drafts.has(id))accounts.delete(id)
+    for (const row of value.accounts) accounts.set(row.accountId, row)
+    categories.clear();for (const row of value.categories) categories.set(row.categoryId, row)
+    indexHistory();historySignatures.clear()
+    const currentHistory=new Set(value.issues.filter(row=>row.primaryReasonCode===historyPolicy.REASON).map(row=>row.issueId))
+    for(const issue of issues.values())if(issue.primaryReasonCode===historyPolicy.REASON&&!currentHistory.has(issue.issueId)){issue.status='superseded';issue.blocking=false;dirtyIssues.add(issue.issueId)}
+    for (const issue of value.issues) {
+      issues.set(issue.issueId, clone(issue)); members.set(issue.issueId, value.members.filter(row => row.issueId === issue.issueId))
+      for (const id of issue.subjectEventIds) { if (!issueEvents.has(id)) issueEvents.set(id,new Set()); issueEvents.get(id).add(issue.issueId) }
+    }
+    for (const problem of value.problems) for (const id of problem.eventIds || []) invalid.set(id, problem.reason)
+    finish(distinct(value.problems.flatMap(problem => problem.eventIds || [])))
+  }
+  function finalState() {
+    return { protocolVersion: 3, snapshotId: facts.snapshotId, updateId: facts.update.updateId,
+      baseVersion: facts.update.version, ruleVersion: facts.ruleVersion,
+      decisions: Object.fromEntries(KINDS.map(kind => [kind,[...choices[kind].values()]])) }
+  }
+  for (const event of events.values()) indexEvent(event)
+  rebuildPairs([...events.keys()])
+  return { facts, base, events, rows, evidence, byEvent, baseEvidence, relations, issues, members, issueEvents, accounts, drafts, categories,
+    choices, links, needsCheck, invalid, sourceIds, hydrate, context, eventIssues, publicRow, refundCandidates,
+    dirtyEvents, dirtyIssues, dirtyRows,
+    edit, mapAccount, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState,
+    get pairs() { return pairs }, get revision() { return revision }, get supplemental() { return supplemental },
+    get suggestedCount() { return suggestedPairs.size },
+    get summaryCache() { return summaryCache }, set summaryCache(value) { summaryCache = value } }
+}
+module.exports = { create, clone, fail }

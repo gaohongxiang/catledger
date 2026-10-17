@@ -1,4 +1,4 @@
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { semanticBlockers } = require('./semantic-policy')
 

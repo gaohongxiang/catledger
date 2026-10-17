@@ -1,4 +1,9 @@
 const ERROR_MESSAGES = Object.freeze({
+  LOCAL_REVIEW_REQUIRED: '此草稿已切换为本地核对，请使用新版草稿恢复后提交',
+  LOCAL_REVIEW_CAPACITY: '草稿资料超过支持容量，原草稿已保留，本次没有入账',
+  SNAPSHOT_INCOMPLETE: '草稿资料尚未完整准备，请重试；已保存的草稿不受影响',
+  LOCAL_RECHECK_REQUIRED: '部分记录需要结合最新账本重新核对，其他选择已保留',
+
   PAIRING_LIMIT_EXCEEDED: '相似配对关系过多，请缩小本次账单范围后核对；本次没有保存或入账',
   HISTORY_REVIEW_REQUIRED: '发现尚未核对的历史相似账目，请先确认是否重复；本次没有入账',
   HISTORY_MATCH_LIMIT_EXCEEDED: '历史同额候选过多，请缩短本次账单时间范围后核对；本次没有入账',

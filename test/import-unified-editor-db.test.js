@@ -149,7 +149,7 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
         const tables=[['catledger_economic_events','event_id'],['catledger_economic_event_relations','relation_id'],['catledger_review_issues','issue_id'],['catledger_review_issue_members','member_id'],['catledger_finance_actions','action_id'],['catledger_mutation_receipts','idempotency_key_digest']]
         const before=await Promise.all(tables.map(([table,key])=>dump(c,table,key)))
         for (const pattern of [/INSERT INTO catledger_finance_actions/, /INSERT INTO catledger_economic_event_relations/,
-          /UPDATE catledger_review_issues SET/, /UPDATE catledger_economic_events SET/, /UPDATE catledger_mutation_receipts/]) {
+          /UPDATE catledger_review_issues(?: i)? SET/, /UPDATE catledger_economic_events SET/, /UPDATE catledger_mutation_receipts/]) {
           failurePattern=pattern
           await assert.rejects(c.imp('financeUpdates.setReview',data),{publicCode:'INTERNAL_ERROR'}, String(pattern));failurePattern=null
           assert.deepEqual(await Promise.all(tables.map(([table,key])=>dump(c,table,key))),before, String(pattern))

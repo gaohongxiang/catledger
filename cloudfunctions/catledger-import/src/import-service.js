@@ -80,6 +80,7 @@ async function markContentDeleted(getPool, provider, subjectHash, importId, file
 }
 
 function createImportService({ getPool, storage }) {
+  const localObjects = require('./local-review-objects').createLocalReviewObjects({ getPool })
   const reads = createFinanceUpdateRead({ getPool })
   const financeUpdates = createFinanceUpdateCore({ getPool })
   const maintenance = createFinanceUpdateMaintenance({ getPool })
@@ -342,6 +343,11 @@ function createImportService({ getPool, storage }) {
     financeUpdateAbandon: abandonFinanceUpdate,
     financeUpdateRows: reads.rows,
     financeUpdateSummary: reads.summary,
+    financeUpdatePrepareSnapshot: localObjects.prepare,
+    financeUpdateSnapshotManifest: localObjects.manifest,
+    financeUpdateSnapshotChunk: localObjects.chunk,
+    financeUpdateStageDecisions: localObjects.stage,
+    financeUpdateSealDecisions: localObjects.seal,
     financeUpdateList: createFinanceUpdateHistory({ getPool }),
     commandResult: context => readCommandResult({ getPool, ...context }),
     financeUpdateOptions: reads.options,

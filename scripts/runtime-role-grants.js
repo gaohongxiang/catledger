@@ -1,5 +1,7 @@
 // 本机/CI 验证契约；不会修改云端授权。表级 DML，无库级权限、DDL 或 GRANT OPTION。
 const api = {
+  catledger_import_review_objects: 'SELECT',
+  catledger_import_review_chunks: 'SELECT',
   catledger_bank_channel_decisions: 'SELECT',
   catledger_loan_charge_contracts: 'SELECT, INSERT, UPDATE',
   catledger_loan_charges: 'SELECT, INSERT, UPDATE',
@@ -48,6 +50,8 @@ const api = {
   catledger_import_rows: 'SELECT'
 }
 const importer = {
+  catledger_import_review_objects: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_import_review_chunks: 'SELECT, INSERT, DELETE',
   catledger_bank_channel_decisions: 'SELECT, INSERT, UPDATE',
   catledger_loan_charge_contracts: 'SELECT, INSERT',
   catledger_loan_charges: 'SELECT, INSERT, UPDATE',

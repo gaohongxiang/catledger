@@ -1,6 +1,6 @@
 // 资金组成的人工决定与来源证据分开。复用入账分配格式，未完成草稿绝不冒充已确认分配。
 const { importError } = require('../errors')
-const { validateUuid } = require('../validation')
+const { validateUuid } = require('../value-validation')
 const { FIELD_MASK } = require('../manual-field-mask')
 const { overrides } = require('../editor-fields')
 const { inspectPaymentResolution, EDITOR_PAYMENT_VERSION } = require('../payment-resolution')

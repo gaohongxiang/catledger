@@ -1,3 +1,4 @@
+const localReview = require('../../services/import-local-manager')
 const { publicError, errorText } = require('./presentation')
 const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
@@ -261,6 +262,8 @@ module.exports = {
       if (!active()) return
       view = await this.refreshAccountGroups(view, active)
       if (!active()) return
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: progress.completed + ' / ' + progress.total }) })
+      if (!active()) return
       this.applyUpdateView(view)
       if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新' })
       this._prepareRestore = false
@@ -282,7 +285,7 @@ module.exports = {
   },
 
   refreshAccountGroups: async function (view, canRead) {
-    if (view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
+    if (view.update.reviewMode === 'local_v3' || view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
     return this.request('reviewIssues.refreshAccountGroups', { requestId: api.createRequestId(),
         updateId: view.update.updateId, version: view.update.version }, canRead)
   },
@@ -296,10 +299,15 @@ module.exports = {
       this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
     try {
+      const local = localReview.restore(updateId)
+      if (local) { this.setData({ restoreUpdateId: '' }); this.applyUpdateView(local.view, false, restoreToFirstStep); return true }
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
       let view = await load.pending
       if (!active()) return
-      if (view.update.status === 'review') {
+      const migration = await localReview.settleLegacy(view)
+      view = migration.view
+      if (!active()) return
+      if (view.update.status === 'review' && view.update.reviewMode !== 'local_v3') {
         load.pending = this.request('financeUpdates.organize', {
           requestId: api.createRequestId(), updateId: updateId, version: view.update.version
           }, active)
@@ -308,6 +316,8 @@ module.exports = {
       }
       load.pending = this.refreshAccountGroups(view, active)
       view = await load.pending
+      if (!active()) return
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: progress.completed + ' / ' + progress.total }) }, migration)
       if (!active()) return
       this.setData({ restoreUpdateId: '' })
       this.applyUpdateView(view, false, restoreToFirstStep)
@@ -363,7 +373,7 @@ module.exports = {
     try {
       const session = this._draftSession
       await session.flush()
-      const checked = await this.request('financeUpdates.organize', { requestId: api.createRequestId(),
+      const checked = session.isLocal ? session.view : await this.request('financeUpdates.organize', { requestId: api.createRequestId(),
           updateId: session.view.update.updateId, version: session.view.update.version })
       this.applyUpdateView(checked, true)
       if (this.data.accountStepSummary.pending > 0 || (step === 4 && (this.data.openIssueCount || !this.data.coverage.selectedEventsReadyToPost))) {
@@ -457,8 +467,8 @@ module.exports = {
     if (!view.workbench) {
       // 操作事实先显示；明细读取失败不抹掉已保存/已入账结果。
       this.setData({ update: view.update, posting: view.posting || this.data.posting,
-          phase: view.update.status === 'posted' ? 'done' : 'review', busy: false,
-          errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
+          phase: {posted:'done',abandoned:'abandoned',undone:'undone'}[view.update.status] || 'review', currentStep: view.update.status === 'review' ? this.data.currentStep : 4, busy: false,
+          errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : view.update.status === 'abandoned' ? '' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
     if (background && (this._editingInput || this.data.fileNameEdit || this.data.fileRenamePending || this.data.currentIssue || this.data.evidenceSheet || this.data.reviewDetailSheet || this.data.reviewEditSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
@@ -518,6 +528,7 @@ module.exports = {
           })
       } else this._draftSession.accept(view)
       if (changed) this._accountUiDrafts = new Map(Object.entries(this._draftSession.state.drafts))
+      setChangedData(this, { draftSync: this._draftSession.status, prepareProgress: '' })
       this._draftSession.schedule()
     }
     if (changed || this._loadedStep !== step) return this.loadActivePage(true, undefined, quiet)
@@ -620,6 +631,9 @@ module.exports = {
 
   retryPagedView: async function () {
     if (!this._viewActive || !this.data.update) return
+    // A server summary alone cannot reopen a v3 draft after an interrupted
+    // download. Complete and validate its files before creating any edit view.
+    if (this.data.update.status === 'review' && this.data.update.reviewMode === 'local_v3' && !this._draftSession?.isLocal) return this.loadUpdate(this.data.update.updateId)
     const operation = this._refreshOperation = { epoch: this._viewEpoch, pageEpoch: ++this._pageEpoch,
       scope: readCache.getSession(), updateId: this.data.update.updateId }
     const active = () => this._viewActive && this._refreshOperation === operation && this._viewEpoch === operation.epoch &&

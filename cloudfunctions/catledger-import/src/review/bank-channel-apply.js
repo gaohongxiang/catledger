@@ -10,10 +10,11 @@ const { resolvedReasons } = require('./policy')
 const { remember, markDistinct } = require('./bank-channel-decisions')
 
 // 内部原子批处理；调用方已经取得用户/批次锁。局部校验不调用公开单笔命令。
-async function applyPairs(connection, uid, updateId, pairs, actionId, { persistDecisions = true } = {}) {
+async function applyPairs(connection, uid, updateId, pairs, actionId, { persistDecisions = true, overlappingDistinct = false } = {}) {
   if (!pairs.length) return []
-  const ids = pairs.flatMap(pair => [pair.bank.eventId, pair.platform.eventId])
-  if (new Set(ids).size !== ids.length) throw importError('VALIDATION_ERROR')
+  const allIds = pairs.flatMap(pair => [pair.bank.eventId, pair.platform.eventId])
+  if (new Set(allIds).size !== allIds.length && !(overlappingDistinct && pairs.every(pair => pair.decision === 'distinct'))) throw importError('VALIDATION_ERROR')
+  const ids = [...new Set(allIds)]
   for (const part of chunks(ids.map(id => [id]))) {
     const [[linked]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_economic_event_transactions
       WHERE uid = ? AND update_id = ? AND event_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
@@ -32,12 +33,16 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
         AND m.object_type = 'event' AND m.member_role <> 'candidate' AND m.object_id IN (${part.map(() => '?').join(',')}))`,
   [actionId, uid, updateId, ...part.flat()])
   const changes = [], merged = []
+  // Multiple explicit "different records" edges may share one candidate. Mark
+  // them all before taking the final copy, then save each event exactly once.
+  if (overlappingDistinct) for (const pair of pairs) markDistinct(pair)
+  const changed = new Set()
   for (const pair of pairs) {
     if (pair.decision === 'distinct') {
-      markDistinct(pair)
-      for (const event of [pair.bank, pair.platform]) changes.push({ current: event,
+      if (!overlappingDistinct) markDistinct(pair)
+      for (const event of [pair.bank, pair.platform]) if (!changed.has(event.eventId)) { changes.push({ current: event,
         next: { ...event, fieldSources: { ...event.fieldSources, bankChannelCandidate: undefined },
-          reasonCodes: resolvedReasons('same_event', event.reasonCodes), resolvingIssueType: 'same_event' } })
+          reasonCodes: resolvedReasons('same_event', event.reasonCodes), resolvingIssueType: 'same_event' } }); changed.add(event.eventId) }
       continue
     }
     if (pair.decision !== 'same') throw importError('VALIDATION_ERROR')

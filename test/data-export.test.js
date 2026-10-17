@@ -82,11 +82,13 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const renamedSource=(await imp('financeUpdates.summary',{updateId})).sources[0]
   const originalFile=(await imp('imports.getFile',{importId:renamedSource.importId,includeOptions:false,pageSize:1})).import
   await imp('imports.renameFile',{requestId:randomUUID(),importId:originalFile.importId,version:originalFile.version,displayName:'合成导出改名🐱.csv'})
+  const localSnapshot = await imp('financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: editorBatch.updateId,
+    version: (await imp('financeUpdates.summary', { updateId: editorBatch.updateId })).update.version })
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,33);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,34);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
@@ -105,6 +107,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   assert.ok(records.some(r=>r.table==='catledger_loan_charges'&&r.row.plan_removed_at))
   assert.ok(records.some(r=>r.table==='catledger_transactions'&&r.row.creation_provenance_json?.kind==='loan'))
   assert.ok(records.some(r=>r.table==='catledger_bank_channel_decisions'&&r.row.decision==='same'&&r.row.bank_identity_id&&r.row.platform_identity_id))
+  assert.ok(records.some(r=>r.table==='catledger_import_review_objects'&&r.row.object_id===localSnapshot.snapshot.objectId))
+  assert.ok(records.some(r=>r.table==='catledger_import_review_chunks'&&r.row.object_id===localSnapshot.snapshot.objectId&&r.row.content_text.length))
   assert.ok(records.some(r=>r.table==='catledger_economic_events'&&r.row.field_sources_json.editorOverrides?.note===''&&r.row.field_sources_json.editorOverrides?.counterparty===''))
   assert.ok(records.some(r=>r.table==='catledger_economic_events'&&r.row.field_sources_json.editorOverrides?.incompleteComposition?.parts[1].amountMinor===null))
   assert.ok(records.some(r=>r.table==='catledger_economic_event_relations'&&r.row.source_event_id===editorRows[1].eventId&&r.row.target_event_id===editorRows[0].eventId&&r.row.status==='confirmed'))

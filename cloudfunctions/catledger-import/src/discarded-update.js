@@ -1,6 +1,7 @@
 // 仅由持有批次写锁、已将状态改为 abandoned 的事务调用。
 // 删除派生整理数据，来源行、正式账本、批次摘要与动作审计继续保留。
 const DRAFT_TABLES = Object.freeze([
+  'catledger_import_review_objects',
   'catledger_finance_update_account_mapping_drafts',
   'catledger_finance_update_account_drafts',
   'catledger_review_issue_members',

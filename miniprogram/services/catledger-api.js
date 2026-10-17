@@ -90,6 +90,15 @@ function revalidateForeground() {
   const app = getApp()
   if (!app || !app.hasLoginApproval() || !app.globalData.uid) return Promise.resolve()
   cache.bindScope(envId, app.globalData.uid)
+  const pages=typeof getCurrentPages==='function'?getCurrentPages():[],page=pages[pages.length-1]
+  const local=page&&page.route==='packages/finance/pages/import-workbench/index'&&
+    require('./import-local-router').session(page.data.update&&page.data.update.updateId)
+  if(local&&local.view.update.status==='review'){
+    // Returning to a complete local draft must stay offline. Other pages will
+    // read fresh data when opened; this never certifies the ledger as unchanged.
+    cache.invalidate(ALL_TAGS)
+    return Promise.resolve()
+  }
   return cache.validate(ALL_TAGS, () => cache.read(cache.stableKey('reads.validate'), READ_POLICIES['reads.validate'], () => load('reads.validate', {}, { force: true }), { force: true }))
 }
 function bootstrap(options) { return callApi('bootstrap', {}, options) }

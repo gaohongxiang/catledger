@@ -1,4 +1,10 @@
 const PUBLIC_ACTIONS = Object.freeze([
+  'financeUpdates.prepareSnapshot',
+  'financeUpdates.snapshotManifest',
+  'financeUpdates.snapshotChunk',
+  'financeUpdates.stageDecisions',
+  'financeUpdates.sealDecisions',
+
   'imports.commandResult',
   'financeUpdates.rows',
   'reviewIssues.members',
@@ -38,6 +44,11 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers(service) {
   return {
+    'financeUpdates.prepareSnapshot': service.financeUpdatePrepareSnapshot,
+    'financeUpdates.snapshotManifest': service.financeUpdateSnapshotManifest,
+    'financeUpdates.snapshotChunk': service.financeUpdateSnapshotChunk,
+    'financeUpdates.stageDecisions': service.financeUpdateStageDecisions,
+    'financeUpdates.sealDecisions': service.financeUpdateSealDecisions,
     'imports.commandResult': service.commandResult,
     'financeUpdates.rows': service.financeUpdateRows,
     'reviewIssues.members': service.reviewIssueMembers,

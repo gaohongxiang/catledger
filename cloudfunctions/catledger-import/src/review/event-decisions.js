@@ -146,7 +146,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
       const selection = data.selection || (data.eventIds == null ? { mode: 'all' } : { mode: 'include', eventIds: data.eventIds })
       if (!['all', 'include', 'all_except'].includes(selection.mode)) throw importError('VALIDATION_ERROR')
       const ids = selection.eventIds == null ? [] : selection.eventIds
-      if (!Array.isArray(ids) || ids.length > 100 || (selection.mode === 'include' && !ids.length) || (selection.mode === 'all' && ids.length)) throw importError('VALIDATION_ERROR')
+      if (!Array.isArray(ids) || ids.length > (require('../local-review-batch').get(connection) ? require('../local-review-protocol').LIMITS.sourceRows : 100) || (selection.mode === 'include' && !ids.length) || (selection.mode === 'all' && ids.length)) throw importError('VALIDATION_ERROR')
       const explicit = new Set(ids.map(validateUuid))
       if (explicit.size !== ids.length || [...explicit].some(id => !eventIds.includes(id))) throw importError('VALIDATION_ERROR')
       selected = selection.mode === 'all' ? new Set(eventIds) : selection.mode === 'include' ? explicit : new Set(eventIds.filter(id => !explicit.has(id)))

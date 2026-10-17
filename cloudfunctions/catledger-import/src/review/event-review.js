@@ -105,4 +105,73 @@ async function saveEditor(connection, uid, data, requestDigest, update, event) {
   await recalculateUpdateCounts(connection, uid, event.updateId, Number(update.version) + 1, actionId, Number(update.version), 0)
   return { ...await commandResult(connection, uid, event.updateId), event: saved[0] }
 }
-module.exports = { setReview }
+// The local protocol submits one final editor value per stable event. Pure
+// preparation and SQL saving are batched; relational checks reuse the editor's
+// existing validators on this same connection. Whole-batch derivation runs once
+// in local-review-submit, after all decisions have been applied.
+async function saveEditors(connection, uid, updateId, items, actionId) {
+  if (!items.length) return []
+  const stored = await selectDomainEvents(connection, uid, updateId, items.map(item => item.eventId), { forUpdate: true })
+  const events = new Map((await effectiveProjectedEvents(connection, uid, updateId, stored)).map(event => [event.eventId, event]))
+  const changes = []
+  for (const item of items) {
+    const batch = require('../local-review-batch').get(connection)
+    if (batch) batch.affected = [item.eventId]
+    const current = events.get(item.eventId)
+    if (!current) throw importError('CONFLICT')
+    const data = item.editor
+    let next = require('./editor-policy').prepare(current, data)
+    // Historical targets retain the user's explicit versions. Local event and
+    // relation versions are server-internal and have already changed in this
+    // transaction; their exact source scopes are checked by the v3 kernel.
+    if (data.expectedRelations?.some(row=>['loan','transaction'].includes(row.kind))) {
+      const now = await require('./editor-refund').expectations(connection, uid, current)
+      for (const target of data.expectedRelations.filter(row => ['loan','transaction'].includes(row.kind))) {
+        const found = now.find(row => row.kind === target.kind && row.id === target.id)
+        if (found && found.version !== target.version) throw importError('CONFLICT')
+      }
+    }
+    if (current.fieldSources.installment && (data.sourceCorrection || ['ledgerAccountId','amountMinor','occurredLocalAt'].some(key => Object.hasOwn(data.fields || {}, key)))) {
+      const [[claimed]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_installment_items WHERE uid=? AND source_event_id=? AND active=1', [uid, current.eventId])
+      if (Number(claimed.count)) throw importError('LOAN_SOURCE_MISMATCH')
+    }
+    if (data.decisions && data.decisions.repaymentChannel) {
+      const [verified] = await require('./bank-channel-hydration').hydrate(connection, uid, updateId, [next])
+      if (!require('../repayment-channel').evidenceValid(verified, verified.relationEvidence.rows)) throw importError('VALIDATION_ERROR')
+      next = await require('./repayment-channel-merge').confirmDetails(connection, uid, updateId, verified, actionId)
+    }
+    if (next.fieldSources.loanRepayment) next.fieldSources.loanRepayment = await require('./repayment').prepareRepayment(connection, uid, updateId, next, next.fieldSources.loanRepayment, { editor: true })
+    changes.push({ current, next, data })
+  }
+  // Save all final field values before validating relationships, so the outcome
+  // cannot depend on click order (e.g. changing an expense and its refund).
+  const blocking = await require('./issue-store').refreshEditedEventsIssues(connection, uid, updateId, changes.map(row=>row.next), actionId)
+  let saved = await saveEvents(connection, uid, updateId, changes, actionId, { openBlockingIssues: blocking })
+  const relationChanges = changes.filter(({current,next,data})=>current.economicNature==='refund'||next.economicNature==='refund'||data.decisions?.refund||
+    ['economicNature','amountMinor','utcAt'].some(key=>current[key]!==next[key]))
+  for (const { current, next, data } of relationChanges) {
+    const batch = require('../local-review-batch').get(connection)
+    if (batch) batch.affected = [next.eventId]
+    const refund = data.decisions && data.decisions.refund
+    let input = data
+    if (refund && refund.kind === 'event' && refund.mode === 'link') {
+      const [target] = await selectDomainEvents(connection, uid, updateId, [refund.id])
+      if (!target) throw importError('CONFLICT')
+      input = { ...data, decisions: { ...data.decisions, refund: { ...refund, version: target.version } } }
+    }
+    await require('./editor-refund').apply(connection, uid, current, next, input)
+  }
+  // Relation changes may remove the last blocker; evaluate once against their
+  // final state and preserve every primary field prepared above.
+  const savedById = new Map(saved.map(row => [row.eventId, { ...row }]))
+  if (relationChanges.length) {
+    const revised = await saveEvents(connection, uid, updateId, relationChanges.map(({ next }) => ({ current: savedById.get(next.eventId), next })), actionId, { openBlockingIssues: blocking })
+    for (const event of revised) savedById.set(event.eventId,event)
+    saved = [...savedById.values()]
+  }
+  await updateMappingMemberVersions(connection, uid, updateId, saved)
+  await updateMappingMemberVersions(connection, uid, updateId, saved, true)
+  await createFollowUpIssues(connection, uid, updateId, saved)
+  return saved
+}
+module.exports = { setReview, saveEditors }

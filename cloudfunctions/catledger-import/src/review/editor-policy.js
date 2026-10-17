@@ -129,13 +129,13 @@ function prepare(event, data) {
       }
       if (next.amountMinor != null && sum > BigInt(next.amountMinor)) fail()
       for (const field of ['interest','fee']) if (!['expense','accrued'].includes(draft[field + 'Treatment'])) fail()
-      for (const key of ['loanId','interestCategoryId','feeCategoryId']) if (draft[key] != null) require('../validation').validateUuid(draft[key])
+      for (const key of ['loanId','interestCategoryId','feeCategoryId']) if (draft[key] != null) require('../value-validation').validateUuid(draft[key])
       if (draft.loanVersion != null && (!Number.isSafeInteger(draft.loanVersion) || draft.loanVersion < 1)) fail()
-      next.fieldSources.editorOverrides.incompleteRepayment = { ...draft, chargeAllocations: require('../loan-charge-payments').normalizeCoverage(draft.chargeAllocations) }
+      next.fieldSources.editorOverrides.incompleteRepayment = { ...draft, chargeAllocations: require('../loan-charge-coverage').normalizeCoverage(draft.chargeAllocations) }
     }
     next.fieldSources.loanRepayment = decisions.repayment === null ? null : decisions.repayment.mode === 'review'
-      ? { mode: 'review' } : require('../explicit-repayment').booking.normalize(decisions.repayment, next.amountMinor)
-    if (next.fieldSources.loanRepayment && next.fieldSources.loanRepayment.mode !== 'review') require('../explicit-repayment').inputForEvent(next)
+      ? { mode: 'review' } : require('../repayment-policy').createRepaymentPolicy(importError).normalize(decisions.repayment, next.amountMinor)
+    if (next.fieldSources.loanRepayment && next.fieldSources.loanRepayment.mode !== 'review') require('../explicit-repayment-policy').inputForEvent(next)
   } else if (before.loanRepayment && !MOVEMENTS.has(next.economicNature)) fail()
   if (has(decisions, 'refund')) {
     object(decisions.refund, ['mode', 'kind', 'id', 'version'])

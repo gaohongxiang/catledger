@@ -1,5 +1,5 @@
 const STRONG_REFERENCE_WINDOW_MS = 72 * 60 * 60 * 1000
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 
 function timeValue(value) {
   if (!value) return null

@@ -78,10 +78,12 @@ function runtime(data = fixture(), options = {}) {
     if (action === 'reviewIssues.get') { result.members = result.items; delete result.items }
     return result
   }
-  const api = { callImport: call, readSummary: updateId => call('financeUpdates.summary', { updateId }),
-    command: (action, input) => call(action, { ...input }), createRequestId: () => 'synthetic-request-' + calls.length }
+  const importCall = async (action, input) => options.localSession ? options.localSession.call(action, input) : call(action, input)
+  const api = { callImport: importCall, callNetwork: call, readSummary: updateId => importCall('financeUpdates.summary', { updateId }),
+    command: (action, input) => importCall(action, { ...input }), createRequestId: options.requestId || (() => 'synthetic-request-' + calls.length) }
   const draftService = { lastUpdateId: () => '', rememberLast() {}, forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
-    open(view) { if (!session) { session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
+    open(view) { if (options.localSession) return options.localSession
+      if (!session) { session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
       read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId });
       const subscribe = session.subscribe
       session.subscribe = listener => {
@@ -89,18 +91,21 @@ function runtime(data = fixture(), options = {}) {
         return () => { if (active) { active = false; h.activeSubscriptions--; off() } }
       }
     } return session } }
-  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), showToast() {}, showModal(options) { h.modal = options; options.success({ confirm: true }) }, pageScrollTo() {}, nextTick: setImmediate }
+  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key),
+    getStorageInfoSync: () => ({ keys: [...storage.keys()] }), showToast() {}, showModal(options) { h.modal = options; options.success({ confirm: true }) }, pageScrollTo() {}, nextTick: setImmediate, ...options.wx }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
-    if (filename.endsWith('/services/catledger-import.js')) return api
+    if (filename.endsWith('/services/import-local-manager.js') && !options.realLocalManager) return {
+      restore: () => options.localSession || null, settleLegacy: async view => ({view}), prepare: async view => options.localSession?.view || view, settleAbandoned: async () => {} }
+    if (filename.endsWith('/services/catledger-import.js') && !options.realImportApi) return api
     if (filename.endsWith('/services/import-draft-session.js') && !options.realDraftManager) return draftService
     if (filename.endsWith('/services/read-cache.js')) return cache
     if (filename.endsWith('/theme/service.js')) return { bindPage() {} }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports, Page: value => { definition = value },
-      wx, getApp: () => h.app, setTimeout, clearTimeout, ArrayBuffer, Uint8Array,
+      wx, getApp: () => h.app, getCurrentPages: () => h.currentPages || (h.page ? [h.page] : []), setTimeout, clearTimeout, ArrayBuffer, Uint8Array,
       require: name => load(path.resolve(path.dirname(filename), name) + '.js') }, { filename })
     if (filename.endsWith('/import-workbench/model.js')) for (const [name, fn] of Object.entries(module.exports)) if (typeof fn === 'function') {
       module.exports[name] = (...args) => { h.derives[name] = (h.derives[name] || 0) + 1; return fn(...args) }
@@ -109,8 +114,9 @@ function runtime(data = fixture(), options = {}) {
   }
   load(path.join(root, 'packages/finance/pages/import-workbench/index.js'))
   h.observer = load(path.join(root, 'services/read-observer.js'))
+  h.load = load
   h.createPage = (pageOptions = {}, initialView = true) => {
-    const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)),
+    const page = Object.assign({}, definition, { route: 'packages/finance/pages/import-workbench/index', data: JSON.parse(JSON.stringify(definition.data)),
       selectComponent: () => ({ show: options => { h.loginOptions = options } }), setData(patch, callback) {
     patches.push(Buffer.byteLength(JSON.stringify(patch)))
     for (const [key, value] of Object.entries(patch)) {
@@ -125,6 +131,7 @@ function runtime(data = fixture(), options = {}) {
     if (initialView) page.applyUpdateView(h.summary)
     return page
   }
+  if(options.beforePage)options.beforePage(h,load)
   h.page = h.createPage(options.pageOptions, options.initialView)
   h.flush = flush
   return h

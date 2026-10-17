@@ -119,7 +119,7 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   }
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
   if (event.fieldSources && event.fieldSources.loanRepayment) {
-    try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
+    try { require('./explicit-repayment-policy').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
   }
   const editor = event.fieldSources && event.fieldSources.editorOverrides
   if (editor && editor.version === 1 && editor.incompleteComposition) reasons.push('editor_composition_incomplete')

@@ -289,41 +289,47 @@ async function releaseInstallmentGroup(connection, uid, updateId, issueIds, acti
 }
 
 // 更新当前笔的普通核对成员，不结束同组其他成员或判重/来源冲突组。
-async function refreshEditedEventIssues(connection, uid, updateId, event, actionId) {
-  const [rows] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId,i.issue_type AS issueType,
-    i.primary_reason_code AS reason FROM catledger_review_issues i JOIN catledger_review_issue_members m
-      ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
-    WHERE i.uid=? AND i.update_id=? AND i.status='open' AND m.object_type='event'
-      AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
-  const ordinary = new Set(['shared_fields','account_mapping','transfer_accounts','category_assignment','refund_relation'])
-  // 分期归属是普通可解决项：用户指定计划后该问题就该收尾，否则事件会一直卡在待核对。
-  const ordinaryReasons = new Set(['installment_attribution_required'])
-  const protectedReasons = new Set(['refund_source_conflict','row_status_unknown','transaction_status_unknown',
-    'account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','identity_conflict',
-    'identity_review_required','source_profile_unknown'])
-  for (const issue of rows) {
-    if (protectedReasons.has(issue.reason) || (!ordinary.has(issue.issueType) && !ordinaryReasons.has(issue.reason))) continue
-    await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND issue_id=?
-      AND object_type='event' AND member_role<>'candidate' AND object_id=?`, [uid, updateId, issue.issueId, event.eventId])
-    const [[left]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_review_issue_members
-      WHERE uid=? AND update_id=? AND issue_id=? AND object_type='event' AND member_role<>'candidate'`, [uid, updateId, issue.issueId])
-    await connection.execute(`UPDATE catledger_review_issues SET version=version+1,
-      status=IF(?=0,'resolved',status),blocking=IF(?=0,0,blocking),resolved_action_id=IF(?=0,?,resolved_action_id),
-      member_count=(SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid=? AND m.issue_id=?)
-      WHERE uid=? AND update_id=? AND issue_id=?`, [Number(left.count),Number(left.count),Number(left.count),actionId,
-        uid,issue.issueId,uid,updateId,issue.issueId])
+const ORDINARY_EDIT_ISSUES = new Set(['shared_fields','account_mapping','transfer_accounts','category_assignment','refund_relation'])
+const PROTECTED_EDIT_REASONS = new Set(['refund_source_conflict','row_status_unknown','transaction_status_unknown',
+  'account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','identity_conflict',
+  'identity_review_required','source_profile_unknown'])
+async function refreshEditedEventsIssues(connection, uid, updateId, events, actionId) {
+  const byId = new Map(events.map(event => [event.eventId,event])), rows = []
+  for (const part of chunks(events.map(event=>[event.eventId]))) {
+    const [found] = await connection.execute(`SELECT m.member_id AS memberId,m.object_id AS eventId,
+      i.issue_id AS issueId,i.issue_type AS issueType,i.primary_reason_code AS reason
+      FROM catledger_review_issues i JOIN catledger_review_issue_members m
+        ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
+      WHERE i.uid=? AND i.update_id=? AND i.status='open' AND m.object_type='event'
+        AND m.member_role<>'candidate' AND m.object_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
+    rows.push(...found)
   }
-  const installmentIssues = rows.filter(issue => issue.reason === 'installment_attribution_required').map(issue => issue.issueId)
-  if (installmentIssues.length) await releaseInstallmentGroup(connection, uid, updateId, installmentIssues, actionId)
-  const [remaining] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId,i.primary_reason_code AS reason FROM catledger_review_issues i
-    JOIN catledger_review_issue_members m ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
-    WHERE i.uid=? AND i.update_id=? AND i.status='open' AND i.blocking=1
-      AND m.object_type='event' AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
-  // 已有明确硬阻断继续由领域规则阻断；额外的汇总标记不能反过来使同笔候选失效。
-  // 未在事件事实中表示的问题仍补汇总阻断，不能因只改备注就解除它。
-  const hard = require('../organizer-model').HARD_BLOCKING_REASONS
-  return remaining.filter(issue => !hard.has(issue.reason) || !event.reasonCodes.includes(issue.reason)).length
+  const removable = rows.filter(issue=>!PROTECTED_EDIT_REASONS.has(issue.reason)&&
+    (ORDINARY_EDIT_ISSUES.has(issue.issueType)||issue.reason==='installment_attribution_required'))
+  for (const part of chunks(removable.map(row=>[row.memberId]))) await connection.execute(
+    `DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND member_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
+  const touched=[...new Set(removable.map(row=>row.issueId))]
+  for (const part of chunks(touched.map(id=>[id]))) await connection.execute(`UPDATE catledger_review_issues i SET
+    member_count=(SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid=i.uid AND m.issue_id=i.issue_id),
+    version=version+1,status=IF(NOT EXISTS (SELECT 1 FROM catledger_review_issue_members m WHERE m.uid=i.uid AND m.issue_id=i.issue_id
+      AND m.object_type='event' AND m.member_role<>'candidate'),'resolved',status),
+    blocking=IF(status='resolved',0,blocking),resolved_action_id=IF(status='resolved',?,resolved_action_id)
+    WHERE i.uid=? AND i.update_id=? AND i.issue_id IN (${part.map(()=>'?').join(',')})`,[actionId,uid,updateId,...part.flat()])
+  const installmentIds=[...new Set(rows.filter(row=>row.reason==='installment_attribution_required').map(row=>row.issueId))]
+  if(installmentIds.length)await releaseInstallmentGroup(connection,uid,updateId,installmentIds,actionId)
+  const hard=require('../organizer-model').HARD_BLOCKING_REASONS,counts=new Map(events.map(event=>[event.eventId,0]))
+  for(const part of chunks(events.map(event=>[event.eventId]))){
+    const [remaining]=await connection.execute(`SELECT DISTINCT m.object_id AS eventId,i.issue_id AS issueId,i.primary_reason_code AS reason
+      FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
+      WHERE i.uid=? AND i.update_id=? AND i.status='open' AND i.blocking=1 AND m.object_type='event' AND m.member_role<>'candidate'
+        AND m.object_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
+    for(const issue of remaining)if(!hard.has(issue.reason)||!byId.get(issue.eventId).reasonCodes.includes(issue.reason))counts.set(issue.eventId,counts.get(issue.eventId)+1)
+  }
+  return counts
+}
+async function refreshEditedEventIssues(connection, uid, updateId, event, actionId) {
+  return (await refreshEditedEventsIssues(connection, uid, updateId, [event], actionId)).get(event.eventId)
 }
 
-module.exports = { refreshEditedEventIssues, selectIssue, selectMembers, updateMappingMemberVersions, createFollowUpIssue,
+module.exports = { refreshEditedEventIssues, refreshEditedEventsIssues, selectIssue, selectMembers, updateMappingMemberVersions, createFollowUpIssue,
   createFollowUpIssues, collapseInstallmentIssues }

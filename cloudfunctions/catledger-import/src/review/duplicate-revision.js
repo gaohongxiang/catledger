@@ -112,12 +112,13 @@ async function split(connection, uid, data, requestDigest, values) {
   const state = await load(connection, uid, updateId, eventId, true)
   if (Number(state.update.version) !== updateVersion || state.event.version !== eventVersion) throw importError('CONFLICT')
   if (state.reason || state.kind) throw importError('VALIDATION_ERROR')
-  const { event, plan, primary } = state, oldPrimaryId = primary.eventId
+  const { event, plan, primary } = state
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: updateVersion, appliedVersion: updateVersion + 1,
     actionType: 'revise_duplicate', requestDigest, decision: { eventId, decision: 'distinct' }, reasons: ['duplicate_decision_revised'] })
   const origins = event.fieldSources.mergeOrigins || []
   const channel = event.fieldSources.repaymentChannelResolution
   for (const planned of plan.events) {
+    const plannedId = planned.eventId
     const rowIds = planned.fieldSources.rowIds
     const sourceDirection = planned.relationEvidence.rows[0]?.direction
     const original = origins.find(item => item.rowIds.length === rowIds.length && item.rowIds.every(id => rowIds.includes(id)))
@@ -134,6 +135,16 @@ async function split(connection, uid, data, requestDigest, values) {
         } } })
     } else if (planned === primary) Object.assign(planned, event, { eventId, version: eventVersion })
     else if (original) Object.assign(planned, original.event)
+    if (planned !== primary && (!original || !original.event.eventId)) planned.eventId = require('../local-review-identity').splitEventId(updateId, rowIds)
+    // Restore stable pre-merge identities; update the planned references together.
+    if (planned.eventId !== plannedId) {
+      for (const item of plan.evidence) if (item.eventId === plannedId) item.eventId = planned.eventId
+      for (const item of plan.members) if (item.objectType === 'event' && item.objectId === plannedId) item.objectId = planned.eventId
+      for (const item of plan.relations) {
+        if (item.sourceEventId === plannedId) item.sourceEventId = planned.eventId
+        if (item.targetEventId === plannedId) item.targetEventId = planned.eventId
+      }
+    }
     planned.updateId = updateId
     planned.sourceDirection = sourceDirection
     planned.sameEventCandidateKey = undefined
@@ -146,7 +157,7 @@ async function split(connection, uid, data, requestDigest, values) {
   // 新记录只建领域事件，原文通过原 evidence_id 移动，不复制账单或身份。
   await persistPlan(connection, uid, updateId, { ...plan, events: fresh, evidence: [], relations: [], issues: [], members: [] })
   for (const planned of plan.events) {
-    const group = plan.evidence.filter(item => item.eventId === (planned === primary ? oldPrimaryId : planned.eventId))
+    const group = plan.evidence.filter(item => item.eventId === planned.eventId)
     for (const item of group) await connection.execute(`UPDATE catledger_event_evidence SET event_id = ?, evidence_role = ?
       WHERE uid = ? AND update_id = ? AND event_id = ? AND row_id = ? AND evidence_role <> 'discarded'`,
     [planned.eventId, item.evidenceRole, uid, updateId, eventId, item.rowId])
@@ -312,4 +323,4 @@ function createDuplicateRevision({ getPool }) {
     }
   }
 }
-module.exports = { createDuplicateRevision }
+module.exports = { createDuplicateRevision, split, reopenHistory, load }

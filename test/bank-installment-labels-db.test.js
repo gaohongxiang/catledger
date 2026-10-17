@@ -109,9 +109,14 @@ test('银行分期摘要：真实解析、最小权限 MySQL、独立来源与 v
         return first
       }
       function billing(event, component, originKind = 'unconfirmed') {
-        assert.deepEqual(event.installment, {
+        const { creditStatement, factKind, periodNumber, totalTerms } = event.installment
+        assert.deepEqual({ creditStatement, factKind, component: event.installment.component,
+          periodNumber, totalTerms, originKind: event.installment.originKind }, {
           creditStatement: true, factKind: 'billing', component, periodNumber: 3, totalTerms: 6, originKind
         })
+        assert.equal(typeof event.installment.planName, 'string')
+        assert.equal(typeof event.installment.planLabel, 'string')
+        assert.equal(typeof event.installment.groupKey, 'string')
       }
       const loan = (c, extra = {}) => c.api('loans.create', { ...plan, accountId: c.accountId, requestId: randomUUID(), ...extra })
       async function unpaid(c, loanId) {

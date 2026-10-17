@@ -46,14 +46,19 @@ async function selectDomainEvents(connection, uid, updateId, eventIds, { forUpda
             event_local_date AS localDate, event_local_at AS localAt, event_utc_at AS utcAt,
             timezone_offset_minutes AS timezoneOffsetMinutes, amount_minor AS amountMinor,
             currency, category_id AS categoryId, manual_field_mask AS manualFieldMask,
-            field_sources_json AS fieldSources, reason_codes_json AS reasonCodes,
-            (SELECT r.normalized_direction FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid=v.uid AND r.row_id=v.row_id
-              WHERE v.uid=catledger_economic_events.uid AND v.event_id=catledger_economic_events.event_id AND v.evidence_role='primary' LIMIT 1) AS sourceDirection
-       FROM catledger_economic_events
+            field_sources_json AS fieldSources, reason_codes_json AS reasonCodes
+       FROM catledger_economic_events FORCE INDEX (PRIMARY)
       WHERE uid = ? AND update_id = ? AND event_id IN (${part.map(() => '?').join(', ')})
       ORDER BY event_id${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, updateId, ...part.flat()]
   )
+  const [directions] = await connection.execute(`SELECT v.event_id AS eventId,r.normalized_direction AS direction
+    FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid=v.uid AND r.row_id=v.row_id
+    WHERE v.uid=? AND v.update_id=? AND v.event_id IN (${part.map(()=>'?').join(',')}) AND v.evidence_role='primary'
+    ORDER BY v.event_id,v.row_id`, [uid,updateId,...part.flat()])
+  const primary = new Map()
+  for (const row of directions) if (!primary.has(row.eventId)) primary.set(row.eventId,row.direction)
+  for (const row of found) row.sourceDirection=primary.get(row.eventId) || null
   rows.push(...found)
   }
   const events = rows.map(domainEvent)
@@ -216,7 +221,7 @@ async function saveEvents(connection, uid, updateId, pairs, actionId, { openBloc
   const contexts = await loadEventContexts(connection, uid, updateId)
   for (const { current, next } of pairs) {
     await validateEventReferences(connection, uid, next, catalog)
-    finalizeSavedEvent(current, next, actionId, { ...contexts.get(next.eventId), openBlockingIssues })
+    finalizeSavedEvent(current, next, actionId, { ...contexts.get(next.eventId), openBlockingIssues: openBlockingIssues instanceof Map ? openBlockingIssues.get(next.eventId) || 0 : openBlockingIssues })
   }
   function* rows() {
     for (const { current, next } of pairs) yield [current.eventId, current.version, next.status, next.status, next.flowDirection, next.economicNature,

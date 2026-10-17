@@ -2,7 +2,7 @@ const repaymentOwnership = require('../repayment-ownership')
 const { inspectPaymentAccounts, inspectPaymentResolution } = require('../payment-resolution')
 const { importError } = require('../errors')
 const { ECONOMIC_NATURE, FLOW_DIRECTION, REVIEW_DECISIONS, unique } = require('../organizer-values')
-const { validateUuid } = require('../validation')
+const { validateUuid } = require('../value-validation')
 const { REPAYMENT_ALLOCATION_VERSION, inspectRepaymentAllocations, isAggregateRepayment } = require('../repayment-allocation')
 
 const { FIELD_MASK } = require('../manual-field-mask')

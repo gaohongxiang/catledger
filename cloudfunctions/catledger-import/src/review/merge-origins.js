@@ -2,7 +2,7 @@
 function mergeOrigins(events) {
   return events.flatMap(event => event.fieldSources.mergeOrigins || [{
     rowIds: event.relationEvidence ? event.relationEvidence.rows.map(row => row.rowId) : event.fieldSources.rowIds || [],
-    event: Object.fromEntries(['flowDirection', 'economicNature', 'ledgerAccountId', 'counterpartyLedgerAccountId',
+    event: Object.fromEntries(['eventId', 'version', 'flowDirection', 'economicNature', 'ledgerAccountId', 'counterpartyLedgerAccountId',
       'localDate', 'localAt', 'utcAt', 'timezoneOffsetMinutes', 'amountMinor', 'currency', 'categoryId',
       'manualFieldMask', 'fieldSources', 'reasonCodes'].map(key => [key, event[key]]))
   }])

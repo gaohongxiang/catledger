@@ -71,13 +71,13 @@ module.exports = {
         const fresh = await this.request('financeUpdates.summary', { updateId: this.data.update.updateId })
         this.setData({ update: fresh.update })
       }
-      await this.request('financeUpdates.abandon', {
+      const abandoned = await this.request('financeUpdates.abandon', {
           requestId: api.createRequestId(),
           updateId: this.data.update.updateId,
           version: this.data.update.version
         })
       this.startAnother()
-      wx.showToast({ title: '本批账单已放弃', icon: 'none' })
+      wx.showToast({ title: abandoned.offlineAbandon ? '本机已清理，服务端待联网放弃' : '本批账单已放弃', icon: 'none' })
     } catch (error) {
       if (this._draftSession) this._draftSession.resume()
       this.setData({ busy: false, errorMessage: publicError(error, '放弃失败，请重试') })
@@ -157,6 +157,11 @@ module.exports = {
       this.setData({ busy: true })
       const receipt = await session.post()
       if (!active()) return
+      if (receipt.outcome === 'recheck') {
+        this.applyUpdateView(receipt.localView || session.view, false)
+        this.setData({ currentStep: 3, busy: false, errorMessage: '服务端复核发现变化，其他选择已保留，请核对标记事项' })
+        return
+      }
       if (this._unsubscribeDraft) this._unsubscribeDraft()
       session.clear(); drafts.forgetLast(); this._draftSession = null
       this.applyUpdateView(receipt)

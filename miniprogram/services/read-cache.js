@@ -143,7 +143,7 @@ function createReadCache(options) {
     bindScope(env, uid) {
       if (typeof env !== 'string' || !env || !/^[1-9]\d{9}$/.test(uid)) return
       if (scope && scope.env === env && scope.uid === uid) return
-      if (scope) { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); validation = null }
+      if (scope) { require('./import-local-router').reset(); session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); validation = null }
       scope = { env, uid }; latestRevision = null; persistQueued = null
       if (persistent) for (const item of disk.read(scope)) {
         if (entries.has(item.key)) continue
@@ -190,7 +190,7 @@ function createReadCache(options) {
       if (!source || fresh(key) || pending.has(key)) return
       put(key, policy, project(clone(source.value)), Math.min(source.expiresAt, now() + policy.ttl))
     },
-    reset() { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); scope = null; latestRevision = null; validation = null; persistQueued = null; disk.clear() }
+    reset() { require('./import-local-router').reset(); session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); scope = null; latestRevision = null; validation = null; persistQueued = null; disk.clear() }
   }
 }
 

@@ -2,16 +2,7 @@ const { randomUUID } = require('node:crypto')
 const store = require('./loan-charge-store')
 const { amount } = require('./loan-charge-domain')
 const fail = code => { throw Object.assign(new Error(code),{publicCode:code}) }
-function normalizeCoverage(value) {
-  if(value==null)return []
-  if(!Array.isArray(value)||value.length>80)fail('VALIDATION_ERROR')
-  return value.map(row=>{
-    if(!row||!['interest','fee'].includes(row.component)||Boolean(row.chargeId)===Boolean(row.transactionId))fail('VALIDATION_ERROR')
-    const id=row.chargeId||row.transactionId
-    if(typeof id!=='string'||id.length>64)fail('VALIDATION_ERROR')
-    return {...(row.chargeId?{chargeId:id}:{transactionId:id}),component:row.component,amountMinor:amount(row.amountMinor)}
-  })
-}
+const { normalizeCoverage } = require('./loan-charge-coverage')
 async function claimExisting(c,uid,loan,input) {
   const [[transaction]]=await c.execute(`SELECT transaction_id AS transactionId,type,source_account_id AS accountId,
     amount_minor AS amountMinor,category_id AS categoryId,occurred_local_date AS localDate,deleted_at AS deletedAt

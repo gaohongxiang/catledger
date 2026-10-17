@@ -3,7 +3,7 @@ const api = require('./catledger-api')
 const importApi = require('./catledger-import')
 const config = require('../config/cloudbase')
 const clone = value => JSON.parse(JSON.stringify(value))
-const rejected = new Set(['UNSUPPORTED_ACTION','LOAN_DELETE_BLOCKED','LOAN_CHARGE_COVERAGE','LOAN_CHARGE_PAUSED','LOAN_CHARGE_DIFFERENCE','LOAN_COVERAGE_REQUIRED','LOAN_PERIOD_REQUIRED','VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'ACCOUNT_NAME_CONFLICT', 'INSUFFICIENT_CASH_BALANCE',
+const rejected = new Set(['LOCAL_RECHECK_REQUIRED','LOCAL_REVIEW_REQUIRED','LOCAL_REVIEW_CAPACITY','UNSUPPORTED_ACTION','LOAN_DELETE_BLOCKED','LOAN_CHARGE_COVERAGE','LOAN_CHARGE_PAUSED','LOAN_CHARGE_DIFFERENCE','LOAN_COVERAGE_REQUIRED','LOAN_PERIOD_REQUIRED','VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'ACCOUNT_NAME_CONFLICT', 'INSUFFICIENT_CASH_BALANCE',
   'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'TRANSACTION_GROUP_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_HISTORY_REVIEW_REQUIRED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED', 'LOAN_SOURCE_MISMATCH', 'LOAN_SOURCE_TOO_LARGE', 'LOAN_PLAN_OVERALLOCATED', 'LOAN_PLAN_EXISTS'])
 function createPendingWrite(options) {
   const key = () => {
@@ -52,6 +52,7 @@ function createPendingWrite(options) {
         if (settings && settings.canSend && !settings.canSend()) throw Object.assign(new Error('页面已离开，原请求仍可恢复'), { code: 'VIEW_INACTIVE' })
       }
       canSend()
+      if(target==='import'&&require('./import-local-router').session(data.updateId)?.state.postFlight)throw Object.assign(new Error('入账结果待核实，请先继续原请求'),{code:'OPERATION_UNCONFIRMED'})
       let packet = pending()
       if (packet && settings && settings.exact) {
         const content = value => { const copy = clone(value); delete copy.requestId; return JSON.stringify(copy) }

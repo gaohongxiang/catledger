@@ -87,30 +87,9 @@ async function confirmDetails(connection, uid, updateId, event, actionId) {
 }
 
 async function confirmedPrimary(connection, uid, updateId, pair, actionId) {
-  const facts = channel.pairFacts(pair.bank, pair.platform)
-  if (!facts) throw importError('VALIDATION_ERROR')
-  const bankRows = pair.bank.relationEvidence.rows, platformRows = pair.platform.relationEvidence.rows
-  const primary = mergeText(pair.platform, [pair.bank, pair.platform])
-  const projection = primary.fieldSources.fundsProjection
+  const next = require('./pair-primary-policy').repaymentPrimary(pair, actionId)
+  const primary = next, resolution = next.fieldSources.repaymentChannelResolution
   const bankReference = pair.bank.fieldSources.ledgerAccountReference
-  if (!projection || !projection.from || !bankReference || !bankReference.paymentMethodKey) throw importError('VALIDATION_ERROR')
-  const resolution = { version: channel.VERSION, confirmedBy: 'user', repaymentConfirmed: false, actionId,
-    totalMinor: facts.totalMinor, repaymentMinor: facts.repaymentMinor, feeMinor: facts.feeMinor,
-    targetAccountId: facts.targetAccountId, feeCategoryId: null,
-    localAt: primary.localAt, utcAt: primary.utcAt, platformType: platformRows[0].sourceType,
-    platformTargetReference: projection.to || null,
-    bankRowIds: bankRows.map(row => row.rowId), platformRowIds: platformRows.map(row => row.rowId),
-    basisDigest: channel.evidenceDigest(bankRows.concat(platformRows)) }
-  const next = { ...primary, counterpartyLedgerAccountId: facts.targetAccountId,
-    manualFieldMask: primary.manualFieldMask | FIELD_MASK.counterpartyLedgerAccountId | FIELD_MASK.repaymentOwnership,
-    fieldSources: { ...primary.fieldSources, bankChannelCandidate: undefined,
-      mergeOrigins: mergeOrigins([pair.bank, pair.platform]),
-      rowIds: platformRows.concat(bankRows).map(row => row.rowId),
-      fundsProjection: { ...projection, to: { ...bankReference, role: 'repayment_target' } },
-      repaymentOwnership: { version: 'repayment-ownership-v2', confirmedBy: 'user', owner: 'self' },
-      repaymentChannelResolution: resolution },
-    reasonCodes: primary.reasonCodes.filter(reason => !['repayment_account_required', 'repayment_ownership_required'].includes(reason)) }
-  if (!channel.evidenceValid(next, bankRows.concat(platformRows))) throw importError('VALIDATION_ERROR')
   // 等额来源可能已有系统推测的还款关系；明确同笔后该关系不再独立存在。
   // 只撤回这两个端点间尚未确认的自动候选，人工确认及其他关系仍由合并门禁保护。
   await connection.execute(`UPDATE catledger_economic_event_relations SET status='rejected',version=version+1

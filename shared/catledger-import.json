@@ -300,8 +300,19 @@
     },
     "imports.renameFile": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "importId", "version", "displayName"],
-      "returns": ["protocolVersion=2", "kind=file-receipt", "receiptId", "action=imports.renameFile", "import"],
+      "data": [
+        "requestId",
+        "importId",
+        "version",
+        "displayName"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "kind=file-receipt",
+        "receiptId",
+        "action=imports.renameFile",
+        "import"
+      ],
       "rules": [
         "Trusted current user only; discarded files and stale file versions reject. Filename display alias is NFKC-trimmed, up to 255 Unicode code points, with a nonempty basename and the original extension; path separators and control characters reject.",
         "import.fileName always retains the original filename; displayName is present only for an alias. Setting the exact original filename clears the alias. The original extension, object key, content digest, parsed rows and source snapshots never change.",
@@ -539,7 +550,21 @@
       ],
       "atomic": true,
       "categoryPolicy": "category_assignment 为可选建议；缺分类不阻止整批入账，其他核对和服务端完整性校验仍必须通过。正式 category_id 保留 NULL。",
-      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。",
+      "localReviewV3": {
+        "required": [
+          "protocolVersion=3",
+          "updateId",
+          "version",
+          "snapshotId",
+          "uploadId",
+          "payloadDigest",
+          "requestId"
+        ],
+        "success": "Existing operation receipt with posted update",
+        "recheck": "Receipt with outcome=recheck and immutable recheck object reference; no formal writes",
+        "unknown": "Query imports.commandResult or retry identical request"
+      }
     },
     "financeUpdates.abandon": {
       "kind": "idempotent-versioned-mutation",
@@ -877,6 +902,78 @@
         "A previous explicit distinct bank/platform pair may be changed to same after revalidating both events and all current pairing facts. A manually linked historical duplicate may reopen historical review; the original formal transaction and exact-source automatic duplicates remain protected.",
         "跨渠道还款拆分时撤销手续费合同、恢复原账户/来源引用及人工值，保留此后修改的付款端与文字，移除合并新增目标映射；改回 same 时重读当前两条来源、金额、账户与版本，默认只恢复同笔关系并将还款信息置为待核对；旧显式 repaymentConfirmed=true 请求保留其原授权。"
       ]
+    },
+    "financeUpdates.prepareSnapshot": {
+      "request": [
+        "requestId",
+        "updateId",
+        "version"
+      ],
+      "response": [
+        "protocolVersion",
+        "snapshot"
+      ],
+      "notes": "Locks local_v3 mode after consistent fact capture; rejects stale base. Does not affect formal ledger."
+    },
+    "financeUpdates.snapshotManifest": {
+      "request": [
+        "objectId",
+        "offset?"
+      ],
+      "response": [
+        "header",
+        "parts",
+        "nextOffset"
+      ],
+      "notes": "At most 128 part descriptors; bound to trusted user and immutable object."
+    },
+    "financeUpdates.snapshotChunk": {
+      "request": [
+        "objectId",
+        "index"
+      ],
+      "response": [
+        "objectId",
+        "baseVersion",
+        "index",
+        "digest",
+        "content"
+      ],
+      "notes": "Read-only immutable chunk; raw fields are never logged."
+    },
+    "financeUpdates.stageDecisions": {
+      "request": [
+        "requestId",
+        "updateId",
+        "snapshotId",
+        "uploadId",
+        "baseVersion",
+        "ruleVersion",
+        "chunkCount",
+        "index",
+        "content"
+      ],
+      "response": [
+        "uploadId",
+        "index",
+        "digest"
+      ],
+      "notes": "Exact same chunk can replay; different content at existing index is rejected."
+    },
+    "financeUpdates.sealDecisions": {
+      "request": [
+        "requestId",
+        "updateId",
+        "snapshotId",
+        "uploadId"
+      ],
+      "response": [
+        "uploadId",
+        "digest",
+        "bytes",
+        "chunkCount"
+      ],
+      "notes": "Server validates all chunks, computes digest and validates complete decision state before sealing."
     }
   },
   "rules": {
@@ -940,5 +1037,32 @@
     "lifecycle": "prepare, current-version organize and review mutations synchronize candidates. Restoring a review and advancing the page recheck history. Posting always rechecks under the same user lock; new or changed candidates cause HISTORY_REVIEW_REQUIRED and full rollback. Client retains drafts and returns to review.",
     "limits": "At most 10000 matching event/transaction pairs per scan; excess returns HISTORY_MATCH_LIMIT_EXCEEDED before any financial write. Candidates use existing signed version/user-scoped member pagination.",
     "counts": "already_posted and linked_existing_transaction excluded events appear under duplicate, separately from deliberate user exclusions. No duplicate financial writes or changes to history."
+  },
+  "localReviewV3": {
+    "protocolVersion": 3,
+    "mode": "local_v3",
+    "views": "Existing protocolVersion=2 page shapes; local viewVersion binds snapshot and local revision.",
+    "normalFlow": "prepareSnapshot -> manifest/chunks -> local review with zero network -> stageDecisions/sealDecisions -> financeUpdates.post -> original-request receipt recovery",
+    "snapshot": "Immutable server facts encoded losslessly by catledger-review-facts-v1 tables and a shared value dictionary: all events, stable original row/identity IDs, original fields, issue members, relations, decisions, drafts/catalog, relevant historical transactions/refunds and loan charges. Validate manifest order, object/base/rule/protocol versions, chunk and root SHA-256, record counts and source membership before switching the local generation.",
+    "decisions": "Full final state by stable key, not a click log or client-generated ledger transactions. accounts/events/pairings/reviews/duplicates; every item carries exact original sourceIds. Default absence never accepts a proposed relationship.",
+    "historyCoverage": "Snapshot records initial event amount/time/accounts and bounded historical refund references. Edits outside coverage remain pending server recheck. Final transaction queries history using edited values, returns stable IDs plus bounded additional facts, preserves unrelated decisions.",
+    "budgets": {
+      "requestBytes": 65536,
+      "pageBytes": 262144,
+      "snapshotBytes": 268435456,
+      "decisionBytes": 67108864,
+      "maxSourceRows": 25000,
+      "maxCandidatePairs": 10000,
+      "maxChunks": 16384,
+      "manifestPage": 128,
+      "maxSourceFiles": 5,
+      "snapshotChunkWireBytes": 245760,
+      "decisionChunkWireBytes": 61440
+    },
+    "atomicity": "One trusted-user/receipt transaction applies final decisions with a shared connection, rechecks current state and calls the only posting kernel. Draft staging has no formal accounts, transaction, balance, loan or mapping side effects.",
+    "recovery": "Persist requestId and immutable content before any send. Unknown outcome freezes editing and only permits query/replay of original content. Definitive recheck failure has a persisted rejection receipt. Store success receipt before deleting local sensitive files.",
+    "legacy": "A local_v3 batch rejects all legacy review write commands and legacy post. Existing command receipts remain queryable; settle old pending writes before taking snapshot; failed migration never deletes old local state.",
+    "revisions": "Every successful new server mutation including snapshot/staging/recheck advances data_revision because full private exports contain these objects; exact idempotent replay does not. Local review edits never write the server.",
+    "lifecycle": "Close/hide preserves saved local drafts. Logout/account switch clears prior scoped files and memory with retryable cleanup; late callbacks cannot recreate them. Confirmed success persists receipt then cleans local sensitive files; offline abandonment queues the original server cancellation. Server objects follow FinanceUpdate evidence retention and are reclaimed with abandoned derived data."
   }
 }

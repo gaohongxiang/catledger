@@ -239,7 +239,7 @@ module.exports = {
         const choices = model.accountChoiceOptions(
           accounts,
           accountDrafts,
-          Boolean(issue.accountContext && issue.accountContext.recognized)
+          Boolean(!self._draftSession?.isLocal && issue.accountContext && issue.accountContext.recognized)
         )
         let draft = self._accountUiDrafts.get(issue.issueId)
         if (!draft) {
@@ -308,7 +308,7 @@ module.exports = {
             suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' &&
               draft.accountId === draft.recommendedAccountId),
             recommendedAccountId: draft.recommendedAccountId,
-            allowFutureIgnore: Boolean(issue.accountContext && issue.accountContext.recognized),
+            allowFutureIgnore: Boolean(!self._draftSession?.isLocal && issue.accountContext && issue.accountContext.recognized),
             draftName: draft.name,
             draftNameValid: validAccountName(draft.name),
             draftTypeIndex: draft.typeIndex

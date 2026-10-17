@@ -5,19 +5,8 @@ const { hydrate, hasBankPlatformEvidence } = require('./bank-channel-hydration')
 async function confirmedPrimary(connection, uid, updateId, events, requestedId, actionId, { required = true, hydratedEvents = null } = {}) {
   const hydrated = hydratedEvents || await hydrate(connection, uid, updateId, events)
   if (!required && !hasBankPlatformEvidence(hydrated)) return null
-  const platforms = hydrated.filter(event => ['wechat', 'alipay'].includes(event.sourceType))
+  const primary = require('./pair-primary-policy').ordinaryPrimary(hydrated, requestedId, actionId)
   const banks = hydrated.filter(event => event.sourceType === 'bank')
-  // 还款通过专用配对合并保留到账与扣款两侧事实，不能沿用普通消费的等额合并。
-  if (hydrated.some(event => event.economicNature === 'repayment')) throw importError('VALIDATION_ERROR')
-  // 多个平台或多笔银行候选不能一次合成一笔；交给独立记录裁决。
-  if (platforms.length !== 1 || banks.length !== 1 || hydrated.length !== 2 || !bankChannelPair(banks[0], platforms[0])) throw importError('VALIDATION_ERROR')
-  const primary = require('../editor-fields').mergeText(platforms[0], hydrated)
-  if (primary.eventId !== requestedId) throw importError('VALIDATION_ERROR')
-  const bankCategoryChosen = Boolean(banks[0].manualFieldMask & 128)
-  if (bankCategoryChosen && (primary.manualFieldMask & 128) && banks[0].categoryId !== primary.categoryId) throw importError('VALIDATION_ERROR')
-  if (banks[0].economicNature !== 'unknown' && banks[0].economicNature !== primary.economicNature) throw importError('VALIDATION_ERROR')
-  const primaryRows = primary.relationEvidence.rows
-  const bankRows = banks[0].relationEvidence.rows
   const accountContexts = { ...primary.fieldSources.bankChannelAccountContexts }
   const [accountMembers] = await connection.execute(`SELECT m.member_id AS memberId, m.issue_id AS issueId, m.member_role AS role, m.sort_order AS sortOrder
     FROM catledger_review_issue_members m JOIN catledger_review_issues i ON i.uid = m.uid AND i.issue_id = m.issue_id
@@ -41,14 +30,7 @@ async function confirmedPrimary(connection, uid, updateId, events, requestedId, 
       if (reference) accountContexts[member.issueId] = { ...reference, fundsSide: 'ordinary' }
     }
   }
-  return { ...primary, categoryId: bankCategoryChosen ? banks[0].categoryId : primary.categoryId || banks[0].categoryId,
-    manualFieldMask: primary.manualFieldMask | (banks[0].manualFieldMask & 128),
-    fieldSources: { ...primary.fieldSources, bankChannelCandidate: undefined,
-    mergeOrigins: require('./merge-origins').mergeOrigins(hydrated),
-    bankChannelAccountContexts: accountContexts,
-    rowIds: primaryRows.concat(bankRows).map(row => row.rowId),
-    bankChannelResolution: { version: VERSION, actionId, ledgerAccountId: primary.ledgerAccountId,
-      primaryRowId: primaryRows[0].rowId, explainedBankRowIds: bankRows.map(row => row.rowId) } } }
+  return { ...primary, fieldSources: { ...primary.fieldSources, bankChannelAccountContexts: accountContexts } }
 }
 
 async function mergeRelations(connection, uid, updateId, primaryId, secondaryId, { syncMembers = true } = {}) {

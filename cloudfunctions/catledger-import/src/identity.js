@@ -1,4 +1,4 @@
-const { digestParts } = require('./digest')
+const { digestParts } = require('./portable-digest')
 const { paymentAccountDetails } = require('./payment-account')
 
 const IDENTITY_VERSION = 'source-identity-v1'

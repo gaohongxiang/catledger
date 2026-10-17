@@ -14,6 +14,7 @@ const decisions = require('./bank-channel-decisions')
 const { applyPairs } = require('./bank-channel-apply')
 
 async function synchronize(connection, uid, updateId, actionId, rows = null, { reuseDecisions = true } = {}) {
+  if (require('../local-review-batch').defer(connection, actionId)) return
   const [[source]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_finance_update_sources
     WHERE uid = ? AND update_id = ? AND source_type_snapshot = 'bank'`, [uid, updateId])
   if (!Number(source.count)) return

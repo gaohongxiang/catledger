@@ -4,6 +4,7 @@ const path = require('node:path')
 const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
+execFileSync(process.execPath,[path.join(root,'scripts/import-local-rules.js')],{stdio:'pipe'})
 const files = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
   { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean))].filter((file) => fs.existsSync(path.join(root, file)))
 for (const file of files) {

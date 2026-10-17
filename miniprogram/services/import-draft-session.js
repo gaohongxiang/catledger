@@ -242,6 +242,9 @@ function create(options) {
 }
 
 function open(view) {
+  const local = require('./import-local-router').session(view.update.updateId)
+  if (local) { rememberLast(view.update.updateId); return local }
+  if (view.update.reviewMode === 'local_v3') throw Object.assign(new Error('完整草稿尚未准备好，请重新下载后核对'), { code: 'SNAPSHOT_INCOMPLETE' })
   if (sessionScope !== readCache.getSession()) {
     sessions.forEach(session => { session.pause() })
     sessions.clear(); sessionScope = readCache.getSession()
@@ -261,10 +264,14 @@ function open(view) {
   return session
 }
 async function pauseUpdate(updateId) {
+  const local = require('./import-local-router').session(updateId)
+  if (local) return local.pause()
   const session = sessions.get(config.envId + ':' + updateId)
   if (session) await session.pause()
 }
 function clearUpdate(updateId) {
+  const local = require('./import-local-router').session(updateId)
+  if (local) local.clear()
   const id = config.envId + ':' + updateId
   const session = sessions.get(id)
   if (session) session.clear()

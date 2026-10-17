@@ -14,7 +14,7 @@ function current(page, token) {
 }
 function editable(page, token) {
   const sheet = page.data.reviewEditSheet
-  return current(page, token) && token.session.active && token.session.summary.viewVersion === token.version && token.draft &&
+  return !page._draftSession?.state.postFlight && current(page, token) && token.session.active && token.session.summary.viewVersion === token.version && token.draft &&
     token.row.editorFacts?.version === 1 && !token.row.editorFacts.readonly &&
     !sheet.stale && !sheet.loading && !sheet.saving && !sheet.pending && !sheet.saved
 }
@@ -354,6 +354,7 @@ module.exports = {
       token.refundOptions = result.items
       token.refundChecked = { ...(token.refundChecked || {}), [kind]: result.total }
       this.setData({ 'reviewEditSheet.refundChoices': result.items.map(item => ({ ...item, amountText: '¥' + model.yuan(item.remainingMinor) })),
+        'reviewEditSheet.refundHistoryPending': kind === 'transaction' ? result.serverReviewPending === true : this.data.reviewEditSheet.refundHistoryPending,
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
         'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&
           !token.row.refundSourceConflict && !(token.row.editorFacts.blockingReasons || []).length,
@@ -380,7 +381,8 @@ module.exports = {
     this.setData({ 'reviewEditSheet.chargeLoading': true, 'reviewEditSheet.chargeError': '' })
     try {
       const more = event?.currentTarget?.dataset?.more
-      const result = await require('../../../../services/catledger-api').callApi('loans.chargePlan', { loanId, pageSize: 20, ...(more && token.chargeCursor ? { cursor: token.chargeCursor } : {}) }, { force: true })
+      const chargeApi = this._draftSession && this._draftSession.isLocal ? { callApi: (action, data) => this._draftSession.call(action, data) } : require('../../../../services/catledger-api')
+      const result = await chargeApi.callApi('loans.chargePlan', { loanId, pageSize: 20, ...(more && token.chargeCursor ? { cursor: token.chargeCursor } : {}) }, { force: true })
       if (!active()) return
       if (Number(result.loanVersion) !== token.draft.loanVersion) throw Error('贷款资料已变更，请重新选择该计划后核验费用')
       const choices = result.items.filter(item => ['planned','recorded','baseline'].includes(item.state))

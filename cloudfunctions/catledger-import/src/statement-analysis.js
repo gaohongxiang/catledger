@@ -1,4 +1,4 @@
-const { profileForFormat } = require('./profiles')
+const { profileForFormat } = require('./profiles/index')
 
 const ANALYSIS_VERSION = 'statement-analysis-v1'
 

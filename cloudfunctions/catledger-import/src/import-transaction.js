@@ -11,7 +11,7 @@ const {
 
 const MAX_ATTEMPTS = 4
 const MAX_READ_ATTEMPTS = 2
-const RECEIPT_ACTIONS = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.abandon',
+const RECEIPT_ACTIONS = new Set(['financeUpdates.prepareSnapshot', 'financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.abandon',
   'financeUpdates.setCategory', 'financeUpdates.setReview', 'financeUpdates.reviseDuplicate', 'financeUpdates.setRepayment', 'financeUpdates.post', 'financeUpdates.undo', 'economicEvents.correct', 'reviewIssues.resolve',
   'reviewIssues.resolveAccountMappings', 'reviewIssues.refreshAccountGroups', 'reviewIssues.reviseAccountMapping', 'reviewIssues.resolvePairings'])
 
@@ -98,7 +98,18 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
         throw error
       }
 
+      // Receipt replay is resolved above before this mode gate, so old in-flight
+      // requests remain recoverable after a batch switches to local review.
+      if (data.updateId && (action.startsWith('reviewIssues.') ||
+        ['financeUpdates.setReview','financeUpdates.setCategory','financeUpdates.setRepayment','financeUpdates.reviseDuplicate','financeUpdates.organize','financeUpdates.post'].includes(action)) &&
+        !(action === 'financeUpdates.post' && data.protocolVersion === 3)) {
+        const [[batch]] = await connection.execute('SELECT review_mode AS mode FROM catledger_finance_updates WHERE uid=? AND update_id=?', [uid, data.updateId])
+        if (batch && batch.mode === 'local_v3') throw importError('LOCAL_REVIEW_REQUIRED')
+      }
       const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
+      // Full private exports include draft facts and immutable transport objects.
+      // Every committed mutation keeps the existing export revision contract,
+      // including staging and a definitive recheck receipt; none writes money.
       await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
       const result = RECEIPT_ACTIONS.has(action) ? operationReceipt(rawResult, action, keyDigest) : assertBudget(rawResult, 'receipt')
       await connection.execute(
@@ -170,4 +181,19 @@ async function readCommandResult(context) {
   } })
 }
 
-module.exports = { executeIdempotentMutation, executeUserRead, resolveUid, readCommandResult }
+// Preflight for commands which prepare immutable data before taking the write
+// lock. A lost response must replay before examining a now-advanced version.
+async function findReplay(context, action) {
+  const data = { ...context.data }, key = digestIdempotencyKey(data.requestId)
+  delete data.requestId
+  const digest = digestRequest(action, data)
+  return executeUserRead({ ...context, operation: async (connection, uid) => {
+    const [[row]] = await connection.execute(`SELECT action,request_digest AS digest,result_json AS result
+      FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?`, [uid, key])
+    if (!row) return null
+    if (row.action !== action || row.digest !== digest) throw importError('IDEMPOTENCY_CONFLICT')
+    return row.result == null ? null : assertBudget(readReceipt(row.result), 'receipt')
+  } })
+}
+
+module.exports = { executeIdempotentMutation, executeUserRead, resolveUid, readCommandResult, findReplay }

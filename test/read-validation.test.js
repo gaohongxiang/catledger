@@ -9,6 +9,24 @@ const { envId } = require('../miniprogram/config/cloudbase')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const meta = (value = {}, dataRevision = '1', uid = '1234567890') => ({ readVersion: 1, uid, dataRevision, unchanged: false, ...value })
 
+test('本地核对回前台不联网，普通账本缓存待刷新，离开核对后恢复读取与版本校验', async () => {
+  const h=runtime(),definition=h.load('app'),router=h.load('services/import-local-router')
+  await h.api.callApi('dashboard.get')
+  const before=h.calls.length,updateId='synthetic-local-foreground'
+  router.bind({view:{update:{updateId,status:'review'}},destroy(){}})
+  h.currentPages=[{route:'packages/finance/pages/import-workbench/index',data:{update:{updateId}}}]
+  definition.onHide.call(h.app);definition.onShow.call(h.app);await flush()
+  assert.equal(h.calls.length,before)
+  assert.equal(h.api.isFresh('dashboard.get'),false)
+  h.currentPages=[{route:'pages/index/index'}]
+  await h.api.callApi('dashboard.get')
+  assert.equal(h.calls.length,before+1)
+  definition.onHide.call(h.app);definition.onShow.call(h.app);await flush()
+  assert.equal(h.calls.at(-1).action,'reads.validate')
+  assert.equal(h.calls.length,before+2)
+  router.unbind(updateId)
+})
+
 test('回前台多页面共用一次轻量校验，同版本复用原值与分页令牌', async () => {
   const h = runtime()
   await Promise.all([h.api.callApi('dashboard.get'), h.api.callApi('statistics.get'), h.api.callApi('catalog.get')])
