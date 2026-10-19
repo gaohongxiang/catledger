@@ -87,7 +87,10 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
   }
   async function download(header, call, onProgress = () => {}, inline = null) {
     const ticket = epoch, descriptors = []; let offset = 0
+    const startedAt = Date.now()
+    let manifestMs = 0, chunkMs = 0, decodeMs = 0, chunkCalls = 0, inlineUsed = false
     guard(ticket); io(() => { mkdir(directory); mkdir(directory + '/' + header.objectId) })
+    const manifestStartedAt = Date.now()
     do {
       const result = await call('financeUpdates.snapshotManifest', { objectId: header.objectId, offset })
       guard(ticket)
@@ -95,6 +98,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       descriptors.push(...result.parts); offset = result.nextOffset
       if (descriptors.length > header.chunkCount || offset != null && offset !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块清单不完整')
     } while (offset != null)
+    manifestMs = Date.now() - manifestStartedAt
     protocol.validateManifest(header, descriptors)
     const folder = directory + '/' + header.objectId
     const done = new Set()
@@ -109,6 +113,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
         protocol.validatePart(header, descriptor, { ...descriptor, objectId: header.objectId,
           baseVersion: header.baseVersion, content })
         io(() => verified(folder + '/part-' + descriptor.index + '.json', content))
+        inlineUsed = true
       } catch (error) {
         if (error.code === 'DRAFT_STORAGE_FAILED' || error.code === 'SESSION_CHANGED') throw error
         // An invalid inline payload is ignored; the normal chunk path below remains authoritative.
@@ -126,10 +131,12 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
         // A corrupt or stale part is not evidence; it will be replaced below.
       }
     }
-    const reused = done.size
+    const reused = Math.max(0, done.size - (inlineUsed ? 1 : 0))
     onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
+    const chunkStartedAt = Date.now()
     await runPool(descriptors.filter(descriptor => !done.has(descriptor.index)), concurrency, async descriptor => {
       guard(ticket)
+      chunkCalls += 1
       const part = await call('financeUpdates.snapshotChunk', { objectId: header.objectId, index: descriptor.index })
       guard(ticket)
       const content = protocol.validatePart(header, descriptor, part)
@@ -137,10 +144,13 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       done.add(descriptor.index)
       onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
     })
+    chunkMs = Date.now() - chunkStartedAt
     if (done.size !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块不完整，请重试')
     guard(ticket)
+    const decodeStartedAt = Date.now()
     const facts = header.kind === 'snapshot' ? snapshot.validateFacts(snapshot.decodeParts(readParts(header, descriptors)), header)
       : parse([...readParts(header, descriptors)].join('')); guard(ticket)
+    decodeMs = Date.now() - decodeStartedAt
     if (header.kind === 'snapshot' && (facts.snapshotId !== header.objectId || facts.update.updateId !== updateId || facts.update.version !== header.baseVersion)) throw failure('SNAPSHOT_INCOMPLETE', '草稿身份不一致')
     if (header.kind !== 'snapshot') return facts
     io(() => {
@@ -148,6 +158,9 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       atomic(directory + '/complete-' + Date.now() + '-' + header.objectId + '.json', { header, parts: descriptors })
       generation = header.objectId; revision = 0; previous = ''; mkdir(journalPath())
     })
+    onProgress({ completed: descriptors.length, total: header.chunkCount, bytes: header.bytes, reused, inline: inlineUsed,
+      stats: { manifestMs, chunkMs, decodeMs, totalMs: Date.now() - startedAt, chunkCalls, reused, inline: inlineUsed,
+        bytes: header.bytes, chunkCount: header.chunkCount } })
     return facts
   }
   function save(changes) {

@@ -48,12 +48,16 @@ test('并行下载：有界并发、进度单调，结果与串行一致', async
       inFlight -= 1
     }
     return object.call(action, data)
-  }, update => progress.push(update.completed))
+  }, update => progress.push(update))
   const restored = store.restore()
+  const completed = progress.map(update => update.completed)
   assert.equal(chunkCalls, object.parts.length)
   assert.ok(maxInFlight > 1 && maxInFlight <= 3)
-  assert.deepEqual(progress, [...progress].sort((left, right) => left - right))
-  assert.equal(progress[progress.length - 1], object.parts.length)
+  assert.deepEqual(completed, [...completed].sort((left, right) => left - right))
+  assert.equal(completed[completed.length - 1], object.parts.length)
+  assert.equal(progress[progress.length - 1].stats.chunkCalls, object.parts.length)
+  assert.equal(progress[progress.length - 1].stats.reused, 0)
+  assert.ok(progress[progress.length - 1].stats.totalMs >= 0)
   assert.equal(restored.facts.snapshotId, value.snapshotId)
   assert.equal(restored.facts.events.length, value.events.length)
   assert.equal(restored.facts.rows.length, value.rows.length)
@@ -77,10 +81,13 @@ test('断点续传：已校验块不重复请求，失败后只补缺块', async
   const firstAttempt = calls.slice()
   assert.ok(firstAttempt.includes(0) && firstAttempt.includes(1))
   calls.length = 0
-  await store.download(object.header, network)
+  let finalProgress = null
+  await store.download(object.header, network, update => { finalProgress = update })
   assert.equal(calls.includes(0), false)
   assert.equal(calls.includes(1), true)
   assert.equal(store.restore().facts.snapshotId, value.snapshotId)
+  assert.equal(finalProgress.stats.reused, 1)
+  assert.ok(finalProgress.stats.chunkCalls < object.parts.length)
 })
 
 test('断点续传：损坏的本机块按摘要重新下载，不被当作有效缓存', async t => {
@@ -104,14 +111,16 @@ test('单块内联：不请求分块；内联内容不符时回退分块', async
   t.after(inlineLab.cleanup); t.after(fallbackLab.cleanup)
   const value = await facts({ count: 3 }), object = packed(value)
   assert.equal(object.parts.length, 1)
-  let inlineChunkCalls = 0
+  let inlineChunkCalls = 0, inlineFinal = null
   const inlineStore = files.create({ ...inlineLab, scope: 'test:inline', updateId: value.update.updateId })
   await inlineStore.download(object.header, async (action, data) => {
     if (action.endsWith('Chunk')) inlineChunkCalls += 1
     return object.call(action, data)
-  }, () => {}, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
+  }, update => { inlineFinal = update }, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
     index: 0, bytes: object.parts[0].bytes, digest: object.parts[0].digest, content: object.parts[0].content })
   assert.equal(inlineChunkCalls, 0)
+  assert.equal(inlineFinal.stats.inline, true)
+  assert.equal(inlineFinal.stats.chunkCalls, 0)
   assert.equal(inlineStore.restore().facts.snapshotId, value.snapshotId)
 
   let fallbackChunkCalls = 0
