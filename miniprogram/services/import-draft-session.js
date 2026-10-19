@@ -120,7 +120,13 @@ function create(options) {
             continue
           }
           entry.status = 'saved'
-          if (entry.kind === 'account' && next.drafts[entry.issueId] && next.drafts[entry.issueId].revision === entry.revision) delete next.drafts[entry.issueId]
+          if (entry.kind === 'account' && next.drafts[entry.issueId] && next.drafts[entry.issueId].revision === entry.revision) {
+            // Keep the confirmed draft until the batch ends. The summary refresh
+            // may still project the issue as open; deleting it here makes the
+            // card reopen as "确认修改" and asks the user to confirm twice.
+            next.drafts[entry.issueId].localConfirmed = true
+            next.drafts[entry.issueId].dirty = false
+          }
         }
         next.flight = null
         persist(next, state.entries.some(entry => flight.ids.includes(entry.issueId) && entry.kind === 'account'))

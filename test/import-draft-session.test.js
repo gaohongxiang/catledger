@@ -79,7 +79,8 @@ test('账户确认合并为一个请求，未发送前修改会撤回旧确认',
   assert.equal(f.calls[0].data.decisions.length, 1)
   assert.equal(f.calls[0].data.decisions[0].issueId, 'b')
   assert.equal(f.session.state.drafts.a.revision, 1)
-  assert.equal(f.session.state.drafts.b, undefined)
+  assert.equal(f.session.state.drafts.b.localConfirmed, true)
+  assert.equal(f.session.state.drafts.b.dirty, false)
 })
 
 test('在途请求不可改写，其他项可继续确认，多次flush不重复提交', async () => {

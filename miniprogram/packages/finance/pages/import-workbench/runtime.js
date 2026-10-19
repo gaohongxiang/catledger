@@ -110,6 +110,7 @@ module.exports = {
     themeService.bindPage(this)
     this._requestIds = {}
     this._abandonedUpdateId = null
+    this._accountConfirmed = new Map()
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
     this.syncFileRenamePending()
@@ -482,7 +483,7 @@ module.exports = {
           statementFullyRecognized: false, selectedEventsReadyToPost: false
         },
         reviewStatusTabs: model.reviewStatusTabs(),
-        accountMappings: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
+        accountMappings: [], accountMappingsIncluded: [], accountMappingsExcluded: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
         accountStepBusy: false, accountStepError: '', accountStepProgressText: '',
         accounts: [], accountDrafts: [], accountMappingDrafts: [], accountChoices: [{ accountId: '', name: '新建账户' }],
         accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
@@ -491,6 +492,7 @@ module.exports = {
         issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, reviewEditSheet: null
       })
     this._accountUiDrafts.clear()
+    if (this._accountConfirmed) this._accountConfirmed.clear()
     this.syncFileRenamePending()
   },
 
@@ -540,6 +542,7 @@ module.exports = {
         preparingAccount: false, prepareProgress: '' })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
+    if (step === 2) this.refreshAccountMappings()
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
@@ -577,7 +580,9 @@ module.exports = {
   },
 
   setStep: function (patch) {
-    setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch)); return this.loadActivePage(true)
+    setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch))
+    if (patch.currentStep === 2) this.refreshAccountMappings()
+    return this.loadActivePage(true)
   },
 
   renderReview: function (reset) {

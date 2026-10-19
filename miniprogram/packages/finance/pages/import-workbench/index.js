@@ -49,6 +49,8 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     accountIssues: [],
     accountMappings: [],
     draftSync: { pending: 0, syncing: false, error: '', conflicts: 0 },
+    accountMappingsIncluded: [],
+    accountMappingsExcluded: [],
     accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
     accountStepBusy: false,
     accountStepError: '',

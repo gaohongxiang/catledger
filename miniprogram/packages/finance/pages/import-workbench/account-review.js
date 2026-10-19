@@ -202,6 +202,7 @@ function applyAccountChoice(event) {
   draft.dirty = true
   draft.localConfirmed = false
   draft.revision = (draft.revision || 0) + 1
+  if (this._accountConfirmed) this._accountConfirmed.delete(sheet.issueId)
   this.setData({
       accountStepError: '',
       accountChoiceSheet: null,
@@ -222,12 +223,20 @@ module.exports = {
 
   refreshAccountMappings: function () {
     const state = this.mappingState()
-    setChangedData(this, { accountMappings: state.mappings.map(function (mapping) {
-            const visible = presentation.accountMapping(mapping)
-            delete visible.choiceOptions
-            visible.evidencePreview = Boolean(visible.evidencePreview)
-            return visible
-          }) })
+    const mappings = state.mappings.map(function (mapping) {
+      const visible = presentation.accountMapping(mapping)
+      delete visible.choiceOptions
+      visible.evidencePreview = Boolean(visible.evidencePreview)
+      return visible
+    })
+    const isExcluded = mapping => mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future'
+    // Keep an unconfirmed exclusion in the actionable list; only a confirmed
+    // exclusion moves to the compact "本次不计入" section.
+    const excluded = mappings.filter(function (mapping) { return isExcluded(mapping) && !mapping.needsConfirmation })
+    const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
+    setChangedData(this, { accountMappings: mappings,
+      accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }),
+      accountMappingsExcluded: excluded, accountStepSummary: state.summary })
     return state
   },
 
@@ -277,6 +286,8 @@ module.exports = {
           }
           self._accountUiDrafts.set(issue.issueId, draft)
         }
+        const confirmed = self._accountConfirmed && self._accountConfirmed.get(issue.issueId)
+        if (confirmed && confirmed.revision === (draft.revision || 0)) { draft.localConfirmed = true; draft.dirty = false }
         const choiceValue = draft.mode === 'account' ? 'account:' + draft.accountId : draft.mode
         let choiceIndex = choices.findIndex(function (choice) { return choice.value === choiceValue })
         if (choiceIndex < 0 && draft.accountId) {
@@ -441,6 +452,7 @@ module.exports = {
         return
       }
     }
+    if (this._accountConfirmed) this._accountConfirmed.set(issueId, { revision: draft.revision || 0 })
     this.setData({ accountStepError: '' })
     this.refreshAccountMappings()
   },

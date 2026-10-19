@@ -222,8 +222,8 @@
     <text class="step-copy content-inset">核对建议，不合适可更改</text>
 
     <skeleton-rows wx:if="{{pageLoading && !accountMappings.length}}" rows="{{3}}" />
-    <view wx:if="{{accountMappings.length}}" class="account-proof-list">
-      <view wx:for="{{accountMappings}}" wx:key="issueId" class="account-proof-item">
+    <view wx:if="{{accountMappingsIncluded.length}}" class="account-proof-list">
+      <view wx:for="{{accountMappingsIncluded}}" wx:key="issueId" class="account-proof-item">
         <view class="account-proof-head">
           <view class="account-proof-title-line"><text class="account-proof-title">{{item.label}}</text><text wx:if="{{item.needsConfirmation}}" class="account-pending-label">{{item.dirty && item.status === 'resolved' ? '待确认' : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
           <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
@@ -264,12 +264,19 @@
             <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入；入账后同类将自动排除。</text>
             <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'resolved'}}" class="account-state-note">已按你的规则不计入，入账前仍可修改。</text>
           </view>
-          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
+          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' || item.choiceValue === 'ignore_future' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
         </view>
         </block>
       </view>
     </view>
 
+    <view wx:if="{{accountMappingsExcluded.length}}" class="account-excluded-list">
+      <view class="account-excluded-head"><text>本次不计入</text><text class="money-number">{{accountMappingsExcluded.length}} 项</text></view>
+      <view wx:for="{{accountMappingsExcluded}}" wx:key="issueId" class="account-excluded-item" data-id="{{item.issueId}}" bindtap="openAccountChoice">
+        <view class="account-excluded-copy"><text class="account-proof-title">{{item.label}}</text><text class="account-proof-meta">{{item.memberCount}} 笔 · {{item.summaryText}}</text></view>
+        <text class="account-change">更改</text>
+      </view>
+    </view>
     <text class="account-shared-note">入账后才生效，此前不改动现有账户</text>
 <view wx:if="{{reviewPage && (reviewPage.hasPrevious || reviewPage.hasNext)}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeReviewPage" disabled="{{!reviewPage.canFirst}}">首页</button>
