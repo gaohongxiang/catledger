@@ -8,6 +8,7 @@ const api = require('../../../../services/catledger-import')
 const ledgerApi = require('../../../../services/catledger-api')
 const viewSession = require('../../services/import-view-session')
 const loginGuard = require('../../../../services/login-guard')
+const importPerformance = require('../../../../services/import-performance')
 const themeService = require('../../../../theme/service')
 const readCache = require('../../../../services/read-cache')
 const pendingWrites = require('../../../../services/pending-ledger-write')
@@ -251,6 +252,9 @@ module.exports = {
       return
     }
     const operation = this._prepareOperation = { epoch: this._viewEpoch, scope: readCache.getSession(), owner: currentOwner() }
+    const perf = this._importPerf || importPerformance.create()
+    this._importPerf = perf
+    perf.mark('organize_start')
     const active = () => this._viewActive && getApp().hasLoginApproval() && operation.owner === currentOwner() &&
       readCache.getSession() === operation.scope && this._viewEpoch === operation.epoch && this._prepareOperation === operation
     this._prepareRestore = true
@@ -261,6 +265,8 @@ module.exports = {
         : await pendingWrites.send('import', 'financeUpdates.prepare', { batchIds }, { exact: true, canSend: active })
       receipt = result.result
       if (!active()) return
+      if (receipt.update && receipt.update.counts) perf.mark('organized', { events: receipt.update.counts.finalEvents, issues: receipt.update.counts.needsActionEvents })
+      else perf.mark('organized')
       // 写回执与后续读取分开：即使摘要失败，也已有可恢复的原批次。
       this.setData({ update: receipt.update, preparePending: false })
       let view = await api.readSummary(receipt.update.updateId)
@@ -269,12 +275,16 @@ module.exports = {
       if (!active()) return
       view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) })
       if (!active()) return
+      perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
+      importPerformance.record(perf); this._importPerf = null
       this.applyUpdateView(view)
       if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新' })
       this._prepareRestore = false
       return true
     } catch (error) {
       if (!active()) return
+      perf.mark('prepare_failed')
+      importPerformance.record(perf); this._importPerf = null
       if (error.confirmedResult && error.confirmedResult.action === 'financeUpdates.prepare') receipt = error.confirmedResult.result
       if (receipt) {
         this.applyUpdateView(receipt)
@@ -303,9 +313,12 @@ module.exports = {
     const active = () => this._viewActive !== false && getApp().hasLoginApproval() && scope === readCache.getSession() && owner === currentOwner() &&
       this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
+    const perf = importPerformance.create()
+    this._importPerf = perf
+    perf.mark('restore_start')
     try {
       const local = localReview.restore(updateId)
-      if (local) { this.setData({ restoreUpdateId: '' }); this.applyUpdateView(local.view, false, restoreToFirstStep); return true }
+      if (local) { perf.mark('restore_local'); importPerformance.record(perf); this._importPerf = null; this.setData({ restoreUpdateId: '' }); this.applyUpdateView(local.view, false, restoreToFirstStep); return true }
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
       let view = await load.pending
       if (!active()) return
@@ -324,11 +337,15 @@ module.exports = {
       if (!active()) return
       view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration)
       if (!active()) return
+      perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
+      importPerformance.record(perf); this._importPerf = null
       this.setData({ restoreUpdateId: '' })
       this.applyUpdateView(view, false, restoreToFirstStep)
       return true
     } catch (error) {
       if (!active()) return
+      perf.mark('load_failed')
+      importPerformance.record(perf); this._importPerf = null
       this.setData({ phase: 'error', busy: false, errorMessage: publicError(error, '整理结果加载失败') })
     }
   },
