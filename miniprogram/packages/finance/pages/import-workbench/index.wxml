@@ -186,7 +186,7 @@
     <view class="stage-action stage-navigation">
       <view class="stage-navigation-buttons">
         <block wx:if="{{update}}">
-          <button class="stage-previous" bindtap="abandonUpdate" loading="{{abandoningUpdate}}" disabled="{{busy}}">{{abandoningUpdate ? '正在放弃…' : '放弃本批'}}</button>
+          <button class="stage-previous {{abandoningUpdate ? 'stage-previous-abandoning' : ''}}" bindtap="abandonUpdate" loading="{{abandoningUpdate}}" disabled="{{busy}}">{{abandoningUpdate ? '放弃中' : '放弃本批'}}</button>
           <button class="primary-button stage-primary" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
         </block>
         <button wx:else data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || fileRenamePending || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>

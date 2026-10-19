@@ -156,7 +156,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /以前|之前/)
   assert.doesNotMatch(markup, /本次所有账单都会回滚/)
   assert.match(markup, /bindtap="abandonUpdate" loading="\{\{abandoningUpdate\}\}"/)
-  assert.match(markup, /正在放弃…/)
+  assert.match(markup, /放弃中/)
   assert.match(markup, /class="sheet-layer"/)
   assert.doesNotMatch(markup, /FINANCE UPDATE|primaryReasonCode|post\/skip/)
   assert.match(styles, /\.stage-track/)

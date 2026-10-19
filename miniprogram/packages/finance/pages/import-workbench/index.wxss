@@ -2744,6 +2744,7 @@ button::after { border: 0; }
 .stage-navigation-buttons { display: flex; align-items: stretch; gap: var(--layout-space-3); }
 .stage-navigation .stage-previous { flex: 0 0 160rpx; min-width: 0; margin: 0; padding: 0 12rpx; min-height: 88rpx; color: var(--ui-accent-strong); font-size: var(--font-caption, 24rpx); line-height: 88rpx; background: var(--ui-surface); border: 1rpx solid var(--ui-accent-strong); border-radius: var(--theme-radius-small, 12rpx); }
 .stage-navigation .stage-primary { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; width: 0; min-height: 88rpx; margin: 0; padding: var(--layout-space-2); font-size: var(--font-caption, 24rpx); line-height: 1.5; border-radius: var(--theme-radius-small, 12rpx); }
+.stage-navigation .stage-previous-abandoning { flex-basis: 176rpx; padding: 0 8rpx; font-size: 22rpx; line-height: 1.2; white-space: nowrap; overflow: hidden; }
 .stage-navigation .stage-previous[disabled] { opacity: .5; }
 
 /* 在现有统一视觉上收紧账户列表；保留其他步骤与兼容修复。 */
