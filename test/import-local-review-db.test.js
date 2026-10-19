@@ -70,6 +70,26 @@ test('完整快照/决定暂存：可信用户、不可替换、完整性及旧�
     assert.deepEqual(Object.fromEntries(Object.entries(counts).map(([key,value]) => [key,Number(value)])), { transactions: 0, accounts: 0, mappings: 0 })
   } finally { await lab.close() }
 })
+test('prepareSnapshot 重放刷新服务端租约，force 生成新快照并保留旧代次', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async () => {
+  const lab = await isolatedMysql()
+  try {
+    const services = localServices({ apiPool: lab.owner, importPool: lab.owner })
+    await call(services.api, 'bootstrap')
+    const update = await prepareSyntheticUpdate(services, 1, randomUUID())
+    const first = await call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion })
+    await lab.owner.execute('UPDATE catledger_finance_updates SET updated_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL 25 HOUR) WHERE update_id = ?', [update.updateId])
+    const replay = await call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: update.updateId, version: first.update.version })
+    assert.equal(replay.snapshot.objectId, first.snapshot.objectId)
+    assert.equal(replay.update.version, first.update.version)
+    assert.ok(Number(replay.update.ageMs) < 5000, '重放既有快照应刷新 updated_at 租约')
+    const forced = await call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: update.updateId, version: replay.update.version, force: true })
+    assert.notEqual(forced.snapshot.objectId, first.snapshot.objectId)
+    assert.equal(forced.update.version, replay.update.version + 1)
+    const [[objects]] = await lab.owner.execute("SELECT COUNT(*) AS count FROM catledger_import_review_objects WHERE update_id=? AND object_kind='snapshot'", [update.updateId])
+    assert.equal(Number(objects.count), 2)
+  } finally { await lab.close() }
+})
+
 module.exports = { download, finalState, stage }
 
 async function prepareLocal(services, updateId, version) {

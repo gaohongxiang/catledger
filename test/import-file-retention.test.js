@@ -2,6 +2,15 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { RETENTION_DAYS, isExpired } = require('../cloudfunctions/catledger-import/src/import-file-retention')
 
+test('未入账原件统一 24 小时，已入账/重复/丢弃立即删除', () => {
+  assert.equal(RETENTION_DAYS.awaiting_upload, 1)
+  assert.equal(RETENTION_DAYS.failed, 1)
+  assert.equal(RETENTION_DAYS.review_ready, 1)
+  assert.equal(RETENTION_DAYS.committed, 0)
+  assert.equal(RETENTION_DAYS.duplicate, 0)
+  assert.equal(RETENTION_DAYS.discarded, 0)
+})
+
 test('原件保留期按状态分级，边界当天即到期', () => {
   const now = Date.parse('2026-10-19T00:00:00Z')
   for (const [state, days] of Object.entries(RETENTION_DAYS)) {

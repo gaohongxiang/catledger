@@ -9,6 +9,7 @@ const { RETENTION_DAYS } = require('./import-file-retention')
 const { digestParts, sha256 } = require('./digest')
 const { importError } = require('./errors')
 const { createFinanceUpdateCore } = require('./finance-update-core')
+const { createFinanceDraftCleanup } = require('./finance-draft-cleanup')
 const { createFinanceUpdateMaintenance } = require('./finance-update-maintenance')
 const { createFinanceUpdatePosting } = require('./finance-update-posting')
 const { getImport } = require('./import-query')
@@ -85,6 +86,7 @@ function createImportService({ getPool, storage }) {
   const localObjects = require('./local-review-objects').createLocalReviewObjects({ getPool })
   const reads = createFinanceUpdateRead({ getPool })
   const financeUpdates = createFinanceUpdateCore({ getPool })
+  const draftCleanup = createFinanceDraftCleanup({ getPool })
   const maintenance = createFinanceUpdateMaintenance({ getPool })
   const reviewIssues = createReviewIssueService({ getPool })
   const posting = createFinanceUpdatePosting({ getPool })
@@ -430,6 +432,7 @@ function createImportService({ getPool, storage }) {
 
   return {
     cleanupExpiredFilesGlobal,
+    cleanupExpiredDraftsGlobal: draftCleanup.cleanupExpiredDraftsGlobal,
     discardFile,
     getFile,
     renameFile,

@@ -17,6 +17,7 @@ const postingFlow = require('./posting-flow')
 const initialData = Object.assign({}, pairingReview.initialData, {
     pairingEntry: null,
     restoreUpdateId: '',
+    resumeNotice: null,
     abandoningRestore: false,
     abandoningUpdate: false,
     preparePending: false,
@@ -208,6 +209,8 @@ Page({
   createFinanceUpdate: runtime.createFinanceUpdate,
   refreshAccountGroups: runtime.refreshAccountGroups,
   loadUpdate: runtime.loadUpdate,
+  continueBlockedResume: runtime.continueBlockedResume,
+  showResumeNotice: runtime.showResumeNotice,
   abandonRestoringUpdate: runtime.abandonRestoringUpdate,
   toggleIssueSource: transactionReview.toggleIssueSource,
   switchReviewTab: transactionReview.switchReviewTab,

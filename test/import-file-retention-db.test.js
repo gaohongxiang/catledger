@@ -23,12 +23,12 @@ test('原件分级清理：按期删除已解析/失败/待上传/已提交对�
       prepared.push(result.files[0])
     }
     const states = ['review_ready', 'failed', 'awaiting_upload', 'committed', 'review_ready', 'failed']
-    const ages = [8, 31, 2, 0, 6, 29]
+    const ages = [25, 25, 25, 0, 23, 23]
     for (let index = 0; index < prepared.length; index += 1) {
       const file = prepared[index]
       await lab.owner.execute(
         `UPDATE catledger_import_files
-            SET state = ?, cloud_file_id = ?, updated_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ${ages[index]} DAY)
+            SET state = ?, cloud_file_id = ?, updated_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ${ages[index]} HOUR)
           WHERE uid = ? AND import_id = ?`,
         [states[index], 'cloud://synthetic.bucket/' + file.cloudPath, identity.uid, file.importId]
       )
@@ -66,14 +66,14 @@ test('全局定时清理跨用户删除到期原件，不碰未到期对象', { 
     })).files[0]
     const agedA = await create(a), recentA = await create(a)
     const agedB = await create(b), recentB = await create(b)
-    const update = async (services, file, days) => lab.owner.execute(
+    const update = async (services, file, hours) => lab.owner.execute(
       `UPDATE catledger_import_files SET state = 'review_ready', cloud_file_id = ?,
-              updated_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ${days} DAY)
+              updated_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ${hours} HOUR)
         WHERE uid = ? AND import_id = ?`,
       ['cloud://synthetic.bucket/' + file.cloudPath, services === a ? identityA.uid : identityB.uid, file.importId]
     )
-    await update(a, agedA, 8); await update(a, recentA, 6)
-    await update(b, agedB, 8); await update(b, recentB, 6)
+    await update(a, agedA, 25); await update(a, recentA, 23)
+    await update(b, agedB, 25); await update(b, recentB, 23)
     const result = await a.importer.cleanupExpiredFilesGlobal(10)
     assert.equal(result.checked, 2)
     assert.equal(result.deleted, 2)

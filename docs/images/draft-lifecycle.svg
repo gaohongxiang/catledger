@@ -1,0 +1,52 @@
+<svg viewBox="0 0 680 400" width="1360" height="800" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>导入草稿的生命周期与恢复边界</title>
+<desc>本机完整快照在最后活动 12 小时内自动恢复，12 到 24 小时提示后继续，超过 24 小时清理；未知入账结果原请求优先保留。服务端未入账草稿 24 小时内自动接续，24 到 48 小时手动继续，超过 48 小时由 Timer 有界硬清理。云存储原件在未入账状态保留 24 小时，已入账、重复或丢弃立即删除。解析、归一化或身份版本变化必须重新上传原件；整理规则变化重新整理并生成新快照；已入账回执不随草稿清理。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="400" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+<text x="24" y="26" text-anchor="start" dominant-baseline="central" font-size="15" fill="#2B2A26" font-weight="600">导入草稿的生命周期与恢复边界</text>
+<text x="24" y="48" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">本机按最后打开/保存活动计时；服务端按草稿最后活动计时；Timer 只做有界清理。</text>
+
+<text x="24" y="86" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="600">本机完整快照</text>
+<rect x="160" y="70" width="200" height="32" rx="6" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="260" y="86" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#27500A" font-weight="600">0–12 小时 · 自动恢复</text>
+<rect x="362" y="70" width="200" height="32" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="462" y="86" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#633806" font-weight="600">12–24 小时 · 提示后继续</text>
+<rect x="564" y="70" width="92" height="32" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="0.7"/>
+<text x="610" y="86" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#444441" font-weight="600">24h+ 清理</text>
+<text x="160" y="116" text-anchor="start" dominant-baseline="central" font-size="10" fill="#5F5E5A">打开或保存决定续期；未知入账 postFlight 保留到核实后再清理</text>
+
+<text x="24" y="152" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="600">服务端未入账草稿</text>
+<rect x="160" y="136" width="240" height="32" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.7"/>
+<text x="280" y="152" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0C447C" font-weight="600">0–24 小时 · 自动接续</text>
+<rect x="402" y="136" width="200" height="32" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="502" y="152" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#633806" font-weight="600">24–48 小时 · 手动继续</text>
+<rect x="604" y="136" width="52" height="32" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.7"/>
+<text x="630" y="152" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#791F1F" font-weight="600">48h+</text>
+<text x="160" y="182" text-anchor="start" dominant-baseline="central" font-size="10" fill="#5F5E5A">48 小时 Timer 单次最多 10 个：abandon + discardUpdateGraph，状态 abandoned / DRAFT_EXPIRED</text>
+
+<text x="24" y="218" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="600">云存储原件</text>
+<rect x="160" y="202" width="240" height="32" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.7"/>
+<text x="280" y="218" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0C447C" font-weight="600">未入账 · 保留 24 小时</text>
+<rect x="402" y="202" width="254" height="32" rx="6" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="529" y="218" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#27500A" font-weight="600">已入账 / 重复 / 丢弃 · 立即删除</text>
+<text x="160" y="248" text-anchor="start" dominant-baseline="central" font-size="10" fill="#5F5E5A">失败/待映射也统一 24 小时；失败不写删除标记，留到下次重试；原始行与身份不随原件删除</text>
+
+<rect x="24" y="262" width="632" height="100" rx="8" fill="#F8F7F3" stroke="#888780" stroke-width="0.7"/>
+<text x="42" y="280" text-anchor="start" dominant-baseline="central" font-size="11" fill="#2B2A26" font-weight="600">恢复时的版本门禁：不静默使用旧快照</text>
+<g font-size="10">
+<text x="42" y="302" text-anchor="start" dominant-baseline="central" fill="#633806" font-weight="600">解析 / 归一化 / 身份版本</text>
+<text x="42" y="320" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">必须重新上传原件重解析</text>
+<text x="42" y="338" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">原件已清理则提示重新上传</text>
+<text x="286" y="302" text-anchor="start" dominant-baseline="central" fill="#0C447C" font-weight="600">整理规则变化</text>
+<text x="286" y="320" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">重算后 force 生成新快照</text>
+<text x="286" y="338" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">迁移已保存选择，冲突再核</text>
+<text x="500" y="302" text-anchor="start" dominant-baseline="central" fill="#27500A" font-weight="600">已入账回执</text>
+<text x="500" y="320" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">不随草稿清理</text>
+<text x="500" y="338" text-anchor="start" dominant-baseline="central" fill="#5F5E5A">按正式回执策略保留</text>
+</g>
+
+<rect x="24" y="370" width="632" height="24" rx="6" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="340" y="382" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#27500A">硬清理只删派生核对问题、事件、关系、证据与临时对象；来源行、动作审计、回执和正式账本保留</text>
+</g>
+</svg>

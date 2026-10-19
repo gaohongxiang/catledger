@@ -27,8 +27,10 @@ async function facts({ count = 3, content, mapped = true } = {}) {
   const issues = plan.issues.map(issue => ({ ...issue, subjectEventIds: [...new Set(plan.members.filter(row => row.issueId === issue.issueId && row.objectType === 'event' && row.memberRole !== 'candidate').map(row => row.objectId))] }))
   const events = plan.events.map(({ relationEvidence, sameEventCandidateKey, ...event }) => event)
   const evidence = plan.evidence.map(link => ({ ...link, identityKind: 'source_transaction_id' }))
-  const sources = documents.map(({document,batchId},index)=>({ batchId, fileName: '合成本地账单'+index+'.csv', sourceType: document.descriptor.sourceType,
-    summary: { total: document.rows.length }, analysis: statementAnalysis(document) }))
+  const sources = documents.map(({document,batchId},index)=>({ sourceId: 'synthetic-source-'+index, batchId, fileName: '合成本地账单'+index+'.csv',
+    sourceType: document.descriptor.sourceType, sourceFormat: document.descriptor.sourceFormat, parserVersion: document.descriptor.parserVersion,
+    normalizationVersion: document.descriptor.normalizationVersion, identityVersion: document.identityVersion, contentState: 'review_ready',
+    contentDeletedAt: null, summary: { total: document.rows.length }, analysis: statementAnalysis(document) }))
   const rawRows=documents.flatMap(({document})=>document.rows)
   return JSON.parse(JSON.stringify({ protocolVersion: 3, ruleVersion: PLAN_VERSION, snapshotId,
     update: { updateId, version: 2, status: 'review', reviewMode: 'local_v3', planVersion: PLAN_VERSION, counts: plan.counts },

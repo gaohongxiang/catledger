@@ -5,8 +5,9 @@ const { decodeDelimitedText } = require('./text')
 const { readXlsxSheets } = require('./xlsx')
 const { readXlsSheets } = require('./xls')
 const { parseBank } = require('./bank')
+const { VERSIONS } = require('../identity')
 
-const IDENTITY_VERSION = 'source-identity-v1'
+const IDENTITY_VERSION = VERSIONS.SOURCE_IDENTITY
 const RAW_SNAPSHOT_VERSION = 'raw-snapshot-v1'
 
 function finish(document) {

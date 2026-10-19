@@ -20,6 +20,10 @@ const handler = createHandler({
 })
 
 exports.main = async (event, context) => {
-  if (isScheduledMaintenance(event, cloud.getWXContext())) return service.cleanupExpiredFilesGlobal(20)
+  if (isScheduledMaintenance(event, cloud.getWXContext())) {
+    const drafts = await service.cleanupExpiredDraftsGlobal(10)
+    const files = await service.cleanupExpiredFilesGlobal(20)
+    return { drafts, files }
+  }
   return handler(event, context)
 }

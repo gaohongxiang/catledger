@@ -74,5 +74,12 @@ module.exports = {
   buildPaymentMethodKey,
   buildRowIdentity,
   buildSourceProfile,
-  normalizeIdentifier
+  normalizeIdentifier,
+  VERSIONS: Object.freeze({
+    SOURCE_IDENTITY: IDENTITY_VERSION,
+    PHYSICAL_IDENTITY: PHYSICAL_IDENTITY_VERSION,
+    CORE_DIGEST: CORE_DIGEST_VERSION,
+    PAYMENT_METHOD: PAYMENT_METHOD_VERSION,
+    SOURCE_PROFILE: SOURCE_PROFILE_VERSION
+  })
 }

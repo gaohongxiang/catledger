@@ -22,7 +22,7 @@ async function runPool(items, limit, worker) {
 // The fs adapter uses only Mini Program synchronous file APIs. Decision deltas
 // are small and serialized by JS. Network callbacks must check the generation
 // before invoking any write. A verified commit file is the visibility barrier.
-function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrency = DEFAULT_CHUNK_CONCURRENCY }) {
+function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrency = DEFAULT_CHUNK_CONCURRENCY, now = () => Date.now() }) {
   const directory = root + '/' + sha256(scope) + '/' + updateId
   const concurrency = Number.isInteger(chunkConcurrency) && chunkConcurrency > 0
     ? Math.min(chunkConcurrency, MAX_CHUNK_CONCURRENCY) : DEFAULT_CHUNK_CONCURRENCY
@@ -33,6 +33,45 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
   function exists(file) { try { fs.accessSync(file); return true } catch (_) { return false } }
   function mkdir(file) { if (!exists(file)) fs.mkdirSync(file, true) }
   function read(file) { return fs.readFileSync(file, 'utf8') }
+  function activityPath() { return directory + '/activity.json' }
+  function parseActivity(text) {
+    try {
+      const value = parse(text)
+      return value && Number.isFinite(Number(value.lastActiveAt)) ? value : null
+    } catch (_) { return null }
+  }
+  function completeMarkers() {
+    if (!exists(directory)) return []
+    try { return fs.readdirSync(directory).filter(name => /^complete-\d+-[a-f0-9-]+\.json$/.test(name)).sort().reverse() } catch (_) { return [] }
+  }
+  // The activity file is the mutable clock. A legacy draft falls back to the
+  // durable complete marker (including the epoch in its filename) so an old
+  // snapshot is not treated as freshly active after an upgrade.
+  function activity() {
+    if (exists(activityPath())) {
+      try { const stored = parseActivity(read(activityPath())); if (stored) return stored } catch (_) { /* fall back to the marker */ }
+    }
+    for (const filename of completeMarkers()) {
+      try {
+        const complete = parse(read(directory + '/' + filename))
+        const recorded = complete && Number(complete.lastActiveAt)
+        return { schema: 1, lastActiveAt: Number.isFinite(recorded) ? recorded : Number(filename.split('-')[1]),
+          snapshotId: complete && complete.header && complete.header.objectId || null }
+      } catch (_) { /* try the next candidate */ }
+    }
+    return null
+  }
+  function touch(value = {}) {
+    guard()
+    const prior = activity() || {}
+    const at = Number.isFinite(Number(value.lastActiveAt)) ? Number(value.lastActiveAt) : Number(now())
+    const next = { schema: 1, lastActiveAt: at,
+      snapshotId: value.snapshotId || prior.snapshotId || generation || null }
+    if (value.serverTouchedAt != null) next.serverTouchedAt = Number(value.serverTouchedAt)
+    else if (prior.serverTouchedAt != null) next.serverTouchedAt = prior.serverTouchedAt
+    io(() => { mkdir(directory); atomic(activityPath(), next) })
+    return next
+  }
   function verified(file, text) {
     guard(); fs.writeFileSync(file, text, 'utf8')
     if (read(file) !== text) throw failure('DRAFT_STORAGE_FAILED', '本机写入未完成，原有草稿已保留')
@@ -76,7 +115,11 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
             records.push(delta); revision = delta.revision; previous = commit.digest
           }
         }
-        return { header, facts, records, recoveredPrevious: damaged }
+        const recorded = Number(complete.lastActiveAt)
+        const fallback = Number(filename.split('-')[1])
+        return { header, facts, records, recoveredPrevious: damaged,
+          lastActiveAt: Number.isFinite(recorded) ? recorded : Number.isFinite(fallback) ? fallback : null,
+          activity: activity() }
       } catch (error) {
         if (error.code === 'DRAFT_CORRUPT') throw error
         damaged = true
@@ -155,9 +198,12 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
     if (header.kind !== 'snapshot') return facts
     io(() => {
       // No old generation is removed until this last durable visibility barrier.
-      atomic(directory + '/complete-' + Date.now() + '-' + header.objectId + '.json', { header, parts: descriptors })
+      const lastActiveAt = Number(now())
+      atomic(directory + '/complete-' + lastActiveAt + '-' + header.objectId + '.json',
+        { header, parts: descriptors, lastActiveAt })
       generation = header.objectId; revision = 0; previous = ''; mkdir(journalPath())
     })
+    try { touch({ lastActiveAt: Number(now()), snapshotId: header.objectId }) } catch (_) { /* marker timestamp remains the fallback */ }
     onProgress({ completed: descriptors.length, total: header.chunkCount, bytes: header.bytes, reused, inline: inlineUsed,
       stats: { manifestMs, chunkMs, decodeMs, totalMs: Date.now() - startedAt, chunkCalls, reused, inline: inlineUsed,
         bytes: header.bytes, chunkCount: header.chunkCount } })
@@ -173,6 +219,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       verified(journalPath() + '/delta-' + next + '.json', text)
       atomic(journalPath() + '/commit-' + String(next).padStart(9, '0') + '.json', { revision: next, digest })
       revision = next; previous = digest
+      try { touch() } catch (_) { /* the decision commit remains durable; the marker keeps restoration bounded */ }
       return revision
     })
   }
@@ -180,7 +227,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
     closed = true; epoch++
     try { if (exists(directory)) fs.rmdirSync(directory, true); return true } catch (_) { return false }
   }
-  return { restore, download, save, clear, close() { closed = true; epoch++ },
+  return { restore, download, save, clear, activity, touch, close() { closed = true; epoch++ },
     get revision() { return revision }, get directory() { return directory } }
 }
 module.exports = { create }

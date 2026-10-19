@@ -62,6 +62,16 @@
   <button wx:if="{{preparePending && !update}}" class="primary-button" bindtap="createFinanceUpdate" disabled="{{busy}}">继续整理上次账单</button>
   <view wx:if="{{fileRenamePending}}" class="file-rename-recovery"><text>上次改名结果待确认</text><button class="text-action" bindtap="resumeFileRename" disabled="{{busy}}">继续确认</button></view>
 
+  <view wx:if="{{resumeNotice}}" class="resume-gate" data-ui="resume-gate">
+    <text class="resume-gate-kicker">上次导入</text>
+    <text class="resume-gate-title">{{resumeNotice.title}}</text>
+    <text class="resume-gate-copy">{{resumeNotice.message}}</text>
+    <view class="resume-gate-actions">
+      <button wx:if="{{resumeNotice.canContinue}}" class="primary-button resume-gate-continue" bindtap="continueBlockedResume" disabled="{{busy}}">{{resumeNotice.continueLabel}}</button>
+      <button class="stage-previous resume-gate-abandon {{abandoningRestore ? 'stage-previous-abandoning' : ''}}" bindtap="abandonRestoringUpdate" disabled="{{busy || abandoningRestore}}"><view wx:if="{{abandoningRestore}}" class="abandon-loading-label"><view class="abandon-spinner"></view><text>放弃中</text></view><text wx:else>{{resumeNotice.abandonLabel}}</text></button>
+    </view>
+  </view>
+
   <block wx:if="{{currentStep === 1 && (!update || phase === 'organizing')}}">
     <view wx:if="{{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending}}" data-ui="empty-picker" class="file-picker-empty">
       <view class="file-picker-symbol" aria-hidden="true"><view class="file-picker-paper"></view><text>＋</text></view>
@@ -122,7 +132,7 @@
       </view>
     </view>
 
-    <view wx:if="{{phase === 'loading' || restoreUpdateId || (phase === 'organizing' && !files.length)}}" class="processing-stage">
+    <view wx:if="{{!resumeNotice && (phase === 'loading' || restoreUpdateId || (phase === 'organizing' && !files.length))}}" class="processing-stage">
       <view class="processing-mark"><view class="processing-ring"></view><text class="processing-value money-number">01</text></view>
       <text class="processing-title">{{phase === 'organizing' ? '正在准备账户' : abandoningRestore ? '正在放弃上次导入' : restoreUpdateId ? '正在恢复上次导入' : '正在读取导入进度'}}</text>
       <text class="processing-copy">{{phase === 'organizing' ? '正在整理账户归属与待确认记录。' : abandoningRestore ? '恢复已停止，正在清理本批导入。' : restoreUpdateId ? '上次有尚未入账的导入，正在恢复处理进度。' : '正在恢复这批账单的处理状态。'}}</text>

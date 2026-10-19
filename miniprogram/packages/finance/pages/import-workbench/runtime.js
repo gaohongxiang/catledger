@@ -1,4 +1,5 @@
 const localReview = require('../../services/import-local-manager')
+const localResume = require('../../services/import-local-resume')
 const { publicError, errorText } = require('./presentation')
 const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
@@ -60,6 +61,33 @@ function createViewSession(page, view) {
 }
 
 function currentOwner() { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }
+function serverAgeMs(update) {
+  const value = Number(update && update.ageMs)
+  if (Number.isFinite(value)) return value
+  const time = Date.parse(update && update.updatedAt)
+  return Number.isFinite(time) ? Math.max(0, Date.now() - time) : null
+}
+function resumeNotice(resume, extra) {
+  const state = resume.state
+  const source = resume.source || 'local'
+  const continueLabel = state === 'semantic' ? '重新整理并继续'
+    : state === 'server_changed' ? '重新下载并继续'
+      : state === 'post_pending' ? '继续核实入账结果' : '继续查看'
+  const abandonLabel = state === 'reparse' ? '放弃并重新选择' : '放弃并重新开始'
+  return Object.assign({
+    source,
+    state,
+    updateId: resume.updateId,
+    lastActiveAt: resume.lastActiveAt || null,
+    activity: resume.activity || null,
+    canContinue: resume.canContinue !== false,
+    continueLabel,
+    abandonLabel,
+    originalMissing: Boolean(resume.originalMissing),
+    title: resume.title || (source === 'server' ? '上次导入已超过 24 小时' : '上次导入已超过 12 小时'),
+    message: resume.message || ''
+  }, extra || {})
+}
 function pendingPrepare() {
   if (!currentOwner()) return null
   const packet = pendingWrites.pending()
@@ -163,6 +191,7 @@ module.exports = {
     }
     this._viewOwner = owner; this._viewScope = scope
     this._viewActive = true
+    if (this._draftSession && this._draftSession.touch) this._draftSession.touch()
     this.syncFileRenamePending()
     this.restoreFileNameEdit()
     themeService.bindPage(this)
@@ -294,7 +323,7 @@ module.exports = {
       if (receipt.update && receipt.update.counts) perf.mark('organized', { events: receipt.update.counts.finalEvents, issues: receipt.update.counts.needsActionEvents })
       else perf.mark('organized')
       // 写回执与后续读取分开：即使摘要失败，也已有可恢复的原批次。
-      this.setData({ update: receipt.update, preparePending: false })
+      this.setData({ update: receipt.update, preparePending: false, resumeNotice: null })
       let view = await api.readSummary(receipt.update.updateId)
       if (!active()) return
       view = await this.refreshAccountGroups(view, active)
@@ -333,7 +362,8 @@ module.exports = {
         updateId: view.update.updateId, version: view.update.version }, canRead)
   },
 
-  loadUpdate: async function (updateId, restoreToFirstStep) {
+  loadUpdate: async function (updateId, restoreToFirstStep, resumeOptions) {
+    const options = resumeOptions || {}
     const load = { updateId: updateId, cancelled: false, pending: null }
     this._updateLoad = load
     const epoch = this._viewEpoch
@@ -341,20 +371,51 @@ module.exports = {
     const active = () => this._viewActive !== false && getApp().hasLoginApproval() && scope === readCache.getSession() && owner === currentOwner() &&
       this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
     this._abandonedUpdateId = null
-    this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false, preparingAccount: false })
+    this.setData({ phase: 'loading', busy: true, errorMessage: '', resumeNotice: null,
+      restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false, preparingAccount: false })
     const perf = importPerformance.create()
     this._importPerf = perf
     perf.mark('restore_start')
     try {
-      const local = localReview.restore(updateId)
-      if (local) { perf.mark('restore_local'); importPerformance.record(perf); this._importPerf = null; this.setData({ restoreUpdateId: '' }); this.applyUpdateView(local.view, false, restoreToFirstStep); return true }
+      let adoptRecords = options.adoptRecords || null
+      let local = null
+      if (!options.skipLocal) {
+        local = await localReview.ensureResume(updateId, options.forceLocal ? { force: true } : undefined)
+        if (!active()) return
+        if (local && local.resume && typeof local.resume === 'object') {
+          perf.mark('restore_blocked')
+          importPerformance.record(perf); this._importPerf = null
+          this.showResumeNotice(local.resume, updateId, restoreToFirstStep)
+          return false
+        }
+        if (local) {
+          perf.mark('restore_local'); importPerformance.record(perf); this._importPerf = null
+          this.setData({ restoreUpdateId: '', resumeNotice: null })
+          this.applyUpdateView(local.view, false, restoreToFirstStep)
+          return true
+        }
+      } else if (!adoptRecords) adoptRecords = localReview.localDecisions(updateId)
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
       let view = await load.pending
       if (!active()) return
+      const serverState = localResume.serverActivityState(serverAgeMs(view.update))
+      if (!options.manualServer && ['draft', 'failed', 'review'].includes(view.update.status) && serverState.state !== 'fresh') {
+        perf.mark('server_restore_blocked')
+        importPerformance.record(perf); this._importPerf = null
+        this.showResumeNotice({
+          source: 'server', state: serverState.state === 'expired' ? 'expired' : 'idle',
+          updateId, canContinue: serverState.continueAllowed,
+          title: serverState.state === 'expired' ? '上次导入已超过 48 小时' : '上次导入已超过 24 小时',
+          message: serverState.state === 'expired'
+            ? '云端临时整理数据已到期，不能继续。请放弃上次导入后重新选择账单。'
+            : '云端草稿仍保留但不会自动继续。继续查看会重新下载并核对；超过 48 小时将清理临时整理数据。'
+        }, updateId, restoreToFirstStep)
+        return false
+      }
       const migration = await localReview.settleLegacy(view)
       view = migration.view
       if (!active()) return
-      if (view.update.status === 'review' && view.update.reviewMode !== 'local_v3') {
+      if (view.update.status === 'review' && (view.update.reviewMode !== 'local_v3' || view.update.requiresReorganization || options.forceReorganize)) {
         load.pending = this.request('financeUpdates.organize', {
           requestId: api.createRequestId(), updateId: updateId, version: view.update.version
           }, active)
@@ -364,19 +425,65 @@ module.exports = {
       load.pending = this.refreshAccountGroups(view, active)
       view = await load.pending
       if (!active()) return
-      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration, (stage, detail) => { if (active()) perf.mark(stage, detail) })
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration,
+        (stage, detail) => { if (active()) perf.mark(stage, detail) },
+        { skipLocalRestore: Boolean(options.skipLocal), force: Boolean(options.forceReorganize), adoptRecords })
       if (!active()) return
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
-      this.setData({ restoreUpdateId: '' })
+      this.setData({ restoreUpdateId: '', resumeNotice: null })
       this.applyUpdateView(view, false, restoreToFirstStep)
       return true
     } catch (error) {
       if (!active()) return
       perf.mark('load_failed')
       importPerformance.record(perf); this._importPerf = null
+      if (error.code === 'NOT_FOUND') {
+        localReview.clearLocal(updateId, { keepAbandon: false })
+        try { draftSessions.forgetLast() } catch (_) {}
+        this.setData({ phase: 'idle', busy: false, errorMessage: '', restoreUpdateId: '', resumeNotice: null,
+          update: null, files: [], uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 } })
+        return false
+      }
       this.setData({ phase: 'error', busy: false, errorMessage: publicError(error, '整理结果加载失败') })
     }
+  },
+
+  showResumeNotice(resume, updateId, restoreToFirstStep) {
+    const notice = resumeNotice(resume)
+    this._pendingBackgroundView = null
+    this.setData({ phase: 'resume', busy: false, resumeNotice: notice, restoreUpdateId: updateId,
+      abandoningRestore: false, preparingAccount: false, prepareProgress: '', update: null,
+      currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
+      evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null,
+      reviewEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null,
+      directorySheet: null, pairingSheet: null })
+    this._restoreToFirstStep = restoreToFirstStep
+  },
+
+  async continueBlockedResume() {
+    const notice = this.data.resumeNotice
+    if (!notice || this.data.busy) return
+    const updateId = notice.updateId || this.data.restoreUpdateId
+    if (!updateId) return
+    if (notice.state === 'expired' || notice.state === 'reparse') return
+    if (notice.state === 'semantic' || notice.state === 'server_changed') {
+      let adoptRecords = null
+      try { adoptRecords = localReview.localDecisions(updateId) }
+      catch (error) { this.setData({ busy: false, errorMessage: publicError(error, '本机草稿损坏，请先放弃后重新选择账单') }); return }
+      if (adoptRecords && adoptRecords.postFlight) {
+        this.setData({ resumeNotice: Object.assign({}, notice, { state: 'post_pending', canContinue: true,
+          title: '上次入账结果待核实', message: '本机仍有未核实的入账请求；请先继续核实结果，再处理规则升级。' }) })
+        return
+      }
+      await this.loadUpdate(updateId, true, { skipLocal: true, forceReorganize: true, adoptRecords: adoptRecords && adoptRecords.records })
+      return
+    }
+    if (notice.source === 'server') {
+      await this.loadUpdate(updateId, true, { manualServer: true })
+      return
+    }
+    await this.loadUpdate(updateId, true, { forceLocal: true })
   },
 
   abandonRestoringUpdate: async function () {
@@ -389,9 +496,19 @@ module.exports = {
       await draftSessions.pauseUpdate(updateId)
       // 已发送的整理事务必须落定；取消后不再发起下一段恢复。
       if (load && load.pending) await load.pending.catch(function () {})
-      const view = await this.request('financeUpdates.summary', { updateId: updateId })
+      let view
+      try { view = await this.request('financeUpdates.summary', { updateId: updateId }) }
+      catch (error) {
+        if (error.code !== 'NOT_FOUND') throw error
+        localReview.clearLocal(updateId, { keepAbandon: false })
+        draftSessions.clearUpdate(updateId)
+        this._abandonedUpdateId = updateId
+        this.startAnother()
+        return
+      }
       if (view.update.status === 'posted') {
         this.setData({ restoreUpdateId: '', abandoningRestore: false })
+        localReview.clearLocal(updateId, { keepAbandon: false })
         this.applyUpdateView(view)
         return
       }
@@ -401,6 +518,7 @@ module.exports = {
         }
         await this.request('financeUpdates.abandon', this._restoreAbandonRequest)
       }
+      localReview.clearLocal(updateId, { keepAbandon: false })
       draftSessions.clearUpdate(updateId)
       this._abandonedUpdateId = updateId
       this.startAnother()
@@ -490,7 +608,7 @@ module.exports = {
     if (this._bankPreviews) this._bankPreviews.clear()
     this._duplicateLoadToken = null
     this.setData({
-        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, abandoningUpdate: false, preparePending: false,
+        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', resumeNotice: null, abandoningRestore: false, abandoningUpdate: false, preparePending: false,
         preparingAccount: false, prepareProgress: '',
         files: [], bankMappingSheet: null, fileAttentionSheet: null, fileNameEdit: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
@@ -562,7 +680,7 @@ module.exports = {
               sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false,
-        preparingAccount: false, prepareProgress: '',
+        preparingAccount: false, prepareProgress: '', resumeNotice: null,
         accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }),
         accountMappingsExcluded: excluded })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }

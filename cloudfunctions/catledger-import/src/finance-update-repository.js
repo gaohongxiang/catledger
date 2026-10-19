@@ -47,6 +47,7 @@ function publicUpdate(row) {
       excludedEvents: Number(row.excludedEventCount)
     },
     errorCode: row.errorCode || null,
+    ageMs: row.ageMs == null ? null : Number(row.ageMs),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   }
@@ -62,7 +63,8 @@ async function selectUpdate(connection, uid, updateId, { forUpdate = false } = {
             ready_event_count AS readyEventCount,
             needs_action_event_count AS needsActionEventCount,
             excluded_event_count AS excludedEventCount,
-            error_code AS errorCode, created_at AS createdAt, updated_at AS updatedAt
+            error_code AS errorCode, created_at AS createdAt, updated_at AS updatedAt,
+            TIMESTAMPDIFF(MICROSECOND, updated_at, CURRENT_TIMESTAMP(3)) DIV 1000 AS ageMs
        FROM catledger_finance_updates
       WHERE uid = ? AND update_id = ?
       LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
@@ -470,6 +472,8 @@ function publicSource(row) {
     parserVersion: row.parserVersion,
     normalizationVersion: row.normalizationVersion,
     identityVersion: row.identityVersion,
+    contentState: row.contentState || null,
+    contentDeletedAt: row.contentDeletedAt || null,
     analysis: parseJson(row.analysis, null),
     summary: {
       total: Number(row.totalRowCount),
@@ -488,6 +492,7 @@ async function selectSources(connection, uid, updateId) {
             s.parser_version AS parserVersion, s.normalization_version AS normalizationVersion,
             s.identity_version AS identityVersion, s.total_row_count AS totalRowCount,
             s.valid_row_count AS validRowCount, s.invalid_row_count AS invalidRowCount,
+            f.state AS contentState, f.content_deleted_at AS contentDeletedAt,
             (SELECT batch.analysis_json FROM catledger_import_batches batch
               WHERE batch.uid = s.uid AND batch.batch_id = s.batch_id) AS analysis
        FROM catledger_finance_update_sources s

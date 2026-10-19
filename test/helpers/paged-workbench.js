@@ -97,7 +97,9 @@ function runtime(data = fixture(), options = {}) {
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
     if (filename.endsWith('/services/import-local-manager.js') && !options.realLocalManager) return {
-      restore: () => options.localSession || null, settleLegacy: async view => ({view}), prepare: async view => options.localSession?.view || view, settleAbandoned: async () => {} }
+      restore: () => options.localSession || null, ensureResume: async () => options.localSession || null,
+      localDecisions: () => null, clearLocal() {}, settleLegacy: async view => ({view}),
+      prepare: async view => options.localSession?.view || view, settleAbandoned: async () => {} }
     if (filename.endsWith('/services/catledger-import.js') && !options.realImportApi) return api
     if (filename.endsWith('/services/import-draft-session.js') && !options.realDraftManager) return draftService
     if (filename.endsWith('/services/read-cache.js')) return cache

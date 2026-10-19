@@ -84,6 +84,25 @@ test('放弃本批请求在途时按钮显示处理中，完成后复位', async
   assert.equal(page.data.busy, false)
 })
 
+test('账户确认后同一批次内摘要仍投影开放事项，也不重复要求确认修改', async t => {
+  const h = runtime(accounts()), page = h.page
+  t.after(() => page.onUnload())
+  await until(() => page.data.accountMappings.length === 2)
+  const issue = h.issues[0]
+  await page.openAccountChoice(tap(issue.issueId))
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'account:synthetic-account' } } })
+  await page.completeAccountMapping(tap(issue.issueId))
+  assert.equal(page.data.accountStepError, '')
+  const confirmed = page.data.accountMappings.find(mapping => mapping.issueId === issue.issueId)
+  assert.equal(confirmed.needsConfirmation, false)
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  page.applyUpdateView({ ...h.summary, viewVersion: 'v2' }, true)
+  await flush()
+  const refreshed = page.data.accountMappings.find(mapping => mapping.issueId === issue.issueId)
+  assert.equal(refreshed.needsConfirmation, false, '同一批次的已确认账户不应再次要求确认修改')
+  assert.equal(page._accountUiDrafts.get(issue.issueId).localConfirmed, true)
+})
+
 test('接续期间目标账户问题实质变化，不替换旧 issueVersion 自动保存', async t => {
   const { h, page, summaryGate, saving, choosing } = await overlappingConfirmation({ afterCommit(h) { h.issues[1].version++ } })
   t.after(() => page.onUnload())

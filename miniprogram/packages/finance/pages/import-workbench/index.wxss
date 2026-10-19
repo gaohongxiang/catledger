@@ -414,6 +414,25 @@ button::after { border: 0; }
 .committing-stage { min-height: 500rpx; }
 @keyframes processing-spin { to { transform: rotate(360deg); } }
 
+.resume-gate {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: var(--layout-space-4) var(--layout-content-inset, 20rpx) 0;
+  padding: 34rpx 28rpx 30rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface);
+  text-align: center;
+}
+.resume-gate-kicker { color: var(--ui-secondary); font-size: var(--font-caption, 24rpx); letter-spacing: 3rpx; }
+.resume-gate-title { margin-top: 14rpx; color: var(--ui-ink); font-size: var(--font-section, 32rpx); font-weight: 500; line-height: 1.45; }
+.resume-gate-copy { margin-top: 12rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.7; text-align: left; }
+.resume-gate-actions { display: flex; flex-direction: column; gap: 16rpx; margin-top: 30rpx; }
+.resume-gate-actions .resume-gate-continue { width: 100%; margin: 0; }
+.resume-gate-actions .resume-gate-abandon { width: 100%; margin: 0; }
+.resume-gate-actions .abandon-loading-label { justify-content: center; white-space: nowrap; }
+
 .step-section { padding-top: var(--layout-space-5); }
 .step-heading {
   display: flex;

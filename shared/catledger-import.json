@@ -907,13 +907,14 @@
       "request": [
         "requestId",
         "updateId",
-        "version"
+        "version",
+        "force?"
       ],
       "response": [
         "protocolVersion",
         "snapshot"
       ],
-      "notes": "Locks local_v3 mode after consistent fact capture; rejects stale base. Does not affect formal ledger. A single-chunk snapshot may include optional inline {objectId,baseVersion,index,bytes,digest,content} within the response budget; the client validates the same digest and falls back to manifest/chunk when absent or invalid."
+      "notes": "Locks local_v3 mode after consistent fact capture; rejects stale base. Does not affect formal ledger. Replaying an existing sealed snapshot refreshes only the batch updated_at lease so the 48h draft cleanup does not remove an actively resumed local draft; version and rule version stay fixed. force=true generates a fresh snapshot at version+1 after semantic rules changed; it is not a reparse and requires the current plan. A single-chunk snapshot may include optional inline {objectId,baseVersion,index,bytes,digest,content} within the response budget; the client validates the same digest and falls back to manifest/chunk when absent or invalid."
     },
     "financeUpdates.snapshotManifest": {
       "request": [

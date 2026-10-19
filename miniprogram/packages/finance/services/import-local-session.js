@@ -50,6 +50,12 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   rebuild()
   function emit(){for(const fn of listeners)fn()}
   function persist(changes){guard();files.save(changes);applyRecord(changes)}
+  function adopt(records){
+    guard()
+    for(const record of records||[])if(record&&Array.isArray(record.changes))
+      for(const change of record.changes){files.save([change]);applyRecord([change])}
+    rebuild();emit()
+  }
   function operation(action,data){
     if(action==='financeUpdates.setReview')return model.edit(data)
     if(action==='financeUpdates.setCategory')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,fields:{categoryId:data.categoryId}})
@@ -125,6 +131,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     isLocal:true,state,get view(){return state.confirmedReceipt||reader.summary()},get projectionRevision(){return model.revision},
     get model(){return model},get status(){return{local:true,pending:0,syncing:Boolean(running),error:errorMessage,conflicts:model.invalid.size,saved:!errorMessage,serverReviewPending:model.needsCheck.size,frozen:Boolean(state.postFlight&&!state.confirmedReceipt)}},
     subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},accept(){},schedule(){},async flush(){guard();return reader.summary()},
+    adopt,touch(){guard();try{files.touch()}catch(_){}},close(){closed=true;files.close();listeners.clear()},
     call(action,data){guard();if(action==='imports.commandResult'){const saved=receipts.get(data.requestId);if(!saved)throw Object.assign(new Error('原请求尚未保存'),{code:'OPERATION_UNCONFIRMED'});return saved.receipt}
       if(action==='financeUpdates.abandon')return session.abandon(data)
       if(action==='financeUpdates.post')return session.post()

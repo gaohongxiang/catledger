@@ -67,7 +67,8 @@ function runtime(savedStorage, options = {}) {
     // These fixtures exercise legacy request recovery. Full snapshot/file
     // recovery uses the real manager in import-local-migration/page tests.
     if (filename.endsWith('/services/import-local-manager.js')) return options.localReview || {
-      restore: () => null, settleLegacy: async view => ({ view }), prepare: async view => view
+      restore: () => null, ensureResume: async () => null, localDecisions: () => null, clearLocal() {},
+      settleLegacy: async view => ({ view }), prepare: async view => view
     }
     if (filename.includes('/theme/')) return { install() {}, bindPage() {}, bindTabBar() {}, currentPresentation: () => ({}), currentTokens: () => ({ accent: '#000' }) }
     if (modules.has(filename)) return modules.get(filename).exports

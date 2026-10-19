@@ -66,11 +66,13 @@ function createLocalReviewObjects({ getPool }) {
   async function prepare(context) {
     const replay = await require('./import-transaction').findReplay({ getPool, ...context }, 'financeUpdates.prepareSnapshot')
     if (replay) return replay
+    if (context.data.force != null && typeof context.data.force !== 'boolean') throw importError('VALIDATION_ERROR')
+    const force = context.data.force === true
     const updateId = validateUuid(context.data.updateId), version = validateVersion(context.data.version)
     const captured = await read(context, async (connection, uid) => {
       const update = await selectUpdate(connection, uid, updateId)
       if (update.status !== 'review' || Number(update.version) !== version) throw importError('CONFLICT')
-      if (update.reviewMode === 'local_v3') {
+      if (!force && update.reviewMode === 'local_v3') {
         const [[prior]] = await connection.execute(`SELECT object_id AS id FROM catledger_import_review_objects
           WHERE uid=? AND update_id=? AND object_kind='snapshot' AND base_version=? AND state='sealed' ORDER BY created_at DESC LIMIT 1`, [uid, updateId, version])
         if (prior) return { existing: await object(connection, uid, prior.id) }
@@ -91,7 +93,14 @@ function createLocalReviewObjects({ getPool }) {
     return write(context, 'financeUpdates.prepareSnapshot', async (connection, uid) => {
       const current = await selectUpdate(connection, uid, updateId, { forUpdate: true })
       if (current.status !== 'review' || Number(current.version) !== version || current.planVersion !== PLAN_VERSION) throw importError('CONFLICT')
-      if (captured.existing) return { update: publicUpdate(current), snapshot: captured.existing }
+      if (captured.existing) {
+        // Re-opening a still-valid local snapshot is also the bounded lease
+        // refresh that keeps the 48h server hard cleanup from deleting a draft
+        // the user is actively reviewing. Version and rule version stay fixed.
+        await connection.execute(`UPDATE catledger_finance_updates SET updated_at = CURRENT_TIMESTAMP(3)
+          WHERE uid = ? AND update_id = ? AND version = ? AND status = 'review'`, [uid, updateId, version])
+        return { update: publicUpdate(await selectUpdate(connection, uid, updateId)), snapshot: captured.existing }
+      }
       await connection.execute("UPDATE catledger_finance_updates SET review_mode='local_v3',version=version+1 WHERE uid=? AND update_id=?", [uid, updateId])
       const snapshot = await saveObject(connection, uid, { objectId, updateId, kind: 'snapshot', baseVersion: version + 1, ruleVersion: PLAN_VERSION,
         metadata: { counts, capabilities: ['complete-facts','local-review','atomic-post'] } }, packed)
