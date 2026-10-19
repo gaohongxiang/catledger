@@ -1,7 +1,7 @@
 // 两个部署目录各自加载入口；此适配器只供本地合成验证，不进入云函数或小程序包。
 const path = require('node:path')
 function moduleFor(kind, name) { return require(path.resolve(__dirname, '../../cloudfunctions/catledger-' + kind + '/src/' + name)) }
-function localServices({ apiPool, importPool, now = Date.now, objects = new Map(), subject = 'synthetic-local-native', logger = { warn() {}, error() {} } }) {
+function localServices({ apiPool, importPool, now = Date.now, objects = new Map(), subject = 'synthetic-local-native', logger = { warn() {}, error() {} }, storage }) {
   const getPool = () => apiPool
   const repository = moduleFor('api', 'user-repository').createUserRepository({ getPool })
   const apiServices = moduleFor('api', 'action-registry').createActionHandlers({
@@ -14,7 +14,7 @@ function localServices({ apiPool, importPool, now = Date.now, objects = new Map(
     transactionService: moduleFor('api', 'transaction-service').createTransactionService({ getPool })
   })
   const importer = moduleFor('import', 'import-service').createImportService({ getPool: () => importPool,
-    storage: { async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } } })
+    storage: storage || { async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } } })
   const getWxContext = () => ({ OPENID: subject })
   return {
     objects, importer, apiServices,
