@@ -18,6 +18,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     pairingEntry: null,
     restoreUpdateId: '',
     abandoningRestore: false,
+    abandoningUpdate: false,
     preparePending: false,
     prepareProgress: '',
     preparingAccount: false,

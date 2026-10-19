@@ -64,7 +64,7 @@ module.exports = {
   performAbandonUpdate: async function () {
     if (this.data.busy || !this.data.update) return
     if (this.blockFileNameEdit() || this.blockPendingFileRename()) return
-    this.setData({ busy: true, errorMessage: '', currentIssue: null })
+    this.setData({ busy: true, abandoningUpdate: true, errorMessage: '', currentIssue: null })
     try {
       if (this._draftSession) {
         await this._draftSession.pause()
@@ -82,7 +82,7 @@ module.exports = {
       if (abandoned.offlineAbandon) wx.showToast({ title: '本机已清理，服务端待联网放弃', icon: 'none' })
     } catch (error) {
       if (this._draftSession) this._draftSession.resume()
-      this.setData({ busy: false, errorMessage: publicError(error, '放弃失败，请重试') })
+      this.setData({ busy: false, abandoningUpdate: false, errorMessage: publicError(error, '放弃失败，请重试') })
     }
   },
 

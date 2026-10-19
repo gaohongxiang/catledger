@@ -475,7 +475,7 @@ module.exports = {
     if (this._bankPreviews) this._bankPreviews.clear()
     this._duplicateLoadToken = null
     this.setData({
-        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, preparePending: false,
+        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, abandoningUpdate: false, preparePending: false,
         preparingAccount: false, prepareProgress: '',
         files: [], bankMappingSheet: null, fileAttentionSheet: null, fileNameEdit: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },

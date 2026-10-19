@@ -66,6 +66,24 @@ test('放弃后新选账单不被旧放弃视图覆盖，第一步操作按钮�
   assert.equal(page.data.files.length, 1)
 })
 
+test('放弃本批请求在途时按钮显示处理中，完成后复位', async t => {
+  const h = runtime(accounts(), { realDraftManager: true }), page = h.page
+  t.after(async () => { if (page._draftSession) await page._draftSession.pause(); page.onUnload() })
+  await until(() => page.data.accountMappings.length === 2)
+  let release
+  h.intercept = action => action === 'financeUpdates.abandon'
+    ? new Promise(resolve => { release = () => resolve({ update: { ...h.summary.update, status: 'abandoned' } }) })
+    : undefined
+  const pending = page.performAbandonUpdate()
+  await until(() => Boolean(release))
+  assert.equal(page.data.abandoningUpdate, true)
+  assert.equal(page.data.busy, true)
+  release()
+  await pending
+  assert.equal(page.data.abandoningUpdate, false)
+  assert.equal(page.data.busy, false)
+})
+
 test('接续期间目标账户问题实质变化，不替换旧 issueVersion 自动保存', async t => {
   const { h, page, summaryGate, saving, choosing } = await overlappingConfirmation({ afterCommit(h) { h.issues[1].version++ } })
   t.after(() => page.onUnload())
