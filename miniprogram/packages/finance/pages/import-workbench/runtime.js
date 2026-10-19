@@ -18,7 +18,9 @@ const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).lengt
 const downloadProgress = progress => {
   const total = Number(progress && progress.total), completed = Number(progress && progress.completed)
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(completed)) return ''
-  return Math.max(0, Math.min(100, Math.round(completed / total * 100))) + '%'
+  const percent = Math.max(0, Math.min(100, Math.round(completed / total * 100)))
+  // Do not surface implementation progress once it is complete (or before it starts).
+  return percent > 0 && percent < 100 ? percent + '%' : ''
 }
 const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment', 'financeUpdates.setCategory', 'financeUpdates.setReview',
     'reviewIssues.refreshAccountGroups', 'reviewIssues.resolveAccountMappings', 'reviewIssues.resolve'])

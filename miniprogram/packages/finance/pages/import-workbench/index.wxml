@@ -54,9 +54,9 @@
   </view>
 
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
-  <view wx:if="{{prepareProgress}}" class="draft-sync-note">正在下载完整草稿：{{prepareProgress}}，完成后可在本机核对。</view>
-  <view wx:if="{{phase === 'review' && draftSync.local}}" class="draft-sync-note">
-    <text>{{draftSync.frozen ? '入账结果待核实，原请求已冻结；请继续核实后再修改。' : draftSync.error ? draftSync.error : '完整草稿与已确认选择已保存到本机。'}}</text>
+  <view wx:if="{{prepareProgress}}" class="draft-sync-note">正在准备核对资料：{{prepareProgress}}，请稍候。</view>
+  <view wx:if="{{phase === 'review' && draftSync.local && (draftSync.frozen || draftSync.error || draftSync.serverReviewPending)}}" class="draft-sync-note">
+    <text>{{draftSync.frozen ? '入账结果待核实，原请求已冻结；请继续核实后再修改。' : draftSync.error}}</text>
     <text wx:if="{{draftSync.serverReviewPending && !draftSync.frozen}}">{{draftSync.serverReviewPending}} 笔历史依赖将在入账时复核。</text>
     <button wx:if="{{draftSync.frozen}}" class="text-action" bindtap="postUpdate" disabled="{{busy}}">继续核实入账结果</button>
   </view>
