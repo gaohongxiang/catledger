@@ -423,6 +423,7 @@ module.exports = {
 
   completeAccountMapping: async function (event) {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
+    this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
     const issueId = event && event.currentTarget && event.currentTarget.dataset.id
     let recovered
@@ -455,6 +456,7 @@ module.exports = {
     if (this._accountConfirmed) this._accountConfirmed.set(issueId, { revision: draft.revision || 0 })
     this.setData({ accountStepError: '' })
     this.refreshAccountMappings()
+    this.restoreAccountScroll()
   },
 
   persistAccountDrafts: function () {

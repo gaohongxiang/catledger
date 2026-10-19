@@ -111,6 +111,7 @@ module.exports = {
     this._requestIds = {}
     this._abandonedUpdateId = null
     this._accountConfirmed = new Map()
+    this._accountScrollTarget = null
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
     this.syncFileRenamePending()
@@ -121,6 +122,20 @@ module.exports = {
   onPageScroll(event) {
     const top = Number(event && event.scrollTop)
     if (Number.isFinite(top) && top >= 0) this._pageScrollTop = top
+  },
+
+  restoreAccountScroll() {
+    const target = this._accountScrollTarget
+    if (!Number.isFinite(target)) return
+    const run = () => {
+      if (this._viewActive && this.data.currentStep === 2 && typeof wx !== 'undefined' && typeof wx.pageScrollTo === 'function') {
+        wx.pageScrollTo({ scrollTop: target, duration: 0 })
+      }
+    }
+    if (typeof setTimeout === 'function') {
+      setTimeout(run, 0); setTimeout(run, 80)
+      setTimeout(() => { if (this._accountScrollTarget === target) this._accountScrollTarget = null }, 240)
+    } else run()
   },
 
   onShow(initialData) {
@@ -578,12 +593,13 @@ module.exports = {
       this._draftSession.schedule()
     }
     if (changed || this._loadedStep !== step) {
-      const preserveScroll = background && step === 2 && this._loadedStep === 2 && Number.isFinite(this._pageScrollTop)
+      const target = Number.isFinite(this._accountScrollTarget) ? this._accountScrollTarget : this._pageScrollTop
+      const preserveScroll = background && step === 2 && this._loadedStep === 2 && Number.isFinite(target)
       const task = this.loadActivePage(true, undefined, background && step === 2 ? true : quiet)
       if (!preserveScroll) return task
       return task.then(() => {
         if (this._viewActive && this.data.currentStep === 2 && typeof wx !== 'undefined' && typeof wx.pageScrollTo === 'function') {
-          wx.pageScrollTo({ scrollTop: this._pageScrollTop, duration: 0 })
+          wx.pageScrollTo({ scrollTop: target, duration: 0 })
         }
       })
     }

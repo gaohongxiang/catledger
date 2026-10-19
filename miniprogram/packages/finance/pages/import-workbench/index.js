@@ -167,6 +167,8 @@ Page({
   onHide: runtime.onHide,
   onUnload: runtime.onUnload,
   onShow() { return runtime.onShow.call(this, initialData) },
+  onPageScroll: runtime.onPageScroll,
+  restoreAccountScroll: runtime.restoreAccountScroll,
   chooseFiles: uploadFlow.chooseFiles,
   openFilePicker: uploadFlow.openFilePicker,
   readLocalFile: uploadFlow.readLocalFile,
