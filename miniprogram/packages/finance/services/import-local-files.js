@@ -121,6 +121,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       done.add(descriptor.index)
       onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
     })
+    if (done.size !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块不完整，请重试')
     guard(ticket)
     const facts = header.kind === 'snapshot' ? snapshot.validateFacts(snapshot.decodeParts(readParts(header, descriptors)), header)
       : parse([...readParts(header, descriptors)].join('')); guard(ticket)
