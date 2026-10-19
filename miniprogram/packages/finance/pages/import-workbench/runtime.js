@@ -118,6 +118,11 @@ module.exports = {
     this._pendingInitialLoad = { updateId, restoreLast: !(options && options.fresh === '1'), eventId: options && options.evidenceEventId, visible: true, attempt: null }
     loginGuard.run(this, () => resumeInitialLoad(this))
   },
+  onPageScroll(event) {
+    const top = Number(event && event.scrollTop)
+    if (Number.isFinite(top) && top >= 0) this._pageScrollTop = top
+  },
+
   onShow(initialData) {
     if (this._pendingInitialLoad) this._pendingInitialLoad.visible = true
     if (!getApp().hasLoginApproval()) {
@@ -547,12 +552,6 @@ module.exports = {
         accountMappingsExcluded: excluded })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
-    if (step === 2) {
-      const page = this
-      if (typeof setTimeout === 'function') setTimeout(function () {
-        if (page._viewActive && page.data.currentStep === 2) page.refreshAccountMappings()
-      }, 0)
-    }
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
@@ -579,11 +578,14 @@ module.exports = {
       this._draftSession.schedule()
     }
     if (changed || this._loadedStep !== step) {
-      // A background account sync must not rebuild the paged page: that briefly
-      // empties the list, moves the scroll position, and makes the card look
-      // like it was confirmed twice. The mappings are already refreshed above.
-      if (background && step === 2 && this._loadedStep === 2) return
-      return this.loadActivePage(true, undefined, quiet)
+      const preserveScroll = background && step === 2 && this._loadedStep === 2 && Number.isFinite(this._pageScrollTop)
+      const task = this.loadActivePage(true, undefined, background && step === 2 ? true : quiet)
+      if (!preserveScroll) return task
+      return task.then(() => {
+        if (this._viewActive && this.data.currentStep === 2 && typeof wx !== 'undefined' && typeof wx.pageScrollTo === 'function') {
+          wx.pageScrollTo({ scrollTop: this._pageScrollTop, duration: 0 })
+        }
+      })
     }
   },
 
