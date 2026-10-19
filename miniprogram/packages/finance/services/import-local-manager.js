@@ -90,7 +90,8 @@ async function settleLegacy(view){
   if(view.update.status!=='review'||view.update.reviewMode==='local_v3')return{view,ui:null}
   return migrateLegacy(view,dependencies(view.update.updateId))
 }
-async function prepare(view,onProgress,migration){
+async function prepare(view,onProgress,migration,onStage=()=>{}){
+  const stage=(name,detail)=>{try{onStage(name,detail||{})}catch(_){}}
   if(view.update.status!=='review')return view
   const existing=restore(view.update.updateId);if(existing)return existing.view
   await settleAbandoned()
@@ -100,8 +101,12 @@ async function prepare(view,onProgress,migration){
   const key=deps.prefix+'prepare'
   let request=wx.getStorageSync(key)
   if(!request){request={requestId:api.createRequestId(),updateId:view.update.updateId,version:view.update.version};persist(key,request)}
+  stage('snapshot_request')
   const prepared=await deps.callNetwork('financeUpdates.prepareSnapshot',request)
+  stage('snapshot_ready',{bytes:prepared.snapshot&&prepared.snapshot.bytes,chunks:prepared.snapshot&&prepared.snapshot.chunkCount})
+  stage('download_start')
   const facts=await deps.files.download(prepared.snapshot,deps.callNetwork,onProgress,prepared.inline);deps.guard()
+  stage('download_done',{bytes:prepared.snapshot&&prepared.snapshot.bytes})
   const session=sessionFactory.create({...deps,restored:{facts,header:prepared.snapshot,records:[]}})
   if(legacy.ui){const drafts=legacy.ui.drafts||{};for(const draft of Object.values(drafts))if(draft.mode==='ignore_future'){draft.mode='ignore';draft.localConfirmed=false;draft.dirty=true}session.saveDrafts(drafts,2);for(const [id,draft]of Object.entries(legacy.ui.pairingDrafts||{}))session.savePairingDraft(id,{...draft,needsRecheck:true})}
   router.bind(session);wx.removeStorageSync(key)

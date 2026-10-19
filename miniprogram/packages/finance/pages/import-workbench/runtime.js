@@ -273,7 +273,7 @@ module.exports = {
       if (!active()) return
       view = await this.refreshAccountGroups(view, active)
       if (!active()) return
-      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) })
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, undefined, (stage, detail) => { if (active()) perf.mark(stage, detail) })
       if (!active()) return
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
@@ -335,7 +335,7 @@ module.exports = {
       load.pending = this.refreshAccountGroups(view, active)
       view = await load.pending
       if (!active()) return
-      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration)
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration, (stage, detail) => { if (active()) perf.mark(stage, detail) })
       if (!active()) return
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
