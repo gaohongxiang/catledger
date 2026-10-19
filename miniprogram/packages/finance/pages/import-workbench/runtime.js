@@ -547,6 +547,12 @@ module.exports = {
         accountMappingsExcluded: excluded })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
+    if (step === 2) {
+      const page = this
+      if (typeof setTimeout === 'function') setTimeout(function () {
+        if (page._viewActive && page.data.currentStep === 2) page.refreshAccountMappings()
+      }, 0)
+    }
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
@@ -572,7 +578,13 @@ module.exports = {
       setChangedData(this, { draftSync: this._draftSession.status, prepareProgress: '' })
       this._draftSession.schedule()
     }
-    if (changed || this._loadedStep !== step) return this.loadActivePage(true, undefined, quiet)
+    if (changed || this._loadedStep !== step) {
+      // A background account sync must not rebuild the paged page: that briefly
+      // empties the list, moves the scroll position, and makes the card look
+      // like it was confirmed twice. The mappings are already refreshed above.
+      if (background && step === 2 && this._loadedStep === 2) return
+      return this.loadActivePage(true, undefined, quiet)
+    }
   },
 
   stepPatch: function (step) {
