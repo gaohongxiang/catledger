@@ -203,7 +203,6 @@
   <view wx:if="{{currentStep === 2 && preparingAccount}}" class="step-section account-stage">
     <view class="step-heading content-inset">
       <view><text class="step-title serif-title">确认账户</text></view>
-      <text class="step-count money-number">正在准备</text>
     </view>
     <text class="step-copy content-inset">正在整理账户归属与待确认记录，请稍候。</text>
     <skeleton-rows rows="{{4}}" />

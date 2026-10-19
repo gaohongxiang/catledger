@@ -53,9 +53,13 @@ function directoryRows(sheet, items) {
   }).sort((a, b) => Number(a.directoryDisabled) - Number(b.directoryDisabled))
 }
 
-function suggestedAccountTypeIndex(label, sourceType) {
+function suggestedAccountTypeIndex(label, sourceType, fundsSide, economicNature) {
   const value = String(label || '')
-  if (/信用|花呗|白条|贷|先采后付/.test(value)) return 3
+  // A repayment destination and a borrowing source are debt endpoints even
+  // when the statement only says "主卡" without the word "信用卡".
+  if (economicNature === 'repayment' && fundsSide === 'to') return 3
+  if (economicNature === 'borrow' && fundsSide === 'from') return 3
+  if (/信用|贷记卡|花呗|白条|贷|先采后付|主卡/.test(value)) return 3
   if (/银行|储蓄|借记|卡/.test(value)) return 1
   if (/现金/.test(value)) return 0
   if (/余额宝|基金|理财/.test(value)) return 4
@@ -210,6 +214,7 @@ function applyAccountChoice(event) {
 
 module.exports = {
   ACCOUNT_TYPE_OPTIONS,
+  suggestedAccountTypeIndex,
   mappingState: function () {
     const data = this.businessData()
     return this.buildAccountMappingState(data.accountIssues || [], data.accounts || [], data.accountDrafts || [], [])
@@ -264,7 +269,8 @@ module.exports = {
             accountId: resolvedAccountId || (suggestedAccount ? suggestedAccount.accountId : ''),
             recommendedAccountId: suggestedAccount ? suggestedAccount.accountId : '',
             name: suggestedName,
-            typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label, issue.accountContext && issue.accountContext.sourceType),
+            typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label, issue.accountContext && issue.accountContext.sourceType,
+              issue.accountContext && issue.accountContext.fundsSide, issue.subject && issue.subject.economicNature),
             dirty: false,
             localConfirmed: false,
             revision: 0

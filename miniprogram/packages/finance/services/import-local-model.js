@@ -242,7 +242,11 @@ function create(facts) {
   function validateReferences(event) {
     const references = require('../domain/import-review/workbench-summary').accountIds(event)
     for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
-    if (!require('../domain/import-review/editor-fields').accountRolesValid(event, accounts)) fail('账户类型与资金方向不一致')
+    if (!require('../domain/import-review/editor-fields').accountRolesValid(event, accounts)) {
+      if (event.economicNature === 'repayment') fail('还款的还入账户需是信用卡或负债账户')
+      if (event.economicNature === 'borrow') fail('借款的账户类型与资金方向不匹配')
+      fail('账户类型与资金方向不一致')
+    }
     if (event.categoryId) {
       const category = categories.get(event.categoryId)
       if (!category || category.archivedAt || category.kind !== editor.kind(event.economicNature)) fail('分类不可用，请重新选择')
