@@ -13,6 +13,8 @@ test('完整草稿真实 Page/API：账户、字段、分类、证据和退款�
   await page.setStep({currentStep:2})
   const mapping=page.data.accountMappings[0]
   assert.ok(mapping,'真实账户页应显示待确认范围')
+  assert.ok(page.data.accountMappingsIncluded.length,'账户页不能渲染成 0/0 空状态')
+  assert.equal(page.data.accountStepSummary.total,page.data.accountMappings.length)
   assert.equal(mapping.allowFutureIgnore,false)
   await page.openAccountChoice(tap({id:mapping.issueId}))
   page.selectAccountChoice(tap({value:'account:'+value.accounts[0].accountId}))

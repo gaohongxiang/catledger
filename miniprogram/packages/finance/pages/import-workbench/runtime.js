@@ -534,15 +534,19 @@ module.exports = {
     const current = this.data.currentStep
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
     : forceStep || (background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow)
+    const mappings = workbench.accountMappings || this.data.accountMappings || []
+    const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future' })
+    const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
     const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               importId: source.importId || '', fileName: source.fileName, originalFileName: source.originalFileName || source.fileName,
               sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false,
-        preparingAccount: false, prepareProgress: '' })
+        preparingAccount: false, prepareProgress: '',
+        accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }),
+        accountMappingsExcluded: excluded })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
-    if (step === 2) this.refreshAccountMappings()
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
@@ -580,9 +584,7 @@ module.exports = {
   },
 
   setStep: function (patch) {
-    setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch))
-    if (patch.currentStep === 2) this.refreshAccountMappings()
-    return this.loadActivePage(true)
+    setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch)); return this.loadActivePage(true)
   },
 
   renderReview: function (reset) {
@@ -634,7 +636,14 @@ module.exports = {
         const visible = new Set(issues.map(issue => issue.issueId))
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
-        patch.accountMappings = this.mappingState().mappings.map(compactMapping)
+        const state = this.mappingState()
+        const mappings = state.mappings.map(compactMapping)
+        const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future' })
+        const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
+        patch.accountMappings = mappings
+        patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })
+        patch.accountMappingsExcluded = excluded
+        patch.accountStepSummary = state.summary
       } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(
         presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))) }] : []
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
