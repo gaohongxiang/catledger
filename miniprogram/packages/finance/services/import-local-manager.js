@@ -101,7 +101,7 @@ async function prepare(view,onProgress,migration){
   let request=wx.getStorageSync(key)
   if(!request){request={requestId:api.createRequestId(),updateId:view.update.updateId,version:view.update.version};persist(key,request)}
   const prepared=await deps.callNetwork('financeUpdates.prepareSnapshot',request)
-  const facts=await deps.files.download(prepared.snapshot,deps.callNetwork,onProgress);deps.guard()
+  const facts=await deps.files.download(prepared.snapshot,deps.callNetwork,onProgress,prepared.inline);deps.guard()
   const session=sessionFactory.create({...deps,restored:{facts,header:prepared.snapshot,records:[]}})
   if(legacy.ui){const drafts=legacy.ui.drafts||{};for(const draft of Object.values(drafts))if(draft.mode==='ignore_future'){draft.mode='ignore';draft.localConfirmed=false;draft.dirty=true}session.saveDrafts(drafts,2);for(const [id,draft]of Object.entries(legacy.ui.pairingDrafts||{}))session.savePairingDraft(id,{...draft,needsRecheck:true})}
   router.bind(session);wx.removeStorageSync(key)

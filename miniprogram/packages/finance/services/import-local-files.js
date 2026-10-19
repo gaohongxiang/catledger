@@ -85,7 +85,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
     if (damaged) throw failure('DRAFT_CORRUPT', '完整草稿文件校验失败，已保留原文件；联网重新准备后继续')
     return null
   }
-  async function download(header, call, onProgress = () => {}) {
+  async function download(header, call, onProgress = () => {}, inline = null) {
     const ticket = epoch, descriptors = []; let offset = 0
     guard(ticket); io(() => { mkdir(directory); mkdir(directory + '/' + header.objectId) })
     do {
@@ -98,6 +98,22 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
     protocol.validateManifest(header, descriptors)
     const folder = directory + '/' + header.objectId
     const done = new Set()
+    if (inline && header.kind === 'snapshot' && descriptors.length === 1) {
+      const descriptor = descriptors[0], content = inline.content
+      try {
+        if (typeof content !== 'string' || inline.objectId !== header.objectId ||
+            Number(inline.baseVersion) !== Number(header.baseVersion) || inline.index !== descriptor.index ||
+            Number(inline.bytes) !== descriptor.bytes || inline.digest !== descriptor.digest) {
+          throw failure('SNAPSHOT_INCOMPLETE', '内联快照描述不一致')
+        }
+        protocol.validatePart(header, descriptor, { ...descriptor, objectId: header.objectId,
+          baseVersion: header.baseVersion, content })
+        io(() => verified(folder + '/part-' + descriptor.index + '.json', content))
+      } catch (error) {
+        if (error.code === 'DRAFT_STORAGE_FAILED' || error.code === 'SESSION_CHANGED') throw error
+        // An invalid inline payload is ignored; the normal chunk path below remains authoritative.
+      }
+    }
     for (const descriptor of descriptors) {
       const file = folder + '/part-' + descriptor.index + '.json'
       if (!exists(file)) continue

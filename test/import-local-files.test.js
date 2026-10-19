@@ -99,6 +99,32 @@ test('断点续传：损坏的本机块按摘要重新下载，不被当作有�
   assert.equal(store.restore().facts.snapshotId, value.snapshotId)
 })
 
+test('单块内联：不请求分块；内联内容不符时回退分块', async t => {
+  const inlineLab = filesystem(), fallbackLab = filesystem()
+  t.after(inlineLab.cleanup); t.after(fallbackLab.cleanup)
+  const value = await facts({ count: 3 }), object = packed(value)
+  assert.equal(object.parts.length, 1)
+  let inlineChunkCalls = 0
+  const inlineStore = files.create({ ...inlineLab, scope: 'test:inline', updateId: value.update.updateId })
+  await inlineStore.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) inlineChunkCalls += 1
+    return object.call(action, data)
+  }, () => {}, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
+    index: 0, bytes: object.parts[0].bytes, digest: object.parts[0].digest, content: object.parts[0].content })
+  assert.equal(inlineChunkCalls, 0)
+  assert.equal(inlineStore.restore().facts.snapshotId, value.snapshotId)
+
+  let fallbackChunkCalls = 0
+  const fallbackStore = files.create({ ...fallbackLab, scope: 'test:inline-fallback', updateId: value.update.updateId })
+  await fallbackStore.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) fallbackChunkCalls += 1
+    return object.call(action, data)
+  }, () => {}, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
+    index: 0, bytes: object.parts[0].bytes, digest: object.parts[0].digest, content: 'corrupt' })
+  assert.equal(fallbackChunkCalls, 1)
+  assert.equal(fallbackStore.restore().facts.snapshotId, value.snapshotId)
+})
+
 test('持久决定：中断或空间不足不假报保存，冷启动只恢复完整提交，损坏明确提示', async t => {
   const lab = filesystem(); t.after(lab.cleanup)
   const value = await facts(), object = packed(value), options = { ...lab, scope: 'test:A', updateId: value.update.updateId }

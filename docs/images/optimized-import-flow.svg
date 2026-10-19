@@ -1,8 +1,8 @@
-<svg viewBox="0 0 680 760" width="1360" height="1520" xmlns="http://www.w3.org/2000/svg" role="img">
+<svg viewBox="0 0 680 780" width="1360" height="1560" xmlns="http://www.w3.org/2000/svg" role="img">
 <title>优化后的导入链路：并行下载、断点续传与完整标记</title>
 <desc>服务端完成上传、解析、整理并封存不可变快照；客户端拉取清单后最多四路并发下载分块，逐块校验摘要并落盘。已校验的同代次分块可直接复用，失败重试只补缺块；只有全部块通过整体清单和根摘要校验后才写完整标记并开放本机核对。任何缺块、乱序、重复、混版本或损坏都不开放半份草稿，旧完整代次保留。核对仍为零网络，最终决定分块暂存后由服务端单事务复核入账。</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
-<rect width="680" height="760" fill="#FFFFFF"/>
+<rect width="680" height="780" fill="#FFFFFF"/>
 <g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
 <text x="24" y="28" text-anchor="start" dominant-baseline="central" font-size="15" fill="#2B2A26" font-weight="600">优化后的导入链路：并行下载、断点续传与完整标记</text>
 <text x="24" y="50" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">服务端负责事实与封存，客户端只下载已封存的快照；核对仍在本机完成。</text>
@@ -62,11 +62,12 @@
 </g>
 
 <text x="24" y="652" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">并行上限 4；块可以乱序完成，但整体必须按清单顺序通过摘要与计数校验。</text>
-<text x="24" y="674" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">正式余额只由服务端事务中的有效交易改变；快照、草稿和本地决定都不是账本。</text>
-<text x="24" y="696" text-anchor="start" dominant-baseline="central" font-size="10" fill="#888780">实现：import-local-files.js 的有界并发、已校验块复用和完整标记门禁。</text>
+<text x="24" y="674" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">单块小快照可直接内联；客户端仍按摘要校验，缺失或不符时自动回退分块。</text>
+<text x="24" y="696" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">正式余额只由服务端事务中的有效交易改变；快照、草稿和本地决定都不是账本。</text>
+<text x="24" y="718" text-anchor="start" dominant-baseline="central" font-size="10" fill="#888780">实现：import-local-files.js 的有界并发、已校验块复用、单块内联和完整标记门禁。</text>
 
-<g data-card="true"><rect x="24" y="716" width="160" height="26" rx="13" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
-<text x="104" y="729" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#27500A" font-weight="500">P1：并行 + 续传 + 完整门禁</text>
+<g data-card="true"><rect x="24" y="736" width="230" height="26" rx="13" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="139" y="749" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#27500A" font-weight="500">P1：并行 + 续传 + 单块内联 + 完整门禁</text>
 </g>
 </g>
 </svg>
