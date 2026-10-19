@@ -49,6 +49,23 @@ test('放弃旧批次后在同一 Page 重新整理，新批次账户确认仍�
   assert.equal(page._draftSession.state.updateId, next.summary.update.updateId)
 })
 
+test('放弃后新选账单不被旧放弃视图覆盖，第一步操作按钮仍可用', async t => {
+  const h = runtime(accounts(), { realDraftManager: true }), page = h.page
+  t.after(async () => { if (page._draftSession) await page._draftSession.pause(); page.onUnload() })
+  await until(() => page.data.accountMappings.length === 2)
+  h.intercept = action => action === 'financeUpdates.abandon' ? { update: { ...h.summary.update, status: 'abandoned' } } : undefined
+  await page.performAbandonUpdate()
+  assert.equal(page.data.phase, 'idle')
+  const stale = { ...h.summary, workbench: undefined, update: { ...h.summary.update, status: 'abandoned' } }
+  page.applyUpdateView(stale)
+  assert.equal(page.data.phase, 'idle')
+  page.setData({ phase: 'selected', files: [{ clientId: 'new-file', name: '新账单.csv', size: 20, state: 'queued', progress: 0 }] })
+  page.applyUpdateView(stale)
+  assert.equal(page.data.phase, 'selected')
+  assert.equal(page.data.currentStep, 1)
+  assert.equal(page.data.files.length, 1)
+})
+
 test('接续期间目标账户问题实质变化，不替换旧 issueVersion 自动保存', async t => {
   const { h, page, summaryGate, saving, choosing } = await overlappingConfirmation({ afterCommit(h) { h.issues[1].version++ } })
   t.after(() => page.onUnload())

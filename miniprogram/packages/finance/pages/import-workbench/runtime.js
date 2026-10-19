@@ -109,6 +109,7 @@ module.exports = {
     this.setData({ pageLoading: false, pageError: '', directoryPage: null })
     themeService.bindPage(this)
     this._requestIds = {}
+    this._abandonedUpdateId = null
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
     this.syncFileRenamePending()
@@ -253,6 +254,7 @@ module.exports = {
       this.setData({ errorMessage: '至少需要一个解析成功的账单文件' })
       return
     }
+    this._abandonedUpdateId = null
     const operation = this._prepareOperation = { epoch: this._viewEpoch, scope: readCache.getSession(), owner: currentOwner() }
     const perf = this._importPerf || importPerformance.create()
     this._importPerf = perf
@@ -317,6 +319,7 @@ module.exports = {
     const scope = readCache.getSession(), owner = currentOwner()
     const active = () => this._viewActive !== false && getApp().hasLoginApproval() && scope === readCache.getSession() && owner === currentOwner() &&
       this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
+    this._abandonedUpdateId = null
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false, preparingAccount: false })
     const perf = importPerformance.create()
     this._importPerf = perf
@@ -378,6 +381,7 @@ module.exports = {
         await this.request('financeUpdates.abandon', this._restoreAbandonRequest)
       }
       draftSessions.clearUpdate(updateId)
+      this._abandonedUpdateId = updateId
       this.startAnother()
     } catch (error) {
       this.setData({ busy: false, abandoningRestore: false, errorMessage: publicError(error, '放弃失败，上次导入已保留，请重试') })
@@ -466,6 +470,7 @@ module.exports = {
     this._duplicateLoadToken = null
     this.setData({
         phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, preparePending: false,
+        preparingAccount: false, prepareProgress: '',
         files: [], bankMappingSheet: null, fileAttentionSheet: null, fileNameEdit: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
         reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
@@ -491,6 +496,7 @@ module.exports = {
 
   applyUpdateView: function (view, background, restoreToFirstStep, quiet, keepStep, forceStep) {
     if (!this._viewActive) return
+    if (view.update && view.update.status === 'abandoned' && view.update.updateId === this._abandonedUpdateId) return
     if (!view.workbench) {
       // 操作事实先显示；明细读取失败不抹掉已保存/已入账结果。
       this.setData({ update: view.update, posting: view.posting || this.data.posting,

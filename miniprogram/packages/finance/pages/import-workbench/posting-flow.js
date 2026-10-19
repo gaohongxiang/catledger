@@ -71,13 +71,15 @@ module.exports = {
         const fresh = await this.request('financeUpdates.summary', { updateId: this.data.update.updateId })
         this.setData({ update: fresh.update })
       }
+      const updateId = this.data.update.updateId, version = this.data.update.version
       const abandoned = await this.request('financeUpdates.abandon', {
           requestId: api.createRequestId(),
-          updateId: this.data.update.updateId,
-          version: this.data.update.version
+          updateId: updateId,
+          version: version
         })
+      this._abandonedUpdateId = updateId
       this.startAnother()
-      wx.showToast({ title: abandoned.offlineAbandon ? '本机已清理，服务端待联网放弃' : '本批账单已放弃', icon: 'none' })
+      if (abandoned.offlineAbandon) wx.showToast({ title: '本机已清理，服务端待联网放弃', icon: 'none' })
     } catch (error) {
       if (this._draftSession) this._draftSession.resume()
       this.setData({ busy: false, errorMessage: publicError(error, '放弃失败，请重试') })
