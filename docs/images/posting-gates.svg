@@ -1,30 +1,27 @@
-<svg viewBox="0 0 680 294" width="680" height="294" xmlns="http://www.w3.org/2000/svg">
-<defs>
-<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</marker>
-</defs>
-<rect x="0" y="0" width="680" height="294" fill="#FFFFFF"/>
+<svg viewBox="0 0 680 358" width="680" height="358" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="358" fill="#FFFFFF"/>
 <g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
-
-<rect x="40" y="46" width="300" height="68" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
-<text x="190" y="68" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">① 文件完整识别</text>
-<text x="190" y="92" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">当前文件观测、字段与受支持控制项</text>
-
-<rect x="40" y="166" width="300" height="68" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
-<text x="190" y="188" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">② 所选事件可入账</text>
-<text x="190" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">本次所选事件满足入账条件</text>
-
-<path d="M340 80L380 80" fill="none" stroke="#888780" stroke-width="1.5"/>
-<path d="M340 200L380 200" fill="none" stroke="#888780" stroke-width="1.5"/>
-<path d="M380 80L380 200" fill="none" stroke="#888780" stroke-width="1.5"/>
-<path d="M380 140L420 140" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
-
-<rect x="420" y="104" width="220" height="72" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
-<text x="530" y="128" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#27500A">整批原子入账</text>
-<text x="530" y="152" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">两条门都通过才发送</text>
-
-<text x="40" y="262" font-size="12" fill="#5F5E5A">行数相等不代表完整识别，缺当前观测不能补写通过；按钮可点也不代表没有阻断</text>
-<text x="40" y="284" font-size="12" fill="#5F5E5A">分类待补不等于所有问题都阻塞；两条门独立，互不冒充</text>
+<rect x="40" y="32" width="600" height="76" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="340.0" y="54" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#0C447C" font-weight="500">文件完整识别：信息指标</text>
+<text x="340.0" y="78" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">文件观测、字段和每行解释是否完整，如实展示，不直接决定能否入账</text>
+<text x="340" y="137" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#888780">实际入账流程</text>
+<rect x="40" y="166" width="192" height="116" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="136.0" y="188" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#444441" font-weight="500">本次所选范围通过检查</text>
+<text x="136.0" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">来源归宿守恒</text>
+<text x="136.0" y="232" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">所选事件均满足条件</text>
+<text x="136.0" y="252" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">没有未决阻断问题</text>
+<path d="M232 224L254 224" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="256" y="166" width="172" height="116" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="342.0" y="188" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#0C447C" font-weight="500">提交服务端复核</text>
+<text x="342.0" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">按当前账本重新检查</text>
+<text x="342.0" y="232" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">变化或冲突退回核对</text>
+<path d="M428 224L450 224" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="452" y="166" width="188" height="116" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="546.0" y="188" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#27500A" font-weight="500">复核通过 → 整批入账</text>
+<text x="546.0" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">全部成功才一起提交</text>
+<text x="546.0" y="232" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">失败不部分入账</text>
+<text x="40" y="312" text-anchor="start" dominant-baseline="central" font-size="12" fill="#5F5E5A">未完整识别不等于不能入账；排除未知记录也不会提高识别率。</text>
+<text x="40" y="336" text-anchor="start" dominant-baseline="central" font-size="12" fill="#5F5E5A">所选范围仍须通过全部账务检查，不能以“允许部分范围”绕过阻断。</text>
 </g>
 </svg>

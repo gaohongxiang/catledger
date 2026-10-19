@@ -1,0 +1,38 @@
+<svg viewBox="0 0 680 400" width="680" height="400" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>启动与身份：一次确认，三条去向</title><desc>启动小程序后确认微信身份，服务端用微信凭据确定用户；成功后自动进入账本，新用户建默认资料、已有用户直接读取；失败可重试或返回，不进入。客户端传来的用户编号、头像和本机登录状态不能替代授权。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="400" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<g stroke="#888780" stroke-width="1.5" fill="none">
+<path d="M340 88V104" marker-end="url(#arrow)"/>
+<path d="M340 152V164M200 164H490"/>
+<path d="M200 164V176" marker-end="url(#arrow)"/>
+<path d="M490 164V176" marker-end="url(#arrow)"/>
+<path d="M200 224V248" marker-end="url(#arrow)"/>
+</g>
+
+<rect x="220" y="40" width="240" height="48" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340" y="58" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#444441" font-weight="500">启动小程序</text>
+<text x="340" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">从底部入口或中央记账按钮进入</text>
+
+<rect x="140" y="104" width="400" height="48" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="340" y="122" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="500">确认微信身份</text>
+<text x="340" y="140" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#185FA5">服务端用微信凭据确定用户，不接受客户端传来的编号</text>
+
+<rect x="100" y="176" width="200" height="48" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="200" y="194" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#27500A" font-weight="500">成功：进入账本</text>
+<text x="200" y="212" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#3B6D11">自动进入，不需再次授权</text>
+
+<rect x="380" y="176" width="220" height="48" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="490" y="194" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#633806" font-weight="500">失败：重试或返回</text>
+<text x="490" y="212" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#854F0B">不进入，也不显示个人数据</text>
+
+<rect x="100" y="248" width="500" height="48" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="118" y="266" dominant-baseline="central" font-size="13" fill="#444441" font-weight="500">新用户建默认资料，已有用户直接读取</text>
+<text x="118" y="284" dominant-baseline="central" font-size="11" fill="#5F5E5A">二者都不因为打开账本而改写账务</text>
+
+<text x="40" y="330" dominant-baseline="central" font-size="11" fill="#5F5E5A">客户端传来的用户编号、头像和本机登录状态都不能替代授权；服务端按可信身份核对账户、交易、批次和贷款</text>
+<text x="40" y="352" dominant-baseline="central" font-size="11" fill="#5F5E5A">换用户后旧页面与旧响应作废，不能把上一个用户的数据带进来</text>
+</g>
+</svg>

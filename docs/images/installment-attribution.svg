@@ -47,7 +47,7 @@
 
 <rect x="40" y="364" width="184" height="88" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
 <text x="132" y="392" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#085041">1 个 → 归属它</text>
-<text x="132" y="416" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">唯一计划即唯一可能</text>
+<text x="132" y="416" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">本期只有一个候选计划</text>
 <text x="132" y="436" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0F6E56">自动，不打扰用户</text>
 
 <rect x="248" y="364" width="184" height="88" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
@@ -62,6 +62,6 @@
 
 <text x="340" y="478" text-anchor="middle" font-size="12" fill="#5F5E5A">候选来自同一来源账户＋同一期次的全部本金行，计划名只取本金摘要</text>
 <text x="340" y="500" text-anchor="middle" font-size="12" fill="#5F5E5A">跨页不完整时整组一卡，不按不完整的计划数推断归属，也不给合计</text>
-<text x="340" y="522" text-anchor="middle" font-size="12" fill="#5F5E5A">判定在服务端整理阶段完成，客户端只消费结论、不重算</text>
+<text x="340" y="522" text-anchor="middle" font-size="12" fill="#5F5E5A">服务端准备候选与分组，本机保存选择，提交时由服务端复核</text>
 </g>
 </svg>

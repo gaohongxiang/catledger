@@ -1,0 +1,42 @@
+<svg viewBox="0 0 680 500" width="680" height="500" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>首页加载：快照先显示，旧数据不冒充最新</title><desc>启动或回到首页后先显示本机快照并标注更新中，再检查已授权的到期费用、读取最新结果；只有成功且无待处理变化才替换为最新，失败或仍有变化就保留旧数据并提示待核实。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="500" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<g stroke="#888780" stroke-width="1.5" fill="none">
+<path d="M220 104V124" marker-end="url(#arrow)"/>
+<path d="M220 180V200" marker-end="url(#arrow)"/>
+<path d="M220 256V276" marker-end="url(#arrow)"/>
+<path d="M400 304H428" marker-end="url(#arrow)"/>
+<path d="M400 320H414V376H428" marker-end="url(#arrow)"/>
+</g>
+
+<rect x="40" y="48" width="360" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="58" y="70" dominant-baseline="central" font-size="13" fill="#444441" font-weight="500">启动或回到首页</text>
+<text x="58" y="90" dominant-baseline="central" font-size="11" fill="#5F5E5A">本机已有数据可以直接显示</text>
+
+<rect x="40" y="124" width="360" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="58" y="146" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="500">显示本机快照</text>
+<text x="58" y="166" dominant-baseline="central" font-size="11" fill="#185FA5">标注“更新中”，先不阻塞浏览</text>
+
+<rect x="40" y="200" width="360" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="58" y="222" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="500">检查已授权的到期费用</text>
+<text x="58" y="242" dominant-baseline="central" font-size="11" fill="#185FA5">只检查用户已授权的费用</text>
+
+<rect x="40" y="276" width="360" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="58" y="298" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="500">读取最新结果</text>
+<text x="58" y="318" dominant-baseline="central" font-size="11" fill="#185FA5">费用检查与账本读取一起决定这次能否刷新</text>
+
+<rect x="428" y="276" width="212" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="446" y="298" dominant-baseline="central" font-size="13" fill="#27500A" font-weight="500">成功且无待处理变化</text>
+<text x="446" y="318" dominant-baseline="central" font-size="11" fill="#3B6D11">替换为最新，去掉“更新中”</text>
+
+<rect x="428" y="348" width="212" height="56" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="446" y="370" dominant-baseline="central" font-size="13" fill="#633806" font-weight="500">失败或仍有变化</text>
+<text x="446" y="390" dominant-baseline="central" font-size="11" fill="#854F0B">保留旧数据，提示待核实</text>
+
+<text x="40" y="440" dominant-baseline="central" font-size="11" fill="#5F5E5A">只有“成功且无待处理变化”会改变屏幕上的数字；失败与待核实都保留旧快照，旧余额不当作最新结果</text>
+<text x="40" y="462" dominant-baseline="central" font-size="11" fill="#5F5E5A">跨日、换用户或相关账务变化后需要重查，重新走一遍上面四步</text>
+</g>
+</svg>

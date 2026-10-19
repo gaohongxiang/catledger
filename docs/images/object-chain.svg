@@ -1,0 +1,93 @@
+<svg viewBox="0 0 680 848" width="680" height="848" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>导入全过程：开始或恢复、系统准备、本机核对与正式入账</title>
+<desc>进入时先检查当前用户的可恢复记录：没有则选择文件开始新导入；有则恢复原批次与已保存的选择，准备未完成时继续准备，草稿完整时继续核对，已发请求结果未知时先查原结果，恢复失败则保留记录并重试。恢复按原状态接回下方流程，沿用已有结果。下方中间是用户界面四步，左侧标明处理阶段，右侧列出涉及的对象。服务端先准备导入批次、来源文件、原始行、事件和核对问题；完整下载后，用户在本机先确认账户与是否计入，再核对交易；最后由服务端复核入账。账户归属能推断的自动给出，核对能判定的自动完成，其余才转人工。对象可跨阶段使用，只有正式交易改变余额。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="848" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+<text x="24" y="24" text-anchor="start" dominant-baseline="central" font-size="14" fill="#2B2A26" font-weight="500">开始或恢复导入</text>
+<g data-card="true"><rect x="24" y="52" width="200" height="164" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.7"/>
+<text x="124" y="122" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#444441" font-weight="500">检查可恢复记录</text>
+<text x="124" y="148" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">当前用户 · 已核验身份</text>
+</g>
+<path d="M224 134H242V74H258" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M242 134V166H258" fill="none" stroke="#185FA5" stroke-width="1.3" marker-end="url(#arrow)"/>
+<g data-card="true"><rect x="260" y="52" width="396" height="44" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7"/>
+<text x="458" y="74" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#2B2A26" font-weight="500">无 → 选择文件，开始新导入</text>
+</g>
+<g data-card="true"><rect x="260" y="116" width="396" height="100" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.7"/>
+<text x="458" y="138" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="500">有 → 恢复原批次与已保存的选择</text>
+<text x="458" y="164" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#185FA5">准备未完接回准备；草稿完整接回核对</text>
+<text x="458" y="188" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#185FA5">结果未知先查原请求；失败保留后重试</text>
+</g>
+<text x="24" y="240" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">恢复按原状态接回下方流程；已完成的准备与核对结果继续沿用。</text>
+<path d="M24 262H656" fill="none" stroke="#D3D1C7" stroke-width="0.7"/>
+<g transform="translate(0,268)">
+<text x="24" y="28" text-anchor="start" dominant-baseline="central" font-size="12" fill="#5F5E5A">处理阶段</text>
+<text x="136" y="28" text-anchor="start" dominant-baseline="central" font-size="12" fill="#5F5E5A">用户界面 4 步</text>
+<text x="330" y="28" text-anchor="start" dominant-baseline="central" font-size="12" fill="#5F5E5A">涉及的对象</text>
+<g data-card="true"><rect x="24" y="58" width="88" height="102" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="68.0" y="98" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#633806" font-weight="500">系统准备</text>
+<text x="68.0" y="122" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#854F0B">服务端 · 联网</text>
+</g>
+<g data-card="true"><rect x="24" y="190" width="88" height="154" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.7"/>
+<text x="68.0" y="258" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#444441" font-weight="500">本机核对</text>
+<text x="68.0" y="280" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">不逐条联网</text>
+</g>
+<g data-card="true"><rect x="24" y="378" width="88" height="62" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="68.0" y="400" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#633806" font-weight="500">正式入账</text>
+<text x="68.0" y="424" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#854F0B">服务端 · 联网</text>
+</g>
+<g data-card="true"><rect x="136" y="78" width="160" height="62" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7"/>
+<text x="216.0" y="100" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#2B2A26" font-weight="500">选择文件</text>
+<text x="216.0" y="124" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">上传、解析与整理</text>
+</g>
+<path d="M296 109L328 109" fill="none" stroke="#888780" stroke-width="1.3"/>
+<g data-card="true"><rect x="136" y="190" width="160" height="62" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7"/>
+<text x="216.0" y="212" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#2B2A26" font-weight="500">确认账户</text>
+<text x="216.0" y="236" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">是否计入、账户归属</text>
+</g>
+<path d="M296 221L328 221" fill="none" stroke="#888780" stroke-width="1.3"/>
+<g data-card="true"><rect x="136" y="282" width="160" height="62" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7"/>
+<text x="216.0" y="304" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#2B2A26" font-weight="500">核对交易</text>
+<text x="216.0" y="328" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">状态 · 性质 · 金额 · 分类</text>
+</g>
+<path d="M296 313L328 313" fill="none" stroke="#888780" stroke-width="1.3"/>
+<g data-card="true"><rect x="136" y="378" width="160" height="62" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7"/>
+<text x="216.0" y="400" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#2B2A26" font-weight="500">确认入账</text>
+<text x="216.0" y="424" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5F5E5A">服务端复核并提交</text>
+</g>
+<path d="M296 409L328 409" fill="none" stroke="#888780" stroke-width="1.3"/>
+<path d="M216 140L216 188" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="230" y="164" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">完整下载后</text>
+<path d="M216 252L216 280" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M216 344L216 376" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="230" y="360" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">提交</text>
+<g data-card="true"><rect x="330" y="58" width="326" height="102" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.7"/>
+<text x="493.0" y="76" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#444441" font-weight="500">导入批次</text>
+<text x="493.0" y="98" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#444441" font-weight="500">来源文件与解析批次</text>
+<text x="493.0" y="120" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#444441" font-weight="500">原始行与来源身份</text>
+<text x="493.0" y="142" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#444441" font-weight="500">经济事件／核对问题</text>
+</g>
+<g data-card="true"><rect x="330" y="190" width="326" height="62" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="493.0" y="212" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#633806" font-weight="500">账本账户／新账户草稿</text>
+<text x="493.0" y="236" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#854F0B">能推断的自动归属，冲突待人工</text>
+</g>
+<g data-card="true"><rect x="330" y="282" width="326" height="62" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.7"/>
+<text x="493.0" y="304" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0C447C" font-weight="500">经济事件／关系／核对问题</text>
+<text x="493.0" y="328" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">能判的自动核对，其余待人工</text>
+</g>
+<g data-card="true"><rect x="330" y="378" width="326" height="62" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="493.0" y="400" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#27500A" font-weight="500">正式交易／来源关联</text>
+<text x="493.0" y="424" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#3B6D11">有效账户／映射记忆</text>
+</g>
+<path d="M493 440L493 462" fill="none" stroke="#888780" stroke-width="1.3" stroke-dasharray="3 3"/>
+<g data-card="true"><rect x="330" y="464" width="326" height="42" rx="8" fill="#FFFFFF" stroke="#888780" stroke-width="0.7" stroke-dasharray="4 3"/>
+<text x="493.0" y="485" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="500">贷款资料／期次／来源关联</text>
+</g>
+<text x="136" y="480" text-anchor="start" dominant-baseline="central" font-size="12" fill="#3B6D11">分期／贷款按需关联</text>
+<text x="136" y="500" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">见 3.7 及第 5 章</text>
+<text x="24" y="536" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">事件和问题在系统准备时生成，本机核对时更新；新账户随有效入账创建。</text>
+<text x="24" y="558" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">对象可跨阶段使用；只有正式交易改变余额。</text>
+</g>
+</g>
+</svg>
