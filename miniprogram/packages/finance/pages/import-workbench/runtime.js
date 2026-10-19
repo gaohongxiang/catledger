@@ -260,7 +260,8 @@ module.exports = {
     const active = () => this._viewActive && getApp().hasLoginApproval() && operation.owner === currentOwner() &&
       readCache.getSession() === operation.scope && this._viewEpoch === operation.epoch && this._prepareOperation === operation
     this._prepareRestore = true
-    this.setData({ phase: 'organizing', busy: true, errorMessage: '', preparePending: Boolean(packet) })
+    this.setData({ phase: 'organizing', busy: true, errorMessage: '', preparePending: Boolean(packet),
+      currentStep: 2, unlockedStep: 2, preparingAccount: true, prepareProgress: '' })
     let receipt
     try {
       const result = settings && settings.recoveryOnly ? await pendingWrites.verify()
@@ -279,8 +280,8 @@ module.exports = {
       if (!active()) return
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
-      this.applyUpdateView(view)
-      if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新' })
+      this.applyUpdateView(view, false, false, false, false, 2)
+      if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新', currentStep: 1, unlockedStep: 1, preparingAccount: false })
       this._prepareRestore = false
       return true
     } catch (error) {
@@ -289,6 +290,7 @@ module.exports = {
       importPerformance.record(perf); this._importPerf = null
       if (error.confirmedResult && error.confirmedResult.action === 'financeUpdates.prepare') receipt = error.confirmedResult.result
       if (receipt) {
+        this.setData({ currentStep: 1, unlockedStep: 1, preparingAccount: false, prepareProgress: '' })
         this.applyUpdateView(receipt)
         this.setData({ errorMessage: '整理已完成，结果待刷新', preparePending: false, refreshRequired: true })
         this._prepareRestore = false
@@ -296,6 +298,7 @@ module.exports = {
       }
       const pending = Boolean(pendingPrepare())
       this.setData({ phase: this.data.files.length ? 'files_ready' : 'idle', preparePending: pending,
+        currentStep: 1, unlockedStep: 1, preparingAccount: false, prepareProgress: '',
         errorMessage: pending ? '上次整理结果待确认，请继续整理上次账单' : publicError(error, '跨来源整理失败') })
       return false
     } finally { if (active()) this.setData({ busy: false }) }
@@ -314,7 +317,7 @@ module.exports = {
     const scope = readCache.getSession(), owner = currentOwner()
     const active = () => this._viewActive !== false && getApp().hasLoginApproval() && scope === readCache.getSession() && owner === currentOwner() &&
       this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
-    this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
+    this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false, preparingAccount: false })
     const perf = importPerformance.create()
     this._importPerf = perf
     perf.mark('restore_start')
@@ -486,13 +489,13 @@ module.exports = {
     this.syncFileRenamePending()
   },
 
-  applyUpdateView: function (view, background, restoreToFirstStep, quiet, keepStep) {
+  applyUpdateView: function (view, background, restoreToFirstStep, quiet, keepStep, forceStep) {
     if (!this._viewActive) return
     if (!view.workbench) {
       // 操作事实先显示；明细读取失败不抹掉已保存/已入账结果。
       this.setData({ update: view.update, posting: view.posting || this.data.posting,
           phase: {posted:'done',abandoned:'abandoned',undone:'undone'}[view.update.status] || 'review', currentStep: view.update.status === 'review' ? this.data.currentStep : 4, busy: false,
-          errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : view.update.status === 'abandoned' ? '' : '操作已保存，明细待刷新', refreshRequired: true })
+          preparingAccount: false, prepareProgress: '', errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : view.update.status === 'abandoned' ? '' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
     if (background && (this._editingInput || this.data.fileNameEdit || this.data.fileRenamePending || this.data.currentIssue || this.data.evidenceSheet || this.data.reviewDetailSheet || this.data.reviewEditSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
@@ -522,12 +525,13 @@ module.exports = {
     const workflow = view.update.status !== 'review' ? 4 : workbench.accountStepSummary.pending ? 2 : workbench.reviewStatusTabs[0].count ? 3 : 4
     const current = this.data.currentStep
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
-    : background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow
+    : forceStep || (background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow)
     const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               importId: source.importId || '', fileName: source.fileName, originalFileName: source.originalFileName || source.fileName,
               sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
-        currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false })
+        currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false,
+        preparingAccount: false, prepareProgress: '' })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。

@@ -99,6 +99,28 @@ test('真实 Page 首次整理只发 prepare，已有批次重新整理并保留
   page.onUnload()
 })
 
+test('点击下一步立即进入确认账户骨架，不留在第一步显示进度', async () => {
+  const h = runtime(fixture(2)), page = h.page
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  h.intercept = action => action === 'financeUpdates.prepare' ? gate : undefined
+  page.data.update = null
+  page.data.files = [{ state: 'ready', batchId: 'synthetic-batch' }]
+  const task = page.createFinanceUpdate()
+  await flush()
+  assert.equal(page.data.currentStep, 2)
+  assert.equal(page.data.unlockedStep, 2)
+  assert.equal(page.data.preparingAccount, true)
+  assert.equal(page.data.phase, 'organizing')
+  assert.equal(page.data.prepareProgress, '')
+  release(h.summary)
+  await task
+  assert.equal(page.data.preparingAccount, false)
+  assert.equal(page.data.currentStep, 2)
+  assert.equal(page.data.busy, false)
+  page.onUnload()
+})
+
 test('已发入账离开页面，原请求保留并可确认，不因卸载重新生成幂等键', async () => {
   const h = runtime(fixture(2)), page = h.page, session = page._draftSession
   let release

@@ -20,6 +20,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     abandoningRestore: false,
     preparePending: false,
     prepareProgress: '',
+    preparingAccount: false,
     phase: 'idle',
     maxFiles: uploadFlow.MAX_FILES,
     currentStep: 1,

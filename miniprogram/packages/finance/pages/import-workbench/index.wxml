@@ -54,7 +54,7 @@
   </view>
 
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
-  <view wx:if="{{prepareProgress}}" class="draft-sync-note">正在准备核对资料：{{prepareProgress}}，请稍候。</view>
+  <view wx:if="{{prepareProgress && currentStep === 1}}" class="draft-sync-note">正在准备核对资料：{{prepareProgress}}，请稍候。</view>
   <view wx:if="{{phase === 'review' && draftSync.local && (draftSync.frozen || draftSync.error || draftSync.serverReviewPending)}}" class="draft-sync-note">
     <text>{{draftSync.frozen ? '入账结果待核实，原请求已冻结；请继续核实后再修改。' : draftSync.error}}</text>
     <text wx:if="{{draftSync.serverReviewPending && !draftSync.frozen}}">{{draftSync.serverReviewPending}} 笔历史依赖将在入账时复核。</text>
@@ -200,7 +200,22 @@
     <button wx:if="{{draftSync.conflicts}}" class="text-action" bindtap="recheckDraftConflicts" disabled="{{busy}}">重新核对</button>
     <button wx:if="{{draftSync.error && !draftSync.conflicts}}" class="text-action" bindtap="retryDraftSync" disabled="{{busy || draftSync.syncing}}">重试</button>
   </view>
-  <view wx:if="{{currentStep === 2 && update}}" class="step-section account-stage">
+  <view wx:if="{{currentStep === 2 && preparingAccount}}" class="step-section account-stage">
+    <view class="step-heading content-inset">
+      <view><text class="step-title serif-title">确认账户</text></view>
+      <text class="step-count money-number">正在准备</text>
+    </view>
+    <text class="step-copy content-inset">正在整理账户归属与待确认记录，请稍候。</text>
+    <skeleton-rows rows="{{4}}" />
+    <view class="stage-action stage-navigation">
+      <view class="stage-navigation-buttons">
+        <button class="stage-previous" disabled>上一步</button>
+        <button class="primary-button stage-primary" disabled>正在准备账户</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{currentStep === 2 && update && !preparingAccount}}" class="step-section account-stage">
     <view class="step-heading content-inset">
       <view><text class="step-title serif-title">确认账户</text></view>
       <text class="step-count money-number">已确认 {{accountStepSummary.confirmed}} / {{accountStepSummary.total}}</text>
