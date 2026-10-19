@@ -1,0 +1,72 @@
+<svg viewBox="0 0 680 760" width="1360" height="1520" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>优化后的导入链路：并行下载、断点续传与完整标记</title>
+<desc>服务端完成上传、解析、整理并封存不可变快照；客户端拉取清单后最多四路并发下载分块，逐块校验摘要并落盘。已校验的同代次分块可直接复用，失败重试只补缺块；只有全部块通过整体清单和根摘要校验后才写完整标记并开放本机核对。任何缺块、乱序、重复、混版本或损坏都不开放半份草稿，旧完整代次保留。核对仍为零网络，最终决定分块暂存后由服务端单事务复核入账。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="680" height="760" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+<text x="24" y="28" text-anchor="start" dominant-baseline="central" font-size="15" fill="#2B2A26" font-weight="600">优化后的导入链路：并行下载、断点续传与完整标记</text>
+<text x="24" y="50" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">服务端负责事实与封存，客户端只下载已封存的快照；核对仍在本机完成。</text>
+
+<g data-card="true"><rect x="24" y="76" width="300" height="252" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.7"/>
+<text x="174" y="100" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#444441" font-weight="600">服务端准备（联网）</text>
+<text x="42" y="132" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="500">① 上传原件</text>
+<text x="42" y="154" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">私有云存储；原件按既有生命周期保留</text>
+<text x="42" y="194" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="500">② 解析与整理</text>
+<text x="42" y="216" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">原文 · 来源身份 · 事件/关系/问题</text>
+<text x="42" y="256" text-anchor="start" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="500">③ 生成不可变快照</text>
+<text x="42" y="278" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">manifest + N 个分块 + 根摘要</text>
+<path d="M174 166L174 180" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M174 228L174 242" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+</g>
+
+<g data-card="true"><rect x="356" y="76" width="300" height="252" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.7"/>
+<text x="506" y="100" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#0C447C" font-weight="600">客户端下载（有界并行）</text>
+<text x="374" y="132" text-anchor="start" dominant-baseline="central" font-size="12" fill="#0C447C" font-weight="500">④ 校验版本并拉取清单</text>
+<text x="374" y="154" text-anchor="start" dominant-baseline="central" font-size="11" fill="#185FA5">对象、基础版本、根摘要必须一致</text>
+<text x="374" y="194" text-anchor="start" dominant-baseline="central" font-size="12" fill="#0C447C" font-weight="500">⑤ 最多 4 路并发取块</text>
+<text x="374" y="216" text-anchor="start" dominant-baseline="central" font-size="11" fill="#185FA5">已校验块直接复用；损坏块重新下载</text>
+<text x="374" y="256" text-anchor="start" dominant-baseline="central" font-size="12" fill="#0C447C" font-weight="500">⑥ 全部通过后写完整标记</text>
+<text x="374" y="278" text-anchor="start" dominant-baseline="central" font-size="11" fill="#185FA5">旧完整代次保留，新代次才可见</text>
+<path d="M506 166L506 180" fill="none" stroke="#185FA5" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M506 228L506 242" fill="none" stroke="#185FA5" stroke-width="1.3" marker-end="url(#arrow)"/>
+</g>
+
+<path d="M324 132H356" fill="none" stroke="#185FA5" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="340" y="120" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#185FA5">清单</text>
+<path d="M324 194H356" fill="none" stroke="#185FA5" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="340" y="182" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#185FA5">分块</text>
+
+<path d="M506 328V348H174V368" fill="none" stroke="#888780" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="340" y="344" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#5F5E5A">完整标记是唯一切换点</text>
+
+<g data-card="true"><rect x="24" y="370" width="300" height="118" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="174" y="398" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#27500A" font-weight="600">⑦ 本机核对（0 网络）</text>
+<text x="42" y="426" text-anchor="start" dominant-baseline="central" font-size="11" fill="#3B6D11">账户 · 是否计入 · 性质 · 金额 · 分类</text>
+<text x="42" y="448" text-anchor="start" dominant-baseline="central" font-size="11" fill="#3B6D11">退款 · 还款 · 同笔 · 分期归属</text>
+<text x="42" y="470" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">所有读取、保存和重算都在本机完成</text>
+</g>
+
+<g data-card="true"><rect x="356" y="370" width="300" height="118" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7"/>
+<text x="506" y="398" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#633806" font-weight="600">⑧ 最终提交（联网）</text>
+<text x="374" y="426" text-anchor="start" dominant-baseline="central" font-size="11" fill="#854F0B">冻结全部最终决定，分块暂存并封存</text>
+<text x="374" y="448" text-anchor="start" dominant-baseline="central" font-size="11" fill="#854F0B">服务端复核当前账本，单事务入账</text>
+<text x="374" y="470" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">失败保留决定；未知结果查回原请求</text>
+</g>
+<path d="M324 429H340" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<g data-card="true"><rect x="24" y="516" width="632" height="108" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.7" stroke-dasharray="4 3"/>
+<text x="42" y="542" text-anchor="start" dominant-baseline="central" font-size="12" fill="#633806" font-weight="600">失败或中断：不写完整标记，不开放半份草稿</text>
+<text x="42" y="566" text-anchor="start" dominant-baseline="central" font-size="11" fill="#854F0B">缺块、乱序、重复、混版本、摘要错误：保留已验证块和旧完整代次。</text>
+<text x="42" y="588" text-anchor="start" dominant-baseline="central" font-size="11" fill="#854F0B">重试只请求缺失或损坏的块；对象或基础版本变化时旧块不复用。</text>
+<text x="42" y="610" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">完整标记写入成功后才切换可见代次；旧代次不因下载中断被删除。</text>
+</g>
+
+<text x="24" y="652" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">并行上限 4；块可以乱序完成，但整体必须按清单顺序通过摘要与计数校验。</text>
+<text x="24" y="674" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">正式余额只由服务端事务中的有效交易改变；快照、草稿和本地决定都不是账本。</text>
+<text x="24" y="696" text-anchor="start" dominant-baseline="central" font-size="10" fill="#888780">实现：import-local-files.js 的有界并发、已校验块复用和完整标记门禁。</text>
+
+<g data-card="true"><rect x="24" y="716" width="160" height="26" rx="13" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.7"/>
+<text x="104" y="729" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#27500A" font-weight="500">P1：并行 + 续传 + 完整门禁</text>
+</g>
+</g>
+</svg>

@@ -14,6 +14,11 @@ const pendingWrites = require('../../../../services/pending-ledger-write')
 const reviewLayout = require('./review-layout')
 
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
+const downloadProgress = progress => {
+  const total = Number(progress && progress.total), completed = Number(progress && progress.completed)
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(completed)) return ''
+  return Math.max(0, Math.min(100, Math.round(completed / total * 100))) + '%'
+}
 const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment', 'financeUpdates.setCategory', 'financeUpdates.setReview',
     'reviewIssues.refreshAccountGroups', 'reviewIssues.resolveAccountMappings', 'reviewIssues.resolve'])
 
@@ -262,7 +267,7 @@ module.exports = {
       if (!active()) return
       view = await this.refreshAccountGroups(view, active)
       if (!active()) return
-      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: progress.completed + ' / ' + progress.total }) })
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) })
       if (!active()) return
       this.applyUpdateView(view)
       if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新' })
@@ -317,7 +322,7 @@ module.exports = {
       load.pending = this.refreshAccountGroups(view, active)
       view = await load.pending
       if (!active()) return
-      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: progress.completed + ' / ' + progress.total }) }, migration)
+      view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration)
       if (!active()) return
       this.setData({ restoreUpdateId: '' })
       this.applyUpdateView(view, false, restoreToFirstStep)

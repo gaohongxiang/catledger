@@ -3,12 +3,29 @@ const { sha256 } = require('../domain/import-review/portable-digest')
 const snapshot = require('../domain/import-review/local-review-snapshot')
 const failure = (code, message) => Object.assign(new Error(message), { code })
 const parse = text => JSON.parse(text)
+const DEFAULT_CHUNK_CONCURRENCY = 4
+const MAX_CHUNK_CONCURRENCY = 8
+
+async function runPool(items, limit, worker) {
+  let next = 0, firstError = null
+  async function run() {
+    while (!firstError) {
+      const index = next++
+      if (index >= items.length) return
+      try { await worker(items[index], index) } catch (error) { if (!firstError) firstError = error; return }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+  if (firstError) throw firstError
+}
 
 // The fs adapter uses only Mini Program synchronous file APIs. Decision deltas
 // are small and serialized by JS. Network callbacks must check the generation
 // before invoking any write. A verified commit file is the visibility barrier.
-function create({ fs, root, scope, updateId, alive = () => true }) {
+function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrency = DEFAULT_CHUNK_CONCURRENCY }) {
   const directory = root + '/' + sha256(scope) + '/' + updateId
+  const concurrency = Number.isInteger(chunkConcurrency) && chunkConcurrency > 0
+    ? Math.min(chunkConcurrency, MAX_CHUNK_CONCURRENCY) : DEFAULT_CHUNK_CONCURRENCY
   let epoch = 0, closed = false, revision = 0, previous = '', generation = null
   function guard(ticket = epoch) {
     if (closed || ticket !== epoch || !alive()) throw failure('SESSION_CHANGED', '登录状态已改变，原草稿已停止保存')
@@ -79,13 +96,32 @@ function create({ fs, root, scope, updateId, alive = () => true }) {
       if (descriptors.length > header.chunkCount || offset != null && offset !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块清单不完整')
     } while (offset != null)
     protocol.validateManifest(header, descriptors)
+    const folder = directory + '/' + header.objectId
+    const done = new Set()
     for (const descriptor of descriptors) {
+      const file = folder + '/part-' + descriptor.index + '.json'
+      if (!exists(file)) continue
+      try {
+        const content = read(file)
+        protocol.validatePart(header, descriptor, { ...descriptor, objectId: header.objectId,
+          baseVersion: header.baseVersion, content })
+        done.add(descriptor.index)
+      } catch (_) {
+        // A corrupt or stale part is not evidence; it will be replaced below.
+      }
+    }
+    const reused = done.size
+    onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
+    await runPool(descriptors.filter(descriptor => !done.has(descriptor.index)), concurrency, async descriptor => {
+      guard(ticket)
       const part = await call('financeUpdates.snapshotChunk', { objectId: header.objectId, index: descriptor.index })
       guard(ticket)
       const content = protocol.validatePart(header, descriptor, part)
-      io(() => verified(directory + '/' + header.objectId + '/part-' + descriptor.index + '.json', content))
-      onProgress({ completed: descriptor.index + 1, total: header.chunkCount, bytes: header.bytes })
-    }
+      io(() => verified(folder + '/part-' + descriptor.index + '.json', content))
+      done.add(descriptor.index)
+      onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
+    })
+    guard(ticket)
     const facts = header.kind === 'snapshot' ? snapshot.validateFacts(snapshot.decodeParts(readParts(header, descriptors)), header)
       : parse([...readParts(header, descriptors)].join('')); guard(ticket)
     if (header.kind === 'snapshot' && (facts.snapshotId !== header.objectId || facts.update.updateId !== updateId || facts.update.version !== header.baseVersion)) throw failure('SNAPSHOT_INCOMPLETE', '草稿身份不一致')
