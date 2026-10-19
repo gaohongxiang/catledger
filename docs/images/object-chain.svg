@@ -1,4 +1,4 @@
-<svg viewBox="0 0 680 848" width="680" height="848" xmlns="http://www.w3.org/2000/svg" role="img">
+<svg viewBox="0 0 680 848" width="1360" height="1696" xmlns="http://www.w3.org/2000/svg" role="img">
 <title>导入全过程：开始或恢复、系统准备、本机核对与正式入账</title>
 <desc>进入时先检查当前用户的可恢复记录：没有则选择文件开始新导入；有则恢复原批次与已保存的选择，准备未完成时继续准备，草稿完整时继续核对，已发请求结果未知时先查原结果，恢复失败则保留记录并重试。恢复按原状态接回下方流程，沿用已有结果。下方中间是用户界面四步，左侧标明处理阶段，右侧列出涉及的对象。服务端先准备导入批次、来源文件、原始行、事件和核对问题；完整下载后，用户在本机先确认账户与是否计入，再核对交易；最后由服务端复核入账。账户归属能推断的自动给出，核对能判定的自动完成，其余才转人工。对象可跨阶段使用，只有正式交易改变余额。</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
@@ -85,7 +85,7 @@
 <text x="493.0" y="485" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#2B2A26" font-weight="500">贷款资料／期次／来源关联</text>
 </g>
 <text x="136" y="480" text-anchor="start" dominant-baseline="central" font-size="12" fill="#3B6D11">分期／贷款按需关联</text>
-<text x="136" y="500" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">见 3.7 及第 5 章</text>
+<text x="136" y="500" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">见 3.8 及第 5 章</text>
 <text x="24" y="536" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">事件和问题在系统准备时生成，本机核对时更新；新账户随有效入账创建。</text>
 <text x="24" y="558" text-anchor="start" dominant-baseline="central" font-size="11" fill="#5F5E5A">对象可跨阶段使用；只有正式交易改变余额。</text>
 </g>

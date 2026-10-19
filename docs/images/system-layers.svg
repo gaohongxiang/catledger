@@ -1,4 +1,4 @@
-<svg viewBox="0 0 680 504" width="680" height="504" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 680 504" width="1360" height="1008" xmlns="http://www.w3.org/2000/svg">
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
 <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -34,7 +34,7 @@
 <rect x="398" y="200" width="242" height="96" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
 <text x="519" y="228" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">catledger-import</text>
 <text x="519" y="252" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">上传意图 · 解析 · 整理</text>
-<text x="519" y="272" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">核对 · 整批入账</text>
+<text x="519" y="272" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185FA5">核对 · 整批入账 · 定时清理</text>
 
 <path d="M251 296L251 316" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
 <path d="M519 296L519 316" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
@@ -46,7 +46,7 @@
 
 <rect x="398" y="316" width="242" height="96" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
 <text x="519" y="344" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">私有云存储</text>
-<text x="519" y="368" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">待解析、短期追溯的原件</text>
+<text x="519" y="368" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">短期原件 · 每日定时清理</text>
 <text x="519" y="388" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5F5E5A">数据库不存文件二进制</text>
 
 <text x="382" y="444" text-anchor="middle" font-size="12" fill="#5F5E5A">只有 MySQL 里的正式交易改变余额与收支；上传、解析、整理完成都不等于已记账</text>

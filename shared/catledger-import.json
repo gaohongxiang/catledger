@@ -913,7 +913,7 @@
         "protocolVersion",
         "snapshot"
       ],
-      "notes": "Locks local_v3 mode after consistent fact capture; rejects stale base. Does not affect formal ledger."
+      "notes": "Locks local_v3 mode after consistent fact capture; rejects stale base. Does not affect formal ledger. A single-chunk snapshot may include optional inline {objectId,baseVersion,index,bytes,digest,content} within the response budget; the client validates the same digest and falls back to manifest/chunk when absent or invalid."
     },
     "financeUpdates.snapshotManifest": {
       "request": [

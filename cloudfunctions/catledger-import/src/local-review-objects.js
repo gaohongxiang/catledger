@@ -8,6 +8,8 @@ const { split, rootDigest, validateManifest, validateState, LIMITS } = require('
 const { PLAN_VERSION } = require('./domain-versions')
 const { insertMany } = require('./sql-batch')
 
+const INLINE_SNAPSHOT_WIRE_BYTES = 200 * 1024
+
 function header(row) {
   return { objectId: row.objectId, updateId: row.updateId, snapshotId: row.snapshotId || null, kind: row.kind,
     baseVersion: Number(row.baseVersion), protocolVersion: Number(row.protocolVersion), ruleVersion: row.ruleVersion,
@@ -50,6 +52,14 @@ async function loadObject(connection, uid, id, kind) {
   parts.length=0
   return { header: meta, value }
 }
+function inlineSnapshot(packed, objectId, baseVersion) {
+  if (!packed || packed.chunkCount !== 1 || !packed.parts || packed.parts.length !== 1) return null
+  const part = packed.parts[0]
+  if (!part || typeof part.content !== 'string' || part.bytes > INLINE_SNAPSHOT_WIRE_BYTES) return null
+  if (Buffer.byteLength(JSON.stringify(part.content)) > INLINE_SNAPSHOT_WIRE_BYTES) return null
+  return { objectId, baseVersion, index: part.index,
+    bytes: part.bytes, digest: part.digest, content: part.content }
+}
 function createLocalReviewObjects({ getPool }) {
   const read = (context, operation) => executeUserRead({ getPool, ...context, consistentSnapshot: true, operation })
   const write = (context, action, operation) => executeIdempotentMutation({ getPool, ...context, action, operation })
@@ -85,7 +95,8 @@ function createLocalReviewObjects({ getPool }) {
       await connection.execute("UPDATE catledger_finance_updates SET review_mode='local_v3',version=version+1 WHERE uid=? AND update_id=?", [uid, updateId])
       const snapshot = await saveObject(connection, uid, { objectId, updateId, kind: 'snapshot', baseVersion: version + 1, ruleVersion: PLAN_VERSION,
         metadata: { counts, capabilities: ['complete-facts','local-review','atomic-post'] } }, packed)
-      return { update: publicUpdate(await selectUpdate(connection, uid, updateId)), snapshot }
+      const inline = inlineSnapshot(packed, objectId, version + 1)
+      return { update: publicUpdate(await selectUpdate(connection, uid, updateId)), snapshot, ...(inline ? { inline } : {}) }
     })
   }
   async function manifest(context) {
@@ -164,4 +175,4 @@ function createLocalReviewObjects({ getPool }) {
   }
   return { prepare, manifest, chunk, stage, seal }
 }
-module.exports = { createLocalReviewObjects, object, saveObject, loadObject }
+module.exports = { createLocalReviewObjects, object, saveObject, loadObject, inlineSnapshot }

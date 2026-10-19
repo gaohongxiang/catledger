@@ -1,6 +1,7 @@
 const importApi = require('../../../../services/catledger-import')
 const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../../../services/login-guard')
+const importPerformance = require('../../../../services/import-performance')
 const model = require('./model')
 const bankMapping = require('./bank-mapping')
 const { importPatch } = require('./file-rename')
@@ -115,6 +116,8 @@ module.exports = {
     if (this.blockFileNameEdit()) return
     if (this.blockPendingFileRename()) return
     this.setData({ phase: 'uploading', busy: true, errorMessage: '' })
+    this._importPerf = importPerformance.create()
+    this._importPerf.mark('upload_start')
     const requestId = importApi.createRequestId()
     this._requestIds.prepareMany = requestId
     try {
@@ -126,6 +129,7 @@ module.exports = {
           return item
         })
       })
+      this._importPerf.mark('prepared', { files: prepared.files.length })
       const preparedByClientId = new Map(queuedFiles.map(function (file, index) {
         return [file.clientId, prepared.files[index]]
       }))
@@ -148,10 +152,12 @@ module.exports = {
         this.uploadAndParseFile.bind(this)
       )
       this.syncUploadSummary()
+      this._importPerf.mark('files_ready', { files: this.data.files.length })
       this.setData({ phase: this.data.files.length ? 'files_ready' : 'idle', busy: false })
       const pending = this.data.files.find(file => file.state === 'mapping')
       if (pending) await this.openBankMapping({ currentTarget: { dataset: { id: pending.clientId } } })
     } catch (error) {
+      if (this._importPerf) { this._importPerf.mark('upload_failed'); importPerformance.record(this._importPerf); this._importPerf = null }
       this.setData({ phase: 'selected', busy: false, errorMessage: publicError(error, '多文件上传准备失败') })
     }
   },
@@ -168,6 +174,7 @@ module.exports = {
     this.setFileState(file.clientId, { state: 'uploading', stateText: model.fileStateText('uploading'), errorMessage: '' })
     try {
       const result = await this.uploadObject(file, source.path)
+      if (this._importPerf) this._importPerf.mark('uploaded', { bytes: source.size })
       this.setFileState(file.clientId, { fileID: result.fileID, progress: 100 })
       await this.parsePreparedFile(file.clientId, result.fileID)
     } catch (error) {
@@ -240,6 +247,7 @@ module.exports = {
         timezoneOffsetMinutes: new Date().getTimezoneOffset()
       }, options || (file.bankMapping ? { bankMapping: file.bankMapping } : {})))
       if (canApply && !canApply()) return
+      if (this._importPerf) this._importPerf.mark('parsed', { rows: result.batch && result.batch.summary && result.batch.summary.total })
       const namePatch = importPatch(file, result.import)
       this.setFileState(clientId, namePatch)
       if (result.mappingRequired && result.bankPreview) {
@@ -290,6 +298,7 @@ module.exports = {
       }
     } catch (error) {
       if (canApply && !canApply()) return
+      if (this._importPerf) this._importPerf.mark('parse_failed')
       this.setFileState(clientId, {
         state: 'failed', stateText: model.fileStateText('failed'),
         errorCode: error.code || '',

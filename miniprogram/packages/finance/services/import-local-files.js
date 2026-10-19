@@ -3,12 +3,29 @@ const { sha256 } = require('../domain/import-review/portable-digest')
 const snapshot = require('../domain/import-review/local-review-snapshot')
 const failure = (code, message) => Object.assign(new Error(message), { code })
 const parse = text => JSON.parse(text)
+const DEFAULT_CHUNK_CONCURRENCY = 4
+const MAX_CHUNK_CONCURRENCY = 8
+
+async function runPool(items, limit, worker) {
+  let next = 0, firstError = null
+  async function run() {
+    while (!firstError) {
+      const index = next++
+      if (index >= items.length) return
+      try { await worker(items[index], index) } catch (error) { if (!firstError) firstError = error; return }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+  if (firstError) throw firstError
+}
 
 // The fs adapter uses only Mini Program synchronous file APIs. Decision deltas
 // are small and serialized by JS. Network callbacks must check the generation
 // before invoking any write. A verified commit file is the visibility barrier.
-function create({ fs, root, scope, updateId, alive = () => true }) {
+function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrency = DEFAULT_CHUNK_CONCURRENCY }) {
   const directory = root + '/' + sha256(scope) + '/' + updateId
+  const concurrency = Number.isInteger(chunkConcurrency) && chunkConcurrency > 0
+    ? Math.min(chunkConcurrency, MAX_CHUNK_CONCURRENCY) : DEFAULT_CHUNK_CONCURRENCY
   let epoch = 0, closed = false, revision = 0, previous = '', generation = null
   function guard(ticket = epoch) {
     if (closed || ticket !== epoch || !alive()) throw failure('SESSION_CHANGED', '登录状态已改变，原草稿已停止保存')
@@ -68,9 +85,12 @@ function create({ fs, root, scope, updateId, alive = () => true }) {
     if (damaged) throw failure('DRAFT_CORRUPT', '完整草稿文件校验失败，已保留原文件；联网重新准备后继续')
     return null
   }
-  async function download(header, call, onProgress = () => {}) {
+  async function download(header, call, onProgress = () => {}, inline = null) {
     const ticket = epoch, descriptors = []; let offset = 0
+    const startedAt = Date.now()
+    let manifestMs = 0, chunkMs = 0, decodeMs = 0, chunkCalls = 0, inlineUsed = false
     guard(ticket); io(() => { mkdir(directory); mkdir(directory + '/' + header.objectId) })
+    const manifestStartedAt = Date.now()
     do {
       const result = await call('financeUpdates.snapshotManifest', { objectId: header.objectId, offset })
       guard(ticket)
@@ -78,16 +98,59 @@ function create({ fs, root, scope, updateId, alive = () => true }) {
       descriptors.push(...result.parts); offset = result.nextOffset
       if (descriptors.length > header.chunkCount || offset != null && offset !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块清单不完整')
     } while (offset != null)
+    manifestMs = Date.now() - manifestStartedAt
     protocol.validateManifest(header, descriptors)
+    const folder = directory + '/' + header.objectId
+    const done = new Set()
+    if (inline && header.kind === 'snapshot' && descriptors.length === 1) {
+      const descriptor = descriptors[0], content = inline.content
+      try {
+        if (typeof content !== 'string' || inline.objectId !== header.objectId ||
+            Number(inline.baseVersion) !== Number(header.baseVersion) || inline.index !== descriptor.index ||
+            Number(inline.bytes) !== descriptor.bytes || inline.digest !== descriptor.digest) {
+          throw failure('SNAPSHOT_INCOMPLETE', '内联快照描述不一致')
+        }
+        protocol.validatePart(header, descriptor, { ...descriptor, objectId: header.objectId,
+          baseVersion: header.baseVersion, content })
+        io(() => verified(folder + '/part-' + descriptor.index + '.json', content))
+        inlineUsed = true
+      } catch (error) {
+        if (error.code === 'DRAFT_STORAGE_FAILED' || error.code === 'SESSION_CHANGED') throw error
+        // An invalid inline payload is ignored; the normal chunk path below remains authoritative.
+      }
+    }
     for (const descriptor of descriptors) {
+      const file = folder + '/part-' + descriptor.index + '.json'
+      if (!exists(file)) continue
+      try {
+        const content = read(file)
+        protocol.validatePart(header, descriptor, { ...descriptor, objectId: header.objectId,
+          baseVersion: header.baseVersion, content })
+        done.add(descriptor.index)
+      } catch (_) {
+        // A corrupt or stale part is not evidence; it will be replaced below.
+      }
+    }
+    const reused = Math.max(0, done.size - (inlineUsed ? 1 : 0))
+    onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
+    const chunkStartedAt = Date.now()
+    await runPool(descriptors.filter(descriptor => !done.has(descriptor.index)), concurrency, async descriptor => {
+      guard(ticket)
+      chunkCalls += 1
       const part = await call('financeUpdates.snapshotChunk', { objectId: header.objectId, index: descriptor.index })
       guard(ticket)
       const content = protocol.validatePart(header, descriptor, part)
-      io(() => verified(directory + '/' + header.objectId + '/part-' + descriptor.index + '.json', content))
-      onProgress({ completed: descriptor.index + 1, total: header.chunkCount, bytes: header.bytes })
-    }
+      io(() => verified(folder + '/part-' + descriptor.index + '.json', content))
+      done.add(descriptor.index)
+      onProgress({ completed: done.size, total: header.chunkCount, bytes: header.bytes, reused })
+    })
+    chunkMs = Date.now() - chunkStartedAt
+    if (done.size !== descriptors.length) throw failure('SNAPSHOT_INCOMPLETE', '草稿分块不完整，请重试')
+    guard(ticket)
+    const decodeStartedAt = Date.now()
     const facts = header.kind === 'snapshot' ? snapshot.validateFacts(snapshot.decodeParts(readParts(header, descriptors)), header)
       : parse([...readParts(header, descriptors)].join('')); guard(ticket)
+    decodeMs = Date.now() - decodeStartedAt
     if (header.kind === 'snapshot' && (facts.snapshotId !== header.objectId || facts.update.updateId !== updateId || facts.update.version !== header.baseVersion)) throw failure('SNAPSHOT_INCOMPLETE', '草稿身份不一致')
     if (header.kind !== 'snapshot') return facts
     io(() => {
@@ -95,6 +158,9 @@ function create({ fs, root, scope, updateId, alive = () => true }) {
       atomic(directory + '/complete-' + Date.now() + '-' + header.objectId + '.json', { header, parts: descriptors })
       generation = header.objectId; revision = 0; previous = ''; mkdir(journalPath())
     })
+    onProgress({ completed: descriptors.length, total: header.chunkCount, bytes: header.bytes, reused, inline: inlineUsed,
+      stats: { manifestMs, chunkMs, decodeMs, totalMs: Date.now() - startedAt, chunkCalls, reused, inline: inlineUsed,
+        bytes: header.bytes, chunkCount: header.chunkCount } })
     return facts
   }
   function save(changes) {

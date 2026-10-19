@@ -31,6 +31,109 @@ test('完整下载门槛：缺块、乱序、重复、混版本、校验与中�
   }
 })
 
+test('并行下载：有界并发、进度单调，结果与串行一致', async t => {
+  const serialLab = filesystem(), parallelLab = filesystem()
+  t.after(serialLab.cleanup); t.after(parallelLab.cleanup)
+  const value = await facts({ count: 600 }), object = packed(value)
+  assert.ok(object.parts.length >= 3)
+  await files.create({ ...serialLab, scope: 'test:serial', updateId: value.update.updateId })
+    .download(object.header, object.call)
+  let inFlight = 0, maxInFlight = 0, chunkCalls = 0
+  const progress = []
+  const store = files.create({ ...parallelLab, scope: 'test:parallel', updateId: value.update.updateId, chunkConcurrency: 3 })
+  await store.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) {
+      chunkCalls += 1; inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise(resolve => setTimeout(resolve, 5))
+      inFlight -= 1
+    }
+    return object.call(action, data)
+  }, update => progress.push(update))
+  const restored = store.restore()
+  const completed = progress.map(update => update.completed)
+  assert.equal(chunkCalls, object.parts.length)
+  assert.ok(maxInFlight > 1 && maxInFlight <= 3)
+  assert.deepEqual(completed, [...completed].sort((left, right) => left - right))
+  assert.equal(completed[completed.length - 1], object.parts.length)
+  assert.equal(progress[progress.length - 1].stats.chunkCalls, object.parts.length)
+  assert.equal(progress[progress.length - 1].stats.reused, 0)
+  assert.ok(progress[progress.length - 1].stats.totalMs >= 0)
+  assert.equal(restored.facts.snapshotId, value.snapshotId)
+  assert.equal(restored.facts.events.length, value.events.length)
+  assert.equal(restored.facts.rows.length, value.rows.length)
+})
+
+test('断点续传：已校验块不重复请求，失败后只补缺块', async t => {
+  const lab = filesystem(); t.after(lab.cleanup)
+  const value = await facts({ count: 600 }), object = packed(value)
+  const calls = []
+  let failOnce = true
+  const store = files.create({ ...lab, scope: 'test:resume', updateId: value.update.updateId, chunkConcurrency: 1 })
+  const network = async (action, data) => {
+    if (action.endsWith('Chunk')) {
+      calls.push(data.index)
+      if (failOnce && data.index === 1) { failOnce = false; throw Error('Disconnected') }
+    }
+    return object.call(action, data)
+  }
+  await assert.rejects(store.download(object.header, network))
+  assert.equal(store.restore(), null)
+  const firstAttempt = calls.slice()
+  assert.ok(firstAttempt.includes(0) && firstAttempt.includes(1))
+  calls.length = 0
+  let finalProgress = null
+  await store.download(object.header, network, update => { finalProgress = update })
+  assert.equal(calls.includes(0), false)
+  assert.equal(calls.includes(1), true)
+  assert.equal(store.restore().facts.snapshotId, value.snapshotId)
+  assert.equal(finalProgress.stats.reused, 1)
+  assert.ok(finalProgress.stats.chunkCalls < object.parts.length)
+})
+
+test('断点续传：损坏的本机块按摘要重新下载，不被当作有效缓存', async t => {
+  const lab = filesystem(); t.after(lab.cleanup)
+  const value = await facts({ count: 600 }), object = packed(value)
+  const store = files.create({ ...lab, scope: 'test:corrupt-part', updateId: value.update.updateId, chunkConcurrency: 2 })
+  const folder = store.directory + '/' + object.header.objectId
+  fs.mkdirSync(folder, { recursive: true })
+  fs.writeFileSync(folder + '/part-0.json', 'corrupt', 'utf8')
+  const calls = []
+  await store.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) calls.push(data.index)
+    return object.call(action, data)
+  })
+  assert.equal(calls.includes(0), true)
+  assert.equal(store.restore().facts.snapshotId, value.snapshotId)
+})
+
+test('单块内联：不请求分块；内联内容不符时回退分块', async t => {
+  const inlineLab = filesystem(), fallbackLab = filesystem()
+  t.after(inlineLab.cleanup); t.after(fallbackLab.cleanup)
+  const value = await facts({ count: 3 }), object = packed(value)
+  assert.equal(object.parts.length, 1)
+  let inlineChunkCalls = 0, inlineFinal = null
+  const inlineStore = files.create({ ...inlineLab, scope: 'test:inline', updateId: value.update.updateId })
+  await inlineStore.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) inlineChunkCalls += 1
+    return object.call(action, data)
+  }, update => { inlineFinal = update }, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
+    index: 0, bytes: object.parts[0].bytes, digest: object.parts[0].digest, content: object.parts[0].content })
+  assert.equal(inlineChunkCalls, 0)
+  assert.equal(inlineFinal.stats.inline, true)
+  assert.equal(inlineFinal.stats.chunkCalls, 0)
+  assert.equal(inlineStore.restore().facts.snapshotId, value.snapshotId)
+
+  let fallbackChunkCalls = 0
+  const fallbackStore = files.create({ ...fallbackLab, scope: 'test:inline-fallback', updateId: value.update.updateId })
+  await fallbackStore.download(object.header, async (action, data) => {
+    if (action.endsWith('Chunk')) fallbackChunkCalls += 1
+    return object.call(action, data)
+  }, () => {}, { objectId: object.header.objectId, baseVersion: object.header.baseVersion,
+    index: 0, bytes: object.parts[0].bytes, digest: object.parts[0].digest, content: 'corrupt' })
+  assert.equal(fallbackChunkCalls, 1)
+  assert.equal(fallbackStore.restore().facts.snapshotId, value.snapshotId)
+})
+
 test('持久决定：中断或空间不足不假报保存，冷启动只恢复完整提交，损坏明确提示', async t => {
   const lab = filesystem(); t.after(lab.cleanup)
   const value = await facts(), object = packed(value), options = { ...lab, scope: 'test:A', updateId: value.update.updateId }
