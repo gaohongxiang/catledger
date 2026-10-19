@@ -5,6 +5,7 @@ const { getPool } = require('./src/database')
 const { createHandler } = require('./src/handler')
 const { createImportService } = require('./src/import-service')
 const { createStorageGateway } = require('./src/storage-gateway')
+const { isScheduledMaintenance } = require('./src/maintenance')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -18,4 +19,7 @@ const handler = createHandler({
   services: createActionHandlers(service)
 })
 
-exports.main = (event, context) => handler(event, context)
+exports.main = async (event, context) => {
+  if (isScheduledMaintenance(event, cloud.getWXContext())) return service.cleanupExpiredFilesGlobal(20)
+  return handler(event, context)
+}

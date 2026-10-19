@@ -148,6 +148,59 @@ function createImportService({ getPool, storage }) {
     return { checked: rows.length, deleted, failed }
   }
 
+  async function markContentDeletedGlobal(uid, importId, fileID) {
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [result] = await connection.execute(
+        `UPDATE catledger_import_files
+            SET content_deleted_at = COALESCE(content_deleted_at, CURRENT_TIMESTAMP(3))
+          WHERE uid = ? AND import_id = ? AND cloud_file_id = ? AND content_deleted_at IS NULL`,
+        [uid, importId, fileID]
+      )
+      if (result.affectedRows) {
+        await connection.execute('UPDATE catledger_users SET data_revision = data_revision + 1 WHERE uid = ?', [uid])
+      }
+      await connection.commit()
+      return result.affectedRows
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally { connection.release() }
+  }
+
+  async function cleanupExpiredFilesGlobal(limit = 20) {
+    const bounded = Math.max(1, Math.min(50, Number.isInteger(limit) ? limit : 20))
+    const immediate = Object.entries(RETENTION_DAYS).filter(([, days]) => days === 0).map(([state]) => state)
+    let rows
+    const connection = await getPool().getConnection()
+    try {
+      const [result] = await connection.execute(
+        `SELECT uid, import_id AS importId, cloud_file_id AS fileID
+           FROM catledger_import_files
+          WHERE content_deleted_at IS NULL AND cloud_file_id IS NOT NULL
+            AND (
+              state IN (${immediate.map(() => '?').join(',')})
+              OR (state = 'review_ready' AND updated_at < DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ? DAY))
+              OR (state = 'failed' AND updated_at < DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ? DAY))
+              OR (state = 'awaiting_upload' AND updated_at < DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL ? DAY))
+            )
+          ORDER BY updated_at ASC
+          LIMIT ?`,
+        [...immediate, RETENTION_DAYS.review_ready, RETENTION_DAYS.failed,
+          RETENTION_DAYS.awaiting_upload, bounded]
+      )
+      rows = result
+    } finally { connection.release() }
+    let deleted = 0, failed = 0
+    for (const row of rows) {
+      if (!row.fileID || !await storage.remove(row.fileID)) { failed += 1; continue }
+      try { if (await markContentDeletedGlobal(row.uid, row.importId, row.fileID)) deleted += 1; else failed += 1 }
+      catch (_) { failed += 1 }
+    }
+    return { checked: rows.length, deleted, failed }
+  }
+
   async function prepareMany(context) {
     const result = await executeIdempotentMutation({
       getPool,
@@ -376,6 +429,7 @@ function createImportService({ getPool, storage }) {
   }
 
   return {
+    cleanupExpiredFilesGlobal,
     discardFile,
     getFile,
     renameFile,

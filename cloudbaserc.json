@@ -30,6 +30,13 @@
       "ignore": [
         "test/**",
         ".DS_Store"
+      ],
+      "triggers": [
+        {
+          "name": "cleanup-expired-import-files",
+          "type": "timer",
+          "config": "0 0 3 * * * *"
+        }
       ]
     }
   ]
