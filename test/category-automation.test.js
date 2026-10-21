@@ -56,9 +56,14 @@ test('商品证据先于商户；混合用途回到共同大类，跨类冲突�
   assert.equal(suggestedCategory(row('午餐和饮料', '合成餐厅'), catalog()), 'food')
   assert.equal(suggestedCategory(row('挂号费和药品'), catalog()), 'medical')
   assert.equal(suggestedCategory(row('奶茶和图书', '合成奶茶店'), catalog()), null)
-  for (const text of ['咖啡机', '咖啡杯', '水果刀', '面包机', '保险箱', '苹果手机', '小米手机']) {
+  for (const text of ['咖啡机', '咖啡杯', '水果刀', '面包机', '保险箱']) {
     assert.equal(suggestedCategory(row(text), catalog()), null, text)
   }
+  // 品牌词本身不证明用途：品牌加明确品类才按品类归类，品牌单独出现仍待分类。
+  assert.equal(suggestedCategory(row('苹果手机'), catalog()), 'shopping__electronics')
+  assert.equal(suggestedCategory(row('小米手机'), catalog()), 'shopping__electronics')
+  assert.equal(suggestedCategory(row('苹果'), catalog()), null)
+  assert.equal(suggestedCategory(row('小米'), catalog()), null)
   assert.equal(suggestedCategory(row('咖啡机', '合成咖啡店'), catalog()), null)
   for (const name of ['美团', '淘宝', '美团平台商户']) assert.equal(suggestedCategory(row('', name), catalog()), null)
 })
