@@ -1,0 +1,52 @@
+<svg viewBox="0 0 720 500" width="720" height="500" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="720" height="500" fill="#FFFFFF"/>
+<g font-family="PingFang SC, Helvetica Neue, Arial, sans-serif">
+
+<text x="40" y="32" font-size="14" font-weight="500" fill="#0C447C">自动分类判定顺序（自上而下，先命中先采用）</text>
+
+<rect x="40" y="52" width="460" height="58" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<circle cx="76" cy="81" r="13" fill="#185FA5"/>
+<text x="76" y="81" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">1</text>
+<text x="106" y="74" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">精确记忆：同商户＋同商品</text>
+<text x="106" y="93" dominant-baseline="central" font-size="12" fill="#185FA5">用户在这个组合上确认过的分类，直接沿用</text>
+<text x="516" y="81" dominant-baseline="central" font-size="12" fill="#185FA5">最强</text>
+
+<rect x="40" y="120" width="460" height="76" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<circle cx="76" cy="158" r="13" fill="#185FA5"/>
+<text x="76" y="158" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">2</text>
+<text x="106" y="142" dominant-baseline="central" font-size="14" font-weight="500" fill="#0C447C">关键词规则：先商品，再商户</text>
+<text x="106" y="161" dominant-baseline="central" font-size="12" fill="#185FA5">商品说明命中按商品归类，商品不命中才看交易对方</text>
+<text x="106" y="179" dominant-baseline="central" font-size="12" fill="#185FA5">命中但大类不同时回大类或待分类，不按规则顺序抢占</text>
+<text x="516" y="158" dominant-baseline="central" font-size="12" fill="#185FA5">按字面</text>
+
+<rect x="40" y="206" width="460" height="58" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="76" cy="235" r="13" fill="#888780"/>
+<text x="76" y="235" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">3</text>
+<text x="106" y="228" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">商品级、商户级旧记忆</text>
+<text x="106" y="247" dominant-baseline="central" font-size="12" fill="#5F5E5A">兼容旧版本的宽泛记忆，不能覆盖更细的规则结论</text>
+<text x="516" y="235" dominant-baseline="central" font-size="12" fill="#5F5E5A">较弱</text>
+
+<rect x="40" y="274" width="460" height="58" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<circle cx="76" cy="303" r="13" fill="#888780"/>
+<text x="76" y="303" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">4</text>
+<text x="106" y="296" dominant-baseline="central" font-size="14" font-weight="500" fill="#444441">平台自带交易类型</text>
+<text x="106" y="315" dominant-baseline="central" font-size="12" fill="#5F5E5A">只有支付宝账单带用途大类，其余来源没有这一层</text>
+<text x="516" y="303" dominant-baseline="central" font-size="12" fill="#5F5E5A">视来源</text>
+
+<rect x="40" y="342" width="460" height="58" rx="8" fill="#FBE9E7" stroke="#C1442E" stroke-width="0.5"/>
+<circle cx="76" cy="371" r="13" fill="#C1442E"/>
+<text x="76" y="371" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#FFFFFF">5</text>
+<text x="106" y="364" dominant-baseline="central" font-size="14" font-weight="500" fill="#8B2E1F">待分类，由用户选择</text>
+<text x="106" y="383" dominant-baseline="central" font-size="12" fill="#C1442E">上面都没命中：平台名、扫码支付、公司主体、没见过的写法</text>
+<text x="516" y="371" dominant-baseline="central" font-size="12" fill="#C1442E">兜底</text>
+
+<rect x="40" y="416" width="460" height="34" rx="8" fill="#F4F2EC" stroke="#B4B2A9" stroke-width="0.5"/>
+<text x="106" y="433" dominant-baseline="central" font-size="12" fill="#444441">用户选完后写回第 1 级记忆，同一商户以后自动生效</text>
+
+<line x1="270" y1="410" x2="270" y2="452" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/>
+<polygon points="270,410 265,421 275,421" fill="#B4B2A9"/>
+
+<text x="40" y="478" font-size="12" fill="#5F5E5A">第 2 级按字面匹配，覆盖范围取决于词表；新品牌、新写法、公司全称和平台名永远会有漏网，这是待分类的来源，不是缺陷</text>
+<text x="40" y="496" font-size="12" fill="#5F5E5A">规则只决定「归到哪个键」，是否可用仍要映射到用户自己的目录：目录里停用或没有该分类时，仍回到待分类</text>
+</g>
+</svg>
