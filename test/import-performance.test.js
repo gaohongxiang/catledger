@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const performance = require('../miniprogram/services/import-performance')
+const performance = require('../miniprogram/packages/finance/services/import-performance')
 
 test('导入诊断只记录阶段、时长和计数，不接收原始字段', () => {
   let now = 1000

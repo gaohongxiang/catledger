@@ -1,7 +1,7 @@
 const importApi = require('../../../../services/catledger-import')
 const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../../../services/login-guard')
-const importPerformance = require('../../../../services/import-performance')
+const importPerformance = require('../../services/import-performance')
 const model = require('./model')
 const bankMapping = require('./bank-mapping')
 const { importPatch } = require('./file-rename')
