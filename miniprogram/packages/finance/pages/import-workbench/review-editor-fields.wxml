@@ -84,7 +84,7 @@
   <text wx:if="{{editor.fieldErrors.composition}}" class="editor-field-error">{{editor.fieldErrors.composition}}</text>
   <view wx:if="{{editor.needsCompositionNote}}" class="decision-group">
     <text class="decision-group-title">核对说明</text>
-    <view class="decision-card"><textarea wx:if="{{canEdit}}" auto-height value="{{draft.evidenceNote}}" maxlength="300" data-field="evidenceNote" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="按实际付款详情填写，改变已确认组成需说明" /><text wx:else>{{draft.evidenceNote || '未填写'}}</text></view>
+    <view class="decision-card"><textarea wx:if="{{canEdit}}" auto-height value="{{draft.evidenceNote}}" maxlength="300" data-field="evidenceNote" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="选填。按单笔记录后不再区分各来源分摊" /><text wx:else>{{draft.evidenceNote || '未填写'}}</text></view>
   </view>
   <text wx:if="{{editor.fieldErrors.evidenceNote}}" class="editor-field-error">{{editor.fieldErrors.evidenceNote}}</text>
   <view wx:if="{{editor.categoryKind}}" class="decision-group">

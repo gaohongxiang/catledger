@@ -291,8 +291,9 @@ function derive(row, draft, catalogs = {}) {
     composition = { kind: draft.composition, parts: draft.parts.map(part => ({ accountId: part.accountId || null, amountMinor: minor(part.amountInput) })),
       evidenceNote: draft.evidenceNote, incomplete: Boolean(incomplete) }
   } else if (draft.dirty.composition || draft.composition !== original.composition) {
+    // 简化成单账户是用户的正当决定：总额不变，只是不再区分各来源分摊。
+    // 说明为选填，仅用于留下当时的判断依据，不阻塞保存。
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
-    if (original.composition !== 'single' && !draft.evidenceNote.trim()) invalid('evidenceNote', '请说明为何改为单账户资金交易')
   }
   if (!channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' && draft.repaymentMode === 'loan') {
     const chargeAllocations = draft.loanMode === 'associate' ? draft.chargeAllocations.map(part => {

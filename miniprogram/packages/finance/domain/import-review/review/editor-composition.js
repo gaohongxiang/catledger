@@ -24,8 +24,8 @@ function apply(event, value, acknowledgements = []) {
     value.incomplete != null && typeof value.incomplete !== 'boolean') fail()
   if ((before.paymentResolution || before.repaymentAllocations?.length) &&
     (prior !== value.kind || value.incomplete) && !acknowledgements.includes('composition')) fail()
-  // 解除已存在的来源组成需要人工说明，而不是直接把第一行当全部金额。
-  if (value.kind === 'single' && prior !== 'single' && !explanation.trim()) fail()
+  // 简化成单账户是用户的正当决定：总额不变，只解除各来源分摊，说明为选填。
+  // 原始多账户证据仍保留在事件与来源字段中，可回溯当时的分摊结果。
   const fields = { ...before, editorOverrides: { ...overrides(event), version: 1, composition: value.kind, evidenceNote: explanation.trim() } }
   delete fields.paymentResolution; delete fields.repaymentAllocations; delete fields.repaymentAllocationVersion
   delete fields.editorOverrides.incompleteComposition
