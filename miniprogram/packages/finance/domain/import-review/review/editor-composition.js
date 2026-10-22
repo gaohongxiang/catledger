@@ -33,10 +33,6 @@ function apply(event, value, acknowledgements = []) {
   let next = { ...event, fieldSources: fields, manualFieldMask: (event.manualFieldMask || 0) | mask }
   if (value.kind === 'single') {
     if (value.parts != null && (!Array.isArray(value.parts) || value.parts.length)) fail()
-    // 用户已按单笔确认，原始「多个付款来源无法分摊」的语义结论已被决定取代。
-    // 不清掉它，事件会因这个硬阻断永远停在待核对。
-    next.fieldSources = { ...fields, semanticBlockers: (fields.semanticBlockers || [])
-      .filter((code) => !['payment_components_ambiguous', 'account_endpoint_unknown'].includes(code)) }
     return next
   }
   if (!Array.isArray(value.parts) || value.parts.length > 20) fail()
@@ -70,9 +66,6 @@ function apply(event, value, acknowledgements = []) {
     if (!result.valid) fail()
     fields.paymentResolution = result.resolution
     next.ledgerAccountId = result.allocations[0].accountId
-    // 分摊已经明确，原始「无法分摊」的语义结论不再成立。
-    fields.semanticBlockers = (fields.semanticBlockers || [])
-      .filter((code) => !['payment_components_ambiguous', 'account_endpoint_unknown'].includes(code))
   } else {
     const result = inspectRepaymentAllocations(parts, next.amountMinor)
     if (!result.valid) fail()

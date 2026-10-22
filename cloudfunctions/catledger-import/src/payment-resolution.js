@@ -83,8 +83,11 @@ function paymentResolutionForEvent(event) {
 
 function effectiveSemanticReasons(event, reasons) {
   const editor = event.fieldSources && event.fieldSources.editorOverrides
-  const singleConfirmed = editor && editor.version === 1 && editor.composition === 'single' && editor.evidenceNote &&
-    !editor.incompleteComposition && event.ledgerAccountId && ['expense','repayment'].includes(event.economicNature)
+  // 用户把组成确认为单账户即视为已决：金额整笔记在一个账户上，不再要求分摊。
+  // 说明是给人看的备注，不参与判定；完整性由未完成草稿标记、账户与金额共同保证。
+  const singleConfirmed = editor && editor.version === 1 && editor.composition === 'single' &&
+    !editor.incompleteComposition && event.ledgerAccountId && event.amountMinor != null &&
+    ['expense','repayment'].includes(event.economicNature)
   const paymentResolved = paymentResolutionForEvent(event).valid || Boolean(singleConfirmed)
   const natureConfirmed = Boolean(event.manualFieldMask & FIELD_MASK.economicNature) && CONFIRMABLE_NATURES.has(event.economicNature)
   // 明确选择性质只解除“交易类型未知”；原始语义和其他阻断仍保留。

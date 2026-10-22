@@ -149,9 +149,6 @@ function prepare(event, data) {
     'category_required','postability_direction_conflict','transfer_account_required','repayment_account_required','borrow_account_required',
     'repayment_ownership_required','repayment_other_treatment_required','repayment_ownership_invalid','loan_repayment_required','editor_composition_incomplete',
     'installment_attribution_required'])
-  // 提交资金组成后，「多来源无法分摊」的结论已被用户决定取代：composition.apply 已从
-  // semanticBlockers 清除对应项，这里同步清掉事件上残留的原因，否则事件会停在待核对。
-  if (data.composition) derived.add('payment_components_ambiguous').add('source_account_endpoint_unknown')
   next.reasonCodes = (next.reasonCodes || []).filter(reason => !derived.has(reason) && !reason.startsWith('repayment_allocation_'))
   return next
 }
