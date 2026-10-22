@@ -65,7 +65,7 @@ function canonicalInstrument(raw) {
     .replace(/[xX]{2,}/g, '')
     .replace(/\d{8,}/g, function (digits) { return digits.slice(-4) })
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, '')
+    .replace(/[^A-Za-z0-9\u3400-\u4dbf\u4e00-\u9fa5\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]/g, '')
   ;['末四位', '后四位', '尾号', '卡号', '主卡'].forEach(function (token) {
     value = value.replaceAll(token, '')
   })

@@ -32,7 +32,7 @@ function installmentEvidence(row) {
   if (!Number.isInteger(periodNumber) || periodNumber < 1 || periodNumber > 600 ||
       totalTerms != null && (!Number.isInteger(totalTerms) || totalTerms < periodNumber || totalTerms > 600) ||
       principal && (periodNumber !== principal.periodNumber || totalTerms !== principal.totalTerms)) return null
-  const named = text.match(/(?:分期(?:计划)?(?:编号|号)|计划编号|合同(?:编号|号))\s*[:：#]?\s*([\p{L}\p{N}_-]{2,80})/u)
+  const named = text.match(/(?:分期(?:计划)?(?:编号|号)|计划编号|合同(?:编号|号))\s*[:：#]?\s*([A-Za-z0-9\u3400-\u4dbf\u4e00-\u9fa5\uff10-\uff19\uff21-\uff3a\uff41-\uff5a_-]{2,80})/)
   const reference = clean(explicit.reference) || named && named[1] || ''
   return { schema: 2, creditStatement: true, factKind:'billing', originKind:principal ? principal.originKind : /现金分期|现金借款|取现分期/.test(text)?'cash_borrowing':'unconfirmed', periodNumber, totalTerms, component: components[0],
     referenceKey: reference ? sha256('bank-installment-v1:' + reference) : null,

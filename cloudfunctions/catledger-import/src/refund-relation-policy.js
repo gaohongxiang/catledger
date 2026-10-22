@@ -32,7 +32,7 @@ function canonicalEvidenceText(value) {
   return String(value || '')
     .normalize('NFKC')
     .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .replace(/[\s!-/:-@\[-`{-~\u3000-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\u2010-\u2027\u2030-\u205e\u00b7\u2026\u2014\u2018\u2019\u201c\u201d\u3001\u3002\uff0c\uff1b\uff1a\uff1f\uff01]+/g, '')
     .slice(0, 160)
 }
 

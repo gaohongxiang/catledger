@@ -46,7 +46,7 @@ function targetCompatible(bank, platform) {
   const bankLocators = [...new Set(bankHints.map(locator).filter(Boolean))]
   if (targetLocator && bankLocators.some(value => value !== targetLocator)) return false
   if (platform.counterpartyLedgerAccountId) return platform.counterpartyLedgerAccountId === bank.ledgerAccountId
-  const targetBank = targetText.match(/([\p{Script=Han}]{2,12})银行/u)
+  const targetBank = targetText.match(/([\u3400-\u4dbf\u4e00-\u9fa5]{2,12})银行/)
   // 银行名/尾号只是提供人工候选的线索；只有逐对明确确认才绑定还入账户。
   if (targetBank) return bankText.includes(targetBank[1])
   return Boolean(targetLocator && bankLocators.includes(targetLocator))
