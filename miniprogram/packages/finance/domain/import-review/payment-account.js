@@ -39,11 +39,16 @@ function primaryInstrument(raw) {
   return financial.length === 1 ? financial[0].value : ''
 }
 
+// 花呗与信用购是同一套账单口径的两种品牌叫法（花呗由蚂蚁消金出资，
+// 信用购由银行出资，资金方因用户而异）。判族只看产品名，不看资金方银行，
+// 也不看是否分期：花呗、信用购、江苏银行信用购、花呗分期都归同一族。
+// 借呗、网商贷、1688 先采后付是其他产品，不在此族。
 function aggregateAccountFamily(sourceType, raw) {
   if (sourceType !== 'alipay') return null
   const value = withoutPlatformPrefix(normalizeText(raw), sourceType)
     .replace(/\s+/g, '')
-  return /花呗[|｜]信用购/u.test(value) || /信用购[|｜]花呗/u.test(value)
+  if (/借呗|网商贷|先采后付|小荷包|余额宝/u.test(value)) return null
+  return /花呗|信用购/u.test(value)
     ? AGGREGATE_ACCOUNT_FAMILY.ALIPAY_HUABEI_CREDIT
     : null
 }
@@ -104,13 +109,16 @@ function paymentAccountDetails(sourceType, raw) {
   const instrument = primaryInstrument(raw)
   const aggregateFamily = aggregateAccountFamily(sourceType, instrument)
   if (aggregateFamily) {
+    // 花呗与信用购同属一个真实的负债账户（同一套账单口径、可合并还款），
+    // 只是不同批次账单用了不同商品名。因此把它按普通原子账户处理，仅把
+    // 身份统一到族键：显示名、付款方式键、账户键都取族，避免按写法各建账户。
     return {
-      referenceKind: ACCOUNT_REFERENCE_KIND.AGGREGATE,
-      aggregateFamily,
-      aggregateFamilies: [],
-      identityMaterial: '',
+      referenceKind: ACCOUNT_REFERENCE_KIND.ATOMIC,
+      aggregateFamily: null,
+      aggregateFamilies: [aggregateFamily],
+      identityMaterial: aggregateFamily,
       displayName: aggregateFamilyDisplayName(aggregateFamily),
-      recognized: false,
+      recognized: true,
       ambiguous: false,
       components
     }

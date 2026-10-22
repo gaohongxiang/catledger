@@ -1062,14 +1062,15 @@ test('同商户但相隔超过退款窗口时不得自动关联', () => {
   assert.equal(plan.issues.some((issue) => issue.issueType === 'refund_relation'), true)
 })
 
-test('花呗信用购合并还款只保留两个真实负债账户并生成一个分配问题', () => {
+test('花呗信用购合并还款指向同一族账户，不拆成两笔负债', () => {
+  // 花呗与信用购共用一套账单口径、可合并还款，账户层面同属一个族账户；
+  // 因此合并还款直接落到该账户，不再生成拆到两个账户的分配问题。
   const bankId = '51000000-0000-4000-8000-000000000101'
-  const huabeiId = '51000000-0000-4000-8000-000000000102'
-  const creditId = '51000000-0000-4000-8000-000000000103'
+  const familyId = '51000000-0000-4000-8000-000000000102'
   const mappings = [
     ['浙江农商联合银行储蓄卡(5564)', bankId],
-    ['花呗', huabeiId],
-    ['江苏银行信用购', creditId]
+    ['花呗', familyId],
+    ['江苏银行信用购', familyId]
   ].map(([paymentMethod, accountId]) => ({
     sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', paymentMethod),
     paymentMethodHint: paymentMethod, mappingAction: 'account', accountId
@@ -1108,14 +1109,12 @@ test('花呗信用购合并还款只保留两个真实负债账户并生成一�
 
   const repayment = plan.events.find((event) => event.amountMinor === '1036610')
   assert.equal(repayment.ledgerAccountId, bankId)
-  assert.equal(repayment.counterpartyLedgerAccountId, null)
+  // 两种写法的付款方式键相同，映射只会落到同一个族账户。
+  assert.equal(buildPaymentMethodKey('alipay', '花呗'), buildPaymentMethodKey('alipay', '江苏银行信用购'))
   assert.equal(repayment.fieldSources.fundsProjection.to.referenceKind, 'aggregate')
   assert.deepEqual(
-    repayment.fieldSources.fundsProjection.to.candidates.map((candidate) => candidate.accountId).sort(),
-    [creditId, huabeiId].sort()
+    repayment.fieldSources.fundsProjection.to.candidates.map((candidate) => candidate.accountId),
+    [familyId]
   )
-  assert.equal(plan.issues.filter((issue) => issue.status === 'open' && issue.issueType === 'transfer_accounts').length, 1)
-  assert.equal(plan.issues.some((issue) => issue.issueType === 'account_mapping' &&
-    issue.primaryReasonCode === 'payment_reference_mapping_required' && issue.memberCount === 1 &&
-    plan.members.some((member) => member.issueId === issue.issueId && member.objectId === repayment.eventId)), false)
+  assert.equal(plan.issues.filter((issue) => issue.status === 'open' && issue.issueType === 'transfer_accounts').length, 0)
 })

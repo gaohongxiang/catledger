@@ -70,25 +70,38 @@ function resolvePaymentMethod(sourceType, paymentMethodKey, mappingIndex) {
 
 function resolveSourceFunds(projection, mappingIndex) {
   if (!projection) return null
-  const resolvedProjection = projection.to && projection.to.referenceKind === ACCOUNT_REFERENCE_KIND.AGGREGATE
-    ? {
-        ...projection,
-        to: {
-          ...projection.to,
-          candidates: (projection.to.candidates || []).map((candidate) => ({
-            ...candidate,
-            accountId: resolveReference(candidate, mappingIndex)
-          }))
-        }
-      }
-    : projection
-  return {
-    projection: resolvedProjection,
-    fromAccountId: resolveReference(resolvedProjection.from, mappingIndex),
-    toAccountId: resolvedProjection.to.referenceKind === ACCOUNT_REFERENCE_KIND.AGGREGATE
-      ? null
-      : resolveReference(resolvedProjection.to, mappingIndex)
+  if (!(projection.to && projection.to.referenceKind === ACCOUNT_REFERENCE_KIND.AGGREGATE)) {
+    return {
+      projection,
+      fromAccountId: resolveReference(projection.from, mappingIndex),
+      toAccountId: resolveReference(projection.to, mappingIndex)
+    }
   }
+  // 聚合族（如花呗｜信用购）在族内已经收敛为同一账户身份。解析候选账户后，
+  // 若用户账本里该族只对应一个账户，就直接落到它，不再要求人工分配——
+  // 一笔还款还向唯一的负债账户，分摊没有意义。只有族内仍对应多个账户
+  // （历史脏数据）或多个候选无法唯一时，才保持待分配，绝不静默猜测。
+  const candidates = (projection.to.candidates || []).map((candidate) => ({
+    ...candidate,
+    accountId: resolveReference(candidate, mappingIndex)
+  }))
+  const resolvedIds = uniqueAccountIds(candidates.map((candidate) => candidate.accountId))
+  if (candidates.length > 0 && resolvedIds.length === 1) {
+    return {
+      projection: { ...projection, to: { ...projection.to, candidates, resolvedAccountId: resolvedIds[0] } },
+      fromAccountId: resolveReference(projection.from, mappingIndex),
+      toAccountId: resolvedIds[0]
+    }
+  }
+  return {
+    projection: { ...projection, to: { ...projection.to, candidates } },
+    fromAccountId: resolveReference(projection.from, mappingIndex),
+    toAccountId: null
+  }
+}
+
+function uniqueAccountIds(values) {
+  return [...new Set((values || []).filter((value) => typeof value === 'string' && value))]
 }
 
 function reconcileProjectedAccounts(event, mappingIndex, { preserveFrom = false, preserveTo = false } = {}) {

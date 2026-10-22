@@ -56,8 +56,12 @@ function isAggregateRepayment(event) {
   const fields = event && event.fieldSources || {}, editor = fields.editorOverrides
   if (editor && editor.version === 1 && editor.composition) return event.economicNature === 'repayment' && editor.composition === 'repayment'
   const projection = fields.fundsProjection
-  return Boolean(event && event.economicNature === 'repayment' && projection && projection.to &&
-    projection.to.referenceKind === 'aggregate')
+  if (!(event && event.economicNature === 'repayment' && projection && projection.to &&
+      projection.to.referenceKind === 'aggregate')) return false
+  // 族账户已被解析为唯一负债账户时，这笔还款就是普通单账户还款，
+  // 不再需要拆分配置；只有族内仍不唯一时才按聚合还款处理。
+  if (event.counterpartyLedgerAccountId && projection.to.resolvedAccountId === event.counterpartyLedgerAccountId) return false
+  return true
 }
 
 module.exports = {
