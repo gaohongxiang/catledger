@@ -41,6 +41,11 @@ test('完整草稿真实 Page/API：账户、字段、分类、证据和退款�
   h.local.call('financeUpdates.setReview',{eventId:ids[1],editorVersion:1,fields:{economicNature:'refund',amountMinor:'60',occurredLocalAt:'2026-09-02 12:00:00',timezoneOffsetMinutes:-480}})
   page.applyUpdateView(h.local.view)
   await page.openReviewEdit(tap({id:ids[1]}))
+  // 打开即列出本批原消费：用户不该再点一次范围才看到候选。
+  await page._reviewEditToken.refundRead
+  assert.ok(page.data.reviewEditSheet.refundChoices.length, '打开退款编辑器就有本批候选')
+  assert.ok(page.data.reviewEditSheet.refundTotal > 0)
+  assert.equal(page.data.reviewEditSheet.refundKind, 'event')
   await page.loadEditorRefunds(tap({kind:'event'}))
   assert.ok(page.data.reviewEditSheet.refundChoices.length)
   await page.loadEditorRefunds(tap({kind:'transaction'}))
