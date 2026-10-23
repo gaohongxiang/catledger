@@ -12,11 +12,15 @@ function references(event) {
 // 因为前缀巧合当成同一笔。
 function referenceMatches(left, right) {
   if (left === right) return true
-  if (!/\|order:/u.test(left) || !/\|order:/u.test(right)) return false
+  const kind = (value) => /^[^|]+\|(transaction|order):/u.exec(value)
+  const leftKind = kind(left), rightKind = kind(right)
+  if (!leftKind || !rightKind || leftKind[1] !== rightKind[1]) return false
   const [short, long] = left.length <= right.length ? [left, right] : [right, left]
   const head = long.slice(0, short.length)
   const tail = long.slice(short.length)
-  return head === short && /^_/u.test(tail) && short.split(':')[1].length >= 10
+  // 支付宝把原单号放在“交易订单号”列，退款行再追加 "_<流水>"；这里只接受
+  // 明确分隔符且原号足够长的派生，避免两笔独立流水因为前缀巧合被并成一笔。
+  return head === short && /^_/u.test(tail) && short.slice(short.indexOf(':') + 1).length >= 10
 }
 
 function sameSource(left, right, sourceType) {

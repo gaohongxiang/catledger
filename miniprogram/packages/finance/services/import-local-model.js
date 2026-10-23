@@ -277,6 +277,15 @@ function create(facts) {
       current.fieldSources = { ...current.fieldSources, refundSourceConflict: { version: 1,
         originalEventIds: originals.map(original => original.eventId).sort() } }
       if (current.status === 'ready') current.status = 'needs_action'
+      // 旧草稿里这条还是“待关联原消费”；本机补上冲突后，事项的原因也要跟着换，
+      // 否则列表标题和弹层会各说一套。
+      for (const issueId of issueEvents.get(current.eventId) || []) {
+        const issue = issues.get(issueId)
+        if (!issue || issue.issueType !== 'refund_relation' || issue.status !== 'open') continue
+        issue.primaryReasonCode = 'refund_source_conflict'
+        issue.reasonCodes = [...new Set([...(issue.reasonCodes || []), 'refund_source_conflict'])]
+        issue.version = Number(issue.version || 1) + 1
+      }
     }
   }
 

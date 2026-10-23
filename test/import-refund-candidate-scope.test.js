@@ -170,4 +170,6 @@ test('旧草稿也在本机识别“原单已关闭”，不必重新整理', as
   const refund = [...model.events.values()].find(event => event.economicNature === 'refund')
   assert.ok(refund.reasonCodes.includes('refund_source_conflict'), '本机应按同一规则补上冲突状态')
   assert.equal(refund.fieldSources.refundSourceConflict.originalEventIds.length, 1)
+  const issue = [...model.issues.values()].find(row => row.subjectEventIds.includes(refund.eventId) && row.issueType === 'refund_relation')
+  assert.equal(issue.primaryReasonCode, 'refund_source_conflict', '事项原因也要跟着改，列表标题才一致')
 })
