@@ -1,7 +1,7 @@
 const cache = require('../../../../services/read-cache')
 const api = require('../../../../services/catledger-import')
 const { previewFields } = require('./inline-evidence')
-const { errorText } = require('./presentation')
+const { errorText, sourceCaption } = require('./presentation')
 const { eventView } = require('./model')
 const { fieldsFor, principalOf } = require('./detail-fields')
 const { readDetail } = require('./detail-reader')
@@ -22,6 +22,14 @@ function reviewedEventIds(reviewedEvents) {
     ;(item.rows || []).forEach(function (row) { if (row.eventId) ids.add(row.eventId) })
   })
   return ids
+}
+
+// 同笔合并把多条来源并进一个事件后，只留一条 primary，其余变成 supporting。
+// 合并后主事件上的 pairCount 记着合成前有几条来源；“证据数>1”只看行数，
+// 会把“多笔合成一笔”当成单来源，从而不给修改同笔判断的入口。
+function mergedSourceCount(row) {
+  return Math.max(Number(row && row.pairCount) || 0, Number(row && row.evidenceCount) || 0,
+    Number(row && row.duplicateEvidenceCount) || 0)
 }
 
 async function readSource(page, token, index) {
@@ -83,8 +91,9 @@ async function readSources(page, token) {
       for (const source of response.items) {
         const index = token.sources.length
         token.sources.push(source)
+        // 标题与账单文件合成一行；长名省略中间，扩展名和行号始终可见。
         page.setData({ ['reviewDetailSheet.sources[' + index + ']']: { ...source, fields: [], loading: true, error: '',
-          sourceLabel: { bank: '银行卡账单', wechat: '微信账单', alipay: '支付宝账单' }[source.sourceType] || '原始账单' } })
+          sourceCaption: sourceCaption('原始交易 ' + (index + 1), source.fileName, source.rowNumber, 34) } })
       }
       token.sourceCursor = response.nextCursor
       page.setData({ 'reviewDetailSheet.sourceCount': response.total, 'reviewDetailSheet.moreSources': Boolean(response.nextCursor) })
@@ -121,7 +130,9 @@ module.exports = {
       fields: row ? fieldsFor(row, { accounts: (this.data.accounts || []).concat(this.data.accountDrafts || []), categories: this.data.categories || [] }) : [],
       fieldsLoading: true, fieldsError: '', installmentNote: row && eventView(row).installmentNote || '',
       reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && reviewedEventIds(this.data.reviewedEvents).has(eventId),
-      canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision ||
+      // “由多来源合成”不能只看证据条数：同笔合并后主事件常只剩一条来源，
+      // 真实来源数记在 mergeOrigins/rowIds 里，必须一起算进来才给修改同笔判断的入口。
+      canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision || mergedSourceCount(row) > 1 ||
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
     const fieldsRead = readFields(this, token)

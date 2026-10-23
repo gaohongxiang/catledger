@@ -138,9 +138,13 @@ function create(model) {
     if(action==='economicEvents.refundCandidates'){
       const stored=model.events.get(data.eventId);if(!stored||stored.version!==data.eventVersion)error('CONFLICT')
       const event={...editor.prepare(stored,{editorVersion:1,fields:data.fields||{}}),economicNature:'refund',flowDirection:'inflow'},kind=data.kind||'event'
-      const rows=model.refundCandidates(event,kind).filter(row=>!data.query||String(row.note).includes(data.query)).sort((a,b)=>a.id.localeCompare(b.id))
-      const coverage=(model.supplemental||facts).historyCoverage.refunds.find(row=>row.eventId===event.eventId)
-      return {...page(action,data,rows,'id'),historyComplete:kind==='event'||Boolean(coverage?.complete&&['amountMinor','utcAt','ledgerAccountId'].every(key=>coverage[key]===event[key])),serverReviewPending:kind==='transaction'&&!Boolean(coverage?.complete&&['amountMinor','utcAt','ledgerAccountId'].every(key=>coverage[key]===event[key]))}
+      // 两个范围都来自随快照下载的本机事实，这里不再回服务器查询。
+      const found=model.refundCandidates(event,kind)
+      const rows=found.filter(row=>!data.query||[row.note,row.merchant,row.item].some(value=>String(value||'').includes(data.query))).sort((a,b)=>a.id.localeCompare(b.id))
+      const complete=found.historyComplete!==false
+      // 退款优先在本批找原消费：本批候选按事件时间倒序，历史只作备用。
+      const ordered=kind==='event'?[...rows].sort((a,b)=>String(b.utcAt||'').localeCompare(String(a.utcAt||''))||a.id.localeCompare(b.id)):rows
+      return {...page(action,data,ordered,'id'),historyComplete:kind==='event'||complete,serverReviewPending:kind==='transaction'&&!complete}
     }
     if(action==='reviewIssues.pairings'){
       const selected=pairRange(data),scope={mode:data.mode||'suggested',issueId:data.issueId||null,version:version()},scopeToken=JSON.stringify(scope)

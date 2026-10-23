@@ -85,15 +85,14 @@ test('账户问题使用支付账户标题，资金流转保留双账户语义',
   assert.equal(model.issueView({ issueType: 'transfer_accounts', accountContext: context }).label, '资金流转 · 微信零钱')
 })
 
-test('只有稳定识别的支付工具显示以后不计入', function () {
-  const reusable = model.accountChoiceOptions([], [], true)
-  assert.deepEqual(reusable.slice(-2), [
-    { value: 'ignore', name: '仅本次不计入' },
-    { value: 'ignore_future', name: '以后不计入' }
-  ])
-  const generic = model.accountChoiceOptions([], [], false)
-  assert.deepEqual(generic.slice(-1), [{ value: 'ignore', name: '仅本次不计入' }])
-  assert.equal(generic.some(function (choice) { return choice.value === 'ignore_future' }), false)
+test('账户归属只有本次不计入，不提供以后不计入', function () {
+  // 本地整理只保存本次决定，恢复时也不得把历史忽略当成默认值；
+  // 「以后不计入」的选项、默认模式和规则写入路径都已移除。
+  for (const allowPermanentIgnore of [true, false]) {
+    const choices = model.accountChoiceOptions([], [], allowPermanentIgnore)
+    assert.deepEqual(choices.slice(-1), [{ value: 'ignore', name: '仅本次不计入' }])
+    assert.equal(choices.some(function (choice) { return choice.value === 'ignore_future' }), false)
+  }
 })
 
 test('资金投影只把真正缺失的一端交给用户', function () {

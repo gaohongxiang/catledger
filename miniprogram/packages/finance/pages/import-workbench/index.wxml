@@ -270,10 +270,8 @@
             <text wx:if="{{item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或改选已有账户 / 不计入。</text>
             <text wx:if="{{item.suggestedExisting}}" class="account-state-note">已按名称、银行和尾号推荐，请核对。</text>
             <text wx:if="{{item.choiceValue === 'ignore'}}" class="account-state-note">保留证据，本次不创建账户与账目。</text>
-            <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入；入账后同类将自动排除。</text>
-            <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'resolved'}}" class="account-state-note">已按你的规则不计入，入账前仍可修改。</text>
           </view>
-          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' || item.choiceValue === 'ignore_future' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
+          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
         </view>
         </block>
       </view>
@@ -582,14 +580,6 @@
               <text class="account-choice-ignore-copy">只跳过这批账单</text>
             </view>
           </button>
-          <button wx:if="{{accountChoiceSheet.allowFutureIgnore}}" class="account-choice-ignore-card {{accountChoiceSheet.selectedValue === 'ignore_future' ? 'account-choice-selected' : ''}}" data-value="ignore_future" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === 'ignore_future'}}">
-            <text wx:if="{{accountChoiceSheet.defaultIgnored}}" class="account-choice-preference-tag">已有偏好</text>
-            <view class="account-choice-ignore-icon account-choice-ignore-future"></view>
-            <view class="account-choice-ignore-content">
-              <text class="account-choice-ignore-title">以后不计入</text>
-              <text class="account-choice-ignore-copy">后续自动排除；导入确认前仍可改选账户</text>
-            </view>
-          </button>
         </view>
       </view>
 
@@ -751,11 +741,29 @@
       <view wx:if="{{issueRelationsError}}" class="relation-empty"><text>{{issueRelationsError}}</text><button class="review-text-action" bindtap="changeIssueRelations">重新读取候选</button></view>
       <view wx:if="{{currentIssue.refundSourceConflict}}" class="relation-list">
         <view class="relation-heading"><text>状态矛盾的原消费</text><text>{{relationPage.count}} 笔</text></view>
-        <text class="relation-help">点击原消费查看原始账单，与下方退款到账记录逐项核对。</text>
+        <text class="relation-help">这些原消费与退款互相矛盾，只能核对原文；确认关系请回到本笔核对，或从下方对应记录进入修改。</text>
         <button wx:for="{{issueRelations}}" wx:key="targetEventId" class="relation-row" data-id="{{item.targetEventId}}" bindtap="openEvidence" aria-label="查看原消费原始记录">
           <view class="relation-main"><text class="relation-title">{{item.title}}</text><text class="relation-meta">{{item.meta}}</text></view>
           <text class="relation-amount money-number">{{item.amountText}}</text>
         </button>
+        <view wx:if="{{relationPage && (relationPage.hasPrevious || relationPage.hasNext)}}" class="list-pagination">
+          <button class="stage-previous" data-direction="-1" bindtap="changeIssueRelations" disabled="{{!relationPage.hasPrevious}}">上一页</button>
+          <text>{{relationPage.start}}–{{relationPage.end}} / {{relationPage.count}} 项</text>
+          <button class="stage-previous" data-direction="1" bindtap="changeIssueRelations" disabled="{{!relationPage.hasNext}}">下一页</button>
+        </view>
+      </view>
+      <view wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict}}" class="refund-candidates">
+        <text class="refund-candidates-title">{{issueRelations.length ? '这些原消费可能是同一笔，选一个' : '没有找到候选原消费'}}</text>
+        <button wx:for="{{issueRelations}}" wx:key="targetEventId" class="refund-candidate {{issueDraft.targetEventId === item.targetEventId ? 'is-selected' : ''}}" data-id="{{item.targetEventId}}" bindtap="selectIssueRefund" disabled="{{busy || issueStale}}" aria-role="radio" aria-checked="{{issueDraft.targetEventId === item.targetEventId}}">
+          <view class="refund-candidate-head"><text class="refund-candidate-title">{{item.title}}</text><text class="refund-candidate-amount money-number">-{{item.amountText}}</text></view>
+          <text wx:if="{{item.item && item.item !== item.title}}" class="refund-candidate-item">{{item.item}}</text>
+          <text class="refund-candidate-meta">{{item.localAtText}}{{item.sourceTypeLabel ? ' · ' + item.sourceTypeLabel : ''}}</text>
+          <text wx:if="{{item.remainingText}}" class="refund-candidate-meta">原消费 {{item.amountText}} · 已退 {{item.refundedText || '¥0.00'}} · 可退 {{item.remainingText}}</text>
+          <text wx:if="{{item.matchLabel}}" class="refund-candidate-match">匹配依据：{{item.matchLabel}}</text>
+          <view class="refund-candidate-radio" aria-hidden="true" />
+        </button>
+        <button wx:if="{{issueDraft.targetEventId}}" class="account-source-link" data-id="{{issueDraft.targetEventId}}" bindtap="openIssueRefundSource" disabled="{{busy}}">查看这笔原消费的原始记录 ›</button>
+        <text wx:if="{{!issueRelations.length && !issueRelationsLoading}}" class="sheet-copy">本批没有能作为原消费的记录；可从对应记录进入单笔核对查已入账的原消费，或先暂记待关联。</text>
         <view wx:if="{{relationPage && (relationPage.hasPrevious || relationPage.hasNext)}}" class="list-pagination">
           <button class="stage-previous" data-direction="-1" bindtap="changeIssueRelations" disabled="{{!relationPage.hasPrevious}}">上一页</button>
           <text>{{relationPage.start}}–{{relationPage.end}} / {{relationPage.count}} 项</text>
@@ -818,6 +826,8 @@
         <button wx:if="{{currentIssue.canConfirmSame}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmSame" disabled="{{busy || !issueCanSubmit}}">是同一笔</button>
         <button wx:if="{{currentIssue.historicalDuplicate}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkHistoricalTransaction" disabled="{{!issueCanSubmit || busy || historicalLoading || !historicalSelectionVerified}}">与选中记录是同一笔，不再入账</button>
         <button wx:if="{{currentIssue.issueType === 'same_event' || currentIssue.issueType === 'identity_conflict'}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmDistinct" disabled="{{!issueCanSubmit || busy || historicalLoading || (currentIssue.historicalDuplicate && (historicalError || !historicalCandidates.length))}}">{{currentIssue.historicalDuplicate ? '都不是同一笔，保留本次记录' : '是多笔独立记录'}}</button>
+        <button wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkIssueRefund" disabled="{{!issueCanSubmit || busy || !issueDraft.targetEventId}}">确认这笔原消费</button>
+        <button wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict}}" class="sheet-secondary" bindtap="markIssueRefundPending" disabled="{{!issueCanSubmit || busy}}">暂记待关联</button>
         <text wx:if="{{currentIssue.issueType === 'installment_origin'}}" class="sheet-copy">这是旧版分期核对记录。请查看本笔来源并重新整理本批；本金出账只登记来源，入账后可关联分期计划。</text>
         <view class="sheet-utility-actions">
           <button size="mini" class="sheet-secondary" bindtap="closeIssue">稍后处理</button>

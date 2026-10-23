@@ -111,6 +111,25 @@ function matchKind(refund, original) {
   return null
 }
 
+// 已绑定的退款关系用来解释“为什么当初选了这一笔”，只读展示、不参与入账。
+// 先按可解释的窄条件判断，判断不了时返回 null，前端只说“已自动关联”，不编造依据。
+function linkedMatchKind(refund, original) {
+  if (!refund || !original) return null
+  if (sharedScopedReference(refund, original)) return REFUND_MATCH_KIND.EXACT_REFERENCE
+  if (explicitSourceRefundMatch(refund, original)) return REFUND_MATCH_KIND.EXPLICIT_EVIDENCE
+  const refundTime = timeValue(refund.utcAt), originalTime = timeValue(original.utcAt)
+  const refundRows = refund.relationEvidence && refund.relationEvidence.rows || []
+  const originalRows = original.relationEvidence && original.relationEvidence.rows || []
+  const sameItem = refundRows.some(row => {
+    const key = row.relationHints && row.relationHints.itemKey || ''
+    return key.length >= 6 && originalRows.some(other => (other.relationHints && other.relationHints.itemKey) === key)
+  })
+  if (sameItem && refundTime != null && originalTime != null && refundTime >= originalTime &&
+      refundTime - originalTime <= ITEM_EVIDENCE_WINDOW_MS) return REFUND_MATCH_KIND.ITEM_EVIDENCE
+  if (merchantEvidenceMatch(refund, original)) return REFUND_MATCH_KIND.MERCHANT_EVIDENCE
+  return null
+}
+
 function selectRefundCandidates(refund, events) {
   const matches = (events || []).filter((event) => baseCandidateEligible(refund, event))
     .map((event) => ({ event, matchKind: matchKind(refund, event) }))
@@ -174,5 +193,6 @@ module.exports = {
   autoReasonCode,
   baseCandidateEligible,
   candidateReasonCode,
+  linkedMatchKind,
   selectRefundCandidates
 }

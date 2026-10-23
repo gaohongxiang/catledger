@@ -166,8 +166,6 @@ function showAccountChoice(event) {
       accountChoiceSheet: {
         issueId: issueId,
         label: mapping.label,
-        allowFutureIgnore: mapping.allowFutureIgnore,
-        defaultIgnored: Boolean(mapping.accountContext && mapping.accountContext.defaultIgnored),
         selectedValue: selectedValue,
         recommendedAccount: recommendedAccount
       },
@@ -186,13 +184,12 @@ function applyAccountChoice(event) {
   const value = String(event.currentTarget.dataset.value || '')
   const draft = sheet && this._accountUiDrafts.get(sheet.issueId)
   if (!sheet || !draft || !value) return
-  if (value === 'ignore_future' && !sheet.allowFutureIgnore) return
   if (value.indexOf('account:') === 0) {
     draft.mode = 'account'
     draft.accountId = value.slice('account:'.length)
     draft.recommendedAccountId = sheet.recommendedAccount &&
     sheet.recommendedAccount.accountId === draft.accountId ? draft.accountId : ''
-  } else if (['create', 'ignore', 'ignore_future'].includes(value)) {
+  } else if (['create', 'ignore'].includes(value)) {
     draft.mode = value
     draft.accountId = ''
     draft.recommendedAccountId = ''
@@ -229,7 +226,7 @@ module.exports = {
       visible.evidencePreview = Boolean(visible.evidencePreview)
       return visible
     })
-    const isExcluded = mapping => mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future'
+    const isExcluded = mapping => mapping.choiceValue === 'ignore'
     // Keep an unconfirmed exclusion in the actionable list; only a confirmed
     // exclusion moves to the compact "本次不计入" section.
     const excluded = mappings.filter(function (mapping) { return isExcluded(mapping) && !mapping.needsConfirmation })
@@ -250,29 +247,24 @@ module.exports = {
         }
         summary.inline += 1
         if (issue.status === 'open') summary.open += 1
-        const choices = model.accountChoiceOptions(
-          accounts,
-          accountDrafts,
-          Boolean(!self._draftSession?.isLocal && issue.accountContext && issue.accountContext.recognized)
-        )
+        const choices = model.accountChoiceOptions(accounts, accountDrafts)
         let draft = self._accountUiDrafts.get(issue.issueId)
         if (!draft) {
-          const defaultIgnored = Boolean(issue.accountContext && issue.accountContext.defaultIgnored)
           const mappingDraft = (accountMappingDrafts || []).find(function (item) {
               return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&
               item.sourceType === issue.accountContext.sourceType &&
               item.paymentMethodKey === issue.accountContext.paymentMethodKey
             })
           const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
-          const resolvedMode = defaultIgnored
-          ? 'ignore_future'
-          : mappingDraft && mappingDraft.mappingAction === 'ignore'
-          ? 'ignore_future'
+          // 历史忽略只作为上次选择提示，不作为默认模式；已解决的排除项回到
+          // 「仅本次不计入」，用户仍可改选任一账户。
+          const resolvedMode = mappingDraft && mappingDraft.mappingAction === 'ignore'
+          ? 'ignore'
           : resolvedAccountId ? 'account' : issue.status === 'resolved' ? 'ignore' : ''
           const suggestedName = issue.accountContext && issue.accountContext.recognized
           ? issue.accountContext.label
           : ''
-          const suggestedAccount = defaultIgnored ? null : model.suggestExistingAccount(issue.accountContext, accounts)
+          const suggestedAccount = model.suggestExistingAccount(issue.accountContext, accounts)
           draft = {
             mode: resolvedMode || (suggestedAccount ? 'account' : suggestedName ? 'create' : 'pending'),
             accountId: resolvedAccountId || (suggestedAccount ? suggestedAccount.accountId : ''),
@@ -314,7 +306,7 @@ module.exports = {
             needsConfirmation: needsConfirmation,
             canConfirm: ready,
             dirty: draft.dirty,
-            summaryText: draft.mode === 'ignore' || draft.mode === 'ignore_future'
+            summaryText: draft.mode === 'ignore'
             ? choices[choiceIndex].name
             : '记入：' + (draft.mode === 'create' ? String(draft.name || '').trim() + '（' + (ACCOUNT_TYPE_OPTIONS[draft.typeIndex] || {}).label + '）' : choices[choiceIndex].name) + ' · 已确认',
             evidencePreview: issue.subject ? model.accountEvidenceView(issue.subject) : null,
@@ -325,7 +317,6 @@ module.exports = {
             suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' &&
               draft.accountId === draft.recommendedAccountId),
             recommendedAccountId: draft.recommendedAccountId,
-            allowFutureIgnore: Boolean(!self._draftSession?.isLocal && issue.accountContext && issue.accountContext.recognized),
             draftName: draft.name,
             draftNameValid: validAccountName(draft.name),
             draftTypeIndex: draft.typeIndex
@@ -471,9 +462,8 @@ module.exports = {
   accountMappingDecision: function (mapping) {
     const draft = this._accountUiDrafts.get(mapping.issueId)
     const decision = { issueId: mapping.issueId, issueVersion: mapping.version, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
-    if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
+    if (draft.mode === 'ignore') {
       decision.decision = 'exclude_events'
-      if (draft.mode === 'ignore_future') decision.paymentRuleAction = 'ignore'
     } else {
       decision.decision = 'apply_fields'
       decision.fields = draft.mode === 'account' ? { mappingAccountId: draft.accountId } : {

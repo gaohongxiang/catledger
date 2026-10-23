@@ -466,6 +466,29 @@ module.exports = {
     return Object.assign({}, details, { members })
   },
 
+  // 问题面板里的原消费候选：点选后由底部按钮确认，和单笔编辑器同样的两步。
+  selectIssueRefund: function (event) {
+    const id = event.currentTarget.dataset.id
+    if (!id || this.data.busy) return
+    this.setData({ 'issueDraft.targetEventId': id })
+  },
+
+  linkIssueRefund: function () {
+    const target = this.data.issueDraft.targetEventId
+    if (!target) return
+    return this.resolveIssue('link_refund', { targetEventId: target })
+  },
+
+  markIssueRefundPending: function () {
+    return this.resolveIssue('mark_refund_pending', {})
+  },
+
+  openIssueRefundSource: function (event) {
+    const id = event.currentTarget.dataset.id
+    if (!id || this.data.busy) return
+    return this.openEvidence({ currentTarget: { dataset: { id } } })
+  },
+
   excludeIssueEvents: function () {
     return this.resolveIssue('exclude_events', { selection: { mode: 'all' } })
   },

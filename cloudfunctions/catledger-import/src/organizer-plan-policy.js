@@ -365,6 +365,18 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
 
 // 自动沿用账户或命中长期忽略时，账户步骤仍保留一条非阻塞、可修改的
 // 已确认记录；历史决定直接生效，但不会变成不可见、不可覆盖的黑盒。
+// 「仅本次不计入」同理：它只影响本批事件，不留任何可复用规则，但已决的
+// 排除结果必须照样重建为已解决的账户项——否则重新整理会因为缺少账户而
+// 退回待核对，同一支付方式每次恢复都要求用户重新选一次。
+// 「仅本次不计入」的事件保留了来源账户（只是被排除），所以这里只能看状态
+// 与原因码，不能要求账户为空。
+function excludedThisImport(event) {
+  if (event.status !== EVENT_STATUS.EXCLUDED) return false
+  const reasons = event.reasonCodes || []
+  return reasons.includes('account_mapping_excluded') && reasons.includes('manual_exclusion') &&
+    !reasons.includes('source_account_ignored_default')
+}
+
 function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFactory) {
   const confirmedKeys = new Map((effectiveMappings || []).filter((mapping) => (
     mapping.mappingAction === 'account' && mapping.accountId
@@ -389,12 +401,20 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
     candidates.forEach((candidate) => {
       const reference = candidate.reference
       if (!reference || !reference.sourceType || !reference.paymentMethodKey) return
-      const ignored = event.reasonCodes.includes('source_account_ignored_default') && !candidate.accountId
+      // 本次排除的事件可能仍带着来源账户，所以排除判定只看状态与原因码；
+      // 它们只用来把同一支付方式的排除组认出来，不会写成已确认账户。
+      const current = excludedThisImport(event)
+      const historical = event.reasonCodes.includes('source_account_ignored_default') && !candidate.accountId
+      const ignored = current || historical
       const confirmedAccountId = confirmedKeys.get(paymentReferenceKey(reference))
       if (!ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
       const identityKey = accountIdentityKeyForReference(reference) || paymentReferenceKey(reference)
-      const key = `${identityKey}:${ignored ? 'ignore' : confirmedAccountId}`
-      const group = groups.get(key) || { ignored, items: [], memberKeys: new Set() }
+      // 「仅本次不计入」只是这次排除，不是账户决定，不能和同一支付方式的
+      // 已确认账户并进一组，否则会把排除改成记入。
+      const key = current ? `${identityKey}:excluded` : `${identityKey}:${ignored ? 'ignore' : confirmedAccountId}`
+      const group = groups.get(key) || { ignored: false, current: false, items: [], memberKeys: new Set() }
+      group.ignored = group.ignored || ignored
+      group.current = group.current || current
       const memberKey = `${event.eventId}:${candidate.memberRole}`
       if (!group.memberKeys.has(memberKey)) {
         group.memberKeys.add(memberKey)
@@ -417,13 +437,18 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       status: 'resolved',
       version: 1,
       blocking: false,
-      primaryReasonCode: group.ignored
-        ? 'payment_reference_ignored_by_history'
-        : projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
+      primaryReasonCode: group.current
+        ? 'payment_reference_excluded_this_import'
+        : group.ignored
+          ? 'payment_reference_ignored_by_history'
+          : projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
       memberCount: group.items.length,
       candidateCount: 0,
       ruleVersion: REVIEW_ISSUE_VERSION,
-      reasonCodes: group.ignored ? ['source_account_ignored_default'] : ['account_mapping_confirmed']
+      // 本次排除与长期忽略的原因码分开：前者不进入以后导入的自动排除，只
+      // 让账户步骤显示“本次不计入”并可改回。
+      reasonCodes: group.current ? ['account_mapping_excluded']
+        : group.ignored ? ['source_account_ignored_default'] : ['account_mapping_confirmed']
     })
     group.items.forEach(({ event, memberRole }, index) => members.push({
       memberId: idFactory(), updateId, issueId, objectType: 'event', objectId: event.eventId,

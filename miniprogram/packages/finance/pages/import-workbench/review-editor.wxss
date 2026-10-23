@@ -49,6 +49,14 @@
 .unified-editor-sheet .editor-cancel { min-height: 64rpx; margin-top: 4rpx; padding: 12rpx 0; background: transparent; line-height: 1.5; }
 .unified-editor-sheet .editor-actions-row { display: flex; align-items: stretch; gap: var(--layout-space-3); }
 .unified-editor-sheet .editor-actions-row .sheet-confirm { flex: 1; min-width: 0; margin: 0; }
+/* 详情与待核对共用底栏：主次操作同一行、同高，返回列表在下方作为次要动作，
+   不再是一列全宽大按钮。 */
+.unified-editor-sheet .detail-actions { display: flex; flex-direction: column; gap: var(--layout-space-2); }
+.unified-editor-sheet .detail-actions .editor-actions-row { width: 100%; }
+.unified-editor-sheet .detail-actions .editor-judgment-btn,
+.unified-editor-sheet .detail-actions .sheet-confirm { min-height: 88rpx; margin: 0; line-height: 1.5; }
+.unified-editor-sheet .detail-actions .sheet-confirm-wide { margin: 0; }
+.unified-editor-sheet .detail-actions .editor-cancel { margin-top: 0; }
 .unified-editor-sheet .editor-judgment-btn {
   flex: 0 0 auto;
   min-height: 88rpx;
@@ -74,12 +82,69 @@
 .unified-editor-sheet .channel-breakdown-label { display: block; color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; white-space: nowrap; }
 .unified-editor-sheet .channel-breakdown-value { display: block; margin-top: 4rpx; overflow-wrap: anywhere; color: var(--ui-ink); font-size: 26rpx; font-weight: 500; line-height: 1.3; }
 .unified-editor-sheet .channel-breakdown-total { color: var(--ui-accent-strong); }
+/* 差额待核对只用警示色区分，不加底色：金额格保持三列对齐，卡片骨架不动。 */
 .unified-editor-sheet .channel-breakdown-fee-pending { color: var(--theme-warning, #a76416); }
 .unified-editor-sheet .channel-breakdown-op { flex: 0 0 auto; padding: 0 6rpx; color: var(--ui-subtle); font-size: 22rpx; line-height: 1.3; }
+/* 待确认只强调下面那张勾选卡：外层卡片不做换色，勾选卡描边、放大勾选点和动作行。 */
+.unified-editor-sheet .channel-confirm-caption { display: block; padding-top: 14rpx; color: var(--theme-warning, #a76416); font-size: 22rpx; font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .channel-confirm .ownership-option { border-color: var(--theme-warning, #a76416); border-width: 2rpx; background: var(--theme-warning-soft, #fdf6e6); }
+.unified-editor-sheet .channel-confirm .ownership-option-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.unified-editor-sheet .channel-confirm .ownership-treatment-check { width: 36rpx; height: 36rpx; border-color: var(--theme-warning, #a76416); background: var(--ui-surface, #fff); }
+.unified-editor-sheet .channel-confirm .ownership-option-selected .ownership-treatment-check { border-color: var(--ui-accent); background: var(--ui-accent); }
+.unified-editor-sheet .channel-confirm .ownership-option-selected .ownership-treatment-check::after { left: 10rpx; top: 5rpx; }
+.unified-editor-sheet .channel-confirm-action { color: var(--theme-warning, #a76416); }
 .unified-editor-sheet .channel-breakdown-note { display: block; margin-top: 14rpx; padding-top: var(--layout-space-2); border-top: 1rpx solid var(--ui-line); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .channel-confirm { margin-top: 14rpx; padding-bottom: 0; border-top: 1rpx solid var(--ui-line); }
 .unified-editor-sheet .channel-confirm .ownership-option { margin-top: 0; }
 .editor-mode-choices { display: flex; flex-wrap: wrap; gap: var(--layout-space-2); margin: 20rpx 0; }
+
+/* 退款原消费候选：商家→商品→时间渠道→原消费/已退/可退→匹配依据，
+   每行只说一件事，用户不必再翻原文判断这是哪一次消费。 */
+.unified-editor-sheet .refund-candidates { margin-top: var(--layout-space-2); }
+.unified-editor-sheet .refund-candidates-title { display: block; margin-bottom: var(--layout-space-1); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-candidate {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  margin: 0 0 var(--layout-space-2);
+  padding: 18rpx 84rpx 18rpx 20rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+}
+.unified-editor-sheet .refund-candidate.is-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.unified-editor-sheet .refund-candidate-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-candidate-title { flex: 1; min-width: 0; overflow: hidden; color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.unified-editor-sheet .refund-candidate-amount { flex: 0 0 auto; color: var(--sem-expense, #b54738); font-size: var(--font-body, 28rpx); font-weight: 500; }
+.unified-editor-sheet .refund-candidate-item { display: block; margin-top: 2rpx; overflow: hidden; color: var(--ui-muted); font-size: 22rpx; text-overflow: ellipsis; white-space: nowrap; }
+.unified-editor-sheet .refund-candidate-meta { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-candidate-match { display: block; margin-top: 6rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-candidate-radio { position: absolute; top: 22rpx; right: 22rpx; width: 32rpx; height: 32rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
+.unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+
+/* 已关联（含自动确认）的原消费：先说清“现在是哪一笔、当初凭什么”，
+   再给更换入口；不因为自动确认就把这块留白。 */
+.unified-editor-sheet .refund-linked {
+  display: block;
+  margin-top: var(--layout-space-2);
+  padding: 16rpx 20rpx;
+  border: 1rpx solid var(--ui-line);
+  border-left: 6rpx solid var(--ui-accent);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface-muted);
+}
+.unified-editor-sheet .refund-linked-head { display: block; color: var(--ui-accent-strong); font-size: 22rpx; font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .refund-linked-title { display: block; margin-top: 4rpx; color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .refund-linked-meta { display: block; margin-top: 2rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-linked-match { display: block; margin-top: 4rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-linked-hint { display: block; margin-top: 8rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .editor-mode-choices button {
   flex: 1 1 180rpx;
   box-sizing: border-box;

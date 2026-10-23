@@ -716,7 +716,7 @@ module.exports = {
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
     : forceStep || (background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow)
     const mappings = workbench.accountMappings || this.data.accountMappings || []
-    const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future' })
+    const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' })
     const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
     const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               importId: source.importId || '', fileName: source.fileName, originalFileName: source.originalFileName || source.fileName,
@@ -829,7 +829,7 @@ module.exports = {
         Object.assign(patch, directory)
         const state = this.mappingState()
         const mappings = state.mappings.map(compactMapping)
-        const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' || mapping.choiceValue === 'ignore_future' })
+        const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' })
         const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
         patch.accountMappings = mappings
         patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })

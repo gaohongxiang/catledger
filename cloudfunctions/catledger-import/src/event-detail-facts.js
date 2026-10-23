@@ -19,7 +19,8 @@ async function eventDetailFacts(connection, uid, updateId, event) {
   let refund = null
   if (event.economicNature === 'refund') {
     const [batch] = await connection.execute(`SELECT r.target_event_id AS eventId,e.event_local_at AS localAt,
-      e.amount_minor AS amountMinor,c.name AS categoryName,p.name AS parentCategoryName
+      e.amount_minor AS amountMinor,c.name AS categoryName,p.name AS parentCategoryName,
+      r.manual AS manual
       FROM catledger_economic_event_relations r JOIN catledger_economic_events e
         ON e.uid=r.uid AND e.update_id=r.update_id AND e.event_id=r.target_event_id
       LEFT JOIN catledger_categories c ON c.uid=e.uid AND c.category_id=e.category_id
@@ -34,10 +35,16 @@ async function eventDetailFacts(connection, uid, updateId, event) {
       LEFT JOIN catledger_categories p ON p.uid=c.uid AND p.category_id=c.parent_id
       WHERE l.uid=? AND l.update_id=? AND l.event_id=? AND l.role='refund_original'
         AND l.superseded_at IS NULL ORDER BY l.link_id LIMIT 2`, [uid, updateId, event.eventId])
+    // 自动确认的退款只有 confirmed 关系、没有可选项，所以这里顺带说明“当初凭什么选的它”，
+    // 让详情能显示已关联的原消费并允许更换，而不是一片空白。
+    const link = require('./refund-relation-policy')
     const originals = batch.concat(history).map(row => ({ ...row, amountMinor: String(row.amountMinor),
-      categoryName: [row.parentCategoryName, row.categoryName].filter(Boolean).join(' / ') }))
+      categoryName: [row.parentCategoryName, row.categoryName].filter(Boolean).join(' / '),
+      matchKind: row.eventId ? link.linkedMatchKind(event, { ...row, relationEvidence: event.relationEvidence }) || null : null }))
     const pending = fields.refundRelation && fields.refundRelation.version === 'refund-relation-state-v1' && fields.refundRelation.status === 'pending' && fields.refundRelation.confirmedBy === 'user'
-    refund = { status: originals.length > 1 ? 'ambiguous' : originals.length === 1 ? 'confirmed' : pending ? 'pending' : 'unlinked', originals }
+    refund = { status: originals.length > 1 ? 'ambiguous' : originals.length === 1 ? 'confirmed' : pending ? 'pending' : 'unlinked', originals,
+      // 系统自动绑定（manual=0）的关系允许在单笔编辑器里更换；人工选定的仍走同笔判断入口。
+      autoLinked: originals.some(row => row.manual === 0 || row.manual === '0') }
   }
   const repayment = fields.loanRepayment
   let loan = null

@@ -15,7 +15,7 @@ test('完整草稿真实 Page/API：账户、字段、分类、证据和退款�
   assert.ok(mapping,'真实账户页应显示待确认范围')
   assert.ok(page.data.accountMappingsIncluded.length,'账户页不能渲染成 0/0 空状态')
   assert.equal(page.data.accountStepSummary.total,page.data.accountMappings.length)
-  assert.equal(mapping.allowFutureIgnore,false)
+  assert.equal(mapping.allowFutureIgnore,undefined)
   await page.openAccountChoice(tap({id:mapping.issueId}))
   page.selectAccountChoice(tap({value:'account:'+value.accounts[0].accountId}))
   await page.completeAccountMapping(tap({id:mapping.issueId}))
@@ -113,4 +113,16 @@ test('本地真实 Page 分期归属选择、清除和整组状态更新不补�
   assert.equal(h.local.model.events.get(id).fieldSources.editorOverrides.sourceCorrection.planLabel,undefined)
   assert.equal(h.local.model.events.get(id).reasonCodes.includes('installment_attribution_required'),true)
   assert.equal(h.network.length,0)
+})
+
+test('完整草稿真实 Page：本批与原消费都在本机，退款候选读取零网络',async t=>{
+  const value=await facts({count:4,mapped:true})
+  const h=await localWorkbench(t,value),page=h.page
+  const ids=value.events.map(row=>row.eventId)
+  const before=h.network.length
+  await page.openReviewEdit(tap({id:ids[1]}))
+  await page._reviewEditToken.evidenceRead
+  // 打开编辑器不触发任何原消费查询。
+  assert.equal(h.network.length,before,'打开退款编辑器不应联网')
+  assert.equal(h.calls.filter(call=>call.action==='economicEvents.refundCandidates').length,0)
 })

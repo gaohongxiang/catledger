@@ -54,8 +54,10 @@ const ACCOUNT_TYPE_LABELS = Object.freeze({
   other_liability: '其他负债'
 })
 
-function accountChoiceOptions(accounts, accountDrafts, allowPermanentIgnore) {
-  const options = [{ value: 'pending', name: '请选择账户归属' }, { value: 'create', name: '创建新账户' }]
+// 账户归属只有「仅本次不计入」：本地整理不写可复用规则，恢复时也不把历史
+// 忽略当成默认值。第二个参数保留以兼容旧调用，不再产生「以后不计入」选项。
+function accountChoiceOptions(accounts, accountDrafts) {
+  return [{ value: 'pending', name: '请选择账户归属' }, { value: 'create', name: '创建新账户' }]
     .concat((accounts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name }
     }))
@@ -63,8 +65,6 @@ function accountChoiceOptions(accounts, accountDrafts, allowPermanentIgnore) {
       return { value: 'account:' + account.accountId, name: account.name + '（本批新建）' }
     }))
     .concat([{ value: 'ignore', name: '仅本次不计入' }])
-  if (allowPermanentIgnore) options.push({ value: 'ignore_future', name: '以后不计入' })
-  return options
 }
 
 function accountSelectorOptions(accounts, accountDrafts) {
@@ -990,26 +990,36 @@ function excludedEventGroups(events, expandedKeys) {
   })
 }
 
+// 候选原消费卡：与单笔编辑器共用 presentation.refundCandidateView，
+// 商户 / 商品 / 时间渠道 / 原消费·已退·可退 / 匹配依据 的读法在两个入口保持一致。
 function relationChoiceView(event, relation) {
   const target = eventView(event || {})
   const reasons = relation && relation.reasonCodes || []
-  const matchLabel = reasons.includes('refund_exact_reference_candidate')
-    ? '订单匹配'
-    : reasons.includes('refund_explicit_evidence_candidate')
-      ? '退款凭据'
-      : reasons.includes('refund_item_evidence_candidate')
-        ? '商品匹配待核对'
-      : reasons.includes('refund_merchant_evidence_candidate')
-        ? '同商户待核对'
-        : ''
+  const matchKind = reasons.includes('refund_exact_reference_candidate') ? 'exact_reference'
+    : reasons.includes('refund_explicit_evidence_candidate') ? 'explicit_refund_evidence'
+      : reasons.includes('refund_item_evidence_candidate') ? 'item_evidence'
+        : reasons.includes('refund_merchant_evidence_candidate') ? 'merchant_evidence' : ''
+  const evidence = event && event.primaryEvidence || {}
+  // 在调用时再取，避免 model ↔ presentation 在加载期互相等对方导出。
+  const card = require('./presentation').refundCandidateView({
+    id: event && event.eventId, version: event && event.version, kind: 'event',
+    localAt: event && event.localAt, amountMinor: event && event.amountMinor,
+    merchant: evidence.counterparty, item: evidence.item, sourceType: evidence.sourceType,
+    matchKind, remainingMinor: event && event.amountMinor
+  })
   return {
     targetEventId: event && event.eventId || relation && relation.targetEventId || '',
     relationId: relation && relation.relationId || '',
-    title: target.displayTitle,
+    title: card.title || target.displayTitle,
+    item: card.item,
+    localAtText: card.localAtText,
+    sourceTypeLabel: card.sourceTypeLabel,
+    amountText: card.amountText || target.amountText,
+    remainingText: card.remainingText,
+    refundedText: card.refundedText,
     meta: target.displayMeta,
-    amountText: target.amountText,
     directionClass: target.directionClass,
-    matchLabel: matchLabel
+    matchLabel: card.matchLabel
   }
 }
 

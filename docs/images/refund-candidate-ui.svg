@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1500" viewBox="0 0 1180 1500" font-family="-apple-system, 'PingFang SC', 'Noto Sans CJK SC', sans-serif">
+  <defs>
+    <style>
+      .ink { fill:#2c2823 } .muted { fill:#70685f } .accent { fill:#a34d20 } .accent-bg { fill:#f0e2ce }
+      .surface { fill:#fffefd } .line { stroke:#eae4dc } .border { stroke:#d4ccc3 }
+      .expense { fill:#b54738 } .income { fill:#477153 }
+      .h1 { font-size:22px; font-weight:600 } .h2 { font-size:17px; font-weight:600 } .h3 { font-size:15px; font-weight:500 }
+      .body { font-size:14px } .small { font-size:12.5px } .tiny { font-size:11.5px }
+      .num { font-variant-numeric: tabular-nums }
+      .phone-title { font-size:26px; font-weight:600 }
+    </style>
+  </defs>
+  <rect width="1180" height="1500" fill="#f6f4f0"/>
+  <text x="40" y="46" class="h1 ink">退款原消费候选 · 改版示意（用 8 月微信账单真实数据）</text>
+  <text x="40" y="70" class="small muted">左：核对弹层里的原消费区（默认本批）· 右：切到“已入账记录”时的备用范围 · 底：详情底栏统一后的按钮排布</text>
+
+  <!-- 左：编辑器退款区 -->
+  <g transform="translate(40,96)">
+    <rect width="530" height="900" rx="28" fill="#fffefd" stroke="#eae4dc"/>
+    <rect x="245" y="12" width="40" height="4" rx="2" fill="#eae4dc"/>
+    <text x="32" y="52" class="h1 ink">确认还款示例 → 退款</text>
+    <text x="32" y="76" class="tiny muted">（下方为同一弹层向下滚动后的“原消费关系”分组）</text>
+
+    <text x="32" y="118" class="tiny muted">原消费关系</text>
+    <text x="32" y="142" class="body ink">待关联原消费</text>
+    <text x="32" y="164" class="small muted">分类：关联原消费后确定（随原消费，不单独编辑）</text>
+
+    <text x="32" y="200" class="small muted">本批原消费 · 2 笔</text>
+
+    <!-- 候选卡 1（选中） -->
+    <g transform="translate(24,212)">
+      <rect width="482" height="126" rx="16" fill="#f0e2ce" stroke="#be5b24" stroke-width="1.5"/>
+      <text x="18" y="32" class="h3 ink">美团平台商户</text>
+      <text x="464" y="32" text-anchor="end" class="h3 expense num">-¥63.04</text>
+      <text x="18" y="54" class="tiny muted">美团订单-26083011200700001303415196319610</text>
+      <text x="18" y="76" class="tiny muted">2026-08-30 14:03 · 微信 · 兴业银行信用卡(6106)</text>
+      <text x="18" y="98" class="tiny muted">原消费 ¥63.04 · 已退 ¥0.00 · 可退 ¥63.04</text>
+      <text x="18" y="118" class="tiny accent">匹配依据：原单写明已退 ¥0.11 · 同一商户</text>
+      <circle cx="446" cy="24" r="11" fill="#be5b24"/>
+      <path d="M441 24 l4 4 l6 -8" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- 候选卡 2 -->
+    <g transform="translate(24,350)">
+      <rect width="482" height="108" rx="16" fill="#fffefd" stroke="#eae4dc"/>
+      <text x="18" y="32" class="h3 ink">美团平台商户</text>
+      <text x="464" y="32" text-anchor="end" class="h3 expense num">-¥52.98</text>
+      <text x="18" y="54" class="tiny muted">美团订单-26082211200700001301997368095610</text>
+      <text x="18" y="76" class="tiny muted">2026-08-22 14:15 · 微信 · 兴业银行信用卡(6106)</text>
+      <text x="18" y="98" class="tiny muted">原消费 ¥52.98 · 已退 ¥0.30 · 可退 ¥52.68</text>
+      <circle cx="446" cy="24" r="11" fill="#fffefd" stroke="#d4ccc3" stroke-width="1.5"/>
+    </g>
+
+    <text x="32" y="492" class="small accent">没有合适原消费？查已入账记录 ›</text>
+    <line x1="24" y1="512" x2="506" y2="512" class="line"/>
+    <text x="32" y="540" class="small muted">暂记待关联退款</text>
+    <text x="32" y="564" class="small muted">清除本笔关联，保留待核对</text>
+
+    <line x1="0" y1="588" x2="530" y2="588" class="line"/>
+    <text x="32" y="618" class="h3 ink">说明：卡片每行只说一件事</text>
+    <text x="32" y="644" class="small muted">1  商户（真实“交易对方”列）</text>
+    <text x="32" y="668" class="small muted">2  商品单号（真实“商品”列，过长省略尾部）</text>
+    <text x="32" y="692" class="small muted">3  时间 · 渠道 · 原消费账户</text>
+    <text x="32" y="716" class="small muted">4  原消费 / 已退 / 可退（差价退款一眼可见）</text>
+    <text x="32" y="740" class="small muted">5  匹配依据（为什么是它）</text>
+    <text x="32" y="772" class="small muted">整块不再显示 item_raw 原文串。</text>
+    <text x="32" y="796" class="small accent">“本批/历史”不再并排两个标签，</text>
+    <text x="32" y="818" class="small accent">历史降级成一行文字入口。</text>
+  </g>
+
+  <!-- 右：历史范围 -->
+  <g transform="translate(610,96)">
+    <rect width="530" height="640" rx="28" fill="#fffefd" stroke="#eae4dc"/>
+    <rect x="245" y="12" width="40" height="4" rx="2" fill="#eae4dc"/>
+    <text x="32" y="52" class="h1 ink">切到“已入账的原消费”</text>
+    <text x="32" y="76" class="tiny muted">只在本批没有合适记录时使用，不会覆盖本批结果</text>
+
+    <text x="32" y="118" class="small muted">已入账的原消费 · 1 笔</text>
+    <g transform="translate(24,130)">
+      <rect width="482" height="126" rx="16" fill="#fffefd" stroke="#eae4dc"/>
+      <text x="18" y="32" class="h3 ink">美团平台商户</text>
+      <text x="464" y="32" text-anchor="end" class="h3 expense num">-¥58.69</text>
+      <text x="18" y="54" class="tiny muted">美团订单-26080211200700001308377241045610</text>
+      <text x="18" y="76" class="tiny muted">2026-08-02 13:56 · 微信</text>
+      <text x="18" y="98" class="tiny muted">原消费 ¥58.69 · 已退 ¥0.23 · 可退 ¥58.46</text>
+      <text x="284" y="118" class="tiny muted">已入账记录</text>
+      <circle cx="446" cy="24" r="11" fill="#fffefd" stroke="#d4ccc3" stroke-width="1.5"/>
+    </g>
+    <text x="32" y="282" class="small accent">‹ 返回本批原消费</text>
+    <text x="32" y="308" class="small muted">继续读取更多已入账记录</text>
+    <line x1="24" y1="328" x2="506" y2="328" class="line"/>
+    <text x="32" y="356" class="h3 ink">为什么这样分层</text>
+    <text x="32" y="382" class="small muted">· 9 成以上的退款原消费就在本批，默认打开即见</text>
+    <text x="32" y="406" class="small muted">· 历史查询是额外一次网络读取，不该在打开即触发</text>
+    <text x="32" y="430" class="small muted">· 两个范围分开计数，暂记资格仍然要两边都查过</text>
+    <text x="32" y="462" class="small muted">已退金额 = 原消费 − 本次可退，用户看到“差价退款”</text>
+    <text x="32" y="486" class="small muted">就能直接确认，不需要去翻原文。</text>
+  </g>
+
+  <!-- 详情底栏 -->
+  <g transform="translate(610,770)">
+    <rect width="530" height="226" rx="28" fill="#fffefd" stroke="#eae4dc"/>
+    <text x="32" y="40" class="h2 ink">详情底栏：两键同行，返回在下面</text>
+    <g transform="translate(24,64)">
+      <rect width="234" height="52" rx="16" fill="#f0e2ce"/>
+      <text x="117" y="32" text-anchor="middle" class="h3 accent">修改同笔判断</text>
+      <rect x="250" width="234" height="52" rx="16" fill="#be5b24"/>
+      <text x="367" y="32" text-anchor="middle" class="h3" fill="#fff">修改核对结果</text>
+    </g>
+    <text x="32" y="148" class="small muted" text-anchor="start">返回列表</text>
+    <text x="32" y="176" class="tiny muted">两键等宽同高（88rpx）；返回列表是次要文本按钮。</text>
+    <text x="32" y="198" class="tiny accent">改前：核对结果、同笔判断各占一整行，按钮过大。</text>
+  </g>
+
+  <!-- 判据说明 -->
+  <g transform="translate(40, 1030)">
+    <rect width="1100" height="430" rx="24" fill="#fffefd" stroke="#eae4dc"/>
+    <text x="28" y="40" class="h2 ink">这次为什么只改展示，不改判定</text>
+    <text x="28" y="72" class="small muted">用你账单里的真实行跑了解析：原消费 <tspan class="ink">已退款(¥0.11)</tspan> 解出 <tspan class="ink">explicitRefundAmountMinor=11</tspan>，退款行 <tspan class="ink">美团平台商户-退款 / 已退款¥0.11</tspan> 解出 <tspan class="ink">refund_credit</tspan>。</text>
+    <text x="28" y="96" class="small muted">这 9 对命中最高档“原单写明已退金额”，理应自动确认、不让你点。规则本身是准的，问题两个：</text>
+    <text x="44" y="128" class="small ink">① 自动确认的关系只写 confirmed、没有 proposed，所以详情里“原消费关系”看不到它，想改也没入口。</text>
+    <text x="44" y="152" class="small ink">② 真需要你选的弱证据档，卡片只显示 note（原文串），看不出是谁、退了多少、为什么是它。</text>
+    <text x="28" y="188" class="small muted">本轮已做：</text>
+    <text x="44" y="212" class="small ink">· 候选卡改版：商户 / 商品 / 时间·渠道·账户 / 原消费·已退·可退 / 匹配依据</text>
+    <text x="44" y="236" class="small ink">· 默认本批，历史降级成一行入口，切回不残留</text>
+    <text x="44" y="260" class="small ink">· 详情：修改同笔判断 + 修改核对结果同一行、返回列表在下方、字号与待核对一致</text>
+    <text x="44" y="284" class="small ink">· 多笔合成一笔：pairCount 纳入判定，详情不再漏掉“修改同笔判断”</text>
+    <text x="28" y="320" class="small muted">仍需你拍板（下一步）：</text>
+    <text x="44" y="344" class="small ink">· 自动确认的原消费要不要能在详情里换（confirmed → proposed 受控回退）</text>
+    <text x="44" y="368" class="small ink">· 待核对卡里的“退款关系”面板是否也换成同一套候选卡（目前编辑器里已换，问题面板还是旧样式）</text>
+    <text x="28" y="404" class="tiny muted">示意图仅供评审排版，不是真实截图。</text>
+  </g>
+</svg>

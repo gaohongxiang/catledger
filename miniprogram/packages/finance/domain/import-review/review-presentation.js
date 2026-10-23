@@ -54,6 +54,9 @@ function publicEvent(row) {
     paymentAccounts: fieldSources.paymentAccounts || null,
     evidenceCount: Number(row.evidenceCount),
     duplicateEvidenceCount: Number(row.duplicateEvidenceCount || 0),
+    // 合成前有几条来源：同笔合并之后主事件只留一条 primary，单看证据条数会丢掉
+    // “这笔是多来源合成”的事实；详情据此决定是否给修改同笔判断的入口。
+    ...((fieldSources.mergeOrigins || []).length > 1 ? { pairCount: fieldSources.mergeOrigins.length } : {}),
     primaryEvidence: row.primaryRowId ? {
       rowId: row.primaryRowId,
       sourceType: row.sourceType,

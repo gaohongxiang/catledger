@@ -55,7 +55,8 @@
       <text class="channel-breakdown-note">金额与还入账户来自两份原文；修改请先拆开同笔判断</text>
       <text wx:if="{{editor.fieldErrors.repaymentChannel}}" class="editor-field-error">{{editor.fieldErrors.repaymentChannel}}</text>
       <view wx:if="{{!editor.repaymentChannel.confirmed}}" class="ownership-treatment channel-confirm">
-        <button wx:if="{{canEdit && editor.supported}}" class="ownership-option {{draft.repaymentChannelConfirmed ? 'ownership-option-selected' : ''}}" data-field="repaymentChannelConfirmed" data-value="{{!draft.repaymentChannelConfirmed}}" bindtap="changeEditorMode" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{draft.repaymentChannelConfirmed}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">{{editor.repaymentChannel.confirmationText}}</text><text class="ownership-treatment-detail">勾选后保存；不确定可先保留待核对</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+        <text class="channel-confirm-caption">这一步需要你确认</text>
+        <button wx:if="{{canEdit && editor.supported}}" class="ownership-option {{draft.repaymentChannelConfirmed ? 'ownership-option-selected' : ''}}" data-field="repaymentChannelConfirmed" data-value="{{!draft.repaymentChannelConfirmed}}" bindtap="changeEditorMode" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{draft.repaymentChannelConfirmed}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">{{editor.repaymentChannel.confirmationText}}</text><text class="ownership-treatment-detail channel-confirm-action">{{editor.repaymentChannel.confirmationAction}}</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
       </view>
     </view>
   </view>
@@ -84,7 +85,7 @@
   <text wx:if="{{editor.fieldErrors.composition}}" class="editor-field-error">{{editor.fieldErrors.composition}}</text>
   <view wx:if="{{editor.needsCompositionNote}}" class="decision-group">
     <text class="decision-group-title">核对说明</text>
-    <view class="decision-card"><textarea wx:if="{{canEdit}}" auto-height value="{{draft.evidenceNote}}" maxlength="300" data-field="evidenceNote" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="选填。按单笔记录后不再区分各来源分摊" /><text wx:else>{{draft.evidenceNote || '未填写'}}</text></view>
+    <view class="decision-card"><textarea wx:if="{{canEdit}}" auto-height value="{{draft.evidenceNote}}" maxlength="300" data-field="evidenceNote" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" /><text wx:else>{{draft.evidenceNote || '未填写'}}</text></view>
   </view>
   <text wx:if="{{editor.fieldErrors.evidenceNote}}" class="editor-field-error">{{editor.fieldErrors.evidenceNote}}</text>
   <view wx:if="{{editor.categoryKind}}" class="decision-group">
@@ -125,12 +126,29 @@
     <view class="decision-card"><text class="sheet-copy">{{draft.refund ? (draft.refund.mode === 'link' ? '已选择原消费，保存时重新核验' : draft.refund.mode === 'pending' ? '暂记待关联' : '待关联') : (sheet.originalRefund.status === 'confirmed' ? '已关联原消费' : sheet.originalRefund.status === 'pending' ? '已暂记待关联' : '待关联原消费')}}</text>
       <text wx:if="{{editor.refundOriginalText}}" class="sheet-copy">{{editor.refundOriginalText}}</text><text class="sheet-copy">分类：{{editor.refundCategory || '关联原消费后确定'}}（随原消费，不单独编辑）</text>
       <block wx:if="{{canEdit && editor.supported}}">
-        <view class="editor-mode-choices"><button data-kind="event" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">本批原消费</button><button data-kind="transaction" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">历史原消费</button></view>
-        <text wx:if="{{sheet.refundLoading}}" class="sheet-copy">正在核验候选…</text><text wx:if="{{sheet.refundError}}" class="inline-error">{{sheet.refundError}}</text>
-        <button wx:for="{{sheet.refundChoices}}" wx:key="id" class="relation-row" data-id="{{item.id}}" bindtap="selectEditorRefund" disabled="{{disabled || sheet.refundLoading}}"><view><text>{{item.note || '原消费'}}</text><text class="sheet-copy">{{item.localAt}} · 可退 {{item.amountText}}</text></view><text>{{draft.refund.id === item.id ? '已选' : '选择'}}</text></button>
-        <button wx:if="{{sheet.refundMore}}" class="review-text-action" data-kind="{{sheet.refundKind}}" data-more="true" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">下一页候选</button>
-        <text wx:if="{{sheet.refundTotal === 0 && !sheet.refundLoading}}" class="sheet-copy">本范围没有可关联记录；本批和历史都核验后才可暂记。</text>
-        <text wx:if="{{sheet.refundHistoryPending}}" class="sheet-copy">当前草稿未覆盖全部历史候选，将在整批入账时复核；暂记待关联不会自动确认账本中没有原消费。</text>
+        <view wx:if="{{editor.refundLinked}}" class="refund-linked">
+          <text class="refund-linked-head">{{editor.refundLinked.auto ? '系统已自动关联这一笔原消费' : '已关联的原消费'}}</text>
+          <text class="refund-linked-title">{{editor.refundLinked.note || '原消费'}}</text>
+          <text class="refund-linked-meta">{{editor.refundLinked.localAt}} · ¥{{editor.refundLinked.amountMinor == null ? '' : editor.refundLinked.amountMinor}}{{editor.refundLinked.categoryName ? ' · ' + editor.refundLinked.categoryName : ''}}</text>
+          <text wx:if="{{editor.refundLinked.matchKind}}" class="refund-linked-match">当时依据：{{editor.refundLinked.matchKind === 'exact_reference' ? '订单号一致' : editor.refundLinked.matchKind === 'explicit_refund_evidence' ? '原单写明已退金额' : editor.refundLinked.matchKind === 'item_evidence' ? '商品名一致' : '同一商户'}}</text>
+          <text class="refund-linked-hint">如果退的不是这一笔，在下方另选或清除关联；保存时重新核验原消费与已退额度。</text>
+        </view>
+        <view class="refund-candidates">
+          <text class="refund-candidates-title">{{sheet.refundKind === 'transaction' ? '已入账的原消费' : '本批原消费'}}{{sheet.refundTotal ? ' · ' + sheet.refundTotal + ' 笔' : ''}}</text>
+          <text wx:if="{{sheet.refundLoading}}" class="sheet-copy">正在核验候选…</text><text wx:if="{{sheet.refundError}}" class="inline-error">{{sheet.refundError}}</text>
+          <button wx:for="{{sheet.refundChoices}}" wx:key="id" class="refund-candidate {{draft.refund.id === item.id ? 'is-selected' : ''}}" data-id="{{item.id}}" bindtap="selectEditorRefund" disabled="{{disabled || sheet.refundLoading}}" aria-role="radio" aria-checked="{{draft.refund.id === item.id}}">
+            <view class="refund-candidate-head"><text class="refund-candidate-title">{{item.title}}</text><text class="refund-candidate-amount money-number">-{{item.amountText}}</text></view>
+            <text wx:if="{{item.item && item.item !== item.title}}" class="refund-candidate-item">{{item.item}}</text>
+            <text class="refund-candidate-meta">{{item.localAtText}}{{item.sourceTypeLabel ? ' · ' + item.sourceTypeLabel : ''}}</text>
+            <text wx:if="{{item.remainingText}}" class="refund-candidate-meta">原消费 {{item.amountText}} · 已退 {{item.refundedText || '¥0.00'}} · 可退 {{item.remainingText}}</text>
+            <text wx:if="{{item.matchLabel}}" class="refund-candidate-match">匹配依据：{{item.matchLabel}}</text>
+            <view class="refund-candidate-radio" aria-hidden="true" />
+          </button>
+          <text wx:if="{{sheet.refundTotal === 0 && !sheet.refundLoading}}" class="sheet-copy">{{sheet.refundKind === 'transaction' ? '已入账记录里没有可关联的原消费。' : '本批没有能作为原消费的记录。'}}</text>
+          <button wx:if="{{sheet.refundMore}}" class="review-text-action" data-kind="{{sheet.refundKind}}" data-more="true" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">继续读取更多{{sheet.refundKind === 'transaction' ? '已入账' : '本批'}}记录</button>
+          <button class="review-text-action" data-toggle="history" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">{{sheet.refundKind === 'transaction' ? '返回本批原消费' : '没有合适原消费？查已入账记录'}}</button>
+          <text wx:if="{{sheet.refundHistoryPending}}" class="sheet-copy">当前草稿未覆盖全部历史候选，将在整批入账时复核；暂记待关联不会自动确认账本中没有原消费。</text>
+        </view>
         <button wx:if="{{sheet.refundCanPending}}" class="review-text-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled}}">暂记待关联退款</button>
         <button class="review-text-action" data-mode="unlinked" bindtap="selectEditorRefund" disabled="{{disabled}}">清除本笔关联，保留待核对</button>
       </block>

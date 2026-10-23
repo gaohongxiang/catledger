@@ -112,6 +112,8 @@ async function validateExpectations(connection, uid, event, value) {
   if (JSON.stringify(expected) !== JSON.stringify(await expectations(connection, uid, event))) throw importError('CONFLICT')
 }
 async function detach(connection, uid, event) {
+  // 自动绑定(manual=0)的关系被人工更换时保留“撤销”痕迹：manual=1 表示已由人处理，
+  // 之后重新整理不会把它悄悄恢复成自动关联。
   await connection.execute(`UPDATE catledger_economic_event_relations SET status='rejected',manual=1,version=version+1
     WHERE uid=? AND update_id=? AND source_event_id=? AND relation_type='refund_of' AND status IN ('proposed','confirmed')`,
   [uid, event.updateId, event.eventId])

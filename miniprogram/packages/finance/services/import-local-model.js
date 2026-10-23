@@ -252,21 +252,33 @@ function create(facts) {
       if (!category || category.archivedAt || category.kind !== editor.kind(event.economicNature)) fail('分类不可用，请重新选择')
     }
   }
+  // 本批原消费的展示事实：商户和商品分开取，前端不再把整串备注当卡片标题。
+  function candidateFacts(row) { const first = (byEvent.get(row.eventId) || []).find(link => link.evidenceRole === 'primary') || (byEvent.get(row.eventId) || [])[0]
+    const source = first && rows.get(first.rowId)
+    return { merchant: String(source?.counterparty || '').trim(), item: String(source?.item || '').trim(), sourceType: source?.sourceType || '' } }
   function refundCandidates(event, kind) {
-    const history = (supplemental || facts).refundCandidates || []
+    // 本批原消费全部来自本机快照；已入账候选来自随快照一起下载的历史引用，
+    // 两者都不需要再向服务端查询。
+    const downloaded = (supplemental || facts).refundCandidates || []
+    // 下载的历史引用带上 covered / coveredCount：没有全部下载时，不能把“本机没找到”
+    // 当成“账本里没有”，暂记资格仍由服务端整批复核。
+    const historyComplete = typeof downloaded.covered === 'boolean' ? downloaded.covered : Boolean(downloaded.complete)
+    const history = (downloaded.items || downloaded).map(row => ({ ...row, merchant: row.merchant || '', item: row.item || '', sourceType: row.sourceType || '' }))
     const candidates = kind === 'event' ? [...events.values()].filter(row => row.eventId !== event.eventId && active(row) &&
       ['expense','fee'].includes(row.economicNature) && !sourceOf(row).paymentResolution && !sourceOf(row).loanRepayment && !sourceOf(row).installment &&
       !row.reasonCodes.some(code => ['row_status_unknown','refund_source_conflict'].includes(code)))
       .map(row => ({ id: row.eventId, version: row.version, kind, localAt: row.localAt, utcAt: row.utcAt, amountMinor: row.amountMinor,
-        currency: row.currency, note: row.fieldSources.editorOverrides?.note || row.primaryEvidence?.item || '', remainingMinor: row.amountMinor }))
+        currency: row.currency, note: row.fieldSources.editorOverrides?.note || '', ...candidateFacts(row), remainingMinor: row.amountMinor }))
       : history
-    return candidates.filter(row => row.utcAt && event.utcAt && row.utcAt <= event.utcAt && row.currency === event.currency).map(row => {
+    const result = candidates.filter(row => row.utcAt && event.utcAt && row.utcAt <= event.utcAt && row.currency === event.currency).map(row => {
       let used = 0n
       if (kind === 'event') { for (const relation of related(row.id)) if (relation.relationType === 'refund_of' && relation.status === 'confirmed' &&
         relation.targetEventId === row.id && relation.sourceEventId !== event.eventId && active(events.get(relation.sourceEventId))) used += BigInt(events.get(relation.sourceEventId).amountMinor)
       } else if (kind === 'transaction') { for (const link of links) if (link.role === 'refund_original' && link.transactionId === row.id && link.eventId !== event.eventId && active(events.get(link.eventId))) used += BigInt(events.get(link.eventId).amountMinor) }
       return { ...row, remainingMinor: String(BigInt(row.remainingMinor || 0) - used) }
     }).filter(row => event.amountMinor != null && BigInt(row.remainingMinor) >= BigInt(event.amountMinor))
+    // 已入账候选是否覆盖完整由下载范围决定；本批永远完整。
+    return Object.assign(result, { historyComplete: kind === 'event' ? true : historyComplete })
   }
   function applyRefund(current, next, data) {
     const choice = data.decisions?.refund

@@ -65,7 +65,7 @@ function boundedItem(item, key, kind) {
   const result = { [key]: item[key], detailRequired: true, detailKind: kind }
   for (const name of ['version', 'status', 'issueType', 'blocking', 'memberCount', 'candidateCount', 'economicNature',
     'flowDirection', 'localAt', 'sortLocalAt', 'amountMinor', 'currency', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId', 'categoryName',
-    'evidenceCount', 'duplicateEvidenceCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision', 'repaymentChannel', 'summaryExpenseMinor']) {
+    'evidenceCount', 'duplicateEvidenceCount', 'pairCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision', 'repaymentChannel', 'summaryExpenseMinor']) {
     if (item[name] != null) result[name] = item[name]
   }
   if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue

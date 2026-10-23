@@ -440,4 +440,85 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE }
+// 原文标题只留一行：账单名太长时省略中间，扩展名和末尾片段必须留住，
+// 否则“微信支付8月账单…xlsx”和“微信支付9月账单…xlsx”在界面上分不出来。
+function textWidth(text) { let width = 0; for (const char of text) width += /[\u0000-\u00ff]/.test(char) ? 1 : 2; return width }
+function clipText(text, limit) {
+  const chars = [...text]
+  let width = 0, cut = 0
+  while (cut < chars.length && width + textWidth(chars[cut]) <= limit) { width += textWidth(chars[cut]); cut++ }
+  return cut < chars.length ? chars.slice(0, cut).join('').trimEnd() : text
+}
+function shortFileName(name, limit = 30) {
+  const text = String(name || '').trim()
+  if (!text || textWidth(text) <= limit) return text
+  const match = text.match(/^(.*?)(\.[A-Za-z0-9]{1,8})$/)
+  const base = match ? match[1] : text, extension = match ? match[2] : ''
+  // 扩展名占掉预算时仍要显示，否则看不出是哪种账单文件。
+  const room = Math.max(limit - textWidth(extension) - 1, 6)
+  const head = clipText(base, Math.ceil(room * 0.6))
+  const tail = clipText([...base].reverse().join(''), Math.floor(room * 0.4)).split('').reverse().join('')
+  return head + '…' + tail + extension
+}
+// 来源卡片标题：编号、账单文件、行号合成一行；文件名只在过长时缩短。
+function sourceCaption(label, fileName, rowNumber, limit) {
+  const row = rowNumber == null || rowNumber === '' ? '' : ' · 第 ' + rowNumber + ' 行'
+  return [label, shortFileName(fileName, limit) + row].filter(Boolean).join(' · ')
+}
+
+function moneyText(minor) {
+  if (minor == null || !/^\d+$/u.test(String(minor))) return ''
+  const text = String(minor).padStart(3, '0')
+  return '¥' + text.slice(0, -2) + '.' + text.slice(-2)
+}
+function dayText(localAt) { return String(localAt || '').slice(0, 16) }
+// 候选备注里常混着原文串（列名、单号、JSON 片段），卡片只取人读得懂的商户和商品，
+// 其余内容仍可在原文里查看。
+function merchantOf(note) {
+  const text = String(note || '').trim()
+  if (!text) return ''
+  const embedded = text.match(/[[{].*[\]}]\s*$/u)
+  // 只有整段都是 JSON 时才按 JSON 取字段；前缀是正文的原文串保留正文。
+  if (!embedded || embedded.index !== 0) return text.replace(/\s*[[{][\s\S]*[\]}]\s*$/u, '').trim() || text
+  const json = embedded[0]
+  const pieces = [...json.matchAll(/"(item|item_raw|counterparty|counterparty_raw|note|商品|交易对方|备注)"\s*:\s*"((?:[^"\\]|\\.)*)"/gu)]
+    .map(match => {
+      try { return JSON.parse('"' + match[2] + '"') } catch (_) { return match[2] }
+    })
+    .map(value => String(value || '').trim()).filter(Boolean)
+  if (pieces.length) return pieces.find(value => !/^[[{]/u.test(value)) || ''
+  // 没有可识别的键时，去掉花括号、引号和 JSON 标点，只留能读的文字。
+  return json.replace(/^[\[{]+|[\]}]+$/gu, '').replace(/"[^"]*"\s*:\s*/gu, '').replace(/["{}\[\],]/gu, ' ')
+    .replace(/\s+/gu, ' ').trim()
+}
+const REFUND_KIND_LABEL = Object.freeze({
+  exact_reference: '订单号一致',
+  explicit_refund_evidence: '原单写明已退金额',
+  item_evidence: '商品名一致',
+  merchant_evidence: '同一商户'
+})
+// 退款原消费候选卡：商家、时间渠道、原消费与已退可退、为什么匹配上都分开显示，
+// 让用户不用翻原文就能判断这一笔退的是哪一次消费。
+function refundCandidateView(item) {
+  const candidate = item || {}
+  const remaining = candidate.remainingMinor, amount = candidate.amountMinor
+  const used = remaining == null || amount == null ? null : BigInt(String(amount)) - BigInt(String(remaining))
+  const itemText = merchantOf(candidate.item)
+  return {
+    id: candidate.id,
+    version: candidate.version,
+    kind: candidate.kind,
+    sourceTypeLabel: { wechat: '微信', alipay: '支付宝', bank: '银行' }[candidate.sourceType] || '',
+    // 商户优先；只有商户缺失时才退回商品名，避免“美团平台商户”被商品单号顶掉。
+    title: merchantOf(candidate.merchant) || itemText || merchantOf(candidate.note) || '未命名原消费',
+    item: itemText && itemText !== (merchantOf(candidate.merchant) || merchantOf(candidate.note)) ? itemText : '',
+    localAtText: dayText(candidate.localAt),
+    amountText: moneyText(amount),
+    remainingText: moneyText(remaining),
+    refundedText: used == null ? '' : moneyText(used),
+    matchLabel: REFUND_KIND_LABEL[candidate.matchKind] || '',
+    matchText: candidate.matchReason || ''
+  }
+}
+
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf }

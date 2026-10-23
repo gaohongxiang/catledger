@@ -15,8 +15,7 @@
         <text wx:if="{{reviewDetailSheet.installmentNote}}" class="sheet-copy">{{reviewDetailSheet.installmentNote}}</text>
         <skeleton-rows wx:if="{{reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" rows="{{3}}" />
         <view wx:for="{{reviewDetailSheet.sources}}" wx:key="evidenceId" class="evidence-card">
-          <view class="evidence-card-head"><text class="evidence-role">原始交易 {{index + 1}} · {{item.sourceLabel}}</text></view>
-          <text class="review-source-caption">{{item.fileName}} · 第 {{item.rowNumber}} 行</text>
+          <view class="evidence-card-head"><text class="evidence-role">{{item.sourceCaption}}</text></view>
           <skeleton-rows wx:if="{{item.loading}}" rows="{{2}}" />
           <view class="evidence-fields"><view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.name}}</text><text selectable class="evidence-value">{{field.value === '' ? '（空）' : field.value}}</text></view></view>
           <view wx:if="{{item.error}}" class="relation-empty"><text>{{item.error}}</text><button class="account-source-link" data-index="{{index}}" bindtap="retryReviewSource">重试读取原文</button></view>
@@ -26,10 +25,14 @@
         <view wx:if="{{reviewDetailSheet.error || reviewDetailSheet.stale}}" class="relation-empty"><text>{{reviewDetailSheet.stale ? '记录已更新，请重新查看' : reviewDetailSheet.error}}</text><button class="account-source-link" bindtap="refreshReviewDetails">重新读取</button></view>
         <text wx:elif="{{!reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" class="relation-empty">没有可显示的原始交易。</text>
       </scroll-view>
-      <view class="pairing-footer">
-        <button wx:if="{{reviewDetailSheet.reviewEditable}}" class="sheet-confirm sheet-confirm-wide" data-id="{{reviewDetailSheet.eventId}}" bindtap="openReviewEdit" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.fieldsLoading || reviewDetailSheet.fieldsError || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改核对结果</button>
-        <button wx:if="{{reviewDetailSheet.canEdit}}" class="{{reviewDetailSheet.reviewEditable ? 'evidence-return' : 'sheet-confirm sheet-confirm-wide'}}" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
-        <button class="evidence-return" bindtap="closeReviewDetails">返回列表</button>
+      <view class="sheet-actions detail-actions">
+        <view wx:if="{{reviewDetailSheet.reviewEditable && reviewDetailSheet.canEdit}}" class="editor-actions-row">
+          <button class="editor-judgment-btn" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
+          <button class="sheet-confirm" data-id="{{reviewDetailSheet.eventId}}" bindtap="openReviewEdit" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.fieldsLoading || reviewDetailSheet.fieldsError || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改核对结果</button>
+        </view>
+        <button wx:elif="{{reviewDetailSheet.reviewEditable}}" class="sheet-confirm sheet-confirm-wide" data-id="{{reviewDetailSheet.eventId}}" bindtap="openReviewEdit" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.fieldsLoading || reviewDetailSheet.fieldsError || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改核对结果</button>
+        <button wx:elif="{{reviewDetailSheet.canEdit}}" class="sheet-confirm sheet-confirm-wide" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
+        <button class="evidence-return editor-cancel" bindtap="closeReviewDetails">返回列表</button>
       </view>
     </view>
   </view>

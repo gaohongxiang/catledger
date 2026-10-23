@@ -1,7 +1,8 @@
 const api = require('../../../../services/catledger-import')
 const cache = require('../../../../services/read-cache')
 const pending = require('../../../../services/pending-ledger-write')
-const { record, errorText } = require('./presentation')
+const presentation = require('./presentation')
+const { record, errorText, sourceCaption, refundCandidateView } = presentation
 const model = require('./review-editor-model')
 const { readDetail } = require('./detail-reader')
 const { previewFields } = require('./inline-evidence')
@@ -70,7 +71,11 @@ async function evidence(page, token) {
     for (const [offset, source] of result.items.entries()) {
       if (!current(page, token)) return
       const path = 'reviewEditSheet.sources[' + (start + offset) + ']'
-      page.setData({ [path]: { ...source, fields: [], loading: true } })
+      // 标题、账单文件和行号合成一行；长名省略中间，扩展名与行号始终可见。
+      const total = Number(result.total || 0) || Math.max(start + result.items.length, 1)
+      const label = '原始交易' + (total > 1 ? ' ' + (start + offset + 1) : '')
+      page.setData({ [path]: { ...source, fields: [], loading: true,
+        sourceCaption: sourceCaption(label, source.fileName, source.rowNumber, 34) } })
       try {
         let text = '', cursor = null
         for (let part = 0; part < 4; part++) {
@@ -336,14 +341,19 @@ module.exports = {
   async loadEditorRefunds(event) {
     const token = this._reviewEditToken
     if (!editable(this, token) || !token.view.refund || token.view.errors.length || model.minor(token.draft.amountInput) == null || !token.draft.date || !token.draft.time) return
-    const kind = event?.currentTarget?.dataset?.kind || this.data.reviewEditSheet.refundKind || 'event'
-    const more = event?.currentTarget?.dataset?.more
+    const data = event?.currentTarget?.dataset || {}, sheet = this.data.reviewEditSheet
+    // 默认看本批原消费；历史只在用户明确切换时读取，作为备用范围。
+    const kind = data.toggle === 'history' ? 'transaction'
+      : data.toggle === 'event' ? 'event'
+      : data.kind || sheet.refundKind || 'event'
+    const more = data.more
     const fingerprintOf = () => JSON.stringify([token.draft.economicNature, token.draft.amountInput, token.draft.date, token.draft.time, token.draft.ledgerAccountId])
     const fingerprint = fingerprintOf()
     const epoch = token.refundEpoch = (token.refundEpoch || 0) + 1
     const active = () => editable(this, token) && token.refundEpoch === epoch && fingerprint === fingerprintOf()
     token.refundOptions = []
-    this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundLoading': true, 'reviewEditSheet.refundError': '' })
+    this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundLoading': true, 'reviewEditSheet.refundError': '',
+      ...(!more ? { 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundMore': false } : {}) })
     try {
       const fields = { amountMinor: model.minor(token.draft.amountInput), occurredLocalAt: token.draft.date + ' ' + token.draft.time,
         timezoneOffsetMinutes: token.row.editorFacts.timezoneOffsetMinutes, ledgerAccountId: token.draft.ledgerAccountId || null }
@@ -351,9 +361,11 @@ module.exports = {
         cursor: more ? token.refundCursor : null, pageSize: 12 }, active)
       if (!active()) return
       token.refundCursor = result.nextCursor
+      const views = result.items.map(refundCandidateView)
       token.refundOptions = result.items
       token.refundChecked = { ...(token.refundChecked || {}), [kind]: result.total }
-      this.setData({ 'reviewEditSheet.refundChoices': result.items.map(item => ({ ...item, amountText: '¥' + model.yuan(item.remainingMinor) })),
+      const page = more ? (this.data.reviewEditSheet.refundChoices || []).concat(views) : views
+      this.setData({ 'reviewEditSheet.refundChoices': page,
         'reviewEditSheet.refundHistoryPending': kind === 'transaction' ? result.serverReviewPending === true : this.data.reviewEditSheet.refundHistoryPending,
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
         'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&

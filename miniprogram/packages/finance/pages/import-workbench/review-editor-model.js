@@ -349,6 +349,7 @@ function derive(row, draft, catalogs = {}) {
   }
   if (channel) for (const key of Object.keys(output)) if (![repaymentPayerKey(row), 'counterparty', 'note'].includes(key)) delete output[key]
   const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition)
+  const targetName = routeFields.find(field => field.label === '还入账户')?.name || channel?.targetAccountName || '此账户'
   const options = (principal || channel ? NATURES.filter(item => item.value === 'repayment') : NATURES.filter(item => {
     if (draft.composition === 'repayment') return item.value === 'repayment'
     if (draft.composition === 'payment') return ['expense', 'repayment'].includes(item.value)
@@ -368,8 +369,11 @@ function derive(row, draft, catalogs = {}) {
     routeTitle: principal ? '分期所属账户' : fields.length > 1 ? '资金路径' : '资金账户',
     repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor),
       confirmed: channel.confirmed !== false,
-      ...(channel.confirmed === false ? { confirmationText: '确认还入「' + (routeFields.find(field => field.label === '还入账户')?.name || channel.targetAccountName || '此账户') + '」，' +
-        (String(channel.feeMinor) === '0' ? '无手续费' : '差额 ¥' + yuan(channel.feeMinor) + ' 为手续费') } : {}) } : null,
+      // 还款事实（正文）与需要用户做的动作（细节行）分开：长句折行后末句会被当成注释，
+      // 这里把“勾选后保存”单独成行，并与未勾选时的保存按钮一致。
+      ...(channel.confirmed === false ? { confirmationText: '确认还入「' + targetName + '」，' +
+        (String(channel.feeMinor) === '0' ? '无手续费' : '差额 ¥' + yuan(channel.feeMinor) + ' 为手续费'),
+        confirmationAction: '勾选后才能正式入账；不勾选时按钮只保存草稿，这 ¥' + yuan(channel.feeMinor) + ' 既不计手续费也不入账' } : {}) } : null,
     title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
     summaryParty: draft.counterparty,
     summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
@@ -379,6 +383,18 @@ function derive(row, draft, catalogs = {}) {
     loanFields: ['principal','interest','fee'].map((key, index) => ({ key: key + 'Input', label: ['本金','利息','费用'][index], value: draft[key + 'Input'] })),
     refundOriginalText: (row.detailFacts?.refund?.originals || []).map(item => [item.note, item.localAt, item.amountMinor == null ? '' : '¥' + yuan(item.amountMinor)].filter(Boolean).join(' · ')).join('；'),
     refundCategory: row.detailFacts?.refund?.originals?.[0]?.categoryName || '',
+    // 自动关联的退款也要能回看和更换：把已绑定的原消费当成“当前选择”，
+    // 与候选卡同一形态展示；原消费被移除时照样要显式确认。
+    refundLinked: (row.detailFacts?.refund?.originals || [])[0] ? {
+      id: row.detailFacts.refund.originals[0].eventId || row.detailFacts.refund.originals[0].transactionId || '',
+      kind: row.detailFacts.refund.originals[0].eventId ? 'event' : 'transaction',
+      localAt: row.detailFacts.refund.originals[0].localAt,
+      amountMinor: row.detailFacts.refund.originals[0].amountMinor,
+      note: row.detailFacts.refund.originals[0].note || '',
+      categoryName: row.detailFacts.refund.originals[0].categoryName || '',
+      matchKind: row.detailFacts.refund.originals[0].matchKind || '',
+      auto: row.detailFacts.refund.autoLinked === true
+    } : null,
     interestCategoryName: categories.find(item => item.categoryId === draft.interestCategoryId)?.name || '',
     feeCategoryName: categories.find(item => item.categoryId === draft.feeCategoryId)?.name || '',
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
