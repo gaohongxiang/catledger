@@ -3,6 +3,8 @@
 const fs = require('node:fs'), path = require('node:path')
 const root = path.resolve(__dirname, '..'), source = path.join(root, 'cloudfunctions/catledger-import/src')
 const target = path.join(root, 'miniprogram/packages/finance/domain/import-review')
+// refund-relation-policy 必须排在 local-review-snapshot 之前：快照编解码依赖由纯规则决定的行结构，
+// 顺序错会让“线上走的编解码”和“本机读的规则”各自版本不一致。
 const roots = ['review/editor-policy','organizer-model','organizer-plan-policy','source-funds','bank-channel-matching',
   'coverage-report','review/bank-channel-graph','workbench-summary','excluded-event-groups','repayment-policy',
   'refund-relation-policy','historical-match-policy','local-review-protocol','local-review-snapshot','local-review-identity','review/account-mapping-policy',

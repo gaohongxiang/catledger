@@ -93,9 +93,11 @@ async function loadFacts(connection, uid, updateId) {
     raw: raw.map(row => ({ rowId: row.rowId, fields: repository.parseJson(row.fields, []) })), evidence, relations, links,
     accounts, accountDrafts, categories, loans, paymentMappings: await repository.selectPaymentMappings(connection, uid, updateId), contracts: contracts.map(row => ({ ...row, authorization: repository.parseJson(row.authorization, {}) })),
     charges: charges.map(chargeStore.publicCharge), actions: actions.map(row => ({ ...row, decision: repository.parseJson(row.decision, {}) })),
-    // 已入账候选随快照一起下发；covered 表示本机是否拿着完整候选，未覆盖时暂记仍要服务端复核。
-    history, historyGroups, refundCandidates: { items: refunds.candidates,
-      covered: refunds.coverage.every(row => row.total != null && row.total === (row.candidates || []).length),
+    // refundCandidates 必须保持表结构（数组）：快照编码按表逐行迭代并逐列展开，
+    // 换成 { items, covered } 会让 prepareSnapshot 在编码阶段直接抛错，整批整理失败。
+    // 覆盖信息另用 metadata 字段下发，不参与表计数。
+    history, historyGroups, refundCandidates: refunds.candidates,
+    refundCandidatesCovered: { covered: refunds.coverage.every(row => row.total != null && row.total === (row.candidates || []).length),
       coveredCount: refunds.coverage.filter(row => row.total != null && row.total === (row.candidates || []).length).length,
       total: refunds.coverage.length },
     historyCoverage: { duplicates: events.map(event => ({ eventId: event.eventId, amountMinor: event.amountMinor, utcAt: event.utcAt,

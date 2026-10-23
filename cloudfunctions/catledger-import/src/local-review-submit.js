@@ -176,6 +176,7 @@ async function recheckFacts(connection, uid, state, code, affected) {
   return { protocolVersion: 3, snapshotId: state.snapshotId, updateId: state.updateId, baseVersion: state.baseVersion,
     problems, issues, members: facts.members.filter(member => issues.some(issue => issue.issueId === member.issueId)),
     history: facts.history, historyGroups: facts.historyGroups, historyCoverage: facts.historyCoverage, refundCandidates: facts.refundCandidates,
+    refundCandidatesCovered: facts.refundCandidatesCovered,
     accounts: facts.accounts, categories: facts.categories, loans: facts.loans, contracts: facts.contracts, charges: facts.charges }
 }
 

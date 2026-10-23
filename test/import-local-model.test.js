@@ -98,3 +98,20 @@ test('24990 行本地核对：单笔保存/摘要仅更新关联对象，分页�
     editP95Ms:Number(timings.sort((a,b)=>a-b)[18].toFixed(2)),snapshotBytes:Buffer.byteLength(JSON.stringify(value)),
     heapGrowthMiB:Number(((process.memoryUsage().heapUsed-before)/1048576).toFixed(1)),pageBytes:Buffer.byteLength(JSON.stringify(page))}))
 })
+
+test('本机退款候选兼容快照的两种形态：表数组 + 覆盖 metadata，或旧的包装对象', async () => {
+  const value = await facts({ count: 3 }), ids = [...value.events.map(row => row.eventId)]
+  // 新快照形态：表是数组，覆盖信息在独立 metadata 里（快照编码按表逐行展开，包装对象会直接抛错）。
+  const arrayForm = local.create({ ...value, refundCandidates: [], refundCandidatesCovered: { covered: true, coveredCount: 0, total: 0 } })
+  arrayForm.edit({ eventId: ids[0], editorVersion: 1, fields: { economicNature: 'refund', amountMinor: '60', occurredLocalAt: '2026-09-02 12:00:00', timezoneOffsetMinutes: -480 } })
+  const arrayCandidates = arrayForm.refundCandidates(arrayForm.events.get(ids[0]), 'event')
+  assert.equal(arrayCandidates.length, 2, '本批候选不受历史覆盖标记影响')
+  assert.equal(arrayCandidates.historyComplete, true)
+  // 旧草稿形态：两者包在一起，仍要能读，不能因为升级把用户的候选弄丢。
+  const wrappedForm = local.create({ ...value, refundCandidates: { items: [], covered: false, coveredCount: 0, total: 1 } })
+  wrappedForm.edit({ eventId: ids[0], editorVersion: 1, fields: { economicNature: 'refund', amountMinor: '60', occurredLocalAt: '2026-09-02 12:00:00', timezoneOffsetMinutes: -480 } })
+  const wrappedCandidates = wrappedForm.refundCandidates(wrappedForm.events.get(ids[0]), 'event')
+  assert.equal(wrappedCandidates.length, 2)
+  assert.equal(wrappedCandidates.historyComplete, true, '本批范围永远完整')
+  assert.equal(wrappedForm.refundCandidates(wrappedForm.events.get(ids[0]), 'transaction').historyComplete, false, '未覆盖全时历史范围仍标记待复核')
+})

@@ -53,16 +53,22 @@ test('快照逐节点编码保留旧字典格式与摘要，消费事实后仍�
   for(const key of ['protocolVersion','events','raw','sources','update'])assert.deepEqual(decoded[key],original[key])
 })
 
-test('带覆盖标记的退款候选不阻断快照计数与校验',()=>{
-  // refundCandidates 现在是 { items, covered, ... }；按数组取 length 会让整批整理在
-  // prepareSnapshot 阶段直接抛错，页面只剩“整理已完成，结果待刷新”。
-  const facts={protocolVersion:3,snapshotId:'snap-1',ruleVersion:'organizer-plan-v1',update:{updateId:'u-1',version:2},
-    sources:[],events:[],refundCandidates:{items:[{id:'a'},{id:'b'}],covered:true,coveredCount:1,total:1}}
-  assert.equal(codec.counts(facts).refundCandidates,2)
-  assert.equal(codec.counts({sources:[],events:[],refundCandidates:[{id:'a'}]}).refundCandidates,1)
-  assert.equal(codec.counts({sources:[],events:[]}).refundCandidates,0)
-  const header={protocolVersion:3,ruleVersion:'organizer-plan-v1',objectId:'snap-1',updateId:'u-1',baseVersion:2,
+// 这条回归锁住真正出过事的链路：表结构不能是包装对象。
+// 只测 counts() 不够——counts 能算，编码阶段的逐行迭代照样抛错，
+// 线上表现就是“整理已完成”但结果永远下载不下来。
+test('含退款候选与覆盖 metadata 的快照能完整编码解码，表结构保持数组',()=>{
+  const facts={protocolVersion:3,ruleVersion:'organizer-plan-v1',update:{updateId:'u-1',version:3},snapshotId:'snap-1',
+    sources:[],events:[{eventId:'e-1',amountMinor:'6304',economicNature:'expense'}],
+    refundCandidates:[{id:'t-1',amountMinor:'6304',remainingMinor:'6304',localAt:'2026-08-30 14:03:00'}]}
+  facts.update.version=3
+  facts.refundCandidatesCovered={covered:true,coveredCount:1,total:1}
+  facts.snapshotId='snap-1'
+  const packed=protocol.splitTextParts(codec.encodeTextParts(structuredClone(facts),{consume:true}))
+  const decoded=codec.decodeParts(packed.parts.map(part=>part.content))
+  assert.deepEqual(decoded.refundCandidates,facts.refundCandidates)
+  assert.deepEqual(decoded.refundCandidatesCovered,{covered:true,coveredCount:1,total:1},'覆盖信息走 metadata，不混进表计数')
+  assert.equal(codec.counts(facts).refundCandidates,1)
+  const header={protocolVersion:3,ruleVersion:'organizer-plan-v1',objectId:'snap-1',updateId:'u-1',baseVersion:3,
     counts:codec.counts(facts)}
-  assert.doesNotThrow(()=>codec.validateFacts(facts,header))
-  assert.throws(()=>codec.validateFacts({...facts,refundCandidates:{items:[{id:'a'}],covered:true}},header),{code:'SNAPSHOT_INCOMPLETE'})
+  assert.doesNotThrow(()=>codec.validateFacts(decoded,header))
 })

@@ -259,11 +259,14 @@ function create(facts) {
   function refundCandidates(event, kind) {
     // 本批原消费全部来自本机快照；已入账候选来自随快照一起下载的历史引用，
     // 两者都不需要再向服务端查询。
-    const downloaded = (supplemental || facts).refundCandidates || []
-    // 下载的历史引用带上 covered / coveredCount：没有全部下载时，不能把“本机没找到”
-    // 当成“账本里没有”，暂记资格仍由服务端整批复核。
-    const historyComplete = typeof downloaded.covered === 'boolean' ? downloaded.covered : Boolean(downloaded.complete)
-    const history = (downloaded.items || downloaded).map(row => ({ ...row, merchant: row.merchant || '', item: row.item || '', sourceType: row.sourceType || '' }))
+    const supplementalFacts = supplemental || facts
+    const downloaded = supplementalFacts.refundCandidates || []
+    // 表结构必须是数组（快照编码按表逐行展开）；覆盖信息在单独的 metadata 里。
+    // 旧草稿可能把两者包在一起，这里两种形态都接受。
+    const rows_ = Array.isArray(downloaded) ? downloaded : downloaded.items || []
+    const coverage = Array.isArray(downloaded) ? supplementalFacts.refundCandidatesCovered : downloaded
+    const historyComplete = typeof coverage?.covered === 'boolean' ? coverage.covered : Boolean(coverage?.complete)
+    const history = rows_.map(row => ({ ...row, merchant: row.merchant || '', item: row.item || '', sourceType: row.sourceType || '' }))
     const candidates = kind === 'event' ? [...events.values()].filter(row => row.eventId !== event.eventId && active(row) &&
       ['expense','fee'].includes(row.economicNature) && !sourceOf(row).paymentResolution && !sourceOf(row).loanRepayment && !sourceOf(row).installment &&
       !row.reasonCodes.some(code => ['row_status_unknown','refund_source_conflict'].includes(code)))
