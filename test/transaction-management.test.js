@@ -91,7 +91,7 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       assert.equal(first.transactions.length, 1); assert.equal(first.summary.expenseMinor, '200')
       const next = await api('transactions.list', { importUpdateId: original.updateId, pageSize: 1, cursor: first.nextCursor })
       assert.equal(next.transactions.length, 1); assert.notEqual(first.transactions[0].transactionId, next.transactions[0].transactionId)
-      await lab.owner.execute("UPDATE catledger_transactions SET occurred_local_date='2026-08-01', occurred_local_at='2026-08-01 12:00:00' WHERE uid=? AND transaction_id=?", [user.uid, next.transactions[0].transactionId])
+      await lab.owner.execute("UPDATE catledger_transactions SET occurred_local_date='2026-08-01', occurred_local_at='2026-08-01 12:00:00', occurred_at_utc=DATE_ADD('2026-08-01 12:00:00', INTERVAL timezone_offset_minutes MINUTE) WHERE uid=? AND transaction_id=?", [user.uid, next.transactions[0].transactionId])
       assert.equal((await api('transactions.list', { importUpdateId: original.updateId })).transactions.length, 2)
       const before = BigInt(await balance(bank)), own = await manual()
       await api('transactions.deleteMany', request([own, first.transactions[0]]))
