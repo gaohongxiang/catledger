@@ -149,3 +149,19 @@ test('问题面板的退款候选也换成同一套卡片：点选后由底部�
   page.selectIssueRefund({ currentTarget: { dataset: { id: 'synthetic-original' } } })
   assert.equal(page.data.issueDraft.targetEventId, 'synthetic-original')
 })
+
+test('多来源合成的退款也能改同笔判断：按钮与保存同一行', async t => {
+  const data = fixture(1, true)
+  // 同笔合并后主事件只剩一条 primary，pairCount 记录合成前有两条来源。
+  Object.assign(data.events[0], { economicNature: 'refund', flowDirection: 'inflow', amountMinor: '23',
+    evidenceCount: 1, duplicateEvidenceCount: 0, pairCount: 2 })
+  const h = runtime(data), page = h.page
+  t.after(() => page.onUnload())
+  await page.openReviewEdit(editor.tap({ id: data.events[0].eventId }))
+  assert.equal(page.data.reviewEditSheet.judgmentEditable, true, '合成来源数就绪时应给同笔判断入口')
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-edit.wxml'), 'utf8')
+  const row = markup.slice(markup.indexOf('wx:elif="{{reviewEditSheet.judgmentEditable}}"'), markup.indexOf('wx:else class="sheet-confirm sheet-confirm-wide"'))
+  assert.match(row, /openEditorRepaymentJudgment/)
+  assert.match(row, /saveReviewEdit/)
+})

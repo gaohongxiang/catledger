@@ -1,7 +1,7 @@
 const cache = require('../../../../services/read-cache')
 const api = require('../../../../services/catledger-import')
 const { previewFields } = require('./inline-evidence')
-const { errorText, sourceCaption } = require('./presentation')
+const { errorText, sourceCaption, canChangeJudgment } = require('./presentation')
 const { eventView } = require('./model')
 const { fieldsFor, principalOf } = require('./detail-fields')
 const { readDetail } = require('./detail-reader')
@@ -24,13 +24,6 @@ function reviewedEventIds(reviewedEvents) {
   return ids
 }
 
-// 同笔合并把多条来源并进一个事件后，只留一条 primary，其余变成 supporting。
-// 合并后主事件上的 pairCount 记着合成前有几条来源；“证据数>1”只看行数，
-// 会把“多笔合成一笔”当成单来源，从而不给修改同笔判断的入口。
-function mergedSourceCount(row) {
-  return Math.max(Number(row && row.pairCount) || 0, Number(row && row.evidenceCount) || 0,
-    Number(row && row.duplicateEvidenceCount) || 0)
-}
 
 async function readSource(page, token, index) {
   if (!current(page, token)) return
@@ -132,8 +125,7 @@ module.exports = {
       reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && reviewedEventIds(this.data.reviewedEvents).has(eventId),
       // “由多来源合成”不能只看证据条数：同笔合并后主事件常只剩一条来源，
       // 真实来源数记在 mergeOrigins/rowIds 里，必须一起算进来才给修改同笔判断的入口。
-      canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision || mergedSourceCount(row) > 1 ||
-        Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
+      canEdit: this.data.update.status === 'review' && canChangeJudgment(row, duplicate),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
     const fieldsRead = readFields(this, token)
     await Promise.all([fieldsRead, readSources(this, token)])

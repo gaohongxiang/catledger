@@ -2,7 +2,7 @@ const api = require('../../../../services/catledger-import')
 const cache = require('../../../../services/read-cache')
 const pending = require('../../../../services/pending-ledger-write')
 const presentation = require('./presentation')
-const { record, errorText, sourceCaption, refundCandidateView } = presentation
+const { record, errorText, sourceCaption, refundCandidateView, canChangeJudgment } = presentation
 const model = require('./review-editor-model')
 const { readDetail } = require('./detail-reader')
 const { previewFields } = require('./inline-evidence')
@@ -125,7 +125,11 @@ module.exports = {
           ['row_status_unknown','transaction_status_unknown','source_profile_unknown','identity_review_required','row_semantic_conflict','refund_source_conflict','account_mapping_conflict'].includes(row.pendingIssue.primaryReasonCode))),
         'reviewEditSheet.attention': (row.reviewAttention?.steps || []).filter(step => row.status !== 'ready' || step.key !== 'review'),
         'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
-        'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }) })
+        'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }),
+        // 多来源合成、（重复页签的）记录都能改同笔判断；不能只看是不是还款渠道。
+        'reviewEditSheet.judgmentEditable': this.data.update.status === 'review' && Boolean(
+          (this.data.duplicateReviewEvents || []).some(item => item.eventId === eventId) ||
+          canChangeJudgment(row) || row && row.repaymentChannel) })
       refresh(this)
       // 从待核对卡的“归入本计划”进来时把归属预选成那张卡的计划：用户看到的就是这笔费用要归到哪，
       // 关系仍要点保存才成立——归属会改写这笔费用的解读，不能靠一次误触生效。
@@ -452,7 +456,7 @@ module.exports = {
   },
   async openEditorRepaymentJudgment() {
     const token = this._reviewEditToken
-    if (!editable(this, token) || !token.view.repaymentChannel) return
+    if (!editable(this, token) || !this.data.reviewEditSheet.judgmentEditable) return
     if (Object.keys(token.draft.dirty).length) {
       this.setData({ 'reviewEditSheet.error': '请先保存当前修改，再修改同笔判断；关系判断不会自动保存本笔字段' })
       return

@@ -466,6 +466,17 @@ function sourceCaption(label, fileName, rowNumber, limit) {
   return [label, shortFileName(fileName, limit) + row].filter(Boolean).join(' · ')
 }
 
+// 同笔合并把多条来源并进一个事件后只留一条 primary；“证据数>1”不足以判断
+// 是否由多笔合成，pairCount 记录合成前的来源数，必须一起算。
+function mergedSourceCount(row) {
+  return Math.max(Number(row && row.pairCount) || 0, Number(row && row.evidenceCount) || 0,
+    Number(row && row.duplicateEvidenceCount) || 0)
+}
+// 能否修改同笔判断：重复页签的记录、已判为不同的、或由多来源合成的都可以。
+function canChangeJudgment(row, duplicate) {
+  return Boolean(duplicate || row && (row.pairingDecision || mergedSourceCount(row) > 1))
+}
+
 function moneyText(minor) {
   if (minor == null || !/^\d+$/u.test(String(minor))) return ''
   const text = String(minor).padStart(3, '0')
@@ -521,4 +532,4 @@ function refundCandidateView(item) {
   }
 }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf, mergedSourceCount, canChangeJudgment }

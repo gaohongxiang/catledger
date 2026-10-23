@@ -13,7 +13,9 @@
   max-height: none;
   padding-bottom: var(--layout-space-2);
 }
-.unified-editor-sheet .evidence-drilldown { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+/* 详情与待核对共用同一套底栏位置：占满整张弹层，操作条贴底。
+   旧的 72vh 高度会让按钮悬在中间、下面留一大片空白。 */
+.unified-editor-sheet .evidence-drilldown { display: flex; flex: 1; height: auto; max-height: none; min-height: 0; flex-direction: column; }
 .unified-editor-sheet .evidence-scroll { flex: 1; height: 0; min-height: 0; }
 .unified-editor-sheet .sheet-actions,
 .unified-editor-sheet .pairing-footer { flex-shrink: 0; }
