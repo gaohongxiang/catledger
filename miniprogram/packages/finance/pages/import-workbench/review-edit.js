@@ -127,6 +127,7 @@ module.exports = {
         'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }),
         // 多来源合成、（重复页签的）记录都能改同笔判断；不能只看是不是还款渠道。
+        'reviewEditSheet.refundClosed': Boolean((this.data.reviewEditSheet.editor || {}).refundConflict),
         'reviewEditSheet.judgmentEditable': this.data.update.status === 'review' && Boolean(
           (this.data.duplicateReviewEvents || []).some(item => item.eventId === eventId) ||
           canChangeJudgment(row) || row && row.repaymentChannel) })
@@ -372,7 +373,9 @@ module.exports = {
       if (!active()) return
       // 本批没有“说得通”的候选时自动落到全部消费：按钮仍然只有本批/已入账两个，
       // 但点“本批消费”永远能看到东西，不会只剩一句空话。
-      if (kind === 'event' && scope !== 'all' && Number(result.total) === 0 && !data.auto) {
+      // 同订单的原单已关闭/失败时不再自动放开全部消费：这不是“找不到”，而是状态四，
+      // 列一堆无关支出只会干扰判断。
+      if (kind === 'event' && scope !== 'all' && Number(result.total) === 0 && !result.closedOriginal && !data.auto) {
         return this.loadEditorRefunds({ currentTarget: { dataset: { kind: 'event', scope: 'all', auto: true } } })
       }
       token.refundCursor = result.nextCursor
@@ -382,6 +385,9 @@ module.exports = {
       const page = more ? (this.data.reviewEditSheet.refundChoices || []).concat(views) : views
       this.setData({ 'reviewEditSheet.refundChoices': page,
         'reviewEditSheet.refundClosedOriginal': kind === 'event' ? (result.closedOriginal || null) : this.data.reviewEditSheet.refundClosedOriginal,
+        // 只有平台编号对得上才算状态四（可“按已退回处理”）；商家单号相同只是提示，
+        // 不能据此把关闭单当成同一订单的退款依据（见退款来源冲突规则）。
+        'reviewEditSheet.refundClosed': Boolean((this.data.reviewEditSheet.editor || {}).refundConflict),
         'reviewEditSheet.refundHistoryPending': kind === 'transaction' ? result.serverReviewPending === true : this.data.reviewEditSheet.refundHistoryPending,
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
         'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&

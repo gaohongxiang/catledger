@@ -135,3 +135,24 @@ test('退款冲突这笔：默认按已退回处理，写进本批决定且不�
   assert.equal(after.status, 'excluded')
   assert.equal(h.network.length, 0, '处理全程不联网')
 })
+
+test('支付宝那种订单号带后缀、商家单号相同的关闭单，也算状态四', async t => {
+  const { facts } = require('./helpers/local-review')
+  const { localWorkbench } = require('./helpers/local-workbench')
+  const HEAD = ['微信支付账单明细,,,,,,,,,,,', '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注']
+  const value = await facts({ content: Buffer.from(HEAD.concat([
+    '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-A1,SYNTH-ORDER-A,SYNTH-M-A,',
+    // 退款行订单号带后缀，只有商家单号与原件一致——真实支付宝账单就是这样。
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-A2,SYNTH-ORDER-A-1234,SYNTH-M-A,'
+  ]).join('\n')) })
+  const h = await localWorkbench(t, value), page = h.page
+  const refund = [...value.events].find(event => event.economicNature === 'refund')
+  await page.openReviewEdit({ currentTarget: { dataset: { id: refund.eventId } } })
+  await page._reviewEditToken.refundRead
+  const sheet = page.data.reviewEditSheet
+  // 商家单号相同不等于平台编号一致：只提示，不升级成“按已退回处理”。
+  assert.equal(sheet.refundClosed, false, '商家单号不足以认定状态四')
+  assert.ok(sheet.refundClosedOriginal, '但要提示同订单的消费已关闭')
+  assert.equal(sheet.refundChoices.length, 0, '这种状态不再自动列出全部消费')
+  assert.equal(h.network.length, 0, '识别与展示全程不联网')
+})
