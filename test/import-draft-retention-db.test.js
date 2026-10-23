@@ -25,7 +25,7 @@ test('48h 未入账草稿硬清理：复用 abandon 事务，保留来源行、�
     [identity.uid, 'a'.repeat(64), 'financeUpdates.post', 'b'.repeat(64), JSON.stringify({ protocolVersion: 2, status: 'posted' })])
 
     const result = await services.importer.cleanupExpiredDraftsGlobal(10)
-    assert.deepEqual(result, { checked: 1, cleaned: 1, skipped: 0, failed: 0 })
+    assert.deepEqual(result, { checked: 1, cleaned: 1, skipped: 0, failed: 0, backoffFailed: 0 })
 
     const [[expiredRow]] = await lab.owner.execute('SELECT status, version, error_code AS errorCode FROM catledger_finance_updates WHERE uid=? AND update_id=?', [identity.uid, expired.updateId])
     assert.equal(expiredRow.status, 'abandoned')
@@ -61,7 +61,7 @@ test('48h 未入账草稿硬清理：复用 abandon 事务，保留来源行、�
     assert.equal(Number(revisionAfter.revision), Number(revisionBefore.revision) + 1)
 
     const again = await services.importer.cleanupExpiredDraftsGlobal(10)
-    assert.deepEqual(again, { checked: 0, cleaned: 0, skipped: 0, failed: 0 })
+    assert.deepEqual(again, { checked: 0, cleaned: 0, skipped: 0, failed: 0, backoffFailed: 0 })
   } finally { await lab.close() }
 })
 

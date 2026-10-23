@@ -3,14 +3,14 @@ const repaymentOwnership = require('./repayment-ownership')
 const { randomUUID } = require('node:crypto')
 const { prepareEvidenceSplit } = require('./evidence-plan-upgrade')
 const { hasGroupConflict, identityGroups } = require('./evidence-matching')
-const { buildReviewIssues } = require('./organizer-planner')
+const { accountReferences, buildReviewIssues } = require('./organizer-planner')
 const { sameEventCandidateGroups, refundRelation } = require('./relation-resolver')
 const { findRefundSourceConflicts, withRefundSourceEvidence, applyRefundSourceConflict } = require('./refund-source-conflict')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
 const { economicNatureForRow } = require('./organizer-model')
 const { unique } = require('./organizer-values')
-const { ledgerAccountReferenceForRow, projectSourceFunds } = require('./source-funds')
+const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates } = require('./source-funds')
 const { paymentEvidenceFields } = require('./payment-resolution')
 const { referencesForRows } = require('./payment-account-groups')
 const { recalculateUpdateCounts } = require('./review/reconciliation')
@@ -20,12 +20,13 @@ const { FIELD_MASK } = require('./review/policy')
 const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
 const { PLAN_VERSION } = require('./domain-versions')
 const { CATEGORY_RULE_VERSION } = require('./category-rules')
+const { prepareAccountIssueUpgrade, persistAccountIssueUpgrade } = require('./account-plan-upgrade')
 
 const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_required',
   'source_account_endpoint_unknown', 'transaction_status_unknown'])
 
 // 在原事件的有效证据组内重算来源语义；绝不重新分组或复制人工决定。
-function refreshEventSemantic(current, evidenceRows) {
+function refreshEventSemantic(current, evidenceRows, planReferences = []) {
   if (!['ready', 'needs_action'].includes(current.status) || !evidenceRows.length) return current
   const repaymentRelation = require('./repayment-channel').evidenceValid(current, evidenceRows)
   evidenceRows = require('./bank-channel-matching').semanticRowsAfterConfirmation(current, evidenceRows)
@@ -37,7 +38,7 @@ function refreshEventSemantic(current, evidenceRows) {
   const financial = semantics.every(semantic => semantic.moneyEffect === 'financial')
   const sources = current.fieldSources || {}
   const signature = semantic => JSON.stringify([semantic.sourceAction, semantic.moneyEffect, semantic.settlement,
-    semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.fromAccountRef, semantic.toAccountRef,
+    semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.ledgerAccountRef, semantic.fromAccountRef, semantic.toAccountRef,
     semantic.relationHints && semantic.relationHints.installment || null])
   const installment = semantics[0].relationHints && semantics[0].relationHints.installment || null
   const installmentChanged = JSON.stringify(installment) !== JSON.stringify(sources.installment || null)
@@ -55,8 +56,8 @@ function refreshEventSemantic(current, evidenceRows) {
       next.flowDirection = ['repayment', 'borrow', 'internal_transfer'].includes(next.economicNature) ? 'neutral'
         : ['income', 'refund'].includes(next.economicNature) ? 'inflow' : 'outflow'
     }
-    if (!repaymentRelation && !(current.manualFieldMask & (FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations))) {
-      const projections = rows.map(projectSourceFunds)
+    if (!repaymentRelation && !(current.manualFieldMask & (FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations | FIELD_MASK.counterpartyLedgerAccountId))) {
+      const projections = rows.map(row => withAggregateCandidates(projectSourceFunds(row), planReferences))
       const projection = projections[0]
       if (projections.some(value => JSON.stringify(value) !== JSON.stringify(projection))) {
         next.reasonCodes.push('core_fields_conflict')
@@ -119,6 +120,7 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     identityGroups(eventRows(event)).length > 1 && hasGroupConflict(eventRows(event)))
   const paymentMappings = needsSplit ? await selectPaymentMappings(connection, uid, updateId) : []
   const accounts = needsSplit ? await selectActiveAccounts(connection, uid) : []
+  const references = accountReferences(rows)
   const splits = []
   const changes = events.map(event => {
     const rows = eventRows(event)
@@ -127,10 +129,10 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
       splits.push(split)
       // 原事件人工字段完全保留，来源语义在该主证据组中继续原位升级。
       const primaryRows = rows.filter(row => split.next.fieldSources.rowIds.includes(row.rowId))
-      split.next = refreshAutomaticCategory(refreshEventSemantic(split.next, primaryRows), primaryRows)
+      split.next = refreshAutomaticCategory(refreshEventSemantic(split.next, primaryRows, references), primaryRows)
       return { current: event, next: split.next }
     }
-    return { current: event, next: refreshAutomaticCategory(refreshEventSemantic(event, rows), rows) }
+    return { current: event, next: refreshAutomaticCategory(refreshEventSemantic(event, rows, references), rows) }
   })
     .map(pair => {
       if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
@@ -158,8 +160,9 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     }
   }
   const version = Number(current.version)
-  const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
-    actionType: 'semantic_upgrade', requestDigest, reasons: ['source_semantics_upgraded'] })
+  // 先为事件 JSON 预留动作身份；账户事项需看到实际保存后的事件和拆分事项。
+  // 所有写入仍在原事务内，首次外键引用前把完整决定一次追加到审计表。
+  const actionId = randomUUID()
   if (conflictRelations.length) await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION,
     events: [], evidence: [], relations: conflictRelations, issues: [], members: [] })
   for (const split of splits) {
@@ -208,9 +211,17 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
       const review = buildReviewIssues(updateId, conflictEvents, [], sameEventCandidateGroups(conflictEvents), randomUUID)
       await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION, events: [], evidence: [], relations: [], ...review })
     }
-    const followUps = await selectDomainEvents(connection, uid, updateId, [...followUpIds])
-    for (const event of followUps) await createFollowUpIssue(connection, uid, updateId, event)
   }
+  const accountPlan = await prepareAccountIssueUpgrade(connection, uid, updateId, events)
+  await insertAction(connection, uid, { actionId, updateId, expectedVersion: version, appliedVersion: version + 1,
+    actionType: 'semantic_upgrade', requestDigest, reasons: ['source_semantics_upgraded'],
+    decision: accountPlan.accountIssueMappings.length ? { accountIssueMappings: accountPlan.accountIssueMappings } : null })
+  await persistAccountIssueUpgrade(connection, uid, updateId, accountPlan, actionId)
+  const projected = await require('./review/reconciliation').refreshProjectedEvents(connection, uid, updateId, actionId)
+  for (const event of projected) followUpIds.add(event.eventId)
+  const followUps = await selectDomainEvents(connection, uid, updateId, [...followUpIds])
+  await require('./review/issue-store').updateMappingMemberVersions(connection, uid, updateId, followUps)
+  for (const event of followUps) await createFollowUpIssue(connection, uid, updateId, event)
   await require('./review/bank-channel-candidates').synchronize(connection, uid, updateId, actionId, rows)
   await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version,
     -splits.reduce((count, split) => count + split.additions.length, 0))

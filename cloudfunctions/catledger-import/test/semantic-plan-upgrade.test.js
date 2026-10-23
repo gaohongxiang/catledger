@@ -53,3 +53,45 @@ test('未变化的未知来源保持原问题，不升级成新的字段冲突',
   unknown.semantic = resolveRowSemantic(unknown)
   assert.equal(refreshEventSemantic(event, [unknown]), event)
 })
+
+
+test('旧支付宝语义按policy升级统一账户身份，保留来源引用键和人工字段', () => {
+  const { digestParts } = require('../src/digest')
+  const { getRowSemantic } = require('../src/row-semantic-resolver')
+  const { buildPaymentMethodKey } = require('../src/identity')
+  const profile = require('../src/profiles/alipay-app')
+  assert.equal(profile.normalizationVersion, 'alipay-normalization-v10', '已有证据可升级，不要求重传原文件')
+  for (const method of ['花呗', '江苏银行信用购']) {
+    const source = { ...row, rawTransactionType: '日用百货', item: '合成商品', paymentMethod: method,
+      paymentMethodKey: digestParts('payment-method-v1', 'alipay', method) }
+    source.semantic = resolveRowSemantic(source)
+    source.semantic.policyVersion = 'alipay-semantic-policy-v4'
+    source.semantic.ledgerAccountRef = { ...source.semantic.ledgerAccountRef,
+      accountIdentityKey: 'account-identity-v2:alipay:' + method, paymentMethodKey: source.paymentMethodKey }
+    const current = { ...event, economicNature: 'expense', reasonCodes: [], fieldSources: { ...event.fieldSources,
+      semanticBlockers: [], ledgerAccountReference: source.semantic.ledgerAccountRef } }
+    assert.notEqual(getRowSemantic(source), source.semantic)
+    const next = refreshEventSemantic(current, [source])
+    assert.equal(next.fieldSources.ledgerAccountReference.accountIdentityKey, 'account-identity-v2:alipay:alipay_huabei_credit')
+    assert.equal(next.fieldSources.ledgerAccountReference.paymentMethodKey, source.paymentMethodKey)
+    assert.notEqual(source.paymentMethodKey, buildPaymentMethodKey('alipay', method))
+    for (const key of ['eventId','amountMinor','localAt','ledgerAccountId','categoryId','manualFieldMask']) assert.deepEqual(next[key], current[key])
+  }
+})
+
+test('语义升级保留明确单目标和v1/v2分配，不以新聚合推断覆盖人工组成', () => {
+  const source = { ...row, rawTransactionType: '信用借还', counterparty: '花呗|信用购', item: '自动还款-花呗|信用购账单',
+    direction: 'neutral', rawStatus: '还款成功', paymentMethod: '测试银行储蓄卡(1234)' }
+  source.semantic = { ...resolveRowSemantic(source), policyVersion: 'alipay-semantic-policy-v4' }
+  const oldProjection = { from: { sourceType: 'alipay', paymentMethodKey: 'legacy-bank' },
+    to: { sourceType: 'alipay', paymentMethodKey: 'legacy-credit', referenceKind: 'atomic' }, ruleVersion: 'source-funds-v8' }
+  for (const mask of [FIELD_MASK.counterpartyLedgerAccountId, FIELD_MASK.repaymentAllocations, FIELD_MASK.paymentResolution]) {
+    const current = { ...event, economicNature: 'repayment', flowDirection: 'neutral', counterpartyLedgerAccountId: 'chosen-credit',
+      manualFieldMask: event.manualFieldMask | mask, fieldSources: { ...event.fieldSources, fundsProjection: oldProjection,
+        repaymentAllocationVersion: 2, repaymentAllocations: [{ accountId: 'chosen-credit', amountMinor: '600' }] } }
+    const next = refreshEventSemantic(current, [source])
+    assert.equal(next.fieldSources.fundsProjection, oldProjection)
+    assert.equal(next.counterpartyLedgerAccountId, 'chosen-credit')
+    assert.deepEqual(next.fieldSources.repaymentAllocations, current.fieldSources.repaymentAllocations)
+  }
+})

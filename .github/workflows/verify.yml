@@ -27,7 +27,10 @@ jobs:
         with:
           node-version: '18'
           cache: npm
-          cache-dependency-path: cloudfunctions/*/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            cloudfunctions/*/package-lock.json
+      - run: npm ci --ignore-scripts
       - run: npm ci --prefix cloudfunctions/catledger-api
       - run: npm ci --prefix cloudfunctions/catledger-import
       - run: npm run check

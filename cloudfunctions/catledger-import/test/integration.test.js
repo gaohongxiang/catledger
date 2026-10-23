@@ -40,12 +40,21 @@ function databaseConfig() {
   }
 }
 
+// The scenario wrapper re-reads current views after replay. Freeze MySQL's
+// statement clock only in replay-equality scenarios, without removing response fields.
+// Chronological reparse cases keep the real clock so separate batches remain ordered.
+function createFixedClockPool() {
+  const pool = mysql.createPool(databaseConfig())
+  pool.on('connection', connection => connection.query('SET timestamp = 1790208000'))
+  return pool
+}
+
 function fixture() {
   return fs.readFileSync(path.join(__dirname, 'fixtures', 'wechat-pay.csv'))
 }
 
 test('桥接强身份贯通人工合并、旧计划保留决定升级、回滚与最终 posting 屏障', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const pool = createFixedClockPool(), objects = new Map()
   const storage = { async downloadExact(fileID, key) { return objects.get(key) }, async remove() { return true } }
   const service = createImportService({ getPool: () => pool, storage })
   try {
@@ -142,7 +151,7 @@ test('桥接强身份贯通人工合并、旧计划保留决定升级、回滚�
 })
 
 test('语义升级保留旧批次决定和共享问题成员，支持隔离、事务回滚、并发重试及最终入账', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const pool = createFixedClockPool(), objects = new Map()
   const service = createImportService({ getPool: () => pool, storage: {
     async downloadExact(fileID, objectKey) { return objects.get(objectKey) }, async remove() { return true }
   } })
@@ -1040,8 +1049,8 @@ test('余额宝转出到账户余额确认两端归属后直接完成整理', { 
   }
 })
 
-test('支付宝合并还款不创建第三账户并原子入账为多笔守恒转账', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig())
+test('支付宝旧账户拆分保留v1分配，不创建第三账户并原子入账为多笔守恒转账', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = createFixedClockPool()
   const objects = new Map()
   const storage = {
     async downloadExact(fileID, objectKey) {
@@ -1062,6 +1071,7 @@ test('支付宝合并还款不创建第三账户并原子入账为多笔守恒�
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
+    await require('./helpers/legacy-alipay-accounts').legacyAlipayAccounts(pool, user.uid, parsed.batch.batchId)
     let view = await service.financeUpdatePrepare(context(user, {
       requestId: randomUUID(), batchIds: [parsed.batch.batchId]
     }))
@@ -1653,7 +1663,7 @@ test('MySQL 多文件解析失败彼此隔离，成功来源仍可建立更新',
 })
 
 test('MySQL 人工组合支付覆盖隔离、守恒、原子回滚、重试和整批撤销', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig())
+  const pool = createFixedClockPool()
   const objects = new Map()
   const service = createImportService({ getPool: () => pool, storage: { async downloadExact(fileID, key) { return objects.get(key) }, async remove() { return true } } })
   try {
@@ -1742,7 +1752,7 @@ test('MySQL 人工组合支付覆盖隔离、守恒、原子回滚、重试和�
 })
 
 test('MySQL 账户归组允许同一组合事件属于多个账户，识别先采后付目标并保留独立事件', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const pool = createFixedClockPool(), objects = new Map()
   const service = createImportService({ getPool: () => pool, storage: { async downloadExact(id, key) { return objects.get(key) }, async remove() { return true } } })
   try {
     const user = await createUserLedger(pool, 'account-groups'), other = await createUserLedger(pool, 'groups-other')
@@ -1845,6 +1855,18 @@ test('还款目标未在本批消费仍可补选或建草稿；资格、失败�
           } }
         })) }))
       const issue = view.issues.find(x => x.status === 'open' && x.subject?.fundsProjection?.to.referenceKind === 'aggregate')
+      if (candidateCount === 1) {
+        assert.equal(issue, undefined, '唯一且完整的账户映射自动形成单目标还款')
+        const repayment = view.events.find(event => event.economicNature === 'repayment')
+        assert.ok(repayment.counterpartyLedgerAccountId)
+        view = await resolveOpenCategoryIssues(service, user, view)
+        const posted = await service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version }))
+        assert.equal(posted.posting.createdTransactionCount, 2)
+        const [transfers] = await pool.execute("SELECT destination_account_id AS target,amount_minor AS amount FROM catledger_transactions WHERE uid=? AND type='transfer'", [user.uid])
+        assert.equal(transfers.length, 1); assert.equal(String(transfers[0].amount), '10000')
+        assert.equal(transfers[0].target, repayment.counterpartyLedgerAccountId)
+        continue
+      }
       assert.ok(issue)
       assert.equal(issue.subject.fundsProjection.to.candidates.length, candidateCount)
       const draftCount = view.accountDrafts.length

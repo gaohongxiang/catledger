@@ -100,24 +100,35 @@ async function materializeAccountMappingChoice(connection, uid, updateId, fields
   return validateUuid(accountId)
 }
 
+function indexEventMembers(eventMembers) {
+  const result = new Map()
+  for (const member of eventMembers) {
+    if (!result.has(member.objectId)) result.set(member.objectId, [])
+    result.get(member.objectId).push(member)
+  }
+  return result
+}
+
 async function applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex, revision = false) {
-  const membersById = new Map(eventMembers.map(member => [member.objectId, member]))
-  const references = new Map(events.map(event => [event.eventId, mappingReferenceForMember(event, membersById.get(event.eventId).memberRole)]))
+  const membersById = indexEventMembers(eventMembers)
+  const references = new Map(events.map(event => [event.eventId, membersById.get(event.eventId).map(member =>
+    ({ role: member.memberRole, reference: mappingReferenceForMember(event, member.memberRole) }))]))
   for (const event of events) assertChannelTarget(event)
   const accountId = decision.decision === 'apply_fields' ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId) : null
   for (const event of events) {
     const resolution = channelResolution(event)
     if (resolution && decision.decision === 'apply_fields' &&
-        ['mapping_to', 'payment_target'].includes(membersById.get(event.eventId).memberRole) && accountId !== resolution.targetAccountId) {
+        membersById.get(event.eventId).some(member => ['mapping_to', 'payment_target'].includes(member.memberRole)) && accountId !== resolution.targetAccountId) {
       throw importError('VALIDATION_ERROR')
     }
   }
   if (revision) {
     const exact = [], whole = []
     for (const event of events) {
-      const ref = references.get(event.eventId)
-      if (ref && ref.paymentMethodKey) exact.push([event.eventId, ref.sourceType, ref.paymentMethodKey])
-      else if (!ref && !channelResolution(event)) whole.push([event.eventId])
+      for (const { reference: ref } of references.get(event.eventId)) {
+        if (ref && ref.paymentMethodKey) exact.push([event.eventId, ref.sourceType, ref.paymentMethodKey])
+        else if (!ref && !channelResolution(event)) whole.push([event.eventId])
+      }
     }
     for (const part of chunks(exact)) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
       WHERE uid = ? AND update_id = ? AND (event_id, source_type, payment_method_key) IN (${part.map(() => '(?,?,?)').join(',')})`, [uid, updateId, ...part.flat()])
@@ -126,8 +137,7 @@ async function applyAccountMappingEvents(connection, uid, updateId, events, even
   }
   const mappingAction = accountId ? 'account' : decision.paymentRuleAction === 'ignore' ? 'ignore' : null
   const mappingRows = [], ordinary = [], paymentReferenceKeys = []
-  if (mappingAction) for (const event of events) {
-    const ref = references.get(event.eventId)
+  if (mappingAction) for (const event of events) for (const { reference: ref } of references.get(event.eventId)) {
     // 无稳定付款引用时只保存当前账户，不能把银行到账来源映到付款资产。
     if (channelResolution(event) && (!ref || !ref.paymentMethodKey)) continue
     if (!ref) { ordinary.push(event.eventId); continue }
@@ -148,7 +158,8 @@ async function applyAccountMappingEvents(connection, uid, updateId, events, even
       if (decision.decision === 'apply_fields') {
         const base = revision ? { ...event, status: EVENT_STATUS.NEEDS_ACTION,
           reasonCodes: unique(event.reasonCodes.filter(reason => !['manual_exclusion', 'account_mapping_excluded', 'source_account_ignored_default'].includes(reason))) } : event
-        next = references.get(event.eventId) ? applyMappedAccount(base, membersById.get(event.eventId).memberRole, accountId, mappingIndex) : applyFields(base, { ledgerAccountId: accountId })
+        next = references.get(event.eventId).reduce((value, { role, reference }) => reference
+          ? applyMappedAccount(value, role, accountId, mappingIndex) : applyFields(value, { ledgerAccountId: accountId }), base)
         if (!revision) next = { ...next, reasonCodes: resolvedReasons('account_mapping', next.reasonCodes) }
       } else next = { ...event, status: EVENT_STATUS.EXCLUDED,
         reasonCodes: unique([...(revision ? event.reasonCodes.filter(reason => reason !== 'source_account_ignored_default') : resolvedReasons('account_mapping', event.reasonCodes)), 'manual_exclusion', 'account_mapping_excluded']) }
@@ -169,12 +180,12 @@ async function resolveOpenAccountMapping(
   }
   const members = await selectMembers(connection, uid, issue.issueId)
   const eventMembers = accountMappingEventMembers(members)
-  const eventIds = eventMembers.map((member) => member.objectId)
-  const membersById = new Map(eventMembers.map(member => [member.objectId, member]))
+  const eventIds = unique(eventMembers.map((member) => member.objectId))
+  const membersById = indexEventMembers(eventMembers)
   const storedEvents = await selectDomainEvents(connection, uid, updateId, eventIds, { forUpdate: true })
   if (storedEvents.length !== eventIds.length || storedEvents.some((event) => {
-        const member = membersById.get(event.eventId)
-        return !member || member.objectVersion !== event.version || ['posted', 'corrected'].includes(event.status)
+        const members = membersById.get(event.eventId)
+        return !members?.length || members.some(member => member.objectVersion !== event.version) || ['posted', 'corrected'].includes(event.status)
       })) throw importError('CONFLICT')
   const events = mappingIndex
   ? effectiveProjectedEventsFromIndex(storedEvents, mappingIndex)
@@ -202,7 +213,7 @@ async function reviseResolvedAccountMapping(
   }
   const members = await selectMembers(connection, uid, issue.issueId)
   const eventMembers = accountMappingEventMembers(members)
-  const eventIds = eventMembers.map((member) => member.objectId)
+  const eventIds = unique(eventMembers.map((member) => member.objectId))
   if (!eventIds.length) throw importError('CONFLICT')
   const events = await selectDomainEvents(connection, uid, updateId, eventIds, { forUpdate: true })
   if (events.length !== eventIds.length || events.some((event) => ['posted', 'corrected'].includes(event.status))) {

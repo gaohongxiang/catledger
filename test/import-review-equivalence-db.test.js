@@ -25,6 +25,12 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // IMPORT-20261017：以a3dc9774固定UUID/时钟双跑，旧源码精确复现原基线。
   // 45张原表逐字段仅finance_updates.review_mode='server'及回执中的同一标记变化；新增2张表为空。
   // 14阶段响应仅增加update.reviewMode（各22字节）；每阶段多0～2轮有界成员/方向读取，账务字段完全相同。
+  // REVIEW-20261023：compare-import-review 分别以895f5ac7→b4c390bb→当前源码独立进程/隔离库采集。
+  // 895f5ac7精确复现原基线；至b4仅10条回执/14阶段增加ageMs，summary来源增加内容状态/删除时间；
+  // prepare及prepare-history各多2次原有清理读取，其他SQL数量保持。年龄与来源投影解释13阶段SQL指纹。
+  // b4至当前47表仅计划v35、3项source-funds-v9证据及0035两表重试默认列；账务/账户/来源关系完全相同。
+  // 14阶段SQL数量/响应字节保持；8阶段既有review_mode查询增读plan_version，响应仅计划/派生版本变化。
+  // 据逐字段证据仅更新对应响应/SQL与5张表指纹，不删字段、重映射ID或归一化业务时间。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

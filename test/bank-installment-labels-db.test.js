@@ -5,6 +5,7 @@ const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { localServices, call } = require('./helpers/local-services')
 const { FIELD_MASK } = require('../cloudfunctions/catledger-import/src/review/policy')
+const { PLAN_VERSION } = require('../cloudfunctions/catledger-import/src/domain-versions')
 
 const CASH_PRINCIPAL = '电销现分按月收6期第3期共6期'
 const BILL_PRINCIPAL = '电销总账分月6期第3期共6期'
@@ -265,7 +266,7 @@ test('银行分期摘要：真实解析、最小权限 MySQL、独立来源与 v
         assert.ok(manual.every(row => Number(row.mask) & FIELD_MASK.ledgerAccountId))
         assert.ok(!(await issues(c, update.updateId)).some(row => row.issueType === 'transfer_accounts'))
         const state = await summary(c, update.updateId)
-        assert.equal(state.planVersion, 'organizer-plan-v34'); assert.equal(state.requiresReorganization, false)
+        assert.equal(state.planVersion, PLAN_VERSION); assert.equal(state.requiresReorganization, false)
         return after
       }
 

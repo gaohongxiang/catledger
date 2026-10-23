@@ -68,12 +68,29 @@ function splitSqlStatements(contents) {
   return statements
 }
 
-async function listMigrationFiles(migrationsDirectory) {
+async function loadMigrationManifest(migrationsDirectory) {
   const entries = await fs.readdir(migrationsDirectory, { withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isFile() && MIGRATION_FILE_PATTERN.test(entry.name))
-    .map((entry) => entry.name)
-    .sort()
+  const files = []
+  for (const entry of entries) {
+    if (!/\.sql$/i.test(entry.name)) continue
+    if (!entry.isFile() || !MIGRATION_FILE_PATTERN.test(entry.name)) {
+      throw new Error(`Invalid migration file: ${entry.name}`)
+    }
+    files.push(entry.name)
+  }
+  files.sort()
+  if (!files.length) throw new Error('Migration manifest is empty')
+  const manifest = []
+  for (const [index, file] of files.entries()) {
+    const number = Number(file.match(MIGRATION_FILE_PATTERN)[1])
+    if (number !== index + 1) {
+      throw new Error(`Migration numbers must be unique and continuous from 0001: ${file}`)
+    }
+    const contents = await fs.readFile(path.join(migrationsDirectory, file), 'utf8')
+    // Keep the preflighted SQL in memory: execution must not reread a changed file.
+    manifest.push({ file, checksum: checksum(contents), statements: splitSqlStatements(contents) })
+  }
+  return manifest
 }
 
 async function ensureMigrationTable(connection) {
@@ -87,18 +104,35 @@ async function ensureMigrationTable(connection) {
   `)
 }
 
-async function getAppliedMigration(connection, version) {
-  const [rows] = await connection.execute(
-    'SELECT checksum FROM catledger_schema_migrations WHERE version = ?',
-    [version]
-  )
-  return rows[0] || null
+async function readMigrationHistory(connection) {
+  try {
+    const [rows] = await connection.execute(
+      'SELECT version, checksum FROM catledger_schema_migrations ORDER BY version'
+    )
+    return { exists: true, rows }
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE') throw error
+    return { exists: false, rows: [] }
+  }
+}
+
+function validateMigrationHistory(manifest, rows) {
+  for (const [index, row] of rows.entries()) {
+    const migration = manifest[index]
+    if (!migration || migration.file !== row.version) {
+      throw new Error(`Migration history is not a prefix of the local manifest: ${row.version}`)
+    }
+    if (migration.checksum !== row.checksum) {
+      throw new Error(`Migration checksum mismatch: ${row.version}`)
+    }
+  }
 }
 
 async function runMigrations({ pool, migrationsDirectory }) {
   const connection = await pool.getConnection()
   const applied = []
   let lockAcquired = false
+  let migrationError = null
 
   try {
     const [[lockResult]] = await connection.execute(
@@ -110,38 +144,38 @@ async function runMigrations({ pool, migrationsDirectory }) {
       throw new Error('Could not acquire the Catledger migration lock')
     }
 
-    await ensureMigrationTable(connection)
-    const files = await listMigrationFiles(migrationsDirectory)
+    const manifest = await loadMigrationManifest(migrationsDirectory)
+    const history = await readMigrationHistory(connection)
+    validateMigrationHistory(manifest, history.rows)
+    // No DDL, including the registry table, precedes complete manifest/history validation.
+    if (!history.exists) await ensureMigrationTable(connection)
 
-    for (const file of files) {
-      const contents = await fs.readFile(path.join(migrationsDirectory, file), 'utf8')
-      const expectedChecksum = checksum(contents)
-      const existing = await getAppliedMigration(connection, file)
-
-      if (existing) {
-        if (existing.checksum !== expectedChecksum) {
-          throw new Error(`Migration checksum mismatch: ${file}`)
-        }
-        continue
-      }
-
-      for (const statement of splitSqlStatements(contents)) {
+    for (const migration of manifest.slice(history.rows.length)) {
+      for (const statement of migration.statements) {
         await connection.query(statement)
       }
 
       await connection.execute(
         'INSERT INTO catledger_schema_migrations (version, checksum) VALUES (?, ?)',
-        [file, expectedChecksum]
+        [migration.file, migration.checksum]
       )
-      applied.push(file)
+      applied.push(migration.file)
     }
 
     return applied
+  } catch (error) {
+    migrationError = error
+    throw error
   } finally {
-    if (lockAcquired) {
-      await connection.execute('SELECT RELEASE_LOCK(?) AS released', [MIGRATION_LOCK_NAME])
-    }
-    connection.release()
+    let reusable = true
+    try {
+      if (lockAcquired) await connection.execute('SELECT RELEASE_LOCK(?) AS released', [MIGRATION_LOCK_NAME])
+    } catch (error) {
+      // Never return a connection that may still hold the named lock to the pool.
+      reusable = false
+      connection.destroy()
+      if (!migrationError) throw error
+    } finally { if (reusable) connection.release() }
   }
 }
 

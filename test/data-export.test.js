@@ -3,10 +3,16 @@ const {isolatedMysql}=require('../scripts/isolated-mysql'),grants=require('../sc
 const {localServices,call,prepareSyntheticUpdate}=require('./helpers/local-services')
 const {manifest,createDataExportService}=require('../cloudfunctions/catledger-api/src/data-export-service')
 const {hashWechatSubject}=require('../cloudfunctions/catledger-api/src/handler')
+// Retry metadata is operational, has no ledger revision, and is rebuilt after restore.
+const maintenanceColumns = {
+ catledger_import_files: new Set(['cleanup_retry_after','cleanup_failure_count']),
+ catledger_finance_updates: new Set(['cleanup_retry_after','cleanup_failure_count'])
+}
 
 test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和两库恢复核对',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async t=>{
- const source=await isolatedMysql(),target=await isolatedMysql()
+ let source,target
  try{
+  source=await isolatedMysql();target=await isolatedMysql()
   const apiPool=await source.role('api',grants.api),importPool=await source.role('import',grants.importer)
   const services=localServices({apiPool,importPool,subject:'synthetic-export'}),api=(a,d)=>call(services.api,a,d),imp=(a,d)=>call(services.import,a,d)
   const user=await api('bootstrap'),uid=user.uid,categoryId=user.categories.find(c=>c.kind==='expense').id
@@ -17,7 +23,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const payment=await api('loans.record',{requestId:randomUUID(),mode:'new',kind:'repayment',assetAccountId:asset,totalMinor:'1100',occurredLocalAt:'2026-09-02T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,
     allocations:[{loanId,version:2,principalMinor:'1000',interestMinor:'100',feeMinor:'0',interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:categoryId}]})
   await api('loans.allocatePeriods',{requestId:randomUUID(),loanId,loanVersion:3,paymentId:payment.paymentId,version:1,confirmed:true,items:[{periodId:period.periodId,version:1,principalMinor:'500',interestMinor:'50',feeMinor:'0'}]})
-  const manual=await api('transactions.create',{requestId:randomUUID(),type:'expense',amountMinor:'800',sourceAccountId:asset,categoryId,note:'=SUM(1,2)\n合成 🐱',occurredLocalAt:'2026-09-03T12:00:00',timezoneOffsetMinutes:-480})
+  const manualRequest={requestId:randomUUID(),type:'expense',amountMinor:'800',sourceAccountId:asset,categoryId,note:'=SUM(1,2)\n合成 🐱',occurredLocalAt:'2026-09-03T12:00:00',timezoneOffsetMinutes:-480}
+  const manual=await api('transactions.create',manualRequest)
   await api('transactions.create',{requestId:randomUUID(),type:'refund',amountMinor:'300',destinationAccountId:asset,originalTransactionId:manual.transactionId,occurredLocalAt:'2026-09-04T12:00:00',timezoneOffsetMinutes:-480})
   const update=await prepareSyntheticUpdate(services,4,'SYNTHETIC-EXPORT'),updateId=update.updateId
   const issue=(await imp('reviewIssues.list',{updateId,group:'accounts'})).items[0]
@@ -26,7 +33,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const reviews=(await imp('reviewIssues.list',{updateId,status:'open'})).items.filter(row=>row.primaryReasonCode==='historical_duplicate_candidate')
   for(const review of reviews)mapped=await imp('reviewIssues.resolve',{requestId:randomUUID(),updateId,updateVersion:mapped.appliedVersion,
     issueId:review.issueId,issueVersion:review.version,decision:'confirm_distinct'})
-  await imp('financeUpdates.post',{requestId:randomUUID(),updateId,version:mapped.appliedVersion})
+  const postRequest={requestId:randomUUID(),updateId,version:mapped.appliedVersion}
+  const postReceipt=await imp('financeUpdates.post',postRequest)
   const [[sourceTransaction]]=await source.owner.execute('SELECT transaction_id AS id FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? LIMIT 1',[uid,updateId])
   const selection=(await api('loans.source',{transactionIds:[sourceTransaction.id]})).source
   const loanVersion=(await api('loans.get',{loanId})).loan.version
@@ -84,6 +92,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await imp('imports.renameFile',{requestId:randomUUID(),importId:originalFile.importId,version:originalFile.version,displayName:'合成导出改名🐱.csv'})
   const localSnapshot = await imp('financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: editorBatch.updateId,
     version: (await imp('financeUpdates.summary', { updateId: editorBatch.updateId })).update.version })
+  for(const table of Object.keys(maintenanceColumns))await source.owner.execute(`UPDATE ${table}
+    SET cleanup_retry_after=DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL 1 DAY),cleanup_failure_count=3,updated_at=updated_at WHERE uid=?`,[uid])
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
@@ -115,20 +125,27 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   for(const name of ['catledger_loan_charge_contracts','catledger_loan_charges','catledger_loan_charge_sources','catledger_loan_charge_allocations','catledger_loan_charge_audit'])assert.ok(records.some(r=>r.table===name),name+' must be nonempty')
   for(const [table,column] of [['catledger_loan_charges','historical_settled_minor'],['catledger_loan_charge_allocations','historical_replaced_minor'],['catledger_loan_period_allocations','historical_principal_minor']])
     assert.ok(records.some(r=>r.table===table&&BigInt(r.row[column])>0n),column+' must contain real confirmation facts')
-  await t.test('清单覆盖当前全部业务表和非生成列，导出逐行等于原库',async()=>{
+  await t.test('清单覆盖当前全部业务表与业务列，导出逐行等于原库',async()=>{
    const [tables]=await source.owner.query('SELECT DISTINCT TABLE_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME=\'uid\'')
    assert.deepEqual(tables.map(t=>t.name).filter(n=>!['catledger_users','catledger_user_identities','catledger_data_exports'].includes(n)).sort(),manifest.map(t=>t.name).sort())
    for(const table of manifest){
     const [columns]=await source.owner.query('SELECT COLUMN_NAME AS name,EXTRA AS extra FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION',[table.name])
-    assert.deepEqual(table.columns,columns.filter(c=>c.name!=='uid'&&!/VIRTUAL GENERATED|STORED GENERATED/.test(c.extra)).map(c=>c.name))
+    assert.deepEqual(table.columns,columns.filter(c=>c.name!=='uid'&&!/VIRTUAL GENERATED|STORED GENERATED/.test(c.extra)&&!maintenanceColumns[table.name]?.has(c.name)).map(c=>c.name))
     const [original]=await source.owner.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[uid])
     assert.deepEqual(records.filter(r=>r.table===table.name).map(r=>r.row),original.map(r=>({...r})))
    }
   })
   await t.test('恢复保持外键开启，逐表和余额/收支/贷款/期次完全相同',async()=>{
+   const restoreConnection=await target.owner.getConnection()
+   try{
+   const [[foreignKeys]]=await restoreConnection.query('SELECT @@SESSION.foreign_key_checks AS enabled')
+   assert.equal(Number(foreignKeys.enabled),1,'恢复连接必须保持外键检查开启')
+   const emptyTables=['catledger_users','catledger_user_identities','catledger_data_exports',...manifest.map(table=>table.name)]
+   const [[empty]]=await restoreConnection.query('SELECT '+emptyTables.map(table=>`(SELECT COUNT(*) FROM ${table})`).join('+')+' AS totalRows')
+   assert.equal(Number(empty.totalRows),0,'只恢复到本次创建且尚无业务或身份记录的隔离库')
    const newUid='1234567891',subject='synthetic-restored-export'
-   await target.owner.execute("INSERT INTO catledger_users(uid,status) VALUES(?,'active')",[newUid])
-   await target.owner.execute("INSERT INTO catledger_user_identities(uid,provider,subject_hash) VALUES(?,'wechat-mini',?)",[newUid,hashWechatSubject(subject)])
+   await restoreConnection.execute("INSERT INTO catledger_users(uid,status) VALUES(?,'active')",[newUid])
+   await restoreConnection.execute("INSERT INTO catledger_user_identities(uid,provider,subject_hash) VALUES(?,'wechat-mini',?)",[newUid,hashWechatSubject(subject)])
    const refunds=[]
    const restoreRows=[]
    for(const table of manifest){
@@ -143,10 +160,18 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    }
    for(const entry of restoreRows){const table=manifest.find(t=>t.name===entry.table),row={...entry.row}
     if(table.name==='catledger_transactions'&&row.original_transaction_id){refunds.push([row.original_transaction_id,newUid,row.transaction_id]);row.original_transaction_id=null}
-    await target.owner.execute(`INSERT INTO ${table.name}(uid,${table.columns.join(',')}) VALUES(${['uid',...table.columns].map(()=>'?').join(',')})`,[newUid,...table.columns.map(k=>table.json.includes(k)&&row[k]!=null?JSON.stringify(row[k]):row[k])])
+    await restoreConnection.execute(`INSERT INTO ${table.name}(uid,${table.columns.join(',')}) VALUES(${['uid',...table.columns].map(()=>'?').join(',')})`,[newUid,...table.columns.map(k=>table.json.includes(k)&&row[k]!=null?JSON.stringify(row[k]):row[k])])
    }
-   for(const values of refunds)await target.owner.execute('UPDATE catledger_transactions SET original_transaction_id=?,updated_at=updated_at WHERE uid=? AND transaction_id=?',values)
-   for(const table of manifest){const [rows]=await target.owner.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[newUid]);assert.deepEqual(rows.map(r=>({...r})),records.filter(r=>r.table===table.name).map(r=>r.row))}
+   for(const values of refunds)await restoreConnection.execute('UPDATE catledger_transactions SET original_transaction_id=?,updated_at=updated_at WHERE uid=? AND transaction_id=?',values)
+   const [[afterRestore]]=await restoreConnection.query('SELECT @@SESSION.foreign_key_checks AS enabled')
+   assert.equal(Number(afterRestore.enabled),1)
+   for(const table of manifest){const [rows]=await restoreConnection.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[newUid]);assert.deepEqual(rows.map(r=>({...r})),records.filter(r=>r.table===table.name).map(r=>r.row))}
+   for(const table of Object.keys(maintenanceColumns)){
+    const [[state]]=await target.owner.execute(`SELECT COUNT(*) AS total,
+      SUM(cleanup_retry_after IS NULL AND cleanup_failure_count=0) AS resetCount FROM ${table} WHERE uid=?`,[newUid])
+    assert.ok(Number(state.total)>0)
+    assert.equal(Number(state.resetCount),Number(state.total),'恢复后重建维护调度，不继承原库失败退避')
+   }
    const restored=localServices({apiPool:target.owner,importPool:target.owner,subject}),read=(a,d)=>call(restored.api,a,d)
    for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}],['loans.chargePlan',{loanId:chargeLoan.loanId}],['loans.chargePlan',{loanId:historical.loanId}]]){
     const actual=await read(action,data),expected=await api(action,data)
@@ -154,6 +179,14 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
     if(actual.readVersion){assert.equal(actual.uid,newUid);assert.equal(actual.readVersion,1);assert.equal(actual.unchanged,false)}
     assert.deepEqual(business(actual),business(expected))
    }
+   const replayState=async()=>(await restoreConnection.execute(`SELECT data_revision AS revision,
+    (SELECT COUNT(*) FROM catledger_transactions WHERE uid=?) AS transactions,
+    (SELECT COUNT(*) FROM catledger_mutation_receipts WHERE uid=?) AS receipts FROM catledger_users WHERE uid=?`,[newUid,newUid,newUid]))[0][0]
+   const beforeReplay=await replayState()
+   assert.deepEqual(await read('transactions.create',manualRequest),manual,'API旧请求恢复后返回原回执')
+   assert.deepEqual(await call(restored.import,'financeUpdates.post',postRequest),postReceipt,'导入旧请求恢复后返回原回执')
+   assert.deepEqual(await replayState(),beforeReplay,'回执重放不能新增账目、回执或推进数据修订')
+   }finally{restoreConnection.release()}
   })
   await t.test('导出中发生任一函数写入即失效，重放不升修订；过期拒绝',async()=>{
    const draft=await api('dataExports.start',{requestId:randomUUID()}),first=await api('dataExports.page',{exportId:draft.exportId})
@@ -164,5 +197,5 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    await assert.rejects(expired.page({provider:'wechat-mini',subjectHash:hashWechatSubject('synthetic-export'),data:{exportId:draft.exportId}}),{publicCode:'EXPORT_EXPIRED'})
    await assert.rejects(api('dataExports.finish',{exportId:draft.exportId,completeToken:first.nextCursor}),{publicCode:'VALIDATION_ERROR'})
   })
- }finally{await source.close();await target.close()}
+ }finally{try{await source?.close()}finally{await target?.close()}}
 })

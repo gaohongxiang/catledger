@@ -7,7 +7,7 @@ const {
 } = require('./payment-account')
 const { getRowSemantic } = require('./row-semantic-resolver')
 
-const SOURCE_FUNDS_VERSION = 'source-funds-v8'
+const SOURCE_FUNDS_VERSION = 'source-funds-v9'
 
 function withAggregateCandidates(projection, references) {
   if (!projection || !projection.to || projection.to.referenceKind !== ACCOUNT_REFERENCE_KIND.AGGREGATE) return projection
@@ -77,31 +77,22 @@ function resolveSourceFunds(projection, mappingIndex) {
       toAccountId: resolveReference(projection.to, mappingIndex)
     }
   }
-  // 聚合族（如花呗｜信用购）在族内已经收敛为同一账户身份。解析候选账户后，
-  // 若用户账本里该族只对应一个账户，就直接落到它，不再要求人工分配——
-  // 一笔还款还向唯一的负债账户，分摊没有意义。只有族内仍对应多个账户
-  // （历史脏数据）或多个候选无法唯一时，才保持待分配，绝不静默猜测。
+  // 自动归属要求候选完整且全部收敛到同一账户；未知、忽略或冲突映射
+  // 都不能在去重时消失。每次从当前映射重算，同时移除旧的唯一结论。
   const candidates = (projection.to.candidates || []).map((candidate) => ({
     ...candidate,
     accountId: resolveReference(candidate, mappingIndex)
   }))
-  const resolvedIds = uniqueAccountIds(candidates.map((candidate) => candidate.accountId))
-  if (candidates.length > 0 && resolvedIds.length === 1) {
-    return {
-      projection: { ...projection, to: { ...projection.to, candidates, resolvedAccountId: resolvedIds[0] } },
-      fromAccountId: resolveReference(projection.from, mappingIndex),
-      toAccountId: resolvedIds[0]
-    }
-  }
+  const accountIds = candidates.map(candidate => candidate.accountId)
+  const uniqueAccountId = accountIds.length > 0 && accountIds.every(id => typeof id === 'string' && id && id === accountIds[0])
+    ? accountIds[0] : null
+  const target = { ...projection.to }
+  delete target.resolvedAccountId
   return {
-    projection: { ...projection, to: { ...projection.to, candidates } },
+    projection: { ...projection, to: { ...target, candidates, ...(uniqueAccountId ? { resolvedAccountId: uniqueAccountId } : {}) } },
     fromAccountId: resolveReference(projection.from, mappingIndex),
-    toAccountId: null
+    toAccountId: uniqueAccountId
   }
-}
-
-function uniqueAccountIds(values) {
-  return [...new Set((values || []).filter((value) => typeof value === 'string' && value))]
 }
 
 function reconcileProjectedAccounts(event, mappingIndex, { preserveFrom = false, preserveTo = false } = {}) {

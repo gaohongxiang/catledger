@@ -5,6 +5,97 @@ const { randomUUID } = require('node:crypto')
 const { facts, packed, filesystem } = require('./helpers/local-review')
 const files = require('../miniprogram/packages/finance/services/import-local-files')
 const session = require('../miniprogram/packages/finance/services/import-local-session')
+const postingProtocol = require('../miniprogram/packages/finance/services/import-local-posting')
+
+test('提交前明确拒绝可重新整理，未知结果和旧版记录保持冻结', async t => {
+  for (const phase of ['staging', 'submitted', 'legacy']) for (const boundary of ['stageDecisions', 'sealDecisions']) await t.test(phase + '/' + boundary, async sub => {
+    const lab = filesystem(); sub.after(lab.cleanup)
+    const value = await facts(), wire = packed(value), options = {...lab,scope:'test:rejection',updateId:value.update.updateId}
+    const store = files.create(options); await store.download(wire.header,wire.call)
+    let posts=0, queries=0, current
+    current=session.create({files:store,restored:store.restore(),requestId:randomUUID,saveReceipt(){},cleanup(){},queueAbandon(){},
+      callNetwork:async action=>{
+        if(action==='imports.commandResult'){queries++;throw Object.assign(Error('Unknown'),{code:'OPERATION_UNCONFIRMED'})}
+        if(action.endsWith(boundary))throw Object.assign(Error('Old snapshot'),{code:'CONFLICT'})
+        if(action.endsWith('stageDecisions'))return{}
+        if(action==='financeUpdates.post')posts++
+        throw Error('Unexpected action '+action)
+      }})
+    if(phase!=='staging') {
+      const choice=current.model.finalState(),packedChoice=require('../cloudfunctions/catledger-import/src/local-review-protocol').split(JSON.stringify(choice),'decisions')
+      const flight={action:'financeUpdates.post',value:choice,payload:{requestId:randomUUID(),uploadId:randomUUID(),updateId:value.update.updateId,payloadDigest:packedChoice.digest}}
+      if(phase==='submitted')flight.phase='submitted'
+      store.save([{kind:'ui',key:'postFlight',value:flight}])
+      current.state.postFlight=flight
+    }
+    await assert.rejects(current.post(),{code:phase==='staging'?'LOCAL_REORGANIZE_REQUIRED':'CONFLICT'})
+    assert.equal(posts,0);assert.equal(queries,phase==='staging'?0:1)
+    const recovered=postingProtocol.inspect(files.create(options).restore().records,value.update.updateId)
+    assert.equal(Boolean(recovered.postFlight),phase!=='staging')
+    assert.equal(Boolean(recovered.postRejection),phase==='staging')
+    if(phase==='staging') {
+      assert.equal(current.status.frozen,false)
+      current.saveDrafts({retained:{note:'仍可保存'}},2)
+      await assert.rejects(current.post(),{code:'LOCAL_REORGANIZE_REQUIRED'})
+    } else assert.throws(()=>current.saveDrafts({},2),{code:'OPERATION_UNCONFIRMED'})
+  })
+})
+
+test('正式提交前的持久屏障失败时不会入账，重启能沿用原请求继续', async t => {
+  const lab=filesystem();t.after(lab.cleanup)
+  const value=await facts(),wire=packed(value),options={...lab,scope:'test:barrier',updateId:value.update.updateId}
+  let store=files.create(options);await store.download(wire.header,wire.call)
+  let current,posts=0,fail=true
+  const make=()=>session.create({files:store,restored:store.restore(),requestId:randomUUID,saveReceipt(){},cleanup(){},queueAbandon(){},callNetwork:async(action,data)=>{
+    if(action.endsWith('stageDecisions'))return{}
+    if(action.endsWith('sealDecisions')){
+      if(fail)lab.fault.fn=(op,name)=>{if(op==='write'&&name.includes('delta-2'))throw Error('Full')}
+      return{digest:current.state.postFlight.payload.payloadDigest}
+    }
+    if(action==='financeUpdates.post'){posts++;return{action,updateId:value.update.updateId,status:'posted',requestId:data.requestId}}
+    throw Error(action)
+  }})
+  current=make();await assert.rejects(current.post(),{code:'DRAFT_STORAGE_FAILED'})
+  assert.equal(posts,0)
+  const id=current.state.postFlight.payload.requestId
+  lab.fault.fn=null;fail=false;store=files.create(options);current=make()
+  assert.equal(current.state.postFlight.phase,'staging');assert.equal(current.state.postFlight.payload.requestId,id)
+  assert.equal((await current.post()).status,'posted');assert.equal(posts,1)
+})
+
+test('新快照及迁移决定同时发布，失败保留旧完整草稿，重复下载不覆盖决定', async t=>{
+  const lab=filesystem();t.after(lab.cleanup)
+  const value=await facts(),options={...lab,scope:'test:atomic',updateId:value.update.updateId}
+  let now=1000000000000
+  const store=files.create({...options,now:()=>now}),wire=packed(value)
+  await store.download(wire.header,wire.call)
+  store.save([{kind:'draft',key:'old',value:{note:'saved'}}])
+  const candidate=packed({...value,snapshotId:randomUUID()});now++
+  lab.fault.fn=(op,name)=>{if(op==='rename'&&name.includes('/complete-'))throw Error('Interrupted')}
+  await assert.rejects(store.download(candidate.header,candidate.call,()=>{},null,()=>[{kind:'draft',key:'new',value:{note:'rebased'}}]),{code:'DRAFT_STORAGE_FAILED'})
+  lab.fault.fn=null
+  assert.equal(files.create(options).restore().facts.snapshotId,value.snapshotId)
+  await store.download(candidate.header,candidate.call,()=>{},null,()=>[{kind:'draft',key:'new',value:{note:'rebased'}}])
+  let recovered=files.create(options).restore()
+  assert.equal(recovered.facts.snapshotId,candidate.header.objectId);assert.equal(recovered.records[0].changes[0].value.note,'rebased')
+  store.save([{kind:'draft',key:'next',value:{note:'newer choice'}}])
+  await store.download(candidate.header,candidate.call,()=>{},null,()=>{throw Error('Already published')})
+  recovered=files.create(options).restore();assert.equal(recovered.records.length,2)
+})
+
+test('最新草稿损坏且存在提交记录时不回退旧快照，读取失败不会假报缺失', async t=>{
+  const lab=filesystem();t.after(lab.cleanup)
+  const value=await facts(),options={...lab,scope:'test:damage',updateId:value.update.updateId}
+  let now=1000000000000
+  const store=files.create({...options,now:()=>now}),first=packed(value)
+  await store.download(first.header,first.call);now++
+  const second=packed({...value,snapshotId:randomUUID()});await store.download(second.header,second.call)
+  store.save([{kind:'ui',key:'postFlight',value:{payload:{requestId:randomUUID()}}}])
+  fs.writeFileSync(store.directory+'/'+second.header.objectId+'/part-0.json','broken')
+  assert.throws(()=>files.create(options).restore(),{code:'DRAFT_CORRUPT'})
+  const denied={...lab.fs,accessSync(){throw Object.assign(Error('Permission denied'),{code:'EACCES'})}}
+  assert.throws(()=>files.create({...options,fs:denied}).restore(),{code:'DRAFT_STORAGE_FAILED'})
+})
 
 test('完整下载门槛：缺块、乱序、重复、混版本、校验与中断均保留旧完整草稿', async t => {
   const lab = filesystem(); t.after(lab.cleanup)
@@ -183,7 +274,9 @@ test('成功响应丢失：冻结内容与请求先保存，重启查询原回�
       if (action.endsWith('sealDecisions')) return { digest: current.state.postFlight.payload.payloadDigest }
       if (action === 'financeUpdates.post') {
         posts++; firstPayload = structuredClone(data)
-        assert.equal(files.create(options).restore().records.at(-1).changes[0].value.payload.requestId, data.requestId)
+        const persisted = require('../miniprogram/packages/finance/services/import-local-posting').inspect(files.create(options).restore().records, value.update.updateId)
+        assert.equal(persisted.postFlight.payload.requestId, data.requestId)
+        assert.equal(persisted.postFlight.phase, 'submitted')
         posted = { kind: 'operation-receipt', action, requestId: data.requestId, updateId: value.update.updateId, status: 'posted', posting: { createdTransactionCount: 3 } }
         throw Error('Response lost')
       }

@@ -509,6 +509,7 @@ module.exports = {
   RELATION_KEY_VERSION,
   REVIEW_ISSUE_VERSION,
   buildOrganizePlan,
+  accountReferences,
   applyInstallmentAttribution,
   buildConfirmedAccountIssues,
   buildReviewIssues,

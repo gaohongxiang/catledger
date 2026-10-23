@@ -120,9 +120,8 @@ async function assertBatchesAvailable(connection, uid, batchIds) {
 
 async function insertAction(connection, uid, {
   updateId, expectedVersion, appliedVersion, actionType, requestDigest,
-  idempotencyKeyDigest = null, status = 'applied', decision = null, reasons = []
+  idempotencyKeyDigest = null, status = 'applied', decision = null, reasons = [], actionId = randomUUID()
 }) {
-  const actionId = randomUUID()
   await connection.execute(
     `INSERT INTO catledger_finance_actions
        (uid, action_id, update_id, expected_update_version, applied_update_version,
@@ -312,20 +311,14 @@ async function selectPaymentMappings(connection, uid, updateId) {
       ORDER BY draft.created_at, draft.draft_mapping_id`,
     [uid, updateId]
   )
-  const history = saved.flatMap((mapping) => {
+  // 旧证据引用键不重写。规范别名只作低一档的兼容回退，直接决定仍优先；
+  // 同级别名冲突交给领域索引处理，不能依赖行序选中某个旧账户。
+  const withAliases = mappings => mappings.flatMap(mapping => {
     const canonicalKey = buildPaymentMethodKey(mapping.sourceType, mapping.paymentMethodHint)
     if (!canonicalKey || canonicalKey === mapping.paymentMethodKey) return [mapping]
-    return [mapping, {
-      ...mapping,
-      paymentMethodKey: canonicalKey,
-      mappingScope: 'history_alias'
-    }]
+    return [mapping, { ...mapping, paymentMethodKey: canonicalKey, mappingScope: mapping.mappingScope + '_alias' }]
   })
-  // 仓储只负责返回事实和确定性的键版本兼容别名，不能在这里依赖查询/数组顺序提前裁决。
-  // 历史、本批及同级冲突统一交给 account-mapping-policy；否则同一
-  // PaymentReference 的旧值会在进入领域层前被静默覆盖，规划与重算
-  // 也会得到不同答案。
-  return history.concat(drafts)
+  return withAliases(saved).concat(withAliases(drafts))
 }
 
 async function selectDraftPaymentMappings(connection, uid, updateId) {

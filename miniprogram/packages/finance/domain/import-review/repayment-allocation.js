@@ -58,6 +58,9 @@ function isAggregateRepayment(event) {
   const projection = fields.fundsProjection
   if (!(event && event.economicNature === 'repayment' && projection && projection.to &&
       projection.to.referenceKind === 'aggregate')) return false
+  // 已保存的人工分配优先于后来的自动唯一推断；显式 single 编辑在上面处理。
+  if (Object.prototype.hasOwnProperty.call(fields, 'repaymentAllocationVersion') ||
+      Object.prototype.hasOwnProperty.call(fields, 'repaymentAllocations')) return true
   // 族账户已被解析为唯一负债账户时，这笔还款就是普通单账户还款，
   // 不再需要拆分配置；只有族内仍不唯一时才按聚合还款处理。
   if (event.counterpartyLedgerAccountId && projection.to.resolvedAccountId === event.counterpartyLedgerAccountId) return false

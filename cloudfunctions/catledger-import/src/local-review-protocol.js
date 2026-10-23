@@ -6,30 +6,44 @@ const LIMITS = Object.freeze({ sourceFiles: 5, sourceRows: 25000, candidatePairs
   snapshotChunkWireBytes: 240 * 1024, decisionChunkWireBytes: 60 * 1024, chunks: 16384, manifestPage: 128 })
 const failure = code => { throw Object.assign(new Error(code), { code, publicCode: code }) }
 function rootDigest(parts) { return sha256(parts.map(part => part.digest).join(':')) }
-function split(text, kind = 'snapshot') {
+function splitTextParts(textParts, kind = 'snapshot') {
   const max = kind === 'snapshot' ? LIMITS.snapshotChunkChars : LIMITS.decisionChunkChars
   const limit = kind === 'snapshot' ? LIMITS.snapshotBytes : LIMITS.decisionBytes
   const wireLimit = kind === 'snapshot' ? LIMITS.snapshotChunkWireBytes : LIMITS.decisionChunkWireBytes
-  const parts = []; let bytes = 0
-  for (let start = 0; start < text.length;) {
-    let end = Math.min(text.length, start + max)
+  const parts = []; let bytes = 0, pending = ''
+  function emit() {
+    let end = Math.min(pending.length, max)
     // Budget the actual JSON-escaped UTF-8 string. Ordinary identifiers can use
     // the whole request budget without making CJK/control characters overflow.
-    if (byteLength(JSON.stringify(text.slice(start,end))) > wireLimit) {
-      let low=start+1,high=end
-      while(low<high){const mid=Math.ceil((low+high)/2);if(byteLength(JSON.stringify(text.slice(start,mid)))<=wireLimit)low=mid;else high=mid-1}
+    if (byteLength(JSON.stringify(pending.slice(0,end))) > wireLimit) {
+      let low=1,high=end
+      while(low<high){const mid=Math.ceil((low+high)/2);if(byteLength(JSON.stringify(pending.slice(0,mid)))<=wireLimit)low=mid;else high=mid-1}
       end=low
     }
     // Never split a UTF-16 surrogate pair between files or requests.
-    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--
-    const content = text.slice(start, end), size = byteLength(content)
+    if (end < pending.length && /[\uD800-\uDBFF]/.test(pending[end - 1])) end--
+    const content = pending.slice(0, end), size = byteLength(content)
     bytes += size
     if (bytes > limit || parts.length >= LIMITS.chunks) failure('LOCAL_REVIEW_CAPACITY')
-    parts.push({ index: parts.length, bytes: size, digest: sha256(content), content }); start = end
+    parts.push({ index: parts.length, bytes: size, digest: sha256(content), content })
+    pending=pending.slice(end)
   }
+  // One character of lookahead preserves the original UTF-16 split boundary.
+  // The splitter keeps this bounded buffer alongside the final transport parts;
+  // it does not join the producer's remaining nodes into one extra full string.
+  for(const text of textParts){
+    if(typeof text!=='string')failure('SNAPSHOT_INCOMPLETE')
+    for(let offset=0;offset<text.length;){
+      const size=Math.min(text.length-offset,max+1-pending.length)
+      pending+=text.slice(offset,offset+size);offset+=size
+      if(pending.length>max)emit()
+    }
+  }
+  while(pending.length)emit()
   if (!parts.length) failure('SNAPSHOT_INCOMPLETE')
   return { parts, bytes, digest: rootDigest(parts), chunkCount: parts.length }
 }
+function split(text,kind='snapshot'){return splitTextParts([text],kind)}
 function validatePart(header, descriptor, part) {
   if (!header || header.protocolVersion !== VERSION || !descriptor || !part ||
     part.objectId !== header.objectId || part.baseVersion !== header.baseVersion ||
@@ -70,4 +84,4 @@ function validateState(value) {
   }
   return value
 }
-module.exports = { VERSION, LIMITS, split, rootDigest, validateManifest, validatePart, validateState }
+module.exports = { VERSION, LIMITS, split, splitTextParts, rootDigest, validateManifest, validatePart, validateState }

@@ -8,6 +8,7 @@ const MAPPING_SCOPE_PRIORITY = Object.freeze({
   inferred: 10,
   history_alias: 15,
   history: 20,
+  batch_alias: 25,
   batch: 30,
   event: 40
 })

@@ -1,13 +1,13 @@
 const protocol = require('../domain/import-review/local-review-protocol')
 const { sha256 } = require('../domain/import-review/portable-digest')
-const { stableId } = require('../domain/import-review/local-review-identity')
+const posting = require('./import-local-posting')
 const modelFactory = require('./import-local-model'), readerFactory = require('./import-local-read')
 const clone = modelFactory.clone
 const mutations = new Set(['financeUpdates.setReview','financeUpdates.setCategory','financeUpdates.setRepayment','financeUpdates.reviseDuplicate',
   'reviewIssues.resolve','reviewIssues.resolveAccountMappings','reviewIssues.reviseAccountMapping','reviewIssues.resolvePairings'])
 function create({ files, restored, callNetwork, requestId, alive = () => true, saveReceipt, cleanup, queueAbandon }) {
   const facts = restored.facts, final = Object.fromEntries(['accounts','events','pairings','reviews','duplicates'].map(kind=>[kind,new Map()]))
-  const state = { schema:3,updateId:facts.update.updateId,entries:[],drafts:{},pairingDrafts:{},pairingResults:{},step:2,flight:null,postFlight:null }
+  const state = { schema:3,updateId:facts.update.updateId,entries:[],drafts:{},pairingDrafts:{},pairingResults:{},step:2,flight:null,postFlight:null,postRejection:null }
   const receipts = new Map(), listeners = new Set()
   let compactReceiptSaved=false
   let model, reader, closed=false, paused=false, errorMessage='', running=null, supplement=null, awaitingEdits=false
@@ -20,6 +20,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
       else if(change.kind==='draft'){if(change.value===null)delete state.drafts[change.key];else state.drafts[change.key]=clone(change.value)}
       else if(change.kind==='pairingDraft'){if(change.value===null)delete state.pairingDrafts[change.key];else state.pairingDrafts[change.key]=clone(change.value)}
       else if(change.kind==='receipt')receipts.set(change.key,clone(change.value))
+      else if(change.kind==='postPhase')posting.applyPhase(state,change)
       else if(change.kind==='supplement')supplement=change.value
       else if(change.kind==='awaitingEdits')awaitingEdits=change.value
     }
@@ -30,7 +31,10 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     // Catalog changes from a definitive recheck must be visible during replay.
     if(supplement){for(const row of supplement.accounts)model.accounts.set(row.accountId,row);for(const row of supplement.categories)model.categories.set(row.categoryId,row)}
     const invalid=[]
-    const attempt=(choice,work)=>{try{work()}catch(error){invalid.push({choice,error})}}
+    const attempt=(choice,work)=>{try{
+      if(choice.needsRecheck)throw Object.assign(new Error('账户规则已更新，请重新确认保留的选择'),{code:'LOCAL_RECHECK_REQUIRED'})
+      work()
+    }catch(error){invalid.push({choice,error})}}
     for(const choice of final.duplicates.values())attempt(choice,()=>model.reviseDuplicate({...choice,eventVersion:undefined}))
     for(const choice of final.accounts.values())attempt(choice,()=>model.mapAccount(choice))
     const banks=new Set([...final.pairings.values()].filter(row=>row.decision==='same').map(row=>row.bankEventId)), memberEditors=new Map()
@@ -50,12 +54,6 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   rebuild()
   function emit(){for(const fn of listeners)fn()}
   function persist(changes){guard();files.save(changes);applyRecord(changes)}
-  function adopt(records){
-    guard()
-    for(const record of records||[])if(record&&Array.isArray(record.changes))
-      for(const change of record.changes){files.save([change]);applyRecord([change])}
-    rebuild();emit()
-  }
   function operation(action,data){
     if(action==='financeUpdates.setReview')return model.edit(data)
     if(action==='financeUpdates.setCategory')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,fields:{categoryId:data.categoryId}})
@@ -90,29 +88,18 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   }
   async function sendPost(){
     guard()
-    const recovering = Boolean(state.postFlight)
+    if(state.postRejection)throw posting.reorganizationError()
     if(!state.postFlight){
       if(awaitingEdits||model.invalid.size)throw Object.assign(new Error('请先重新确认受影响的事项，其他选择已保留'),{code:'LOCAL_RECHECK_REQUIRED'})
       const value=model.finalState(),packed=protocol.split(JSON.stringify(value),'decisions'),id=requestId(),uploadId=requestId()
       const payload={protocolVersion:3,requestId:id,updateId:state.updateId,version:value.baseVersion,snapshotId:value.snapshotId,uploadId,payloadDigest:packed.digest}
-      persist([{kind:'ui',key:'postFlight',value:{action:'financeUpdates.post',payload,value}}]);emit()
+      persist([{kind:'ui',key:'postFlight',value:{action:'financeUpdates.post',phase:posting.STAGING,payload,value}}]);emit()
     }
     const flight=state.postFlight
     let receipt=receipts.get(flight.payload.requestId)?.receipt
     if(!receipt){
-      try{if(recovering)receipt=await callNetwork('imports.commandResult',{requestId:flight.payload.requestId,commandAction:'financeUpdates.post'})}
-      catch(error){if(error.code!=='OPERATION_UNCONFIRMED')throw error}
-      guard()
-      if(!receipt){
-        const packed=protocol.split(JSON.stringify(flight.value),'decisions')
-        for(const part of packed.parts){guard();await callNetwork('financeUpdates.stageDecisions',{requestId:stableId(flight.payload.requestId,'part',String(part.index)),
-          updateId:state.updateId,snapshotId:flight.value.snapshotId,uploadId:flight.payload.uploadId,baseVersion:flight.value.baseVersion,ruleVersion:flight.value.ruleVersion,
-          chunkCount:packed.chunkCount,index:part.index,content:part.content});guard()}
-        const sealed=await callNetwork('financeUpdates.sealDecisions',{requestId:stableId(flight.payload.requestId,'seal'),uploadId:flight.payload.uploadId,updateId:state.updateId,snapshotId:flight.value.snapshotId});guard()
-        if(sealed.digest!==flight.payload.payloadDigest)throw Object.assign(new Error('提交内容校验失败，原请求已保留'),{code:'SNAPSHOT_INCOMPLETE'})
-        receipt=await callNetwork('financeUpdates.post',flight.payload);guard()
-      }
-      if(!receipt||receipt.updateId!==state.updateId||receipt.action!=='financeUpdates.post'||!['posted','review'].includes(receipt.status)||receipt.status==='review'&&receipt.outcome!=='recheck')throw Object.assign(new Error('入账结果待核实，请继续原请求'),{code:'OPERATION_UNCONFIRMED'})
+      receipt=await posting.submit({flight,callNetwork,guard,persist})
+      if(!posting.isReceipt(receipt,state.updateId))throw Object.assign(new Error('入账结果待核实，请继续原请求'),{code:'OPERATION_UNCONFIRMED'})
       try{persist([{kind:'receipt',key:flight.payload.requestId,value:{receipt}}])}catch(error){guard();if(receipt.status!=='posted')throw error}
     }
     if(receipt.outcome==='recheck'){
@@ -123,15 +110,17 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     }
     // A compact confirmed receipt survives removal of every sensitive file.
     guard();state.confirmedReceipt=receipt
-    try{saveReceipt(receipt);compactReceiptSaved=true}catch(_){errorMessage='已入账，本机清理将在恢复时重试'}
-    const cleaned=compactReceiptSaved&&files.clear();closed=true;try{cleanup(cleaned)}catch(_){}emit()
+    const completed=posting.finish(receipt,{files,saveReceipt,cleanup})
+    compactReceiptSaved=completed.saved
+    if(completed.cleanupPending)errorMessage='已入账，本机清理将在恢复时重试'
+    closed=true;emit()
     return receipt
   }
   const session={
     isLocal:true,state,get view(){return state.confirmedReceipt||reader.summary()},get projectionRevision(){return model.revision},
     get model(){return model},get status(){return{local:true,pending:0,syncing:Boolean(running),error:errorMessage,conflicts:model.invalid.size,saved:!errorMessage,serverReviewPending:model.needsCheck.size,frozen:Boolean(state.postFlight&&!state.confirmedReceipt)}},
     subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},accept(){},schedule(){},async flush(){guard();return reader.summary()},
-    adopt,touch(){guard();try{files.touch()}catch(_){}},close(){closed=true;files.close();listeners.clear()},
+    touch(){guard();try{files.touch()}catch(_){}},close(){closed=true;files.close();listeners.clear()},
     call(action,data){guard();if(action==='imports.commandResult'){const saved=receipts.get(data.requestId);if(!saved)throw Object.assign(new Error('原请求尚未保存'),{code:'OPERATION_UNCONFIRMED'});return saved.receipt}
       if(action==='financeUpdates.abandon')return session.abandon(data)
       if(action==='financeUpdates.post')return session.post()
@@ -142,7 +131,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     saveDrafts(drafts,step){mutable();const changes=[];for(const key of new Set(Object.keys(drafts).concat(Object.keys(state.drafts))))if(JSON.stringify(drafts[key])!==JSON.stringify(state.drafts[key]))changes.push({kind:'draft',key,value:drafts[key]||null});if(step&&step!==state.step)changes.push({kind:'ui',key:'step',value:step});if(changes.length)persist(changes)},
     savePairingDraft(key,value){mutable();persist([{kind:'pairingDraft',key,value}]);emit()},pairingTask:key=>state.pairingResults[key]||null,
     enqueuePairing(key,draft,total){mutable();if(draft.needsRecheck)modelFactory.fail();const selection=draft.mode==='suggested'?{mode:'all_except',excludedPairKeys:draft.excludedPairKeys||[]}:{mode:'include',pairs:draft.pairs};const receipt=command('reviewIssues.resolvePairings',{requestId:requestId(),scopeToken:draft.scopeToken,selection});persist([{kind:'ui',key:'pairingResults',value:{...state.pairingResults,[key]:{...receipt.pairing,status:'saved',summaryReady:true,totalCount:total}}},{kind:'pairingDraft',key,value:null}]);emit()},
-    post(){if(!running)running=sendPost().catch(error=>{errorMessage=state.postFlight?'提交结果待核实，已保留原请求，请继续核实':error.message;emit();throw error}).finally(()=>{running=null;emit()});return running},
+    post(){if(!running)running=sendPost().catch(error=>{errorMessage=posting.needsVerification(state.postFlight)?'提交结果待核实，已保留原请求，请继续核实':error.message;emit();throw error}).finally(()=>{running=null;emit()});return running},
     async abandon(data){guard();if(state.postFlight)throw Object.assign(new Error('上次入账结果未确定，不能直接放弃；请先核实'),{code:'OPERATION_UNCONFIRMED'});const payload={requestId:data?.requestId||requestId(),updateId:state.updateId,version:facts.update.version};queueAbandon(payload);const cleaned=files.clear();closed=true;cleanup(cleaned);try{const receipt=await callNetwork('financeUpdates.abandon',payload);if(alive())queueAbandon(null,payload);return receipt}catch(error){return{update:{...facts.update,status:'abandoned'},offlineAbandon:true}}},
     async pause(){paused=true},resume(){guard();paused=false},async retry(){return state.postFlight?session.post():session.flush()},discardConflicts(){errorMessage='请打开标记事项重新核对，原选择仍保留';emit()},
     clear(){if(state.postFlight&&!state.confirmedReceipt)throw Object.assign(new Error('入账结果待核实，原草稿仍保留'),{code:'OPERATION_UNCONFIRMED'});const cleaned=(!state.confirmedReceipt||compactReceiptSaved)&&files.clear();closed=true;try{cleanup(cleaned)}catch(_){}},

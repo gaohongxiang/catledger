@@ -75,15 +75,45 @@ test('逐期简化：第6期接入、第8期补漏、原月费用防重与余额
    await assert.rejects(call(other.api,'loans.confirmInstallments',foreign),{publicCode:'NOT_FOUND'})
    assert.deepEqual(await accounts(),partial);assert.equal((await view()).items[10].complete,false)
   })
-  await t.test('一次性手续费随首期历史选择只补一笔，改回未还成对撤回；现金新建仍可到账',async()=>{
+  await t.test('首期历史选择只补逐期费用，不推定计划的一次性手续费；现金新建仍可到账',async()=>{
    const before=await accounts(),amount=await expense(),history=await h.api('loans.create',{...h.plan,requestId:randomUUID(),accountId:h.accountId,feeUpfrontMinor:'10000',baselinePrincipalMinor:'500000',repayments:[{periodNumber:1,paid:true},{periodNumber:2,paid:true}]})
-   assert.equal(await expense()-amount,14000n);assert.deepEqual(await accounts(),before)
-   const upfront=(await h.state(history)).items.filter(i=>i.chargeKey==='upfront:fee');assert.equal(upfront.length,1);assert.ok(upfront[0].balanceAdjustmentId)
+   assert.equal(await expense()-amount,4000n);assert.deepEqual(await accounts(),before)
+   assert.equal((await h.state(history)).items.filter(i=>i.chargeKey==='upfront:fee').length,0)
    await h.api('loans.confirmInstallments',{requestId:randomUUID(),loanId:history.loanId,version:1,repayments:[{periodNumber:1,paid:false}]});assert.equal(await expense()-amount,2000n);assert.deepEqual(await accounts(),before)
    const cash=await h.api('loans.create',{...h.plan,requestId:randomUUID(),accountId:h.accountId,originKind:'cash_borrowing',baselinePrincipalMinor:'0',repayments:[]})
    assert.equal((await h.state(cash)).contract.originKind,'cash_borrowing')
    await h.api('loans.record',{requestId:randomUUID(),mode:'new',kind:'drawdown',assetAccountId:h.assetAccountId,totalMinor:'600000',occurredLocalAt:'2026-01-31T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,allocations:[{loanId:cash.loanId,version:1,principalMinor:'600000',interestMinor:'0',feeMinor:'0',interestTreatment:'expense',feeTreatment:'expense'}]})
    assert.equal((await h.api('loans.get',{loanId:cash.loanId})).loan.remainingPrincipalMinor,'600000')
+  })
+  await t.test('旧历史一次费和回执保留，取消首期成对撤回，重新勾选不再推定一次费',async()=>{
+   const before=await accounts(),amount=await expense()
+   const input={...h.plan,requestId:randomUUID(),accountId:h.accountId,feeUpfrontMinor:'10000',baselinePrincipalMinor:'550000',repayments:[{periodNumber:1,paid:true}]}
+   const history=await h.api('loans.create',input),contract=(await h.state(history)).contract
+   // 合成旧版已保存事实：首期一次费、余额保全及历史结清金额同时存在。
+   const transactionId=randomUUID(),adjustmentId=randomUUID(),chargeId=randomUUID(),provenance=JSON.stringify({kind:'loan',loanIds:[history.loanId]})
+   await h.owner.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,source_account_id,amount_minor,category_id,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+    VALUES(?,?,'expense',?,10000,?,'2026-01-31','2026-01-31 12:00:00',-480,'2026-01-31 04:00:00','合成旧历史一次费','loan_plan',?)`,[h.uid,transactionId,h.accountId,h.categoryId,provenance])
+   await h.owner.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,destination_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+    VALUES(?,?,'balance_adjustment',?,10000,'2026-01-31','2026-01-31 12:00:00',-480,'2026-01-31 04:00:00','合成旧历史余额保全','system',?)`,[h.uid,adjustmentId,h.accountId,provenance])
+   await h.owner.execute(`INSERT INTO catledger_loan_charges(uid,charge_id,contract_id,charge_key,component,charge_date,amount_minor,category_id,state,basis,transaction_id,balance_adjustment_id,historical_settled_minor)
+    VALUES(?,?,?,'upfront:fee','fee','2026-01-31',10000,?,'recorded','manual',?,?,10000)`,[h.uid,chargeId,contract.contractId,h.categoryId,transactionId,adjustmentId])
+   assert.equal(await expense()-amount,12000n);assert.deepEqual(await accounts(),before)
+   const saved=(await h.state(history)).items.find(i=>i.chargeId===chargeId)
+   assert.deepEqual(await h.api('loans.create',input),history)
+   assert.deepEqual((await h.state(history)).items.find(i=>i.chargeId===chargeId),saved)
+   const unmark={requestId:randomUUID(),loanId:history.loanId,version:1,repayments:[{periodNumber:1,paid:false}]}
+   const undone=await h.api('loans.confirmInstallments',unmark)
+   assert.deepEqual(await h.api('loans.confirmInstallments',unmark),undone)
+   assert.equal(await expense()-amount,0n);assert.deepEqual(await accounts(),before)
+   const [removed]=await h.owner.execute('SELECT transaction_id,deleted_at FROM catledger_transactions WHERE uid=? AND transaction_id IN (?,?)',[h.uid,transactionId,adjustmentId])
+   assert.equal(removed.length,2);assert.ok(removed.every(row=>row.deleted_at!=null))
+   const current=await h.api('loans.installments',{loanId:history.loanId})
+   await h.api('loans.confirmInstallments',{requestId:randomUUID(),loanId:history.loanId,version:current.loanVersion,repayments:[{periodNumber:1,paid:true}]})
+   const fee=(await h.state(history)).items.find(i=>i.chargeId===chargeId)
+   assert.equal(fee.state,'planned');assert.equal(fee.transactionId,null);assert.equal(fee.balanceAdjustmentId,null);assert.equal(fee.historicalSettledMinor,'0')
+   assert.equal(await expense()-amount,2000n);assert.deepEqual(await accounts(),before)
+   assert.deepEqual(await h.api('loans.create',input),history)
+   assert.equal(await expense()-amount,2000n)
   })
   await t.test('旧方案的费用分类停用后，逐期保存拒绝写入并保留进度和余额',async()=>{
    const previous=await h.create();await h.configure(previous)

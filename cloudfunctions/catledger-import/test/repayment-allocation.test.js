@@ -120,3 +120,17 @@ test('v2 人工分配不依赖候选覆盖，账户资格由服务端可信目�
     assert.equal(repaymentAllocationsForEvent(event).valid, true)
   }
 })
+
+
+test('自动唯一结论不能抹去已保存v1/v2分配，显式single仍优先', () => {
+  const { isAggregateRepayment } = require('../src/repayment-allocation')
+  for (const version of ['repayment-allocation-v1', 'repayment-allocation-v2']) {
+    const event = { economicNature: 'repayment', amountMinor: '10000', counterpartyLedgerAccountId: A,
+      fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', resolvedAccountId: A, candidates: [{ accountId: A }, { accountId: B }] } },
+        repaymentAllocationVersion: version, repaymentAllocations: [{ accountId: A, amountMinor: '6000' }, { accountId: B, amountMinor: '4000' }] } }
+    assert.equal(isAggregateRepayment(event), true)
+    assert.equal(repaymentAllocationsForEvent(event).valid, true)
+    event.fieldSources.editorOverrides = { version: 1, composition: 'single' }
+    assert.equal(isAggregateRepayment(event), false)
+  }
+})

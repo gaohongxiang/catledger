@@ -174,7 +174,13 @@ module.exports = {
         if (active()) this.applyUpdateView(summary)
       } catch (error) { /* 已入账状态保留，用户可独立刷新。 */ }
     } catch (error) {
-      if (active() && error.code === 'HISTORY_REVIEW_REQUIRED') {
+      if (active() && error.code === 'LOCAL_REORGANIZE_REQUIRED') {
+        this.showResumeNotice({source:'local',state:'server_changed',canContinue:true,
+          title:'请重新整理后继续',message:error.message},session.view.update.updateId,true)
+      } else if (active() && session.isLocal && session.state.postFlight) {
+        this.showResumeNotice({source:'local',state:'post_pending',canContinue:true,canAbandon:true,
+          title:'上次入账结果待核实',message:'本机仍保留上次提交请求。可继续核实原请求，也可联网核实后重新开始；结果确定前会保留原文件和选择。'},session.view.update.updateId,true)
+      } else if (active() && error.code === 'HISTORY_REVIEW_REQUIRED') {
         await this.loadUpdate(session.view.update.updateId, false)
         if (active() && this.data.phase !== 'error') this.setStep({ currentStep: 3, errorMessage: errorText(error) })
       } else if (active()) this.setData({ errorMessage: errorText(error) })

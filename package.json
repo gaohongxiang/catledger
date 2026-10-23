@@ -6,5 +6,8 @@
     "check:docs": "node scripts/check-docs.js",
     "test": "node scripts/test.js",
     "test:db": "node scripts/test.js --database"
+  },
+  "devDependencies": {
+    "acorn": "8.19.0"
   }
 }

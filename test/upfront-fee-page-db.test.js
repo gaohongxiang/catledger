@@ -28,6 +28,36 @@ test('无历史期次的新分期，一次性费用从真实详情明确发生�
   await h.api('loans.record',{requestId:randomUUID(),simplePeriod:true,mode:'new',kind:'repayment',assetAccountId:h.assetAccountId,totalMinor:'50000',occurredLocalAt:'2026-01-31T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,
    allocations:[{loanId:loan.loanId,version:current.loanVersion,period:{periodNumber:1,version:row.version},principalMinor:'50000',interestMinor:'0',feeMinor:'0',interestTreatment:'accrued',feeTreatment:'accrued'}]})
   assert.equal((await h.state(loan)).items.filter(c=>c.chargeKey==='upfront:fee').length,1)
+  await t.test('只有一次费计划时，首期实际还款不新增一次费或余额保全',async()=>{
+   const planned=await h.create({feeUpfrontMinor:'10000',repaymentMinor:'50000'}),before=(await h.api('accounts.list')).accounts
+   const current=await h.api('loans.installments',{loanId:planned.loanId}),row=current.items[0]
+   const request={requestId:randomUUID(),simplePeriod:true,mode:'new',kind:'repayment',assetAccountId:h.assetAccountId,totalMinor:'50000',occurredLocalAt:'2026-01-31T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,
+    allocations:[{loanId:planned.loanId,version:current.loanVersion,period:{periodNumber:1,version:row.version},principalMinor:'50000',interestMinor:'0',feeMinor:'0',interestTreatment:'accrued',feeTreatment:'accrued'}]}
+   const paid=await h.api('loans.record',request);assert.deepEqual(await h.api('loans.record',request),paid)
+   assert.equal((await h.state(planned)).items.length,0)
+   const after=(await h.api('accounts.list')).accounts
+   assert.equal(BigInt(after.find(a=>a.accountId===h.assetAccountId).bookBalanceMinor)-BigInt(before.find(a=>a.accountId===h.assetAccountId).bookBalanceMinor),-50000n)
+   assert.equal(BigInt(after.find(a=>a.accountId===h.accountId).bookBalanceMinor)-BigInt(before.find(a=>a.accountId===h.accountId).bookBalanceMinor),50000n)
+   const [[extra]]=await h.owner.execute("SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=? AND deleted_at IS NULL AND type IN ('expense','balance_adjustment') AND creation_provenance_json->>'$.loanIds[0]'=?",[h.uid,planned.loanId])
+   assert.equal(Number(extra.count),0)
+  })
+  await t.test('历史首期后明确记录一次费只入账一次，重复历史确认不结清实际负债费用',async()=>{
+   const initial=(await h.api('accounts.list')).accounts
+   const historical=await h.create({feeUpfrontMinor:'10000',repaymentMinor:'50000',baselinePrincipalMinor:'550000',repayments:[{periodNumber:1,paid:true}]})
+   assert.equal((await h.state(historical)).items.length,0);assert.deepEqual((await h.api('accounts.list')).accounts,initial)
+   const input={requestId:randomUUID(),loanId:historical.loanId,version:1,mode:'new',confirmed:true,amountMinor:'10000',accountId:h.accountId,categoryId:h.categoryId,occurredLocalAt:'2026-01-05T12:00:00',timezoneOffsetMinutes:-480}
+   const recorded=await h.api('loans.recordUpfrontFee',input),before=(await h.api('accounts.list')).accounts
+   assert.deepEqual(await h.api('loans.recordUpfrontFee',input),recorded);assert.deepEqual((await h.api('accounts.list')).accounts,before)
+   assert.equal(BigInt(before.find(a=>a.accountId===h.accountId).bookBalanceMinor)-BigInt(initial.find(a=>a.accountId===h.accountId).bookBalanceMinor),-10000n)
+   await h.api('loans.confirmInstallments',{requestId:randomUUID(),loanId:historical.loanId,version:recorded.version,repayments:[{periodNumber:1,paid:true}]})
+   const fee=(await h.state(historical)).items[0]
+   assert.equal(fee.transactionId,recorded.transactionId);assert.equal(fee.chargeDate,'2026-01-05');assert.equal(fee.balanceAdjustmentId,null)
+   assert.equal(fee.historicalSettledMinor,'0');assert.equal(fee.outstandingMinor,'10000');assert.deepEqual((await h.api('accounts.list')).accounts,before)
+   const version=(await h.api('loans.get',{loanId:historical.loanId})).loan.version
+   await assert.rejects(h.api('loans.recordUpfrontFee',{...input,requestId:randomUUID(),version}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
+   await h.api('loans.confirmInstallments',{requestId:randomUUID(),loanId:historical.loanId,version,repayments:[{periodNumber:1,paid:false}]})
+   assert.deepEqual((await h.state(historical)).items[0],fee);assert.deepEqual((await h.api('accounts.list')).accounts,before)
+  })
   await t.test('已有一次性实费由页面认领，首期历史确认不新增费用或余额调整',async()=>{
    const expense=await h.api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:h.assetAccountId,categoryId:h.categoryId,amountMinor:'10000',occurredLocalAt:'2026-01-04T10:00:00',timezoneOffsetMinutes:-480})
    const other=await h.create({feeUpfrontMinor:'10000',repaymentMinor:'50000'}),ui=realPage(h),p=ui.page('loan-detail');p.onLoad({loanId:other.loanId});await p.load();await p.openOneOffCharges();p.openUpfrontFee()

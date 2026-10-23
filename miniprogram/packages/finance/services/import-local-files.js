@@ -30,7 +30,12 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
   function guard(ticket = epoch) {
     if (closed || ticket !== epoch || !alive()) throw failure('SESSION_CHANGED', '登录状态已改变，原草稿已停止保存')
   }
-  function exists(file) { try { fs.accessSync(file); return true } catch (_) { return false } }
+  function exists(file) {
+    try { fs.accessSync(file); return true } catch (error) {
+      if (error.code === 'ENOENT' || /no such file|not exist/i.test(error.errMsg || error.message || '')) return false
+      throw error
+    }
+  }
   function mkdir(file) { if (!exists(file)) fs.mkdirSync(file, true) }
   function read(file) { return fs.readFileSync(file, 'utf8') }
   function activityPath() { return directory + '/activity.json' }
@@ -42,7 +47,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
   }
   function completeMarkers() {
     if (!exists(directory)) return []
-    try { return fs.readdirSync(directory).filter(name => /^complete-\d+-[a-f0-9-]+\.json$/.test(name)).sort().reverse() } catch (_) { return [] }
+    return fs.readdirSync(directory).filter(name => /^complete-\d+-[a-f0-9-]+\.json$/.test(name)).sort().reverse()
   }
   // The activity file is the mutable clock. A legacy draft falls back to the
   // durable complete marker (including the epoch in its filename) so an old
@@ -93,20 +98,27 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       baseVersion: header.baseVersion, content: read(directory + '/' + header.objectId + '/part-' + part.index + '.json') })
   }
   function restore() {
+    return io(restoreComplete)
+  }
+  function restoreComplete() {
     guard()
     if (!exists(directory)) return null
     const candidates = fs.readdirSync(directory).filter(name => /^complete-\d+-[a-f0-9-]+\.json$/.test(name)).sort().reverse()
     let damaged = false
     for (const filename of candidates) {
+      // A committed journal may contain an unknown posting request. Never
+      // fall back past it, even when its base snapshot cannot be decoded.
+      const objectId = filename.replace(/^complete-\d+-/, '').replace(/\.json$/, '')
+      const folder = directory + '/' + objectId + '/decisions'
+      const commits = exists(folder) ? fs.readdirSync(folder).filter(name => /^commit-\d{9}\.json$/.test(name)).sort() : []
       try {
         const complete = parse(read(directory + '/' + filename)), { header, parts } = complete
         protocol.validateManifest(header, parts)
         const facts = snapshot.validateFacts(snapshot.decodeParts(readParts(header, parts)), header)
         if (facts.snapshotId !== header.objectId || facts.update.updateId !== updateId || facts.update.version !== header.baseVersion) throw new Error('Mismatch')
         generation = header.objectId; revision = 0; previous = ''
-        const records = [], folder = journalPath()
-        if (exists(folder)) {
-          const commits = fs.readdirSync(folder).filter(name => /^commit-\d{9}\.json$/.test(name)).sort()
+        const records = []
+        if (commits.length) {
           for (const name of commits) {
             const commit = parse(read(folder + '/' + name)), text = read(folder + '/delta-' + commit.revision + '.json')
             if (commit.revision !== revision + 1 || sha256(text) !== commit.digest) throw failure('DRAFT_CORRUPT', '已保存的决定文件损坏，完整基础草稿仍保留，请恢复后继续')
@@ -122,13 +134,15 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
           activity: activity() }
       } catch (error) {
         if (error.code === 'DRAFT_CORRUPT') throw error
+        if (commits.length) throw failure('DRAFT_CORRUPT', '本机草稿或已保存的决定无法读取，原文件已保留，请重试恢复')
+        if (error.code && !['SNAPSHOT_INCOMPLETE', 'LOCAL_REVIEW_CAPACITY'].includes(error.code)) throw error
         damaged = true
       }
     }
     if (damaged) throw failure('DRAFT_CORRUPT', '完整草稿文件校验失败，已保留原文件；联网重新准备后继续')
     return null
   }
-  async function download(header, call, onProgress = () => {}, inline = null) {
+  async function download(header, call, onProgress = () => {}, inline = null, initialize = () => []) {
     const ticket = epoch, descriptors = []; let offset = 0
     const startedAt = Date.now()
     let manifestMs = 0, chunkMs = 0, decodeMs = 0, chunkCalls = 0, inlineUsed = false
@@ -197,11 +211,25 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
     if (header.kind === 'snapshot' && (facts.snapshotId !== header.objectId || facts.update.updateId !== updateId || facts.update.version !== header.baseVersion)) throw failure('SNAPSHOT_INCOMPLETE', '草稿身份不一致')
     if (header.kind !== 'snapshot') return facts
     io(() => {
+      const published = completeMarkers().some(name => name.endsWith('-' + header.objectId + '.json'))
+      if (published) {
+        const current = restoreComplete()
+        if (!current || current.header.objectId !== header.objectId) throw failure('SNAPSHOT_INCOMPLETE', '草稿版本已变化，请重新准备')
+        return
+      }
+      const changes = initialize(facts) || []
+      generation = header.objectId; revision = 0; previous = ''
+      // Only unpublished work can be replaced after an interrupted download.
+      if (exists(journalPath())) fs.rmdirSync(journalPath(), true)
+      mkdir(journalPath())
+      if (changes.length) save(changes, false)
       // No old generation is removed until this last durable visibility barrier.
       const lastActiveAt = Number(now())
-      atomic(directory + '/complete-' + lastActiveAt + '-' + header.objectId + '.json',
+      // Generation ordering must survive a clock rollback or two publishes
+      // within one millisecond; the activity timestamp keeps its real meaning.
+      const markerAt = Math.max(lastActiveAt, ...completeMarkers().map(name => Number(name.split('-')[1]) + 1))
+      atomic(directory + '/complete-' + markerAt + '-' + header.objectId + '.json',
         { header, parts: descriptors, lastActiveAt })
-      generation = header.objectId; revision = 0; previous = ''; mkdir(journalPath())
     })
     try { touch({ lastActiveAt: Number(now()), snapshotId: header.objectId }) } catch (_) { /* marker timestamp remains the fallback */ }
     onProgress({ completed: descriptors.length, total: header.chunkCount, bytes: header.bytes, reused, inline: inlineUsed,
@@ -209,7 +237,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
         bytes: header.bytes, chunkCount: header.chunkCount } })
     return facts
   }
-  function save(changes) {
+  function save(changes, touchActivity = true) {
     guard()
     if (!generation) throw failure('SNAPSHOT_INCOMPLETE', '请先完整准备草稿')
     return io(() => {
@@ -219,7 +247,7 @@ function create({ fs, root, scope, updateId, alive = () => true, chunkConcurrenc
       verified(journalPath() + '/delta-' + next + '.json', text)
       atomic(journalPath() + '/commit-' + String(next).padStart(9, '0') + '.json', { revision: next, digest })
       revision = next; previous = digest
-      try { touch() } catch (_) { /* the decision commit remains durable; the marker keeps restoration bounded */ }
+      if (touchActivity) try { touch() } catch (_) { /* the decision commit remains durable; the marker keeps restoration bounded */ }
       return revision
     })
   }

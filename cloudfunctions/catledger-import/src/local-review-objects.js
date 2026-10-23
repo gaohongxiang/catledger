@@ -4,7 +4,7 @@ const { importError } = require('./errors')
 const { validateUuid, validateVersion } = require('./validation')
 const { sha256 } = require('./digest')
 const { selectUpdate, publicUpdate, parseJson } = require('./finance-update-repository')
-const { split, rootDigest, validateManifest, validateState, LIMITS } = require('./local-review-protocol')
+const { split, splitTextParts, rootDigest, validateManifest, validateState, LIMITS } = require('./local-review-protocol')
 const { PLAN_VERSION } = require('./domain-versions')
 const { insertMany } = require('./sql-batch')
 
@@ -71,10 +71,10 @@ function createLocalReviewObjects({ getPool }) {
     const updateId = validateUuid(context.data.updateId), version = validateVersion(context.data.version)
     const captured = await read(context, async (connection, uid) => {
       const update = await selectUpdate(connection, uid, updateId)
-      if (update.status !== 'review' || Number(update.version) !== version) throw importError('CONFLICT')
+      if (update.status !== 'review' || Number(update.version) !== version || update.planVersion !== PLAN_VERSION) throw importError('CONFLICT')
       if (!force && update.reviewMode === 'local_v3') {
         const [[prior]] = await connection.execute(`SELECT object_id AS id FROM catledger_import_review_objects
-          WHERE uid=? AND update_id=? AND object_kind='snapshot' AND base_version=? AND state='sealed' ORDER BY created_at DESC LIMIT 1`, [uid, updateId, version])
+          WHERE uid=? AND update_id=? AND object_kind='snapshot' AND base_version=? AND rule_version=? AND state='sealed' ORDER BY created_at DESC LIMIT 1`, [uid, updateId, version, PLAN_VERSION])
         if (prior) return { existing: await object(connection, uid, prior.id) }
       }
       return { facts: await require('./local-review-facts').loadFacts(connection, uid, updateId) }
@@ -87,7 +87,7 @@ function createLocalReviewObjects({ getPool }) {
       captured.facts.summary.update = captured.facts.update
       const codec=require('./local-review-snapshot')
       counts=codec.counts(captured.facts)
-      packed = split(codec.encodeText(captured.facts,{consume:true}))
+      packed = splitTextParts(codec.encodeTextParts(captured.facts,{consume:true}))
       captured.facts=null
     }
     return write(context, 'financeUpdates.prepareSnapshot', async (connection, uid) => {
@@ -138,7 +138,7 @@ function createLocalReviewObjects({ getPool }) {
     return write(context, 'financeUpdates.stageDecisions', async (connection, uid) => {
       const snapshot = await object(connection, uid, snapshotId), update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
       if (snapshot.kind !== 'snapshot' || snapshot.updateId !== updateId || snapshot.baseVersion !== data.baseVersion ||
-        snapshot.ruleVersion !== data.ruleVersion || update.status !== 'review' || Number(update.version) !== data.baseVersion || update.reviewMode !== 'local_v3') throw importError('CONFLICT')
+        snapshot.ruleVersion !== data.ruleVersion || update.status !== 'review' || Number(update.version) !== data.baseVersion || update.reviewMode !== 'local_v3' || update.planVersion !== PLAN_VERSION) throw importError('CONFLICT')
       await connection.execute(`INSERT IGNORE INTO catledger_import_review_objects
         (uid,object_id,update_id,snapshot_id,object_kind,base_version,rule_version,protocol_version,state,chunk_count,metadata_json)
         VALUES (?,?,?,?,'decisions',?,?,3,'writing',?,'{}')`, [uid, uploadId, updateId, snapshotId, data.baseVersion, data.ruleVersion, data.chunkCount])

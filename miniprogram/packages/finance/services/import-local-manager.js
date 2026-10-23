@@ -4,6 +4,7 @@ const cache = require('../../../services/read-cache')
 const config = require('../../../config/cloudbase')
 const fileStore = require('./import-local-files')
 const resume = require('./import-local-resume')
+const posting = require('./import-local-posting')
 const sessionFactory = require('./import-local-session')
 const { sha256 } = require('../domain/import-review/portable-digest')
 let generation = 0, owner = null
@@ -14,7 +15,10 @@ const currentScope = () => { const app=getApp();return app.hasLoginApproval()&&a
 const clock = options => typeof options.now === 'function' ? options.now : Date.now
 const UPDATE_ID = /^[0-9a-f-]{36}$/
 const resumeGate = value => Boolean(value && value.resume && typeof value.resume === 'object')
-function persist(key,value){wx.setStorageSync(key,value);if(JSON.stringify(wx.getStorageSync(key))!==JSON.stringify(value))throw Object.assign(new Error('本机保存未完成，请检查存储空间'),{code:'DRAFT_STORAGE_FAILED'})}
+function persist(key,value){
+  try{wx.setStorageSync(key,value);if(JSON.stringify(wx.getStorageSync(key))===JSON.stringify(value))return}catch(_){}
+  throw Object.assign(new Error('本机保存未完成，请检查存储空间'),{code:'DRAFT_STORAGE_FAILED'})
+}
 function removeUpdateFolder(folder, updateId, keepAbandon = true) {
   try { wx.getFileSystemManager().rmdirSync(ROOT() + '/' + folder + '/' + updateId, true) } catch (error) {
     if (error.code !== 'ENOENT' && !/no such file|not exist/i.test(error.errMsg || error.message || '')) throw error
@@ -59,23 +63,12 @@ function bindOwner(){
   router.setCleanup(()=>{generation++;const cleaned=clearScope(owner);owner=null;if(cleaned)wx.removeStorageSync('catledger_local_review_owner_v3')})
   return scope
 }
-function pendingPostFlight(records) {
-  let value = null
-  for (const record of records || []) for (const change of record.changes || []) {
-    if (change.kind === 'ui' && change.key === 'postFlight') value = change.value
-  }
-  return Boolean(value)
-}
-function completedReceipt(records) {
-  return (records || []).flatMap(row => row.changes || []).filter(row => row.kind === 'receipt' &&
-    row.value && row.value.receipt && row.value.receipt.status === 'posted').at(-1)?.value.receipt || null
-}
 function localGate(updateId, state, extra = {}) {
   return { isLocal: true, resume: Object.assign({ source: 'local', updateId, state }, extra) }
 }
 function dependencies(updateId, options = {}){
   const scope=bindOwner(),epoch=generation,session=cache.getSession(),prefix='catledger_local_v3:'+scope+':'+updateId+':'
-  const alive=()=>scope===currentScope()&&epoch===generation&&session===cache.getSession()
+  const alive=()=>scope===currentScope()&&epoch===generation&&session===cache.getSession()&&(!options.alive||options.alive())
   const guard=()=>{if(!alive())throw Object.assign(new Error('登录状态已改变，原草稿已停止'),{code:'SESSION_CHANGED'})}
   const files=fileStore.create({fs:wx.getFileSystemManager(),root:ROOT(),scope,updateId,alive,now:clock(options)})
   const callNetwork=async(action,data)=>{guard();const result=await api.callNetwork(action,data);guard();return result}
@@ -98,53 +91,54 @@ function cleanupIdle(scope, now = Date.now(), limit = 20, excludeId = null) {
   for (const updateId of names) {
     if (updateId === excludeId || router.session(updateId)) continue
     const files = fileStore.create({ fs: wx.getFileSystemManager(), root: ROOT(), scope, updateId, now: () => now })
-    const activity = files.activity()
-    const state = resume.localActivityState(activity && activity.lastActiveAt, now)
-    if (state.state !== 'expired') continue
-    let frozen = false
-    try { const restored = files.restore(); frozen = pendingPostFlight(restored?.records) || Boolean(completedReceipt(restored?.records)) } catch (_) { continue }
-    if (frozen) continue
+    try {
+      const activity = files.activity()
+      if (resume.localActivityState(activity && activity.lastActiveAt, now).state !== 'expired') continue
+      const restored = files.restore(), state = posting.inspect(restored?.records, updateId)
+      if (state.postFlight || state.confirmedReceipt) continue
+    } catch (_) { continue }
     try { removeUpdateFolder(folder, updateId); cleaned += 1 } catch (_) {}
   }
   return cleaned
 }
 function restore(updateId, options = {}){
   bindOwner()
-  const current=router.session(updateId);if(current){try{current.touch?.()}catch(_){};current.attached=true;return current}
+  const current=router.session(updateId)
+  if(current && !current.state?.postRejection){try{current.touch?.()}catch(_){};current.attached=true;return current}
+  if(current) detach(updateId)
   cleanupIdle(currentScope(), clock(options)(), 20, updateId)
   const deps=dependencies(updateId, options),receipt=wx.getStorageSync(deps.prefix+'receipt')
-  if(receipt){const cleaned=deps.files.clear();if(cleaned)wx.removeStorageSync(deps.prefix+'cleanup');return{view:receipt,isLocal:true,completed:true}}
+  if(posting.isReceipt(receipt, updateId) && receipt.status === 'posted'){
+    const completed=posting.finish(receipt,{...deps,receiptSaved:true})
+    if(completed.cleaned)wx.removeStorageSync(deps.prefix+'cleanup')
+    return{view:receipt,isLocal:true,completed:true}
+  }
   if(wx.getStorageSync(deps.prefix+'abandon'))return{view:{update:{updateId,status:'abandoned'}},isLocal:true,completed:true,offlineAbandon:true}
-  const activity = deps.files.activity()
+  let restored, activity, state
+  try {
+    restored = deps.files.restore(); activity = deps.files.activity()
+    state = posting.inspect(restored?.records, updateId)
+  } catch(error) {
+    if(error.code === 'SESSION_CHANGED') throw error
+    return localGate(updateId, 'recovery_failed', { canContinue:true, canAbandon:true,
+      title:'本机草稿暂时无法恢复', message:'本机记录无法读取，原文件已保留。联网核实后，已入账的会显示结果；未入账的会重新生成核对草稿，本机尚未同步的选择可能需要重做。也可核实后重新选择账单。' })
+  }
   const activityState = resume.localActivityState(activity && activity.lastActiveAt, clock(options)())
-  let restored = null
-  if (activityState.state === 'expired') {
-    try { restored = deps.files.restore() } catch (_) { restored = null }
-    if (restored) {
-      const confirmed = completedReceipt(restored.records)
-      if (confirmed) { try { deps.saveReceipt(confirmed) } catch (_) {} deps.files.clear(); return { view: confirmed, isLocal: true, completed: true } }
-      if (pendingPostFlight(restored.records)) {
-        // An unknown posting result outranks the local TTL: keep the frozen
-        // request until the user verifies it, even after 24h of inactivity.
-        if (!options.force) return localGate(updateId, 'post_pending', { lastActiveAt: restored.lastActiveAt,
-          canContinue: true, title: '上次入账结果待核实', message: '本机草稿已超过 24 小时，但入账结果尚未核实；原请求继续保留，请先核实结果。' })
-      } else {
-        deps.files.clear()
-        return localGate(updateId, 'expired', { lastActiveAt: activity && activity.lastActiveAt || null,
-          canContinue: false, title: '上次导入已超过 24 小时', message: '超过 24 小时未活动的本机草稿已清理。请放弃上次导入后重新选择账单。' })
-      }
-    } else {
-      deps.files.clear()
-      return localGate(updateId, 'expired', { lastActiveAt: activity && activity.lastActiveAt || null,
-        canContinue: false, title: '上次导入已超过 24 小时', message: '超过 24 小时未活动的本机草稿已清理。请放弃上次导入后重新选择账单。' })
-    }
-  } else {
-    restored = deps.files.restore()
+  if(state.confirmedReceipt){posting.finish(state.confirmedReceipt,deps);return{view:state.confirmedReceipt,isLocal:true,completed:true}}
+  const frozen = Boolean(state.postFlight)
+  if(activityState.state === 'expired' && !frozen) {
+    const cleaned = deps.files.clear()
+    return localGate(updateId, 'expired', {lastActiveAt:activity && activity.lastActiveAt || null,
+      canContinue:false, title:'上次导入已超过 24 小时', message:cleaned
+        ? '超过 24 小时未活动的本机草稿已清理。请放弃上次导入后重新选择账单。'
+        : '本机草稿已超过 24 小时，清理尚未完成。请重试放弃上次导入。'})
   }
   if(!restored)return null
-  const confirmed=completedReceipt(restored.records)
-  if(confirmed){try{deps.saveReceipt(confirmed);deps.files.clear()}catch(_){}return{view:confirmed,isLocal:true,completed:true}}
-  const frozen = pendingPostFlight(restored.records)
+  if(frozen && activityState.state !== 'fresh' && !options.force) return localGate(updateId, 'post_pending', {
+    lastActiveAt:restored.lastActiveAt, canContinue:true, canAbandon:true,
+    title:'上次入账结果待核实', message:'本机仍保留上次提交请求。可继续核实原请求，也可联网核实后重新开始；结果确定前会保留原文件和选择。'})
+  if(state.postRejection) return localGate(updateId, 'server_changed', {canContinue:true, requiresReorganize:true,
+    title:'请重新整理后继续', message:posting.REORGANIZE_MESSAGE})
   const version = frozen ? null : resume.versionState(restored.facts)
   const lastActiveAt = Number(restored.lastActiveAt || (activity && activity.lastActiveAt)) || null
   if (version) {
@@ -159,8 +153,6 @@ function restore(updateId, options = {}){
     }))
   }
   if (activityState.state === 'idle' && !options.force) {
-    if (frozen) return localGate(updateId, 'post_pending', { lastActiveAt, activity: 'idle', canContinue: true,
-      title: '上次入账结果待核实', message: '本机草稿已超过 12 小时，且入账结果尚未核实；原请求继续保留，请先核实结果。' })
     return localGate(updateId, 'idle', { lastActiveAt, activity: 'idle', canContinue: true,
       title: '上次导入已超过 12 小时', message: '本机仍保留完整草稿和已保存的选择，但没有自动打开。继续查看不会重新上传或入账。' })
   }
@@ -180,7 +172,7 @@ async function refreshLease(updateId, session, options = {}) {
 }
 async function ensureResume(updateId, options = {}) {
   const local = restore(updateId, options)
-  if (!local || resumeGate(local) || local.attached) return local
+  if (!local || resumeGate(local) || local.attached || local.completed || local.state?.postFlight) return local
   const activity = local.activity
   const touchedAt = activity && Number(activity.serverTouchedAt)
   const due = !Number.isFinite(touchedAt) || clock(options)() - touchedAt >= resume.SERVER_AUTO_RESUME_MS
@@ -243,14 +235,31 @@ async function prepare(view,onProgress,migration,onStage=()=>{},options={}){
   let request=wx.getStorageSync(key)
   if(!request||options.force&&!request.force){request={requestId:api.createRequestId(),updateId:view.update.updateId,version:view.update.version,...(options.force?{force:true}:{})};persist(key,request)}
   stage('snapshot_request')
-  const prepared=await deps.callNetwork('financeUpdates.prepareSnapshot',request)
+  let prepared
+  try { prepared=await deps.callNetwork('financeUpdates.prepareSnapshot',request) }
+  catch(error) {
+    // A definite rejection permits a fresh version on the next explicit retry.
+    // Unknown network outcomes retain the exact request; choices stay on disk.
+    if(['CONFLICT','VALIDATION_ERROR','SNAPSHOT_INCOMPLETE'].includes(error.code)) { deps.guard(); wx.removeStorageSync(key) }
+    throw error
+  }
   stage('snapshot_ready',{bytes:prepared.snapshot&&prepared.snapshot.bytes,chunks:prepared.snapshot&&prepared.snapshot.chunkCount})
   stage('download_start')
-  const facts=await deps.files.download(prepared.snapshot,deps.callNetwork,onProgress,prepared.inline);deps.guard()
+  const initialize = facts => {
+    const adopted=options.adoptRecords
+    const changes=adopted ? require('./import-local-decisions').rebase(
+      Array.isArray(adopted)?adopted:adopted.records,Array.isArray(adopted)?null:adopted.facts,facts) : []
+    if(legacy.ui) {
+      for(const [key,value] of Object.entries(legacy.ui.drafts||{})) changes.push({kind:'draft',key,value:value.mode==='ignore_future'
+        ? {...value,mode:'ignore',localConfirmed:false,dirty:true}:value})
+      for(const [key,value] of Object.entries(legacy.ui.pairingDrafts||{})) changes.push({kind:'pairingDraft',key,value:{...value,needsRecheck:true}})
+    }
+    return changes
+  }
+  await deps.files.download(prepared.snapshot,deps.callNetwork,onProgress,prepared.inline,initialize);deps.guard()
   stage('download_done',{bytes:prepared.snapshot&&prepared.snapshot.bytes})
-  const session=sessionFactory.create({...deps,restored:{facts,header:prepared.snapshot,records:[]}})
-  if(legacy.ui){const drafts=legacy.ui.drafts||{};for(const draft of Object.values(drafts))if(draft.mode==='ignore_future'){draft.mode='ignore';draft.localConfirmed=false;draft.dirty=true}session.saveDrafts(drafts,2);for(const [id,draft]of Object.entries(legacy.ui.pairingDrafts||{}))session.savePairingDraft(id,{...draft,needsRecheck:true})}
-  if(options.adoptRecords&&options.adoptRecords.length)session.adopt(options.adoptRecords)
+  const sessionDeps=dependencies(view.update.updateId,{now:options.now})
+  const session=sessionFactory.create({...sessionDeps,restored:sessionDeps.files.restore()})
   try{deps.files.touch({lastActiveAt:clock(options)(),serverTouchedAt:clock(options)()})}catch(_){}
   router.bind(session);wx.removeStorageSync(key)
   if(legacy.key)wx.removeStorageSync(legacy.key)
@@ -262,12 +271,40 @@ function localDecisions(updateId, options = {}) {
   const deps = dependencies(updateId, options)
   const restored = deps.files.restore()
   if (!restored) return null
-  return { records: restored.records, facts: restored.facts, postFlight: pendingPostFlight(restored.records),
+  return { records: restored.records, facts: restored.facts, postFlight: Boolean(posting.inspect(restored.records, updateId).postFlight),
     lastActiveAt: restored.lastActiveAt }
+}
+function assertCanAbandon(updateId) {
+  const local = localDecisions(updateId)
+  if(local && local.postFlight) throw Object.assign(new Error('上次入账结果尚未核实，原请求已保留，请先核实结果'),{code:'OPERATION_UNCONFIRMED'})
+}
+function detach(updateId) {
+  const current=router.session(updateId)
+  if(current) current.close()
+  router.unbind(updateId)
+}
+async function recoverDamaged(updateId, options = {}) {
+  detach(updateId)
+  const deps=dependencies(updateId,options), key=deps.prefix+'recovery'
+  return require('./import-local-recovery').recover({updateId,deps,restart:options.restart,
+    readRequest:()=>wx.getStorageSync(key),
+    saveRequest:request=>{deps.guard();persist(key,request)},
+    clearRequest:()=>{deps.guard();wx.removeStorageSync(key)},
+    publish:async prepared=>{
+      await deps.files.download(prepared.snapshot,deps.callNetwork,options.onProgress,prepared.inline)
+      deps.guard()
+      // The recovery attempt belongs to this page epoch. Once published, the
+      // editable session belongs to the login session and survives hide/show.
+      const sessionDeps=dependencies(updateId)
+      const session=sessionFactory.create({...sessionDeps,restored:sessionDeps.files.restore()})
+      router.bind(session)
+      require('../../../services/import-draft-session').rememberLast(updateId)
+      return session.view
+    }})
 }
 // Deferred server cancellation is retried only during preparation/startup, never
 // from a local review read or edit. Local deletion is not a server cancellation.
 async function settleAbandoned(){const scope=bindOwner(),keys=wx.getStorageInfoSync().keys.filter(key=>key.startsWith('catledger_local_v3:'+scope+':')&&key.endsWith(':abandon'))
   for(const key of keys){const payload=wx.getStorageSync(key);if(!payload)continue;const deps=dependencies(payload.updateId);try{await deps.callNetwork('financeUpdates.abandon',payload);deps.guard();wx.removeStorageSync(key)}catch(_){}}
 }
-module.exports={restore,ensureResume,prepare,settleLegacy,settleAbandoned,clearLocal,cleanupIdle,localDecisions,refreshLease}
+module.exports={restore,ensureResume,prepare,settleLegacy,settleAbandoned,clearLocal,cleanupIdle,localDecisions,refreshLease,assertCanAbandon,detach,recoverDamaged}

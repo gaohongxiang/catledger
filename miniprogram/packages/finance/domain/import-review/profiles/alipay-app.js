@@ -4,7 +4,7 @@ module.exports = Object.freeze({
   profileId: 'alipay_app_csv',
   profileVersion: 'alipay-app-profile-v2',
   adapterVersion: 'alipay-app-adapter-v4',
-  policyVersion: 'alipay-semantic-policy-v4',
+  policyVersion: 'alipay-semantic-policy-v5',
   transactionTypeRole: 'category',
   sourceType: 'alipay',
   sourceFormat: 'alipay_app_csv',

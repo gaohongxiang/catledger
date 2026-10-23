@@ -1,11 +1,11 @@
 // 用户保存勾选的已还期次就是本次记账意图；不要求另一份自动记费授权。
 // 只在持有用户写锁的事务里调用，历史费用与余额保全、进度和回执一起提交。
-const { randomUUID } = require('node:crypto')
 const { ledgerError } = require('./ledger-errors')
 const { parseLocalDateTime } = require('./local-time')
 const { fullPlan, progressOf } = require('./installment-view')
 const { ITEM_SELECT, publicItem } = require('./installment-items')
 const store = require('./loan-charge-store')
+const { book, bookNewHistory, settlementAudit } = require('./installment-charge-booking')
 
 function selections(input, terms) {
   if (!Array.isArray(input) || !input.length || input.length > 600) throw ledgerError('VALIDATION_ERROR')
@@ -35,50 +35,6 @@ async function context(c, uid, loan) {
     categories, rows: fullPlan(loan).map(row => ({ ...row, ...savedByNumber.get(row.periodNumber) })) }
 }
 
-async function book(c, uid, loan, state, row, historical, paymentDate) {
-  if (row.cancelled) throw ledgerError('VALIDATION_ERROR')
-  if (historical && row.periodNumber === 1 && BigInt(loan.feeUpfrontMinor || '0') > 0n) {
-    await book(c, uid, loan, state, { periodNumber:null, interestMinor:'0', feeMinor:loan.feeUpfrontMinor, dueDate:row.dueDate }, true)
-  }
-  for (const component of ['interest', 'fee']) {
-    const key = row.periodNumber == null ? 'upfront:fee' : 'period:' + row.periodNumber + ':' + component
-    const source = state.sources.find(i => i.periodNumber === row.periodNumber && i.component === component)
-    let item = state.charges.find(i => i.chargeKey === key)
-    if (item && ['recorded', 'baseline', 'covered'].includes(item.state)) continue
-    // 删除、减免、暂停的费用不能被勾选已还偷偷复活。
-    if (item && item.state !== 'planned') throw ledgerError('LOAN_CHARGE_PAUSED')
-    const amount = source ? source.amountMinor : String(row[component + 'Minor'])
-    if (amount === '0') continue
-    if (item && item.amountMinor !== amount) throw ledgerError('LOAN_CHARGE_DIFFERENCE')
-    const categoryId = item && item.categoryId || (state.categories.find(i => i.systemKey === (component === 'interest' ? 'finance__interest' : 'finance__service')) || {}).categoryId || null
-    if (!item) {
-      item = { chargeId: randomUUID(), chargeKey: key, periodNumber: row.periodNumber, component, amountMinor: amount, categoryId, chargeDate: source ? source.occurredDate : paymentDate && paymentDate < row.dueDate ? paymentDate : row.dueDate }
-      await c.execute(`INSERT INTO catledger_loan_charges(uid,charge_id,contract_id,charge_key,component,period_number,charge_date,amount_minor,category_id)
-        VALUES(?,?,?,?,?,?,?,?,?)`, [uid, item.chargeId, state.contract.contractId, key, component, row.periodNumber, item.chargeDate, amount, categoryId])
-      state.charges.push(item)
-    }
-    let transactionId = source && source.transactionId, adjustmentId = null
-    if (!transactionId) {
-      if (categoryId && !state.categories.some(category => category.categoryId === categoryId)) throw ledgerError('NOT_FOUND')
-      transactionId = randomUUID()
-      const time = parseLocalDateTime(item.chargeDate + 'T12:00:00', -480)
-      await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,source_account_id,amount_minor,category_id,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
-        VALUES(?,?,'expense',?,?,?,?,?,?,?,?,'loan_plan',?)`, [uid, transactionId, loan.accountId, amount, categoryId, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc,
-        loan.name + (row.periodNumber == null ? ' 一次性' : ' 第' + row.periodNumber + '期') + (component === 'interest' ? '利息' : '手续费'), JSON.stringify({kind:'loan',loanIds:[loan.loanId]})])
-      if (historical) {
-        adjustmentId = randomUUID()
-        await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,destination_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
-          VALUES(?,?,'balance_adjustment',?,?,?,?,?,?,?,'system',?)`, [uid, adjustmentId, loan.accountId, amount, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc, '补记历史费用，保留已确认余额', JSON.stringify({kind:'loan',loanIds:[loan.loanId]})])
-      }
-    }
-    await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis=?,transaction_id=?,balance_adjustment_id=?,version=version+1 WHERE uid=? AND charge_id=?",
-      [source ? 'actual' : 'manual', transactionId, adjustmentId, uid, item.chargeId])
-    if (source) await c.execute('INSERT INTO catledger_loan_charge_sources(uid,charge_id,item_id) VALUES(?,?,?)', [uid, item.chargeId, source.itemId])
-    Object.assign(item, { state: 'recorded', transactionId, balanceAdjustmentId: adjustmentId })
-    await store.audit(c, uid, state.contract.contractId, item.chargeId, historical ? 'confirm_historical_paid' : 'record_period_fee', { periodNumber: row.periodNumber, transactionId, balanceAdjustmentId: adjustmentId })
-  }
-}
-
 async function confirm(c, uid, loan, view, input, alignPrincipal = false, coverage = {}) {
   const selected = selections(input, Number(loan.scheduleTerms)), state = await context(c, uid, loan)
   const previous = progressOf(loan)
@@ -88,6 +44,7 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false, covera
   const paidRows=selected.filter(entry=>entry.paid).map(entry=>rows.get(entry.periodNumber))
   if(paidRows.some(row=>!row||row.cancelled||row.status==='partial'))throw ledgerError('LOAN_TRANSACTION_LOCKED')
   await require('./installment-coverage').apply(c,uid,loan,state,paidRows.filter(row=>!row.paymentConfirmed),coverage)
+  const newlyBooked = await bookNewHistory(c, uid, loan, state, paidRows.filter(row => !row.paymentConfirmed))
   let principal = BigInt(loan.baselinePrincipalMinor)
   for (const entry of selected) {
     const row = rows.get(entry.periodNumber)
@@ -107,8 +64,11 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false, covera
       }
     }
     if (entry.paid && !row.paymentConfirmed) await book(c, uid, loan, state, row, true)
-    const costs = state.charges.filter(i => i.periodNumber === entry.periodNumber || entry.periodNumber === 1 && i.chargeKey === 'upfront:fee')
+    // 旧版首期历史补记的一次费仍可成对撤回，但首期已还不能推定一次费已发生或已结清。
+    const costs = state.charges.filter(i => i.periodNumber === entry.periodNumber ||
+      !entry.paid && entry.periodNumber === 1 && i.chargeKey === 'upfront:fee' && i.historicalSettledMinor !== '0')
     for (const item of costs) {
+      if (newlyBooked.has(item.chargeId)) continue
       const current = await store.charge(c,uid,item.chargeId)
       if (entry.paid && !row.paymentConfirmed && ['recorded','baseline','covered'].includes(current.state)) {
         const financial = current.coveredByChargeId ? await store.charge(c,uid,current.coveredByChargeId) : current
@@ -117,7 +77,8 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false, covera
         const amount = current.netAmountMinor
         if (current.historicalSettledMinor !== amount) {
           await c.execute('UPDATE catledger_loan_charges SET historical_settled_minor=?,version=version+1 WHERE uid=? AND charge_id=?',[amount,uid,item.chargeId])
-          await store.audit(c,uid,state.contract.contractId,item.chargeId,'confirm_settlement',{periodNumber:entry.periodNumber,amountMinor:amount,chargeVersion:current.version})
+          const audit = settlementAudit(entry.periodNumber, amount, current.version)
+          await store.audit(c,uid,state.contract.contractId,item.chargeId,audit.action,audit.snapshot)
         }
       } else if (!entry.paid && current.historicalSettledMinor !== '0') {
         const financial = current.coveredByChargeId ? await store.charge(c,uid,current.coveredByChargeId) : current

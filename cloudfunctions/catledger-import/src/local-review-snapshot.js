@@ -3,7 +3,15 @@
 // is no lossy truncation of source evidence or domain fields.
 const FORMAT = 'catledger-review-facts-v1'
 const TABLES = ['events','rows','raw','evidence','members','relations','links','accounts','accountDrafts','categories','loans','contracts','charges','actions','history','historyGroups','refundCandidates','paymentMappings','issues']
-function encode(facts, { consume = false, text = false } = {}) {
+function* textParts(nodes, root) {
+  yield '{"format":'+JSON.stringify(FORMAT)+',"nodes":['
+  for(let index=0;index<nodes.length;index++) {
+    yield (index?',':'')+nodes[index]
+    nodes[index]=null
+  }
+  yield '],"root":'+JSON.stringify(root)+'}'
+}
+function encode(facts, { consume = false, text = false, parts = false } = {}) {
   const nodes=[], byValue=new Map(), strings=new Map()
   function record(encoded, deduplicate = true) {
     const key=deduplicate?JSON.stringify(encoded):null
@@ -42,9 +50,12 @@ function encode(facts, { consume = false, text = false } = {}) {
   byValue.clear();strings.clear()
   // The server can retain serialized dictionary entries instead of a second
   // object graph. Each entry has already passed JSON serialization once.
-  return text?'{"format":'+JSON.stringify(FORMAT)+',"nodes":['+nodes.join(',')+'],"root":'+JSON.stringify(root)+'}':{format:FORMAT,nodes,root}
+  if(!text)return{format:FORMAT,nodes,root}
+  const serialized=textParts(nodes,root)
+  return parts?serialized:[...serialized].join('')
 }
 function encodeText(facts,options={}){return encode(facts,{...options,text:true})}
+function encodeTextParts(facts,options={}){return encode(facts,{...options,text:true,parts:true})}
 function incomplete(){throw Object.assign(new Error('草稿编码不完整'),{code:'SNAPSHOT_INCOMPLETE',publicCode:'SNAPSHOT_INCOMPLETE'})}
 function decoder() {
   const nodes=[]
@@ -132,4 +143,4 @@ function validateFacts(facts,header) {
     throw Object.assign(new Error('完整草稿的身份、版本或记录数量不一致'),{code:'SNAPSHOT_INCOMPLETE',publicCode:'SNAPSHOT_INCOMPLETE'})
   return facts
 }
-module.exports={FORMAT,encode,encodeText,decode,decodeParts,counts,validateFacts}
+module.exports={FORMAT,encode,encodeText,encodeTextParts,decode,decodeParts,counts,validateFacts}

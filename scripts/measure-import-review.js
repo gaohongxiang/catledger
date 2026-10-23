@@ -2,10 +2,12 @@
 // 仅在独立进程与 isolatedMysql 中运行；不向产品运行时注入测试接口。
 const fs = require('node:fs')
 const crypto = require('node:crypto')
-const { isolatedMysql } = require('./isolated-mysql')
+const path = require('node:path')
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
-async function measure({ onResult = () => {}, onRows = () => {} } = {}) {
+async function measure({ sourceRoot = path.resolve(__dirname, '..'), onResult = () => {}, onRows = () => {}, onSql = () => {} } = {}) {
+  const fromSource = file => require(path.join(sourceRoot, file))
+  const { isolatedMysql } = fromSource('scripts/isolated-mysql')
   const lab = await isolatedMysql(), OriginalDate = Date, originalUuid = crypto.randomUUID
   let sequence = 0
   crypto.randomUUID = () => '19150000-0000-4000-8000-' + String(++sequence).padStart(12, '0')
@@ -14,9 +16,9 @@ async function measure({ onResult = () => {}, onRows = () => {} } = {}) {
     static now() { return 1790208000000 }
   }
   try {
-    const { localServices, call, prepareSyntheticUpdate } = require('../test/helpers/local-services')
-    const { hashWechatSubject } = require('../cloudfunctions/catledger-import/src/handler')
-    let sql = []
+    const { localServices, call, prepareSyntheticUpdate } = fromSource('test/helpers/local-services')
+    const { hashWechatSubject } = fromSource('cloudfunctions/catledger-import/src/handler')
+    let sql = [], stage = null
     const pool = { async getConnection() {
       const connection = await lab.owner.getConnection()
       await connection.query('SET timestamp = 1790208000')
@@ -24,6 +26,7 @@ async function measure({ onResult = () => {}, onRows = () => {} } = {}) {
         if (!['execute', 'query', 'beginTransaction', 'commit', 'rollback'].includes(key)) return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
         return async (...args) => {
           sql.push(hash([key, args[0] || key]))
+          if (stage) onSql(stage, { method: key, statement: args[0] || key })
           return target[key](...args)
         }
       } })
@@ -36,7 +39,9 @@ async function measure({ onResult = () => {}, onRows = () => {} } = {}) {
     const results = []
     async function sample(name, operation) {
       sql = []
-      const result = await operation().catch(error => { error.measurementStage = name; throw error })
+      stage = name
+      let result
+      try { result = await operation().catch(error => { error.measurementStage = name; throw error }) } finally { stage = null }
       onResult(name, result)
       results.push({ name, sqlCount: sql.length, sqlOrderHash: hash(sql), responseBytes: Buffer.byteLength(JSON.stringify(result)), resultHash: hash(result) })
       return result

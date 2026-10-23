@@ -243,3 +243,38 @@ test('增量重算遇到同级不同账户时保持未知而不是最后一条�
   ])
   assert.equal(index.get('wechat:same-reference'), null)
 })
+
+
+test('聚合目标只在完整候选全部收敛时自动归属，未知和历史唯一标记不能放行', () => {
+  const reference = key => ({ sourceType: 'alipay', paymentMethodKey: key })
+  const projection = { from: reference('bank'), to: { referenceKind: 'aggregate', candidates: [], resolvedAccountId: 'stale-account' } }
+  const index = createMappingIndex([
+    { ...reference('bank'), mappingAction: 'account', accountId: 'bank-account' },
+    { ...reference('first'), mappingAction: 'account', accountId: 'account-a' },
+    { ...reference('same'), mappingAction: 'account', accountId: 'account-a' },
+    { ...reference('other'), mappingAction: 'account', accountId: 'account-b' },
+    { ...reference('ignored'), mappingAction: 'ignore', accountId: null }
+  ])
+  for (const keys of [[], ['unknown'], ['first','unknown'], ['unknown','first'], ['first','ignored'], ['first','other']]) {
+    const value = { ...projection, to: { ...projection.to, candidates: keys.map(reference) } }
+    const resolved = resolveSourceFunds(value, index)
+    assert.equal(resolved.toAccountId, null, keys.join(','))
+    assert.equal(Object.hasOwn(resolved.projection.to, 'resolvedAccountId'), false)
+    assert.equal(resolved.fromAccountId, 'bank-account')
+    assert.equal(value.to.resolvedAccountId, 'stale-account', '只读推导不改输入')
+  }
+  for (const keys of [['first'], ['first','same'], ['same','first']]) {
+    const resolved = resolveSourceFunds({ ...projection, to: { ...projection.to, candidates: keys.map(reference) } }, index)
+    assert.equal(resolved.toAccountId, 'account-a')
+    assert.equal(resolved.projection.to.resolvedAccountId, 'account-a')
+  }
+})
+
+test('旧批次规范别名低于直接决定，冲突别名不能按顺序替用户选择', () => {
+  const mapping = (accountId, mappingScope) => ({ sourceType: 'alipay', paymentMethodKey: 'canonical', mappingAction: 'account', accountId, mappingScope })
+  for (const order of [[mapping('old-a','batch_alias'),mapping('old-b','batch_alias')], [mapping('old-b','batch_alias'),mapping('old-a','batch_alias')]]) {
+    assert.equal(createMappingIndex(order).get('alipay:canonical'), null)
+    assert.equal(createMappingIndex([...order,mapping('chosen','batch')]).get('alipay:canonical'), 'chosen')
+    assert.equal(createMappingIndex([mapping('chosen','batch'),...order]).get('alipay:canonical'), 'chosen')
+  }
+})

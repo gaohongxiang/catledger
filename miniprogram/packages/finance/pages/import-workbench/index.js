@@ -210,6 +210,7 @@ Page({
   refreshAccountGroups: runtime.refreshAccountGroups,
   loadUpdate: runtime.loadUpdate,
   continueBlockedResume: runtime.continueBlockedResume,
+  recoverDamagedDraft: runtime.recoverDamagedDraft,
   showResumeNotice: runtime.showResumeNotice,
   abandonRestoringUpdate: runtime.abandonRestoringUpdate,
   toggleIssueSource: transactionReview.toggleIssueSource,

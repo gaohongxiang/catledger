@@ -142,3 +142,18 @@ test('覆盖门禁仍拒绝失效的组合核对、其他语义阻断及开放�
   }
   assert.equal(coverageFor(event, [{ status: 'open', blocking: true }]).selectedEventsReadyToPost, false)
 })
+
+test('同一可信身份可绑定多个来源成分，其他身份重复仍拒绝且金额组成仍待确认', () => {
+  const { inspectPaymentAccounts } = require('../src/payment-resolution')
+  const accountId = '11111111-1111-4111-8111-111111111111'
+  const event = { fieldSources: { semanticBlockers: ['payment_components_ambiguous'],
+    paymentComponents: [{ componentKind: 'financial' }, { componentKind: 'financial' }],
+    paymentAccountReferences: [{ componentIndex: 0, accountIdentityKey: 'same-family' }, { componentIndex: 1, accountIdentityKey: 'same-family' }] } }
+  const choices = [0, 1].map(componentIndex => ({ componentIndex, accountId }))
+  assert.equal(inspectPaymentAccounts(event, choices).valid, true)
+  assert.equal(event.fieldSources.paymentResolution, undefined)
+  event.fieldSources.paymentAccountReferences[1].accountIdentityKey = 'different-family'
+  assert.equal(inspectPaymentAccounts(event, choices).valid, false)
+  delete event.fieldSources.paymentAccountReferences
+  assert.equal(inspectPaymentAccounts(event, choices).valid, false)
+})

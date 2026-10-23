@@ -103,8 +103,9 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
       if (data.updateId && (action.startsWith('reviewIssues.') ||
         ['financeUpdates.setReview','financeUpdates.setCategory','financeUpdates.setRepayment','financeUpdates.reviseDuplicate','financeUpdates.organize','financeUpdates.post'].includes(action)) &&
         !(action === 'financeUpdates.post' && data.protocolVersion === 3)) {
-        const [[batch]] = await connection.execute('SELECT review_mode AS mode FROM catledger_finance_updates WHERE uid=? AND update_id=?', [uid, data.updateId])
-        if (batch && batch.mode === 'local_v3') throw importError('LOCAL_REVIEW_REQUIRED')
+        const [[batch]] = await connection.execute('SELECT review_mode AS mode,plan_version AS planVersion FROM catledger_finance_updates WHERE uid=? AND update_id=?', [uid, data.updateId])
+        if (batch && batch.mode === 'local_v3' && !(action === 'financeUpdates.organize' &&
+          batch.planVersion !== require('./domain-versions').PLAN_VERSION)) throw importError('LOCAL_REVIEW_REQUIRED')
       }
       const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
       // Full private exports include draft facts and immutable transport objects.

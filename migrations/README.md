@@ -2,6 +2,8 @@
 
 这里保存 CloudBase MySQL 的显式迁移。迁移从 `0001` 开始，编号连续、forward-only、可重入，并由 `catledger_schema_migrations` 校验文件 SHA-256。
 
+执行任何待迁移业务 SQL 前，runner 在迁移锁内预检完整本地清单和已登记历史：重复/缺号、已登记文件缺失、数据库版本超前、历史不是本地前缀及任一校验和变化都会直接停止，不先执行更早的新脚本。失败不改写历史；连接不能可靠释放锁时销毁，保留原始迁移错误。预检不改变 MySQL DDL 的隐式提交性质，脚本仍须可重入。
+
 首版迁移建立用户、微信身份摘要映射和默认分类表。`0004`～`0005` 建立单文件解析证据链与支付工具规则；`0006` 新增 FinanceUpdate、跨来源关系、ReviewIssue、FinanceAction 和整批 posting，并把旧已提交单文件回填为只引用既有交易的历史更新；`0007` 增加 FinanceUpdate 内的账户映射草稿，确保整理阶段只写导入域草稿；`0008` 让同一草稿表以 `mapping_action` 安全表达账户映射或永久忽略，并继续保证正式规则只能随整批 posting 事务一同生效。MySQL DDL 会隐式提交，因此迁移必须使用 `IF NOT EXISTS` 或 `information_schema` 守卫；迁移记录只在全部语句成功后写入，失败后修复环境并重跑，不修改已经登记的迁移文件。
 
 本地执行入口是 `cloudfunctions/catledger-api` 下的 `npm run migrate`。连接信息只通过 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 环境变量提供，禁止提交真实值。
@@ -13,6 +15,8 @@
 `0033_import_file_display_name.sql` 为导入文件增加可空显示名称；原文件名、格式、对象键、内容摘要和来源快照保持。旧记录为NULL并继续显示原名，信息表守卫支持原SQL重跑。完整导出升为schemaVersion 33，非空别名随原文件和来源关系进行双库恢复验证；已有运行账号表权限可复用。部署新版导入／导出代码前须先完成本迁移，线上执行与发布仍按独立授权处理。
 
 `0034_local_import_review.sql` 为 FinanceUpdate 增加 `review_mode`，并建立按用户隔离的完整快照、最终决定和复核补充对象/分块表。原模式默认 `server`；迁移不生成正式账户、交易或余额变化，使用显式可重入DDL。完整私有导出升为schemaVersion 34，导出清单包含模式、新表和文本块，非空快照经过双库恢复验证。API增加两表SELECT，import按 [runtime-role-grants](../scripts/runtime-role-grants.js) 与 [权限契约](../cloudfunctions/catledger-import/src/runtime-permission-contract.js) 获得对象SELECT/INSERT/UPDATE、分块SELECT/INSERT和两表清理DELETE；DELETE用于成功入账同事务清理及废弃回收，不扩大正式交易删除或原文字段改写权限。部署两函数和新版小程序前，先迁移并核验这些最小权限；线上迁移、授权与部署必须另有当前会话授权。
+
+`0035_import_cleanup_retry.sql` 为导入文件和整理批次增加清理重试时间/失败次数及草稿候选索引，默认 `NULL/0`。维护退避显式保留业务 `updated_at`，不改变账本数据修订；已有运行角色表级 UPDATE 可复用。清理调度代码依赖这些列，须先迁移后部署。它们不属于私有账本导出，格式保持不变；恢复后按默认状态重新检查到期条件。原件仍先删对象再标记，外部删除超时可能迟到完成，后续任务按同一文件身份幂等重试。迁移不修改正式账目，不授权在线执行或部署。
 
 ## 运行账号最小权限
 

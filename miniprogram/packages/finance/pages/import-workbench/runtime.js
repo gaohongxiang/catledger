@@ -72,8 +72,8 @@ function resumeNotice(resume, extra) {
   const source = resume.source || 'local'
   const continueLabel = state === 'semantic' ? '重新整理并继续'
     : state === 'server_changed' ? '重新下载并继续'
-      : state === 'post_pending' ? '继续核实入账结果' : '继续查看'
-  const abandonLabel = state === 'reparse' ? '放弃并重新选择' : '放弃并重新开始'
+      : state === 'post_pending' ? '继续核实入账结果' : state === 'recovery_failed' ? '联网核实并恢复' : '继续查看'
+  const abandonLabel = state === 'recovery_failed' || state === 'post_pending' ? '核实并重新开始' : state === 'reparse' ? '放弃并重新选择' : '放弃并重新开始'
   return Object.assign({
     source,
     state,
@@ -81,6 +81,7 @@ function resumeNotice(resume, extra) {
     lastActiveAt: resume.lastActiveAt || null,
     activity: resume.activity || null,
     canContinue: resume.canContinue !== false,
+    canAbandon: resume.canAbandon !== false,
     continueLabel,
     abandonLabel,
     originalMissing: Boolean(resume.originalMissing),
@@ -415,7 +416,7 @@ module.exports = {
       const migration = await localReview.settleLegacy(view)
       view = migration.view
       if (!active()) return
-      if (view.update.status === 'review' && (view.update.reviewMode !== 'local_v3' || view.update.requiresReorganization || options.forceReorganize)) {
+      if (view.update.status === 'review' && (view.update.reviewMode !== 'local_v3' || view.update.requiresReorganization)) {
         load.pending = this.request('financeUpdates.organize', {
           requestId: api.createRequestId(), updateId: updateId, version: view.update.version
           }, active)
@@ -427,7 +428,7 @@ module.exports = {
       if (!active()) return
       view = await localReview.prepare(view, progress => { if (active()) this.setData({ prepareProgress: downloadProgress(progress) }) }, migration,
         (stage, detail) => { if (active()) perf.mark(stage, detail) },
-        { skipLocalRestore: Boolean(options.skipLocal), force: Boolean(options.forceReorganize), adoptRecords })
+        { skipLocalRestore: Boolean(options.skipLocal), force: Boolean(options.forceReorganize), adoptRecords, alive:active })
       if (!active()) return
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
@@ -439,6 +440,10 @@ module.exports = {
       perf.mark('load_failed')
       importPerformance.record(perf); this._importPerf = null
       if (error.code === 'NOT_FOUND') {
+        try { localReview.assertCanAbandon(updateId) } catch (localError) {
+          this.setData({ phase:'error',busy:false,errorMessage:publicError(localError,'本机提交记录仍保留，请重试恢复') })
+          return false
+        }
         localReview.clearLocal(updateId, { keepAbandon: false })
         try { draftSessions.forgetLast() } catch (_) {}
         this.setData({ phase: 'idle', busy: false, errorMessage: '', restoreUpdateId: '', resumeNotice: null,
@@ -466,17 +471,24 @@ module.exports = {
     if (!notice || this.data.busy) return
     const updateId = notice.updateId || this.data.restoreUpdateId
     if (!updateId) return
+    if (notice.state === 'recovery_failed') return this.recoverDamagedDraft(false)
+    if (notice.state === 'post_pending') {
+      const loaded = await this.loadUpdate(updateId, true, { forceLocal: true })
+      if (loaded && this._draftSession && this._draftSession.state.postFlight) await this.postUpdate()
+      return
+    }
     if (notice.state === 'expired' || notice.state === 'reparse') return
     if (notice.state === 'semantic' || notice.state === 'server_changed') {
       let adoptRecords = null
       try { adoptRecords = localReview.localDecisions(updateId) }
-      catch (error) { this.setData({ busy: false, errorMessage: publicError(error, '本机草稿损坏，请先放弃后重新选择账单') }); return }
+      catch (error) { this.setData({ busy: false, errorMessage: publicError(error, '本机草稿无法读取，原文件已保留，请重试恢复') }); return }
       if (adoptRecords && adoptRecords.postFlight) {
-        this.setData({ resumeNotice: Object.assign({}, notice, { state: 'post_pending', canContinue: true,
-          title: '上次入账结果待核实', message: '本机仍有未核实的入账请求；请先继续核实结果，再处理规则升级。' }) })
+        this.showResumeNotice({ source:'local', state:'post_pending', canContinue:true, canAbandon:true,
+          title:'上次入账结果待核实', message:'本机仍有未核实的入账请求。可继续核实原请求，也可联网核实后重新开始；结果确定前会保留原文件和选择。' },updateId,true)
         return
       }
-      await this.loadUpdate(updateId, true, { skipLocal: true, forceReorganize: true, adoptRecords: adoptRecords && adoptRecords.records })
+      localReview.detach(updateId)
+      await this.loadUpdate(updateId, true, { skipLocal: true, forceReorganize: true, adoptRecords })
       return
     }
     if (notice.source === 'server') {
@@ -486,16 +498,47 @@ module.exports = {
     await this.loadUpdate(updateId, true, { forceLocal: true })
   },
 
+  async recoverDamagedDraft(restart) {
+    const updateId=this.data.restoreUpdateId
+    if (!updateId || this.data.busy) return
+    const epoch=this._viewEpoch,scope=readCache.getSession(),owner=currentOwner()
+    const active=()=>this._viewActive!==false&&this._viewEpoch===epoch&&scope===readCache.getSession()&&owner===currentOwner()
+    if(this._unsubscribeDraft)this._unsubscribeDraft()
+    this._unsubscribeDraft=null;this._draftSession=null
+    this.setData({busy:true,errorMessage:'',abandoningRestore:Boolean(restart)})
+    try {
+      const result=await localReview.recoverDamaged(updateId,{restart,alive:active})
+      if(!active())return
+      if(result.restart){draftSessions.clearUpdate(updateId);this.startAnother();return}
+      this.setData({restoreUpdateId:'',resumeNotice:null})
+      this.applyUpdateView(result.view,false,true)
+      if(result.rebuilt)this.setData({errorMessage:'已从云端恢复草稿，请重新核对本机尚未同步的选择'})
+    } catch(error) {
+      if(!active())return
+      const message=error.code==='LOCAL_RESTART_REQUIRED'?error.message
+        :error.code==='NOT_FOUND'?'云端暂时找不到这次导入，尚不能确认入账结果。原文件已保留，请稍后再核实'
+          :error.code==='DRAFT_STORAGE_FAILED'?'云端核实已进行，但本机仍无法保存。请释放存储空间后重试，原文件已保留'
+            :error.code==='SNAPSHOT_INCOMPLETE'?'云端草稿无法完整恢复，原文件已保留。请点“核实并重新开始”后重新选择账单'
+              :error.code==='CONFLICT'?'服务端草稿刚发生变化，本次恢复已停止。请再核实一次，原文件已保留'
+            :'本次核实未完成，原文件已保留。请检查网络后重试，也可稍后回来继续核实'
+      this.setData({phase:'resume',errorMessage:message})
+    } finally {if(active())this.setData({busy:false,abandoningRestore:false})}
+  },
+
   abandonRestoringUpdate: async function () {
     const updateId = this.data.restoreUpdateId
     if (!updateId || this.data.abandoningRestore) return
+    if(['recovery_failed','post_pending'].includes(this.data.resumeNotice?.state))return this.recoverDamagedDraft(true)
+    if(this.data.resumeNotice && this.data.resumeNotice.canAbandon === false) return
     const load = this._updateLoad
     if (load) load.cancelled = true
     this.setData({ abandoningRestore: true, busy: true, errorMessage: '' })
     try {
+      localReview.assertCanAbandon(updateId)
       await draftSessions.pauseUpdate(updateId)
       // 已发送的整理事务必须落定；取消后不再发起下一段恢复。
       if (load && load.pending) await load.pending.catch(function () {})
+      localReview.assertCanAbandon(updateId)
       let view
       try { view = await this.request('financeUpdates.summary', { updateId: updateId }) }
       catch (error) {

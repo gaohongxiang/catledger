@@ -98,7 +98,7 @@ function runtime(data = fixture(), options = {}) {
   function load(filename) {
     if (filename.endsWith('/services/import-local-manager.js') && !options.realLocalManager) return {
       restore: () => options.localSession || null, ensureResume: async () => options.localSession || null,
-      localDecisions: () => null, clearLocal() {}, settleLegacy: async view => ({view}),
+      localDecisions: () => null, clearLocal() {}, assertCanAbandon() {}, detach() {}, settleLegacy: async view => ({view}),
       prepare: async view => options.localSession?.view || view, settleAbandoned: async () => {} }
     if (filename.endsWith('/services/catledger-import.js') && !options.realImportApi) return api
     if (filename.endsWith('/services/import-draft-session.js') && !options.realDraftManager) return draftService

@@ -64,7 +64,11 @@ test('映射仓储返回全部候选，不按数据库结果顺序提前覆盖�
   }
 
   const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
-  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'history_alias', 'batch'])
+  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'history_alias', 'batch', 'batch_alias'])
+  const index = require('../src/account-mapping-policy').createMappingIndex(mappings)
+  assert.equal(index.get('wechat:card'), 'batch-account', '旧来源键继续按本批明确决定解析')
+  assert.equal(index.get('wechat:' + buildPaymentMethodKey('wechat', '光大银行信用卡(2690)')), 'batch-account', '新语义引用可通过本批规范别名找回原决定')
+  assert.deepEqual(require('../src/account-mapping-policy').createMappingIndex([...mappings].reverse()), index, '兼容读取不依赖数据库行序')
 })
 
 test('旧原文支付键保留原事实并派生低优先级规范别名', async function () {

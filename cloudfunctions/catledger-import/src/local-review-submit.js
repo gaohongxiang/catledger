@@ -191,7 +191,7 @@ async function post(context, postInTransaction) {
     const snapshot = await loadObject(connection, uid, data.snapshotId, 'snapshot')
     const state = validateState(payload.value)
     if (payload.header.digest !== data.payloadDigest || payload.header.snapshotId !== data.snapshotId ||
-      state.updateId !== data.updateId || state.snapshotId !== data.snapshotId || state.baseVersion !== data.version ||
+      state.updateId !== data.updateId || state.snapshotId !== data.snapshotId || state.baseVersion !== data.version || payload.header.ruleVersion !== PLAN_VERSION || snapshot.header.ruleVersion !== PLAN_VERSION ||
       snapshot.header.updateId !== data.updateId || snapshot.header.baseVersion !== data.version || state.ruleVersion !== PLAN_VERSION) fail()
     validateChoices(state, snapshot.value)
     return state

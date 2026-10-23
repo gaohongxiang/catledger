@@ -68,7 +68,7 @@
     <text class="resume-gate-copy">{{resumeNotice.message}}</text>
     <view class="resume-gate-actions">
       <button wx:if="{{resumeNotice.canContinue}}" class="primary-button resume-gate-continue" bindtap="continueBlockedResume" disabled="{{busy}}">{{resumeNotice.continueLabel}}</button>
-      <button class="stage-previous resume-gate-abandon {{abandoningRestore ? 'stage-previous-abandoning' : ''}}" bindtap="abandonRestoringUpdate" disabled="{{busy || abandoningRestore}}"><view wx:if="{{abandoningRestore}}" class="abandon-loading-label"><view class="abandon-spinner"></view><text>放弃中</text></view><text wx:else>{{resumeNotice.abandonLabel}}</text></button>
+      <button wx:if="{{resumeNotice.canAbandon}}" class="stage-previous resume-gate-abandon {{abandoningRestore ? 'stage-previous-abandoning' : ''}}" bindtap="abandonRestoringUpdate" disabled="{{busy || abandoningRestore}}"><view wx:if="{{abandoningRestore}}" class="abandon-loading-label"><view class="abandon-spinner"></view><text>放弃中</text></view><text wx:else>{{resumeNotice.abandonLabel}}</text></button>
     </view>
   </view>
 

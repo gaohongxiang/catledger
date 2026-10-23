@@ -14,7 +14,7 @@ test('真实Page长计划读取与600期原子保存的同环境计量',{skip:!p
   let responseBytes=0,maxResponseBytes=0,setDataBytes=0,maxSetDataBytes=0,sets=0
   const respond=ui.respond,setData=page.setData
   ui.respond=async(...args)=>{const prior=h.metrics(),started=performance.now(),derivation={...counts},r=await respond(...args),n=bytes(r);responseBytes+=n;maxResponseBytes=Math.max(maxResponseBytes,n);
-   if(args[0]==='loans.confirmInstallments'){const after=h.metrics();t.diagnostic(JSON.stringify({name:'save-600-transaction',...Object.fromEntries(Object.keys(prior).map(k=>[k,after[k]-prior[k]])),schedule:counts.schedule-derivation.schedule,view:counts.view-derivation.view,requestBytes:bytes(args[1]),responseBytes:n,ms:Math.round((performance.now()-started)*10)/10}))}
+   if(args[0]==='loans.confirmInstallments'){const after=h.metrics(),sql=after.sql-prior.sql;t.diagnostic(JSON.stringify({name:'save-600-transaction',...Object.fromEntries(Object.keys(prior).map(k=>[k,after[k]-prior[k]])),schedule:counts.schedule-derivation.schedule,view:counts.view-derivation.view,requestBytes:bytes(args[1]),responseBytes:n,ms:Math.round((performance.now()-started)*10)/10}));assert.ok(sql<=100,'600期新增历史费用应有界批量写入，实际SQL次数：'+sql)}
    return r}
   page.setData=function(patch,cb){const n=bytes(patch);sets++;setDataBytes+=n;maxSetDataBytes=Math.max(maxSetDataBytes,n);return setData.call(this,patch,cb)}
   return name=>{ui.respond=respond;page.setData=setData;const after=h.metrics(),result={name,requests:ui.calls.length-calls,...Object.fromEntries(Object.keys(before).map(k=>[k,after[k]-before[k]])),responseBytes,maxResponseBytes,schedule:counts.schedule-derived.schedule,view:counts.view-derived.view,sets,setDataBytes,maxSetDataBytes,ms:Math.round((performance.now()-start)*10)/10};measures.push(result);t.diagnostic(JSON.stringify(result));return result}
@@ -60,7 +60,9 @@ test('真实Page长计划读取与600期原子保存的同环境计量',{skip:!p
    await h.owner.query("CREATE TRIGGER fail_long_history BEFORE INSERT ON catledger_loan_charge_audit FOR EACH ROW BEGIN IF NEW.action='confirm_settlement' AND JSON_EXTRACT(NEW.snapshot_json,'$.periodNumber')=300 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic long rollback'; END IF; END")
    try{assert.equal(await long.p.saveRepayments(),undefined);assert.ok(long.p.data.errorMessage)}finally{await h.owner.query('DROP TRIGGER fail_long_history')}
    assert.equal(long.p.data.repaymentRows.length,600);assert.deepEqual((await h.api('accounts.list')).accounts,before)
-   assert.equal((await h.state(long.loan)).items.length,0)
+   const state=await h.state(long.loan);assert.equal(state.items.length,0);assert.equal(state.contract,null)
+   const [[leaked]]=await h.owner.execute("SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=? AND creation_provenance_json->>'$.loanIds[0]'=?",[h.uid,long.loan.loanId])
+   assert.equal(Number(leaked.count),0,'中段审计失败后不能留下支出或余额保全')
    const current=await h.api('loans.get',{loanId:long.loan.loanId});assert.equal(current.loan.version,1)
    long.ui.calls.length=0
   })
@@ -71,6 +73,9 @@ test('真实Page长计划读取与600期原子保存的同环境计量',{skip:!p
   const stable=(await h.api('accounts.list')).accounts;assert.deepEqual(stable,before)
   const [[saved]]=await h.owner.execute('SELECT progress_json AS progress FROM catledger_loans WHERE uid=? AND loan_id=?',[h.uid,long.loan.loanId])
   assert.equal(Object.keys((typeof saved.progress==='string'?JSON.parse(saved.progress):saved.progress).historyFacts).length,600)
+  const [[fees]]=await h.owner.execute(`SELECT COUNT(*) AS count FROM catledger_loan_charges f JOIN catledger_loan_charge_contracts c ON c.uid=f.uid AND c.contract_id=f.contract_id
+   WHERE f.uid=? AND c.loan_id=? AND f.state='recorded' AND f.basis='manual' AND f.version=3 AND f.historical_settled_minor=f.amount_minor AND f.balance_adjustment_id IS NOT NULL`,[h.uid,long.loan.loanId])
+  assert.equal(Number(fees.count),600,'每期保留原费用版本和历史结清事实')
   await h.api('loans.confirmInstallments',command);assert.deepEqual((await h.api('accounts.list')).accounts,stable)
   const {insertItem}=require('../cloudfunctions/catledger-api/src/installment-items')
   for(let index=0;index<8;index++){

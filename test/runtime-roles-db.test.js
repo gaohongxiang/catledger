@@ -8,13 +8,15 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
   const { isolatedMysql } = require('../scripts/isolated-mysql'), grants = require('../scripts/runtime-role-grants')
   const db = await isolatedMysql()
   try {
-    assert.equal(db.migrations, 34)
+    assert.equal(db.migrations, 35)
     const apiPool = await db.role('api', grants.api), importPool = await db.role('import', grants.importer)
     for (const pool of [apiPool, importPool]) {
       await assert.rejects(pool.query('CREATE TABLE forbidden_probe (id INT)'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
       for (const table of ['catledger_accounts', 'catledger_categories', 'catledger_import_files', 'catledger_source_identities', 'catledger_loan_charge_audit']) {
         await assert.rejects(pool.query(`DELETE FROM ${table} WHERE 1 = 0`), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
       }
+      await assert.rejects(pool.query('UPDATE catledger_finance_actions SET decision_json = decision_json WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
+      await assert.rejects(pool.query('DELETE FROM catledger_finance_actions WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
     }
     await assert.rejects(importPool.query('DELETE FROM catledger_transactions WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
     // 升级脚本仅补普通删除需要的三个表级权限，可重入；无库级 DELETE 或 DDL。

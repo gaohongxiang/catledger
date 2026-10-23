@@ -24,12 +24,14 @@ function inspectPaymentAccounts(event, value, { partial = false } = {}) {
     .filter((part) => part.componentKind === 'financial')
   if (!fields.semanticBlockers || !fields.semanticBlockers.includes('payment_components_ambiguous') ||
       parts.length < 2 || parts.length > 20 || !Array.isArray(value) || (partial ? value.length > parts.length : value.length !== parts.length)) return { valid: false }
-  const indexes = new Set(), ids = new Set()
+  const indexes = new Set(), ids = new Map()
+  const identities = new Map((fields.paymentAccountReferences || []).map(reference => [reference.componentIndex, reference.accountIdentityKey]))
   for (const item of value) {
     if (!item || !Number.isInteger(item.componentIndex) || !parts.some((part) => part.componentIndex === item.componentIndex) ||
-        indexes.has(item.componentIndex) || !UUID.test(item.accountId || '') || ids.has(item.accountId) ||
+        indexes.has(item.componentIndex) || !UUID.test(item.accountId || '') ||
+        (ids.has(item.accountId) && (!identities.get(item.componentIndex) || identities.get(item.componentIndex) !== identities.get(ids.get(item.accountId)))) ||
         Object.keys(item).some((key) => !['componentIndex', 'accountId'].includes(key))) return { valid: false }
-    indexes.add(item.componentIndex); ids.add(item.accountId)
+    indexes.add(item.componentIndex); ids.set(item.accountId, item.componentIndex)
   }
   return { valid: true, accounts: value.map((item) => ({ componentIndex: item.componentIndex, accountId: item.accountId })).sort((a, b) => a.componentIndex - b.componentIndex) }
 }

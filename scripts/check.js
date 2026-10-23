@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
 execFileSync(process.execPath,[path.join(root,'scripts/import-local-rules.js')],{stdio:'pipe'})
+execFileSync(process.execPath, [path.join(root, 'scripts/check-client-compatibility.js')], { stdio: 'inherit' })
 const files = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
   { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean))].filter((file) => fs.existsSync(path.join(root, file)))
 for (const file of files) {
@@ -13,6 +14,7 @@ for (const file of files) {
 }
 const config = JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8'))
 assert.equal(config.compileType, 'miniprogram')
+assert.match(config.libVersion || '', /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, '小程序基础库必须固定为精确版本，禁止 trial/latest 漂移')
 assert.ok(fs.existsSync(path.join(root, config.miniprogramRoot, 'app.json')))
 const miniRoot = path.join(root, config.miniprogramRoot)
 const app = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'))

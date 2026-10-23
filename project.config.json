@@ -4,7 +4,7 @@
   "compileType": "miniprogram",
   "condition": {},
   "description": "招财猫记账本微信小程序",
-  "libVersion": "trial",
+  "libVersion": "3.17.2",
   "miniprogramRoot": "miniprogram/",
   "packOptions": {
     "ignore": [
