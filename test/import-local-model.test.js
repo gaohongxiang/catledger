@@ -99,19 +99,22 @@ test('24990 行本地核对：单笔保存/摘要仅更新关联对象，分页�
     heapGrowthMiB:Number(((process.memoryUsage().heapUsed-before)/1048576).toFixed(1)),pageBytes:Buffer.byteLength(JSON.stringify(page))}))
 })
 
-test('本机退款候选兼容快照的两种形态：表数组 + 覆盖 metadata，或旧的包装对象', async () => {
+test('本机退款候选只有一种表形状：行数组 + 覆盖 metadata，缺 metadata 时按未覆盖处理', async () => {
   const value = await facts({ count: 3 }), ids = [...value.events.map(row => row.eventId)]
-  // 新快照形态：表是数组，覆盖信息在独立 metadata 里（快照编码按表逐行展开，包装对象会直接抛错）。
-  const arrayForm = local.create({ ...value, refundCandidates: [], refundCandidatesCovered: { covered: true, coveredCount: 0, total: 0 } })
-  arrayForm.edit({ eventId: ids[0], editorVersion: 1, fields: { economicNature: 'refund', amountMinor: '60', occurredLocalAt: '2026-09-02 12:00:00', timezoneOffsetMinutes: -480 } })
-  const arrayCandidates = arrayForm.refundCandidates(arrayForm.events.get(ids[0]), 'event')
-  assert.equal(arrayCandidates.length, 2, '本批候选不受历史覆盖标记影响')
-  assert.equal(arrayCandidates.historyComplete, true)
-  // 旧草稿形态：两者包在一起，仍要能读，不能因为升级把用户的候选弄丢。
-  const wrappedForm = local.create({ ...value, refundCandidates: { items: [], covered: false, coveredCount: 0, total: 1 } })
-  wrappedForm.edit({ eventId: ids[0], editorVersion: 1, fields: { economicNature: 'refund', amountMinor: '60', occurredLocalAt: '2026-09-02 12:00:00', timezoneOffsetMinutes: -480 } })
-  const wrappedCandidates = wrappedForm.refundCandidates(wrappedForm.events.get(ids[0]), 'event')
-  assert.equal(wrappedCandidates.length, 2)
-  assert.equal(wrappedCandidates.historyComplete, true, '本批范围永远完整')
-  assert.equal(wrappedForm.refundCandidates(wrappedForm.events.get(ids[0]), 'transaction').historyComplete, false, '未覆盖全时历史范围仍标记待复核')
+  const open = model => {
+    model.edit({ eventId: ids[0], editorVersion: 1, fields: { economicNature: 'refund', amountMinor: '60',
+      occurredLocalAt: '2026-09-02 12:00:00', timezoneOffsetMinutes: -480 } })
+    return model.events.get(ids[0])
+  }
+  // 新快照：表是数组，覆盖信息在独立 metadata（快照编码按表逐行展开，包装对象会直接抛错）。
+  const covered = local.create({ ...value, refundCandidates: [], refundCandidatesCovered: { covered: true, coveredCount: 0, total: 0 } })
+  const coveredEvent = open(covered)
+  assert.equal(covered.refundCandidates(coveredEvent, 'event').length, 2, '本批候选不受历史覆盖标记影响')
+  assert.equal(covered.refundCandidates(coveredEvent, 'event').historyComplete, true)
+  assert.equal(covered.refundCandidates(coveredEvent, 'transaction').historyComplete, true)
+  // 旧快照没有覆盖 metadata：本批照常，已入账范围按“没查全”处理，暂记仍要服务端复核。
+  const legacy = local.create({ ...value, refundCandidates: [] })
+  const legacyEvent = open(legacy)
+  assert.equal(legacy.refundCandidates(legacyEvent, 'event').historyComplete, true, '本批范围永远完整')
+  assert.equal(legacy.refundCandidates(legacyEvent, 'transaction').historyComplete, false)
 })
