@@ -52,3 +52,17 @@ test('快照逐节点编码保留旧字典格式与摘要，消费事实后仍�
   const decoded=codec.decodeParts(packed.parts.map(part=>part.content))
   for(const key of ['protocolVersion','events','raw','sources','update'])assert.deepEqual(decoded[key],original[key])
 })
+
+test('带覆盖标记的退款候选不阻断快照计数与校验',()=>{
+  // refundCandidates 现在是 { items, covered, ... }；按数组取 length 会让整批整理在
+  // prepareSnapshot 阶段直接抛错，页面只剩“整理已完成，结果待刷新”。
+  const facts={protocolVersion:3,snapshotId:'snap-1',ruleVersion:'organizer-plan-v1',update:{updateId:'u-1',version:2},
+    sources:[],events:[],refundCandidates:{items:[{id:'a'},{id:'b'}],covered:true,coveredCount:1,total:1}}
+  assert.equal(codec.counts(facts).refundCandidates,2)
+  assert.equal(codec.counts({sources:[],events:[],refundCandidates:[{id:'a'}]}).refundCandidates,1)
+  assert.equal(codec.counts({sources:[],events:[]}).refundCandidates,0)
+  const header={protocolVersion:3,ruleVersion:'organizer-plan-v1',objectId:'snap-1',updateId:'u-1',baseVersion:2,
+    counts:codec.counts(facts)}
+  assert.doesNotThrow(()=>codec.validateFacts(facts,header))
+  assert.throws(()=>codec.validateFacts({...facts,refundCandidates:{items:[{id:'a'}],covered:true}},header),{code:'SNAPSHOT_INCOMPLETE'})
+})

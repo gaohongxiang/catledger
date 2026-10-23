@@ -30,6 +30,7 @@
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
   <text wx:if="{{pageError}}" class="stage-action-error">{{pageError}}</text>
   <button wx:if="{{pageError || refreshRequired}}" class="stage-previous" bindtap="retryPagedView">刷新</button>
+  <button wx:if="{{prepareFailed}}" class="stage-previous" bindtap="retryPrepareDownload" disabled="{{busy}}">重新下载核对结果</button>
   <view class="stage-track" aria-label="账单导入进度">
     <button class="stage-item {{currentStep === 1 ? 'stage-current' : 'stage-done'}}" data-step="1" bindtap="goToStep" disabled="{{busy}}" hover-class="none">
       <text class="stage-number money-number">1</text>

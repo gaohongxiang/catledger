@@ -65,8 +65,10 @@ test('整理已成功而摘要读取失败，页面保留成功和刷新入口�
   h.respond = (action, data) => action === 'financeUpdates.summary' ? Promise.reject(new Error('合成读取失败')) : respond(action, data)
   await page.createFinanceUpdate()
   assert.equal(page.data.update && page.data.update.updateId, h.view.update.updateId)
-  assert.equal(page.data.errorMessage, '整理已完成，结果待刷新')
+  assert.match(page.data.errorMessage, /核对结果还没有完整下载/)
+  assert.match(page.data.errorMessage, /重新下载核对结果/)
   assert.equal(page.data.refreshRequired, true)
+  assert.equal(page.data.prepareFailed, true)
   assert.equal(h.load('services/pending-ledger-write').pending(), null)
   await page.createFinanceUpdate()
   assert.equal(h.calls.filter(call => call.action === 'financeUpdates.prepare').length, 1)
@@ -156,7 +158,8 @@ test('回执成功后本机恢复指针保存失败，页面仍确认整理完�
   }
   await h.page.createFinanceUpdate()
   assert.equal(h.page.data.update.updateId, h.view.update.updateId)
-  assert.equal(h.page.data.errorMessage, '整理已完成，结果待刷新')
+  assert.match(h.page.data.errorMessage, /核对结果还没有完整下载/)
+  assert.equal(h.page.data.prepareFailed, true)
   assert.ok(h.load('services/pending-ledger-write').pending())
   h.wx.setStorageSync = write
   await h.load('services/pending-ledger-write').verify()
@@ -244,5 +247,20 @@ test('首次整理遇自动网络重试前切用户，重试不能把原请求�
   assert.equal(page.data.update, null)
   h.app.globalData.uid = '1234567890'
   assert.equal(h.load('services/pending-ledger-write').pending().payload.requestId, original.payload.requestId)
+  page.onUnload()
+})
+
+test('核对结果下载失败后可点“重新下载核对结果”恢复，不重复整理也不改账目', async () => {
+  const h = setup(), page = h.page, respond = h.respond
+  let fail = true
+  h.respond = (action, data) => action === 'financeUpdates.summary' && fail
+    ? Promise.reject(new Error('合成读取失败')) : respond(action, data)
+  await page.createFinanceUpdate()
+  assert.equal(page.data.prepareFailed, true, '失败后必须给出可重试入口')
+  fail = false
+  await page.retryPrepareDownload()
+  assert.equal(h.calls.filter(call => call.action === 'financeUpdates.prepare').length, 1, '恢复不重新整理')
+  assert.equal(h.calls.some(call => /post$/.test(call.action)), false, '恢复不写正式账目')
+  assert.equal(page.data.prepareFailed, false, '恢复成功后清掉重试态')
   page.onUnload()
 })

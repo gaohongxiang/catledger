@@ -46,7 +46,8 @@ test('首次整理真实 Page、handler 与隔离 MySQL：提交后丢响应恢�
     await page.createFinanceUpdate()
     assert.equal(page.data.update && page.data.update.updateId, receipt.updateId)
     assert.equal(page.data.phase, 'review')
-    assert.equal(page.data.errorMessage, '整理已完成，结果待刷新')
+    assert.match(page.data.errorMessage, /核对结果还没有完整下载/)
+    assert.equal(page.data.prepareFailed, true)
     assert.equal(ui.load('services/pending-ledger-write').pending(), null)
     failSummary = false
     await page.retryPagedView()

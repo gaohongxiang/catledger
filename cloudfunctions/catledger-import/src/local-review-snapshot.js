@@ -134,7 +134,14 @@ function decodeParts(parts) {
   chunk=''
   return reader.finish(root)
 }
-function counts(facts) { return Object.fromEntries(['sources',...TABLES].map(key=>[key,facts[key].length])) }
+// 表计数只统计行集合。refundCandidates 现在带覆盖标记，是 { items, covered, ... }，
+// 若仍按数组取 length 会在准备快照时直接抛错，导致整批整理失败。
+function tableRows(facts, key) {
+  const value = facts[key]
+  if (key === 'refundCandidates' && value && !Array.isArray(value)) return value.items || []
+  return value || []
+}
+function counts(facts) { return Object.fromEntries(['sources',...TABLES].map(key=>[key,tableRows(facts,key).length])) }
 function validateFacts(facts,header) {
   const expected=header.counts||header.metadata?.counts
   if(facts.protocolVersion!==header.protocolVersion||facts.ruleVersion!==header.ruleVersion||facts.snapshotId!==header.objectId||

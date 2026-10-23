@@ -368,6 +368,7 @@ Page({
   readIssue: transactionReview.readIssue,
   retryIssueDetails: transactionReview.retryIssueDetails,
   retryIssueFacts: transactionReview.retryIssueFacts,
+  retryPrepareDownload: runtime.retryPrepareDownload,
   updateIssueReadiness: transactionReview.updateIssueReadiness,
   selectIssueRefund: transactionReview.selectIssueRefund,
   linkIssueRefund: transactionReview.linkIssueRefund,

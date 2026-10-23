@@ -310,6 +310,7 @@ module.exports = {
     const perf = this._importPerf || importPerformance.create()
     this._importPerf = perf
     perf.mark('organize_start')
+    this.setData({ prepareFailed: false })
     const active = () => this._viewActive && getApp().hasLoginApproval() && operation.owner === currentOwner() &&
       readCache.getSession() === operation.scope && this._viewEpoch === operation.epoch && this._prepareOperation === operation
     this._prepareRestore = true
@@ -334,8 +335,12 @@ module.exports = {
       perf.mark('review_ready', { events: view.update && view.update.counts && view.update.counts.finalEvents })
       importPerformance.record(perf); this._importPerf = null
       this.applyUpdateView(view, false, false, false, false, 2)
-      if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新', currentStep: 1, unlockedStep: 1, preparingAccount: false })
+      // 服务端已整理成功、但本机没拿到完整核对结果：这不是“待刷新”这么轻，要给能重试的入口。
+      if (!view.workbench) this.setData({ errorMessage: '账单已读取，但核对结果没有完整下载。请点「重新下载核对结果」重试，不会重复整理。',
+        refreshRequired: true, prepareFailed: true, currentStep: 1, unlockedStep: 1, preparingAccount: false })
       this._prepareRestore = false
+      // 只有完整拿到核对结果才清掉失败态；缺 workbench 时保留重试入口。
+      if (view.workbench) this.setData({ prepareFailed: false, refreshRequired: false })
       return true
     } catch (error) {
       if (!active()) return
@@ -345,16 +350,29 @@ module.exports = {
       if (receipt) {
         this.setData({ currentStep: 1, unlockedStep: 1, preparingAccount: false, prepareProgress: '' })
         this.applyUpdateView(receipt)
-        this.setData({ errorMessage: '整理已完成，结果待刷新', preparePending: false, refreshRequired: true })
+        this.setData({ errorMessage: '整理已完成，但核对结果还没有完整下载。请点「重新下载核对结果」重试：不会重复整理，也不会改变正式账目。',
+          preparePending: false, refreshRequired: true, prepareFailed: true })
         this._prepareRestore = false
         return true
       }
       const pending = Boolean(pendingPrepare())
       this.setData({ phase: this.data.files.length ? 'files_ready' : 'idle', preparePending: pending,
-        currentStep: 1, unlockedStep: 1, preparingAccount: false, prepareProgress: '',
+        currentStep: 1, unlockedStep: 1, preparingAccount: false, prepareProgress: '', prepareFailed: !pending,
         errorMessage: pending ? '上次整理结果待确认，请继续整理上次账单' : publicError(error, '跨来源整理失败') })
       return false
     } finally { if (active()) this.setData({ busy: false }) }
+  },
+
+  // 整理已完成但本机没有完整草稿时的恢复：先尝试本机草稿，再按原版本重新下载快照。
+  // 不计为新一次整理，也不改变正式账目。
+  retryPrepareDownload: async function () {
+    const update = this.data.update
+    if (!update || !update.updateId || this.data.busy) return
+    this.setData({ refreshRequired: false, prepareFailed: false, errorMessage: '' })
+    const loaded = await this.loadUpdate(update.updateId)
+    if (loaded === false && this.data.phase === 'error') {
+      this.setData({ prepareFailed: true, refreshRequired: true })
+    }
   },
 
   refreshAccountGroups: async function (view, canRead) {
