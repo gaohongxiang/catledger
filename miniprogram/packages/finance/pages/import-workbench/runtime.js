@@ -856,8 +856,14 @@ module.exports = {
         patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })
         patch.accountMappingsExcluded = excluded
         patch.accountStepSummary = state.summary
-      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(
-        presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))) }] : []
+      } else if (kind === 'reviewGroups') {
+        const cards = presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))
+        // 同类待办可以“只看这组”：过滤掉其它待办，逐笔卡片仍在，批量按钮不会替用户做唯一选择。
+        const filter = this.data.patternFilter ? model.issuePatternGroups(issues).find(group => group.key === this.data.patternFilter) : null
+        const members = filter ? new Set(filter.issues.map(issue => issue.issueId)) : null
+        patch.reviewGroups = cards.length ? [{ key: 'pending-events',
+          issues: presentation.linkGroupRows(members ? cards.filter(card => members.has(card.issueId)) : cards) }] : []
+      }
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,

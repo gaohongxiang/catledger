@@ -431,6 +431,14 @@ module.exports = {
         errorMessage: '已显示最新结果，原选择仍保留，请重新核对有变化的项目' })
   },
 
+  // 同类待办只看这一组：列表过滤，逐笔卡片仍在，便于先看再决定。
+  togglePatternFilter(event) {
+    const key = event.currentTarget.dataset.key || ''
+    const next = this.data.patternFilter === key ? '' : key
+    this.setData({ patternFilter: next })
+    return this.renderReview(true)
+  },
+
   // 同类待办批量处理：同一原因+同一对方的记录一次做完，仍逐笔入队，
   // 单笔不满足条件时只跳过它，不连累其余记录。
   async applyIssuePattern(event) {

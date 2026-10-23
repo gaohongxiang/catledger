@@ -340,10 +340,13 @@
         <view wx:if="{{issuePatternGroups.length}}" class="pattern-batch-list" aria-label="同类待办">
           <text class="pattern-batch-title">同类待办可以一次处理</text>
           <view wx:for="{{issuePatternGroups}}" wx:key="key" class="pattern-batch-row">
-            <view class="pattern-batch-copy"><text class="pattern-batch-label">{{item.label}}</text><text class="pattern-batch-count">{{item.count}} 笔</text></view>
+            <button class="pattern-batch-copy" data-key="{{item.key}}" bindtap="togglePatternFilter" aria-role="button" aria-label="{{item.label}} {{item.count}} 笔">{{item.label}}
+              <text class="pattern-batch-count">{{item.count}} 笔 · {{patternFilter === item.key ? '显示全部待办' : '只看这组'}}</text>
+            </button>
             <button class="pattern-batch-action" data-key="{{item.key}}" bindtap="applyIssuePattern" disabled="{{busy}}">{{item.actionLabel}}</button>
           </view>
         </view>
+        <text wx:if="{{patternFilter}}" class="pattern-filter-note">正在只看同类待办；点该组的「显示全部待办」恢复。</text>
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">

@@ -631,9 +631,9 @@ function reviewIssueRows(issues) {
 // 同类待办：同一个原因、同一个对方的记录聚在一起，给一个明确的批量动作。
 // 只处理“语义已经确定、批量动作无歧义”的两类；其余只做展示分组，不提供批量。
 const PATTERN_BATCH_ACTIONS = Object.freeze({
-  refund_source_conflict: { action: 'exclude_events', label: '全部不计入本次账本' },
-  refund_relation_required: { action: 'mark_refund_pending', label: '全部暂记待关联' },
-  refund_relation_ambiguous: { action: 'mark_refund_pending', label: '全部暂记待关联' }
+  refund_source_conflict: { action: 'exclude_events', label: '全部不计入本次账本', title: '原单状态与退款矛盾' },
+  refund_relation_required: { action: 'mark_refund_pending', label: '全部暂记待关联', title: '退款找不到原消费' },
+  refund_relation_ambiguous: { action: 'mark_refund_pending', label: '全部暂记待关联', title: '退款有多个原消费候选' }
 })
 function issuePatternGroups(issues) {
   const groups = new Map()
@@ -646,7 +646,7 @@ function issuePatternGroups(issues) {
     const key = [issue.issueType, issue.primaryReasonCode, who].join('|')
     let group = groups.get(key)
     if (!group) {
-      group = { key, label: (issue.label || ISSUE_GROUP_LABELS[issue.issueType] || '待核对') + (who ? ' · ' + who : ''),
+      group = { key, label: pattern.title + (who ? ' · ' + who : ''),
         action: pattern.action, actionLabel: pattern.label, count: 0, issues: [] }
       groups.set(key, group)
     }

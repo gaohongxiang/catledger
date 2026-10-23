@@ -133,7 +133,7 @@ test('同类退款待办聚成一组，可一次批量处理', async () => {
   assert.equal(groups[0].count, 2)
   assert.equal(groups[0].action, 'exclude_events')
   assert.equal(groups[0].actionLabel, '全部不计入本次账本')
-  assert.equal(groups[0].label, '退款与原订单状态冲突 · 合成平台商户')
+  assert.equal(groups[0].label, '原单状态与退款矛盾 · 合成平台商户')
   assert.deepEqual(groups[0].issues.map(row => row.issueId), ['i1', 'i2'])
 })
 
@@ -159,4 +159,29 @@ test('真实 Page：同类待办一次点击就完成整组处理', async t => {
   const refunds = [...h.local.model.events.values()].filter(event => event.economicNature === 'refund')
   assert.equal(refunds.every(event => event.status === 'excluded'), true)
   assert.equal(h.network.length, 0, '批量处理全程不联网')
+})
+
+test('同类待办可只看这一组，也能恢复全部；批量按钮不是唯一入口', async t => {
+  const { facts } = require('./helpers/local-review')
+  const { localWorkbench } = require('./helpers/local-workbench')
+  const HEAD = ['微信支付账单明细,,,,,,,,,,,', '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注']
+  const content = Buffer.from(HEAD.concat([
+    '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-A1,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-A2,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-06 10:00:00,商户消费,合成平台商户,合成订单-B,支出,1.20,合成信用卡(0001),交易关闭,SYNTH-TX-B1,SYNTH-ORDER-B,SYNTH-M-B,',
+    '2026-08-13 10:00:00,合成平台商户-退款,合成平台商户,合成平台商户,收入,1.20,合成信用卡(0001),已退款¥1.20,SYNTH-TX-B2,SYNTH-ORDER-B,SYNTH-M-B,',
+    '2026-08-20 09:00:00,转账,合成他人,转账备注,支出,3.00,合成信用卡(0001),支付成功,SYNTH-TX-C1,SYNTH-ORDER-C,SYNTH-M-C,'
+  ]).join('\n'))
+  const value = await facts({ content })
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 3 })
+  const before = page.data.reviewGroups[0].issues.length
+  const group = page.data.issuePatternGroups[0]
+  await page.togglePatternFilter({ currentTarget: { dataset: { key: group.key } } })
+  const filtered = page.data.reviewGroups[0].issues.length
+  assert.equal(filtered, 2, '只看这组时只剩这 2 笔')
+  assert.ok(filtered < before)
+  await page.togglePatternFilter({ currentTarget: { dataset: { key: group.key } } })
+  assert.equal(page.data.patternFilter, '')
+  assert.equal(page.data.reviewGroups[0].issues.length, before, '再点一次恢复全部')
 })
