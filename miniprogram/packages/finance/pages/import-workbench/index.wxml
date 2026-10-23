@@ -337,6 +337,13 @@
             <text class="pairing-entry-note">{{pairingEntry.loading ? '正在核验组数，可先打开查看…' : pairingEntry.error ? '组数暂未读到，点击重新核验。' : pairingEntry.total === 0 ? '暂无唯一建议，其他候选仍可在下方逐笔核对。' : '已包含在下方待核对中，这里可成批确认。'}}</text>
           </view>
         </button>
+        <view wx:if="{{issuePatternGroups.length}}" class="pattern-batch-list" aria-label="同类待办">
+          <text class="pattern-batch-title">同类待办可以一次处理</text>
+          <view wx:for="{{issuePatternGroups}}" wx:key="key" class="pattern-batch-row">
+            <view class="pattern-batch-copy"><text class="pattern-batch-label">{{item.label}}</text><text class="pattern-batch-count">{{item.count}} 笔</text></view>
+            <button class="pattern-batch-action" data-key="{{item.key}}" bindtap="applyIssuePattern" disabled="{{busy}}">{{item.actionLabel}}</button>
+          </view>
+        </view>
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">

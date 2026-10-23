@@ -839,7 +839,10 @@ module.exports = {
         Array.from(new Map(events.filter(event => event.pendingIssue).map(event => [event.pendingIssue.issueId,
           Object.assign({}, event.pendingIssue, { subject: event })])).values())
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
+      // 同类待办：同一原因、同一对方的记录，给一次批量处理的机会（只覆盖语义已确定的两类）。
+      const patternGroups = step === 3 ? model.issuePatternGroups(issues) : []
       const patch = presentation.emptyLists()
+      if (step === 3) patch.issuePatternGroups = patternGroups
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))

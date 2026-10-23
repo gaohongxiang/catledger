@@ -116,3 +116,47 @@ test('原消费是“交易关闭”时给出解释，而不是只说没有候�
   assert.ok(result.closedOriginal, '要指出同订单消费已关闭，界面才能解释为什么没候选')
   assert.equal(result.closedOriginal.amountMinor, '90')
 })
+
+test('同类退款待办聚成一组，可一次批量处理', async () => {
+  const model = require('../miniprogram/packages/finance/pages/import-workbench/model')
+  const groups = model.issuePatternGroups([
+    { issueId: 'i1', issueType: 'refund_relation', primaryReasonCode: 'refund_source_conflict', status: 'open', version: 2,
+      label: '退款与原订单状态冲突', subject: { eventId: 'e1', counterparty: '合成平台商户' } },
+    { issueId: 'i2', issueType: 'refund_relation', primaryReasonCode: 'refund_source_conflict', status: 'open', version: 1,
+      label: '退款与原订单状态冲突', subject: { eventId: 'e2', counterparty: '合成平台商户' } },
+    { issueId: 'i3', issueType: 'refund_relation', primaryReasonCode: 'refund_source_conflict', status: 'open', version: 1,
+      label: '退款与原订单状态冲突', subject: { eventId: 'e3', counterparty: '别的商户' } },
+    { issueId: 'i4', issueType: 'transfer_accounts', primaryReasonCode: 'repayment_ownership_required', status: 'open', version: 1,
+      label: '还款账户归属待确认', subject: { eventId: 'e4', counterparty: '合成银行' } }
+  ])
+  assert.equal(groups.length, 1, '只有成组的同类才聚合')
+  assert.equal(groups[0].count, 2)
+  assert.equal(groups[0].action, 'exclude_events')
+  assert.equal(groups[0].actionLabel, '全部不计入本次账本')
+  assert.equal(groups[0].label, '退款与原订单状态冲突 · 合成平台商户')
+  assert.deepEqual(groups[0].issues.map(row => row.issueId), ['i1', 'i2'])
+})
+
+test('真实 Page：同类待办一次点击就完成整组处理', async t => {
+  const { facts } = require('./helpers/local-review')
+  const { localWorkbench } = require('./helpers/local-workbench')
+  const HEAD = ['微信支付账单明细,,,,,,,,,,,', '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注']
+  // 两笔“原单关闭 + 同单全额退款”，应聚成一组。
+  const content = Buffer.from(HEAD.concat([
+    '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-A1,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-A2,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-06 10:00:00,商户消费,合成平台商户,合成订单-B,支出,1.20,合成信用卡(0001),交易关闭,SYNTH-TX-B1,SYNTH-ORDER-B,SYNTH-M-B,',
+    '2026-08-13 10:00:00,合成平台商户-退款,合成平台商户,合成平台商户,收入,1.20,合成信用卡(0001),已退款¥1.20,SYNTH-TX-B2,SYNTH-ORDER-B,SYNTH-M-B,'
+  ]).join('\n'))
+  const value = await facts({ content })
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 3 })
+  const groups = page.data.issuePatternGroups || []
+  assert.equal(groups.length, 1, '两笔同类退款应聚成一组')
+  assert.equal(groups[0].count, 2)
+  await page.applyIssuePattern({ currentTarget: { dataset: { key: groups[0].key } } })
+  assert.equal(h.local.model.choices.reviews.size, 2, '整组都写入了同一决定')
+  const refunds = [...h.local.model.events.values()].filter(event => event.economicNature === 'refund')
+  assert.equal(refunds.every(event => event.status === 'excluded'), true)
+  assert.equal(h.network.length, 0, '批量处理全程不联网')
+})
