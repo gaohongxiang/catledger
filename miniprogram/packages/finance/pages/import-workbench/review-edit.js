@@ -349,18 +349,21 @@ module.exports = {
     const kind = data.toggle === 'history' ? 'transaction'
       : data.toggle === 'event' ? 'event'
       : data.kind || sheet.refundKind || 'event'
+    // scope 只对本批有意义：'matched' 是默认的“能解释得通”的候选，'all' 是用户主动要求的全量兜底。
+    const scope = data.scope === 'all' ? 'all' : data.scope === 'matched' ? 'matched' : (sheet.refundScope || 'matched')
     const more = data.more
     const fingerprintOf = () => JSON.stringify([token.draft.economicNature, token.draft.amountInput, token.draft.date, token.draft.time, token.draft.ledgerAccountId])
     const fingerprint = fingerprintOf()
     const epoch = token.refundEpoch = (token.refundEpoch || 0) + 1
     const active = () => editable(this, token) && token.refundEpoch === epoch && fingerprint === fingerprintOf()
     token.refundOptions = []
-    this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundLoading': true, 'reviewEditSheet.refundError': '',
+    this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundScope': scope, 'reviewEditSheet.refundLoading': true,
+      'reviewEditSheet.refundError': '',
       ...(!more ? { 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundMore': false } : {}) })
     try {
       const fields = { amountMinor: model.minor(token.draft.amountInput), occurredLocalAt: token.draft.date + ' ' + token.draft.time,
         timezoneOffsetMinutes: token.row.editorFacts.timezoneOffsetMinutes, ledgerAccountId: token.draft.ledgerAccountId || null }
-      const result = await token.session.read('economicEvents.refundCandidates', { eventId: token.eventId, eventVersion: token.row.version, kind, fields,
+      const result = await token.session.read('economicEvents.refundCandidates', { eventId: token.eventId, eventVersion: token.row.version, kind, scope, fields,
         cursor: more ? token.refundCursor : null, pageSize: 12 }, active)
       if (!active()) return
       token.refundCursor = result.nextCursor

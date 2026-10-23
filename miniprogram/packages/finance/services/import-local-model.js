@@ -255,8 +255,44 @@ function create(facts) {
   // 本批原消费的展示事实：商户和商品分开取，前端不再把整串备注当卡片标题。
   function candidateFacts(row) { const first = (byEvent.get(row.eventId) || []).find(link => link.evidenceRole === 'primary') || (byEvent.get(row.eventId) || [])[0]
     const source = first && rows.get(first.rowId)
-    return { merchant: String(source?.counterparty || '').trim(), item: String(source?.item || '').trim(), sourceType: source?.sourceType || '' } }
-  function refundCandidates(event, kind) {
+    return { merchant: String(source?.counterparty || '').trim(), item: String(source?.item || '').trim(),
+      sourceType: source?.sourceType || '',
+      // 账户还没映射时 paymentMethodKey 为空，退回账单里那串支付方式原文（同一张卡文字也一致）。
+      paymentMethodKey: String(source?.paymentMethodKey || source?.paymentMethod || '').normalize('NFKC').trim() } }
+  // 退款与原消费是否说得通，用同一份纯规则（与服务端实现逐字节一致）判断，
+  // 不再把“本批所有支出”一股脑列成候选。证据行取自本机快照的 parse 结果。
+  const refundPolicy = require('../domain/import-review/refund-relation-policy')
+  const evidenceMatching = require('../domain/import-review/evidence-matching')
+  const MATCH_RANK = { exact_reference: 1, explicit_refund_evidence: 2, item_evidence: 3, merchant_evidence: 4 }
+  function relationEvidenceFor(event) {
+    const linksOf = byEvent.get(event.eventId) || []
+    const primary = linksOf.find(link => link.evidenceRole === 'primary') || linksOf[0]
+    const primaryRow = primary && rows.get(primary.rowId)
+    const evidenceRows = linksOf.map(link => rows.get(link.rowId)).filter(Boolean).map(row => ({ sourceType: row.sourceType,
+      sourceProfileId: row.sourceProfileId || '', counterparty: row.counterparty || '', item: row.item || '',
+      direction: row.direction, currency: row.currency, utcAt: row.utcAt,
+      amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
+      sourceAction: row.semantic && row.semantic.sourceAction, moneyEffect: row.semantic && row.semantic.moneyEffect,
+      relationHints: row.semantic && row.semantic.relationHints }))
+    return { sourceType: primaryRow && primaryRow.sourceType,
+      display: { counterparty: primaryRow && primaryRow.counterparty || '' },
+      relationEvidence: { scopedStableReferences: [...new Set(evidenceRows.flatMap(evidenceMatching.scopedStableReferences))], rows: evidenceRows } }
+  }
+  function refundCandidateEligible(refund, original) {
+    if (!original || original.eventId === refund.eventId || !active(original)) return false
+    if (!['expense', 'fee'].includes(original.economicNature)) return false
+    if (sourceOf(original).paymentResolution || sourceOf(original).loanRepayment || sourceOf(original).installment) return false
+    if ((original.reasonCodes || []).some(code => ['row_status_unknown', 'refund_source_conflict'].includes(code))) return false
+    if (original.currency !== refund.currency || refund.amountMinor == null || original.amountMinor == null) return false
+    if (BigInt(original.amountMinor) < BigInt(refund.amountMinor)) return false
+    const refundTime = String(refund.utcAt || ''), originalTime = String(original.utcAt || '')
+    if (!refundTime || !originalTime || originalTime > refundTime) return false
+    // 本批账户可能还没映射，先用支付方式兜底：不同卡/钱包不可能是同一笔。
+    const refundKey = candidateFacts(refund).paymentMethodKey, originalKey = candidateFacts(original).paymentMethodKey
+    return !(refundKey && originalKey && refundKey !== originalKey)
+  }
+  function refundCandidates(event, kind, options = {}) {
+    const scope = options && options.scope === 'all' ? 'all' : 'matched'
     // 本批原消费全部来自本机快照；已入账候选来自随快照一起下载的历史引用，
     // 两者都不需要再向服务端查询。
     // 表只有一个形状：refundCandidates 是行数组（快照编解码在服务端和本机都按表逐行展开），
@@ -265,12 +301,25 @@ function create(facts) {
     const coverage = supplementalFacts.refundCandidatesCovered
     const historyComplete = Boolean(coverage && coverage.covered)
     const history = (supplementalFacts.refundCandidates || []).map(row => ({ ...row, merchant: row.merchant || '', item: row.item || '', sourceType: row.sourceType || '' }))
-    const candidates = kind === 'event' ? [...events.values()].filter(row => row.eventId !== event.eventId && active(row) &&
-      ['expense','fee'].includes(row.economicNature) && !sourceOf(row).paymentResolution && !sourceOf(row).loanRepayment && !sourceOf(row).installment &&
-      !row.reasonCodes.some(code => ['row_status_unknown','refund_source_conflict'].includes(code)))
-      .map(row => ({ id: row.eventId, version: row.version, kind, localAt: row.localAt, utcAt: row.utcAt, amountMinor: row.amountMinor,
-        currency: row.currency, note: row.fieldSources.editorOverrides?.note || '', ...candidateFacts(row), remainingMinor: row.amountMinor }))
-      : history
+    const shape = row => ({ id: row.eventId, version: row.version, kind: 'event', localAt: row.localAt, utcAt: row.utcAt,
+      amountMinor: row.amountMinor, currency: row.currency, note: row.fieldSources.editorOverrides?.note || '',
+      ...candidateFacts(row), remainingMinor: row.amountMinor })
+    const batch = kind === 'event' ? [...events.values()].filter(row => refundCandidateEligible(event, row)) : []
+    const candidates = kind === 'event' ? (() => {
+      // 默认只保留“能解释得通”的候选，并且只取证据最强的一档：
+      // 原单写明已退金额 > 商品名一致 > 同一商户。都没有时给空态，而不是列一堆无关消费。
+      const refundEvidence = relationEvidenceFor(event)
+      const matched = batch.map(row => ({ row, matchKind: refundPolicy.matchKind(refundEvidence, relationEvidenceFor(row)) }))
+        .filter(item => item.matchKind)
+      if (!matched.length) return []
+      const best = Math.min(...matched.map(item => MATCH_RANK[item.matchKind]))
+      const byTime = (left, right) => String(right.row.utcAt).localeCompare(String(left.row.utcAt))
+      const strong = matched.filter(item => MATCH_RANK[item.matchKind] === best).sort(byTime)
+      // 用户明确要求“显示本批全部消费”时才放开到全部可用支出，并仍然排在匹配项后面。
+      const rest = scope === 'all' ? batch.filter(row => !strong.some(item => item.row.eventId === row.eventId))
+        .map(shape).sort((left, right) => String(right.utcAt).localeCompare(String(left.utcAt))) : []
+      return strong.map(item => ({ ...shape(item.row), matchKind: item.matchKind })).concat(rest.map(row => ({ ...row, matchKind: '' })))
+    })() : history
     const result = candidates.filter(row => row.utcAt && event.utcAt && row.utcAt <= event.utcAt && row.currency === event.currency).map(row => {
       let used = 0n
       if (kind === 'event') { for (const relation of related(row.id)) if (relation.relationType === 'refund_of' && relation.status === 'confirmed' &&

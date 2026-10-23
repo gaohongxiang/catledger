@@ -194,5 +194,6 @@ module.exports = {
   baseCandidateEligible,
   candidateReasonCode,
   linkedMatchKind,
+  matchKind,
   selectRefundCandidates
 }
