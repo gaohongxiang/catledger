@@ -51,11 +51,10 @@ test('编辑器默认展示本批原消费，历史只能由用户主动切换�
   h.refundCandidates = { event: [{ ...original, matchKind: 'merchant_evidence' }], transaction: [historyCandidate] }
   await page.openReviewEdit(editor.tap({ id: data.events[0].eventId }))
   const refunds = action => h.calls.filter(call => call.action === 'economicEvents.refundCandidates' && call.input.kind === action)
-  // 打开编辑器只读到本批范围，不会顺手查历史。
-  assert.equal(h.calls.some(call => call.action === 'economicEvents.refundCandidates'), false)
-  // 未接入完整本地会话时，读取仍走服务端候选接口；这里验证的是调用范围。
-  await page.loadEditorRefunds(editor.tap({}))
-  assert.equal(refunds('event').length, 1, '默认读取本批原消费')
+  // 打开即列出本批原消费：不再要求用户先点一次范围，否则一进来是空块。
+  await page._reviewEditToken.refundRead
+  assert.equal(refunds('event').length, 1, '打开编辑器就读取本批原消费')
+  assert.equal(refunds('transaction').length, 0, '打开时不顺手查已入账范围')
   const first = page.data.reviewEditSheet.refundChoices[0]
   assert.equal(first.id, original.id)
   assert.equal(first.matchLabel, '同一商户')

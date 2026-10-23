@@ -134,6 +134,9 @@ module.exports = {
       if (packet) this.setData({ 'reviewEditSheet.canSave': true })
       token.suggestionRead = this.loadEditorSuggestions()
       token.evidenceRead = evidence(this, token)
+      // 退款默认直接列出本批原消费：候选只在本机内存里过滤，不该让用户先点一次范围才看得到。
+      // 不做这一步时页面只显示空块，看起来像“系统没找到”，实际是根本没查。
+      if (token.view.refund && editable(this, token)) token.refundRead = this.loadEditorRefunds({ currentTarget: { dataset: {} } })
     } catch (error) { if (current(this, token)) this.setData({ 'reviewEditSheet.loading': false, 'reviewEditSheet.error': errorText(error) }) }
   },
   // 待核对计划卡里的“归入本计划”：打开这笔利息的编辑器并把归属预选成这张卡的计划。

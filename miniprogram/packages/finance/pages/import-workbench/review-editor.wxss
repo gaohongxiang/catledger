@@ -129,22 +129,56 @@
 .unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
 .unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 
-/* 已关联（含自动确认）的原消费：先说清“现在是哪一笔、当初凭什么”，
-   再给更换入口；不因为自动确认就把这块留白。 */
+/* 退款区：状态一行说清“现在是什么关系”，下面是候选卡或空态，最后一行操作。
+   之前这里是一列灰色文字，看着像没加载成功。 */
+.unified-editor-sheet .refund-block { display: flex; flex-direction: column; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4rpx var(--layout-space-2); }
+.unified-editor-sheet .refund-status-text { color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.4; }
+.unified-editor-sheet .refund-status-category { color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; }
+
+/* 已关联（含自动确认）的原消费：先说清现在是哪一笔、当初凭什么；不因为自动确认就留白。 */
 .unified-editor-sheet .refund-linked {
   display: block;
-  margin-top: var(--layout-space-2);
   padding: 16rpx 20rpx;
   border: 1rpx solid var(--ui-line);
   border-left: 6rpx solid var(--ui-accent);
   border-radius: var(--theme-radius-medium, 18rpx);
   background: var(--ui-surface-muted);
 }
-.unified-editor-sheet .refund-linked-head { display: block; color: var(--ui-accent-strong); font-size: 22rpx; font-weight: 500; line-height: 1.5; }
-.unified-editor-sheet .refund-linked-title { display: block; margin-top: 4rpx; color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .refund-linked-title { display: block; color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.4; }
 .unified-editor-sheet .refund-linked-meta { display: block; margin-top: 2rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-linked-match { display: block; margin-top: 4rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
-.unified-editor-sheet .refund-linked-hint { display: block; margin-top: 8rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+
+.unified-editor-sheet .refund-candidates-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-candidates-title { color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-candidates-count { color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-empty {
+  padding: 22rpx 20rpx;
+  border: 1rpx dashed var(--ui-border);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface);
+}
+.unified-editor-sheet .refund-empty-title { display: block; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.unified-editor-sheet .refund-empty-copy { display: block; margin-top: 6rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-more { width: 100%; margin: 0; padding: 10rpx 0; border: 0; background: transparent; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; text-align: left; }
+.unified-editor-sheet .refund-more::after { border: 0; }
+.unified-editor-sheet .refund-note { display: block; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-actions { display: flex; flex-wrap: wrap; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-action {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 14rpx 20rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-small, 12rpx);
+  background: var(--ui-surface);
+  color: var(--ui-accent-strong);
+  font-size: 22rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+.unified-editor-sheet .refund-action::after { border: 0; }
+.unified-editor-sheet .refund-action-muted { color: var(--ui-muted); }
 .editor-mode-choices button {
   flex: 1 1 180rpx;
   box-sizing: border-box;

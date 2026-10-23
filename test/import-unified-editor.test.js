@@ -191,10 +191,12 @@ test('真实 Page：普通字段点同组第二笔只打开第二笔，已填值
 test('真实 Page：退款候选晚到或失败不能替新金额启用暂记；输入不被读取覆盖',async()=>{
   const data=fixture(1,true);data.events[0].economicNature='refund'
   const h=runtime(data),page=h.page
-  await page.openReviewEdit(tap({id:h.events[0].eventId}))
   let release
+  // 打开编辑器就会读取本批候选，所以拦截必须在打开之前装好，才能拿到“晚到”的时机。
   h.intercept=(action)=>action==='economicEvents.refundCandidates'?new Promise(resolve=>{release=resolve}):undefined
-  const loading=page.loadEditorRefunds(tap({kind:'event'}));await flush()
+  await page.openReviewEdit(tap({id:h.events[0].eventId}))
+  await flush()
+  const loading=page._reviewEditToken.refundRead
   page.changeEditorText({currentTarget:{dataset:{field:'amountInput'}},detail:{value:'2.00'}})
   release({viewVersion:h.summary.viewVersion,items:[],total:0,nextCursor:null});await loading
   assert.equal(page.data.reviewEditSheet.draft.amountInput,'2.00');assert.notEqual(page.data.reviewEditSheet.refundCanPending,true)

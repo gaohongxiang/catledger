@@ -206,11 +206,13 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(cardMarkup, /pending \? card\.label : card\.natureLabel/)
   assert.match(cardMarkup, /\{\{record\.amountText\}\}/)
   const editorFields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
-  assert.match(editorFields, /正在核验候选/)
+  // 退款区必须是“状态 + 候选卡/空态 + 操作行”三段，打开即列出本批候选。
+  assert.match(editorFields, /refund-candidates-head[\s\S]*读取中/)
+  assert.match(editorFields, /class="refund-empty"/)
   assert.match(editorFields, /bindtap="selectEditorRefund"/)
   assert.match(editorFields, /sheet.refundCanPending/)
   // 退款候选默认区间是本批，历史只作备用入口；两者都要有按钮能切换。
-  assert.match(editorFields, /data-toggle="history"/)
+  assert.match(editorFields, /data-toggle="\{\{sheet\.refundKind === 'transaction' \? 'event' : 'history'\}\}"/)
   assert.match(editorFields, /data-more="true"/)
   assert.doesNotMatch(markup, /linkRefund|markRefundPending/)
   assert.doesNotMatch(markup, /涉及 \{\{item\.memberCount\}\} 个关联对象/)
