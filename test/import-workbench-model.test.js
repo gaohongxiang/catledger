@@ -411,7 +411,7 @@ test('可共享决定的一张 ReviewIssue 显示批量处理数量而不拆行'
   assert.equal(groups[0].issues[0].batchDecision, '批量处理 12 笔')
 })
 
-test('退款候选展示原消费信息和服务端冻结的匹配依据', function () {
+test('退款候选卡与单笔编辑器同一形态：商户、时间、金额、匹配依据', function () {
   const choice = model.relationChoiceView({
     eventId: 'expense-1', localAt: '2026-08-01 08:30:00.000', amountMinor: '1200',
     flowDirection: 'outflow', primaryEvidence: { sourceType: 'wechat', item: '原消费', counterparty: '示例商户' }
@@ -419,15 +419,16 @@ test('退款候选展示原消费信息和服务端冻结的匹配依据', funct
     relationId: 'relation-1', targetEventId: 'expense-1',
     reasonCodes: ['refund_exact_reference_candidate']
   })
-
-  assert.deepEqual(choice, {
-    targetEventId: 'expense-1', relationId: 'relation-1', title: '原消费',
-    meta: '08-01 · 08:30 · 示例商户 · 微信', amountText: '¥12.00', directionClass: 'row-expense',
-    matchLabel: '订单匹配'
-  })
+  assert.equal(choice.targetEventId, 'expense-1')
+  assert.equal(choice.relationId, 'relation-1')
+  assert.equal(choice.title, '示例商户', '卡片标题取商户，不用商品名顶替')
+  assert.equal(choice.amountText, '¥12.00')
+  assert.equal(choice.localAtText, '2026-08-01 08:30')
+  assert.equal(choice.sourceTypeLabel, '微信')
+  assert.equal(choice.matchLabel, '订单号一致')
 })
 
-test('商品标题证据显示为待核对而不是可靠自动匹配', function () {
+test('商品标题证据给出“商品名一致”，候选仍需人工确认', function () {
   const choice = model.relationChoiceView({
     eventId: 'expense-2', amountMinor: '466', flowDirection: 'outflow',
     primaryEvidence: { sourceType: 'alipay', item: '手持小型缝纫机' }
@@ -435,7 +436,7 @@ test('商品标题证据显示为待核对而不是可靠自动匹配', function
     relationId: 'relation-2', targetEventId: 'expense-2',
     reasonCodes: ['refund_item_evidence_candidate']
   })
-  assert.equal(choice.matchLabel, '商品匹配待核对')
+  assert.equal(choice.matchLabel, '商品名一致')
 })
 
 test('最终入账摘要按经济性质统计且缺分类时关闭入账门禁', function () {

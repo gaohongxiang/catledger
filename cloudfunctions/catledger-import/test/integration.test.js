@@ -1312,12 +1312,11 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
     const laterView = await service.financeUpdateOrganize(context(user, {
       requestId: randomUUID(), updateId: laterCreated.updateId, version: laterCreated.version
     }))
-    assert.equal(laterView.events.every((event) => event.status === 'excluded'), true)
-    assert.equal(laterView.events.every((event) => event.reasonCodes.includes('source_account_ignored_default')), true)
-    const laterIssue = laterView.issues.find((item) => item.status === 'resolved' && item.issueType === 'account_mapping')
+    // 「仅本次不计入」不写永久映射，也不替下一批做决定：重新导入要重新确认这个账户。
+    assert.equal(laterView.events.every((event) => event.status !== 'excluded'), true)
+    assert.equal(laterView.events.some((event) => event.reasonCodes.includes('source_account_ignored_default')), false)
+    const laterIssue = laterView.issues.find((item) => item.issueType === 'account_mapping' && item.status === 'open')
     assert.ok(laterIssue)
-    assert.equal(laterIssue.blocking, false)
-    assert.equal(laterIssue.accountContext.defaultIgnored, true)
     // 恢复规范键后，验证自动复用规则的来源证据也能阻止规则被撤回。
     await pool.execute('UPDATE catledger_import_account_mappings SET payment_method_key = ? WHERE uid = ?',
       [buildPaymentMethodKey('wechat', '微信零钱'), user.uid])

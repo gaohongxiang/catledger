@@ -564,7 +564,53 @@ test('以后不计入自动排除并生成非阻塞可修改账户项', () => {
   assert.equal(plan.issues[0].blocking, false)
 })
 
-test('旧账户键兼容忽略可命中新规范键且精确规则优先', () => {
+test('仅本次不计入的已排除事件仍保留已解决账户项，重新整理不再追问', () => {
+  const { buildConfirmedAccountIssues } = require('../src/organizer-planner')
+  const reference = { sourceType: 'alipay', paymentMethodKey: 'b'.repeat(64), accountIdentityKey: 'wallet-identity' }
+  const events = [
+    { eventId: 'event-only-this', version: 3, status: 'excluded', ledgerAccountId: '50000000-0000-4000-8000-000000000021',
+      reasonCodes: ['manual_exclusion', 'account_mapping_excluded'], sourceType: 'alipay', paymentMethodKey: 'b'.repeat(64),
+      accountGroupingKey: 'wallet-identity', fieldSources: { ledgerAccountReference: reference } },
+    // 单独一条账户已确认的事件不参与本次排除，避免同一组被排除影响判定。
+    { eventId: 'event-confirmed', version: 3, status: 'needs_action', ledgerAccountId: 'account-other',
+      reasonCodes: ['ledger_account_required'], sourceType: 'alipay', paymentMethodKey: 'c'.repeat(64),
+      accountGroupingKey: 'wallet-identity-b', fieldSources: {} }
+  ]
+  const result = buildConfirmedAccountIssues('update', events, [{ sourceType: 'alipay', paymentMethodKey: 'c'.repeat(64),
+    mappingAction: 'account', accountId: 'account-other' }], ids())
+  const onlyThis = result.issues.find(issue => issue.reasonCodes.includes('account_mapping_excluded'))
+  assert.ok(onlyThis, '本次人工排除必须保留可取回的已解决账户项')
+  assert.equal(onlyThis.status, 'resolved')
+  assert.equal(onlyThis.blocking, false)
+  assert.equal(onlyThis.primaryReasonCode, 'payment_reference_excluded_this_import')
+  assert.equal(onlyThis.memberCount, 1)
+  assert.equal(result.members.find(member => member.issueId === onlyThis.issueId).objectId, 'event-only-this')
+})
+
+test('同一账户组里仍存在本次排除的事件时不写成已确认账户，避免排除被记入', () => {
+  const { buildConfirmedAccountIssues } = require('../src/organizer-planner')
+  const reference = { sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64), accountIdentityKey: 'wallet-shared' }
+  const events = [
+    { eventId: 'event-excluded', version: 2, status: 'excluded', ledgerAccountId: 'account-wallet',
+      reasonCodes: ['manual_exclusion', 'account_mapping_excluded'], sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64),
+      fieldSources: { ledgerAccountReference: reference } },
+    { eventId: 'event-active', version: 5, status: 'needs_action', ledgerAccountId: 'account-wallet',
+      reasonCodes: ['ledger_account_required'], sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64),
+      fieldSources: { ledgerAccountReference: reference } }
+  ]
+  const result = buildConfirmedAccountIssues('update', events,
+    [{ sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64), mappingAction: 'account', accountId: 'account-wallet' }], ids())
+  const confirmed = result.issues.filter(issue => issue.reasonCodes.includes('account_mapping_confirmed'))
+  const excluded = result.issues.filter(issue => issue.reasonCodes.includes('account_mapping_excluded'))
+  assert.equal(confirmed.length, 1)
+  assert.equal(excluded.length, 1)
+  const confirmedMembers = result.members.filter(member => member.issueId === confirmed[0].issueId)
+  const excludedMembers = result.members.filter(member => member.issueId === excluded[0].issueId)
+  assert.deepEqual(confirmedMembers.map(member => member.objectId), ['event-active'])
+  assert.deepEqual(excludedMembers.map(member => member.objectId), ['event-excluded'])
+})
+
+test('历史保存的忽略规则不再替新批次排除，只回到账户确认', () => {
   const label = '支付宝小荷包(合成小荷包)'
   const currentKey = buildPaymentMethodKey('alipay', label)
   const baseRow = row({
@@ -575,11 +621,13 @@ test('旧账户键兼容忽略可命中新规范键且精确规则优先', () =>
     sourceType: 'alipay', paymentMethodKey: currentKey, paymentMethodHint: label,
     mappingAction: 'ignore', accountId: null, mappingScope: 'history_alias'
   }
-  const ignored = buildOrganizePlan({
+  // 「仅本次不计入」只属于当初那次导入，重新导入应重新确认这个账户。
+  const reimported = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000140', idFactory: ids(),
     rows: [baseRow], paymentMappings: [legacyIgnore]
   })
-  assert.equal(ignored.events[0].status, 'excluded')
+  assert.notEqual(reimported.events[0].status, 'excluded')
+  assert.equal(reimported.issues.some(issue => issue.issueType === 'account_mapping' && issue.status === 'open'), true)
 
   const exactAccount = '50000000-0000-4000-8000-000000000140'
   const overridden = buildOrganizePlan({

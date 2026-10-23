@@ -254,16 +254,9 @@ async function promoteAccountMappings(connection, uid, updateId) {
       if (Number(row.accountCount) !== 0 || row.minimumEventStatus !== 'excluded' || row.maximumEventStatus !== 'excluded') {
         throw importError('UNRESOLVED_IMPORT')
       }
-      await connection.execute(
-        `INSERT INTO catledger_import_account_mappings
-           (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
-            mapping_action, account_id, disabled_at)
-         VALUES (?, ?, ?, ?, ?, 'ignore', NULL, NULL)
-         ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-           mapping_action = 'ignore', account_id = NULL, disabled_at = NULL,
-           version = version + 1`,
-        [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint]
-      )
+      // 「仅本次不计入」是本批决定：不写永久映射，也不改动已有映射。
+      // 之前这里会把 ignore 发布成永久规则，导致下一次导入被自动排除，与
+      // “本次排除不自动变成永久忽略”的规则冲突。
     } else {
       throw importError('UNRESOLVED_IMPORT')
     }
