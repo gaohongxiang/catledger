@@ -211,8 +211,10 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(editorFields, /class="refund-empty"/)
   assert.match(editorFields, /bindtap="selectEditorRefund"/)
   assert.match(editorFields, /sheet.refundCanPending/)
-  // 退款候选默认区间是本批，历史只作备用入口；两者都要有按钮能切换。
-  assert.match(editorFields, /data-toggle="\{\{sheet\.refundKind === 'transaction' \? 'event' : 'history'\}\}"/)
+  // 退款范围固定成两个并排按钮：本批消费 / 已入账记录，始终可见。
+  assert.match(editorFields, /class="refund-scope"/)
+  assert.match(editorFields, /data-kind="event" data-scope="matched"/)
+  assert.match(editorFields, /data-kind="transaction"/)
   assert.match(editorFields, /data-more="true"/)
   assert.doesNotMatch(markup, /linkRefund|markRefundPending/)
   assert.doesNotMatch(markup, /涉及 \{\{item\.memberCount\}\} 个关联对象/)

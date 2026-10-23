@@ -370,6 +370,11 @@ module.exports = {
       const result = await token.session.read('economicEvents.refundCandidates', { eventId: token.eventId, eventVersion: token.row.version, kind, scope, fields,
         cursor: more ? token.refundCursor : null, pageSize: 12 }, active)
       if (!active()) return
+      // 本批没有“说得通”的候选时自动落到全部消费：按钮仍然只有本批/已入账两个，
+      // 但点“本批消费”永远能看到东西，不会只剩一句空话。
+      if (kind === 'event' && scope !== 'all' && Number(result.total) === 0 && !data.auto) {
+        return this.loadEditorRefunds({ currentTarget: { dataset: { kind: 'event', scope: 'all', auto: true } } })
+      }
       token.refundCursor = result.nextCursor
       const views = result.items.map(refundCandidateView)
       token.refundOptions = result.items

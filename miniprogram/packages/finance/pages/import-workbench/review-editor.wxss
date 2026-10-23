@@ -151,6 +151,24 @@
 .unified-editor-sheet .refund-linked-meta { display: block; margin-top: 2rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-linked-match { display: block; margin-top: 4rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
 
+/* 范围切换：两个等宽按钮并排，选中态用主题色描边；始终可见，不藏在空态里。 */
+.unified-editor-sheet .refund-scope { display: flex; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-scope-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 12rpx 8rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-small, 12rpx);
+  background: var(--ui-surface);
+  color: var(--ui-muted);
+  font-size: 22rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+.unified-editor-sheet .refund-scope-btn::after { border: 0; }
+.unified-editor-sheet .refund-scope-btn.is-active { border-color: var(--ui-accent); background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 .unified-editor-sheet .refund-candidates-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
 .unified-editor-sheet .refund-candidates-title { color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-candidates-count { color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }

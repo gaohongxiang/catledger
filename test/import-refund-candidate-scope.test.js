@@ -79,3 +79,28 @@ test('选中原消费后退款事项收尾，事件不再停在待核对', async
   assert.equal(settled.status, 'resolved')
   assert.equal(settled.blocking, false)
 })
+
+test('本批没有匹配项时自动列出全部消费，仍只有两个范围按钮', async () => {
+  const data = require('./helpers/paged-workbench').fixture(1, true)
+  Object.assign(data.events[0], { economicNature: 'refund', flowDirection: 'inflow', amountMinor: '11' })
+  const { runtime } = require('./helpers/paged-workbench')
+  const editor = require('./helpers/editor-workbench')
+  const h = runtime(data), page = h.page
+  // 先返回空（本批无匹配），再返回全部消费。
+  let call = 0
+  h.intercept = action => {
+    if (action !== 'economicEvents.refundCandidates') return
+    call++
+    return call === 1
+      ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [], total: 0, nextCursor: null }
+      : { protocolVersion: 2, viewVersion: h.summary.viewVersion, total: 1, nextCursor: null, items: [{ id: 'fallback', version: 1,
+          kind: 'event', amountMinor: '6400', remainingMinor: '6400', localAt: '2026-08-13 14:06', merchant: '合成平台商户' }] }
+  }
+  await page.openReviewEdit(editor.tap({ id: data.events[0].eventId }))
+  await page._reviewEditToken.refundRead
+  const sheet = page.data.reviewEditSheet
+  assert.equal(sheet.refundScope, 'all', '没有匹配项时自动退到全部消费')
+  assert.equal(sheet.refundChoices.length, 1)
+  assert.equal(h.calls.filter(row => row.action === 'economicEvents.refundCandidates').length, 2)
+  page.onUnload()
+})
