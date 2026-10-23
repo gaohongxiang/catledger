@@ -58,3 +58,24 @@ test('不同支付方式的消费不算同一笔候选', async () => {
   const model = local.create(value), refund = refundEvent(model)
   assert.equal(model.refundCandidates(refund, 'event').length, 0, '换了一张卡就不是这一笔')
 })
+
+test('选中原消费后退款事项收尾，事件不再停在待核对', async () => {
+  const value = await facts({ content: rowsOf([PURCHASE_REFUNDED, REFUND_SMALL, UNRELATED]), mapped: true })
+  const model = local.create(value)
+  const refund = [...model.events.values()].find(event => event.economicNature === 'refund')
+  // 服务端遇到多个候选会写成 proposed 关系并开一条“退款关系待确认”的硬阻断事项，
+  // 这里用同一形状复原，验证选定原消费后这条事项能收尾。
+  refund.reasonCodes = [...new Set([...(refund.reasonCodes || []), 'refund_relation_ambiguous'])]
+  refund.status = 'needs_action'
+  const issue = model.addIssue(refund, 'refund_relation', 'refund_relation_ambiguous', 'synthetic-refund-issue', [refund.eventId])
+  issue.localDerived = false // 服务端下发的事项不是本机派生，不会被 derive 直接作废
+  const candidate = model.refundCandidates(refund, 'event')[0]
+  assert.ok(candidate, '应有可确认的原消费')
+  model.edit({ eventId: refund.eventId, editorVersion: 1, decisions: { refund: { mode: 'link', kind: 'event', id: candidate.id, version: candidate.version } } })
+  const after = model.events.get(refund.eventId)
+  assert.equal(after.reasonCodes.includes('refund_relation_ambiguous'), false, '选定后不再保留待确认阻断')
+  assert.equal(after.reasonCodes.filter(code => code.startsWith('refund_relation') || code === 'refund_amount_exceeded').length, 0)
+  const settled = model.issues.get(issue.issueId)
+  assert.equal(settled.status, 'resolved')
+  assert.equal(settled.blocking, false)
+})

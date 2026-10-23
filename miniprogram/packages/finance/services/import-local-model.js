@@ -353,6 +353,13 @@ function create(facts) {
       const coverage = (supplemental || facts).historyCoverage.refunds.find(row => row.eventId === next.eventId)
       if (!coverage || !coverage.complete || ['amountMinor','utcAt','ledgerAccountId'].some(key => coverage[key] !== next[key])) needsCheck.add(next.eventId)
     }
+    // 已经做出退款关系决定，就要把“退款关系待确认”类阻断从事件上摘掉，
+    // 否则它作为硬阻断会一直留着，界面上点了保存还是待核对（与服务端同一口径）。
+    const openSameEvent = [...issues.values()].some(issue => issue.status === 'open' && issue.issueType === 'same_event' &&
+      issue.subjectEventIds.includes(next.eventId))
+    next.reasonCodes = (next.reasonCodes || []).filter(reason => reason !== 'relation_ambiguous' || openSameEvent)
+    next.reasonCodes = next.reasonCodes.filter(reason => !['refund_relation_required', 'refund_relation_invalid',
+      'refund_relation_ambiguous', 'refund_amount_exceeded'].includes(reason))
   }
   function finish(ids) {
     const affected = dependencies([...ids])
@@ -393,8 +400,11 @@ function create(facts) {
         feeCategoryId: [...categories.values()].find(row => row.systemKey === 'finance__service' && !row.archivedAt)?.categoryId || null }
     }
     next.version = current.version + 1; events.set(current.eventId, next)
+    const remaining = new Set(next.reasonCodes || [])
+    const refundCleared = !['refund_relation_required', 'refund_relation_invalid', 'refund_relation_ambiguous',
+      'refund_amount_exceeded', 'refund_source_conflict'].some(reason => remaining.has(reason))
     for (const issue of eventIssues(current.eventId)) if (editableIssues.has(issue.issueType) &&
-      !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode)) {
+      (issue.issueType === 'refund_relation' && refundCleared || !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode))) {
       removeSubject(issue, current.eventId)
       if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false }
     }
