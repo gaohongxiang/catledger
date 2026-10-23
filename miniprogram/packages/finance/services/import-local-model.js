@@ -270,6 +270,9 @@ function create(facts) {
     const primaryRow = primary && rows.get(primary.rowId)
     const evidenceRows = linksOf.map(link => rows.get(link.rowId)).filter(Boolean).map(row => ({ sourceType: row.sourceType,
       sourceProfileId: row.sourceProfileId || '', counterparty: row.counterparty || '', item: row.item || '',
+      // 稳定引用（交易号／订单号／商户单号）决定“订单号一致”这一档，漏掉就永远匹配不上。
+      sourceTransactionId: row.sourceTransactionId, sourceOrderId: row.sourceOrderId,
+      sourceMerchantOrderId: row.sourceMerchantOrderId,
       direction: row.direction, currency: row.currency, utcAt: row.utcAt,
       amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
       sourceAction: row.semantic && row.semantic.sourceAction, moneyEffect: row.semantic && row.semantic.moneyEffect,
@@ -327,8 +330,16 @@ function create(facts) {
       } else if (kind === 'transaction') { for (const link of links) if (link.role === 'refund_original' && link.transactionId === row.id && link.eventId !== event.eventId && active(events.get(link.eventId))) used += BigInt(events.get(link.eventId).amountMinor) }
       return { ...row, remainingMinor: String(BigInt(row.remainingMinor || 0) - used) }
     }).filter(row => event.amountMinor != null && BigInt(row.remainingMinor) >= BigInt(event.amountMinor))
+    // 同订单的消费已经“交易关闭/失败”时它不会进候选（没实际扣款），但用户需要知道原因，
+    // 否则界面只剩“没有能退这笔的消费”，看起来像系统没找到。
+    const closedOriginal = kind === 'event' ? [...events.values()].find(row => row.eventId !== event.eventId &&
+      !active(row) && (row.reasonCodes || []).some(reason => ['transaction_closed', 'transaction_failed'].includes(reason)) &&
+      relationEvidenceFor(row).relationEvidence.scopedStableReferences
+        .some(ref => relationEvidenceFor(event).relationEvidence.scopedStableReferences.includes(ref))) : null
     // 已入账候选是否覆盖完整由下载范围决定；本批永远完整。
-    return Object.assign(result, { historyComplete: kind === 'event' ? true : historyComplete })
+    return Object.assign(result, { historyComplete: kind === 'event' ? true : historyComplete,
+      closedOriginal: closedOriginal ? { eventId: closedOriginal.eventId, amountMinor: closedOriginal.amountMinor,
+        localAt: closedOriginal.localAt } : null })
   }
   function applyRefund(current, next, data) {
     const choice = data.decisions?.refund

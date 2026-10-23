@@ -104,3 +104,15 @@ test('本批没有匹配项时自动列出全部消费，仍只有两个范围�
   assert.equal(h.calls.filter(row => row.action === 'economicEvents.refundCandidates').length, 2)
   page.onUnload()
 })
+
+test('原消费是“交易关闭”时给出解释，而不是只说没有候选', async () => {
+  const closed = '2026-08-05 15:40:58,商户消费,合成平台商户,合成平台订单-0009,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-0009,SYNTH-ORDER-0009,SYNTH-MERCHANT-0009,'
+  const refund = '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-0010,SYNTH-ORDER-0009,SYNTH-MERCHANT-0009,'
+  const value = await facts({ content: rowsOf([closed, refund]) })
+  const model = local.create(value)
+  const event = [...model.events.values()].find(row => row.economicNature === 'refund')
+  const result = model.refundCandidates(event, 'event')
+  assert.equal(result.length, 0, '已关闭的消费不能作为原消费')
+  assert.ok(result.closedOriginal, '要指出同订单消费已关闭，界面才能解释为什么没候选')
+  assert.equal(result.closedOriginal.amountMinor, '90')
+})

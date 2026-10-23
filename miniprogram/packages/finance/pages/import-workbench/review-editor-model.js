@@ -400,6 +400,9 @@ function derive(row, draft, catalogs = {}) {
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
     showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: !channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
     refund: effectiveNature === 'refund', principal,
+    // 同订单的原消费已关闭/失败却出现退款成功时，来源本身互相矛盾；
+    // 这种退款不能当普通退款去挑原消费，必须从矛盾事项核对原文。
+    refundConflict: Boolean((row.reasonCodes || []).includes('refund_source_conflict')),
     fieldErrors, errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
     canSave: supported && Boolean(changed) && errors.length === 0,
     complete: missing.length === 0 && !(facts?.blockingReasons || []).length && !(row.reasonCodes || []).some(reason => ['row_status_unknown','identity_conflict','same_event_candidate','refund_source_conflict','core_fields_conflict'].includes(reason)),

@@ -381,6 +381,7 @@ module.exports = {
       token.refundChecked = { ...(token.refundChecked || {}), [kind]: result.total }
       const page = more ? (this.data.reviewEditSheet.refundChoices || []).concat(views) : views
       this.setData({ 'reviewEditSheet.refundChoices': page,
+        'reviewEditSheet.refundClosedOriginal': kind === 'event' ? (result.closedOriginal || null) : this.data.reviewEditSheet.refundClosedOriginal,
         'reviewEditSheet.refundHistoryPending': kind === 'transaction' ? result.serverReviewPending === true : this.data.reviewEditSheet.refundHistoryPending,
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
         'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&

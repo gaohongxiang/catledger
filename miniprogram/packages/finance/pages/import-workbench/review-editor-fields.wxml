@@ -134,12 +134,17 @@
           <text class="refund-linked-meta">{{editor.refundLinked.localAt}} · ¥{{editor.refundLinked.amountMinor == null ? '' : editor.refundLinked.amountMinor}}{{editor.refundLinked.categoryName ? ' · ' + editor.refundLinked.categoryName : ''}}</text>
           <text wx:if="{{editor.refundLinked.matchKind}}" class="refund-linked-match">依据：{{editor.refundLinked.matchKind === 'exact_reference' ? '订单号一致' : editor.refundLinked.matchKind === 'explicit_refund_evidence' ? '原单写明已退金额' : editor.refundLinked.matchKind === 'item_evidence' ? '商品名一致' : '同一商户'}}</text>
         </view>
+        <view wx:if="{{editor.refundConflict}}" class="refund-conflict">
+          <text class="refund-conflict-title">这笔退款和原订单状态矛盾</text>
+          <text class="refund-conflict-copy">同一订单的消费在账单里是「交易关闭／失败」，却又出现了退款成功。系统不能替你决定这笔钱算不算冲减，所以只保留原文证据，不在这里挑原消费。</text>
+          <text class="refund-conflict-copy">请从待核对事项「退款与原订单状态冲突」核对两条原文后再处理。</text>
+        </view>
         <!-- 范围切换固定成两个并排按钮：本批 / 已入账，始终可见，不靠空态里再冒出一个入口。 -->
-        <view class="refund-scope">
+        <view wx:if="{{!editor.refundConflict}}" class="refund-scope">
           <button class="refund-scope-btn {{sheet.refundKind === 'event' ? 'is-active' : ''}}" data-kind="event" data-scope="matched" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">本批消费</button>
           <button class="refund-scope-btn {{sheet.refundKind === 'transaction' ? 'is-active' : ''}}" data-kind="transaction" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">已入账记录</button>
         </view>
-        <view class="refund-candidates">
+        <view wx:if="{{!editor.refundConflict}}" class="refund-candidates">
           <view class="refund-candidates-head">
             <text class="refund-candidates-title">{{sheet.refundKind === 'transaction' ? '已入账的原消费' : (sheet.refundScope === 'all' ? '本批全部消费' : '本批原消费')}}</text>
             <text wx:if="{{sheet.refundTotal}}" class="refund-candidates-count">{{sheet.refundTotal}} 笔</text>
@@ -157,12 +162,14 @@
           <view wx:if="{{!sheet.refundLoading && !sheet.refundError && !sheet.refundChoices.length}}" class="refund-empty">
             <text class="refund-empty-title">{{sheet.refundKind === 'transaction' ? '已入账记录里没有可关联的原消费' : '本批没有能退这笔的消费'}}</text>
             <text class="refund-empty-copy">{{sheet.refundKind === 'transaction' ? '换个月份或关键词再找找，也可以先暂记待关联。' : '本批支出里没有更早、金额够退且同卡同商户的记录。'}}</text>
+            <text wx:if="{{sheet.refundKind === 'event' && sheet.refundClosedOriginal}}" class="refund-empty-copy">同订单的消费是「交易关闭／失败」，没有实际扣款，不能拿来冲减。这笔可以暂记待关联，或不计入本次账本。</text>
           </view>
           <button wx:if="{{sheet.refundMore}}" class="refund-more" data-kind="{{sheet.refundKind}}" data-more="true" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">继续读取更多{{sheet.refundKind === 'transaction' ? '已入账' : '本批'}}记录</button>
           <text wx:if="{{sheet.refundScope === 'all' && sheet.refundChoices.length}}" class="refund-note">没有匹配依据时列本批全部支出；选中即视为人工确认，保存时重新核验额度。</text>
           <text wx:if="{{sheet.refundHistoryPending}}" class="refund-note">已入账候选未全部下载，整批入账时会再复核；暂记待关联不会替账本下结论。</text>
         </view>
-        <view class="refund-actions">
+        <text wx:if="{{!editor.refundConflict && !sheet.refundCanPending && !sheet.refundLoading && sheet.refundKind === 'event' && !sheet.refundChoices.length}}" class="refund-note">确认过「已入账记录」后才能暂记待关联。</text>
+        <view wx:if="{{!editor.refundConflict}}" class="refund-actions">
           <button wx:if="{{sheet.refundCanPending}}" class="refund-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled}}">暂记待关联</button>
           <button class="refund-action refund-action-muted" data-mode="unlinked" bindtap="selectEditorRefund" disabled="{{disabled}}">清除关联</button>
         </view>

@@ -169,6 +169,9 @@
 }
 .unified-editor-sheet .refund-scope-btn::after { border: 0; }
 .unified-editor-sheet .refund-scope-btn.is-active { border-color: var(--ui-accent); background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.unified-editor-sheet .refund-conflict { padding: 18rpx 20rpx; border: 1rpx solid var(--theme-warning, #a76416); border-left: 6rpx solid var(--theme-warning, #a76416); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
+.unified-editor-sheet .refund-conflict-title { display: block; color: var(--theme-warning, #a76416); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .refund-conflict-copy { display: block; margin-top: 6rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-candidates-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
 .unified-editor-sheet .refund-candidates-title { color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-candidates-count { color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }

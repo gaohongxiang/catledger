@@ -144,7 +144,9 @@ function create(model) {
       const complete=found.historyComplete!==false
       // 退款优先在本批找原消费：本批候选按事件时间倒序，历史只作备用。
       const ordered=kind==='event'?[...rows].sort((a,b)=>String(b.utcAt||'').localeCompare(String(a.utcAt||''))||a.id.localeCompare(b.id)):rows
-      return {...page(action,data,ordered,'id'),historyComplete:kind==='event'||complete,serverReviewPending:kind==='transaction'&&!complete}
+      return {...page(action,data,ordered,'id'),historyComplete:kind==='event'||complete,
+        closedOriginal:found.closedOriginal||null,
+        serverReviewPending:kind==='transaction'&&!complete}
     }
     if(action==='reviewIssues.pairings'){
       const selected=pairRange(data),scope={mode:data.mode||'suggested',issueId:data.issueId||null,version:version()},scopeToken=JSON.stringify(scope)
