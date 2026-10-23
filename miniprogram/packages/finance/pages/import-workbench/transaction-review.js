@@ -431,36 +431,6 @@ module.exports = {
         errorMessage: '已显示最新结果，原选择仍保留，请重新核对有变化的项目' })
   },
 
-  // 同类待办只看这一组：列表过滤，逐笔卡片仍在，便于先看再决定。
-  togglePatternFilter(event) {
-    const key = event.currentTarget.dataset.key || ''
-    const next = this.data.patternFilter === key ? '' : key
-    this.setData({ patternFilter: next })
-    return this.renderReview(true)
-  },
-
-  // 同类待办批量处理：同一原因+同一对方的记录一次做完，仍逐笔入队，
-  // 单笔不满足条件时只跳过它，不连累其余记录。
-  async applyIssuePattern(event) {
-    const data = event.currentTarget.dataset, session = this._draftSession
-    if (!session || this.data.busy) return
-    const group = (this.data.issuePatternGroups || []).find(row => row.key === data.key)
-    if (!group || !group.issues.length) return
-    const accepted = await new Promise(resolve => wx.showModal({
-      title: '批量处理 ' + group.count + ' 笔',
-      content: group.label + '：' + group.actionLabel + '。保存后这批记录按同一决定处理，仍可逐笔查看。',
-      confirmText: '批量处理', success: resolve, fail: () => resolve({ confirm: false }) }))
-    if (!accepted.confirm) return
-    const extra = group.action === 'exclude_events' ? { selection: { mode: 'all' } } : {}
-    const skipped = []
-    for (const issue of group.issues) {
-      try { session.enqueue([this.reviewDraftEntry(issue, group.action, extra)]) }
-      catch (_) { skipped.push(issue.issueId) }
-    }
-    if (skipped.length) this.setData({ errorMessage: '有 ' + skipped.length + ' 笔条件已变化，未批量处理，请单独核对' })
-    else wx.showToast({ title: '已处理 ' + group.count + ' 笔', icon: 'none' })
-  },
-
   resolveIssue: async function (decision, extra) {
     if (!this._draftSession) return
     const issue = this.data.currentIssue

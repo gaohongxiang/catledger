@@ -135,9 +135,9 @@
           <text wx:if="{{editor.refundLinked.matchKind}}" class="refund-linked-match">依据：{{editor.refundLinked.matchKind === 'exact_reference' ? '订单号一致' : editor.refundLinked.matchKind === 'explicit_refund_evidence' ? '原单写明已退金额' : editor.refundLinked.matchKind === 'item_evidence' ? '商品名一致' : '同一商户'}}</text>
         </view>
         <view wx:if="{{editor.refundConflict}}" class="refund-conflict">
-          <text class="refund-conflict-title">这笔退款和原订单状态矛盾</text>
-          <text class="refund-conflict-copy">同一订单的消费在账单里是「交易关闭／失败」，却又出现了退款成功。系统不能替你决定这笔钱算不算冲减，所以只保留原文证据，不在这里挑原消费。</text>
-          <text class="refund-conflict-copy">请从待核对事项「退款与原订单状态冲突」核对两条原文后再处理。</text>
+          <text class="refund-conflict-title">原单已关闭，退款却成功了</text>
+          <text class="refund-conflict-copy">同一订单的消费在账单里是「交易关闭／失败」，之后又有一条退款成功。钱等于出去了又回来，净额是 0。</text>
+          <text class="refund-conflict-copy">默认按已退回处理：原单保持不入账、这笔退款也不入账，原文与决定都保留。如果你确认当时确实消费过，请先核对两条原文再改判。</text>
         </view>
         <!-- 范围切换固定成两个并排按钮：本批 / 已入账，始终可见，不靠空态里再冒出一个入口。 -->
         <view wx:if="{{!editor.refundConflict}}" class="refund-scope">
@@ -169,6 +169,9 @@
           <text wx:if="{{sheet.refundHistoryPending}}" class="refund-note">已入账候选未全部下载，整批入账时会再复核；暂记待关联不会替账本下结论。</text>
         </view>
         <text wx:if="{{!editor.refundConflict && !sheet.refundCanPending && !sheet.refundLoading && sheet.refundKind === 'event' && !sheet.refundChoices.length}}" class="refund-note">确认过「已入账记录」后才能暂记待关联。</text>
+        <view wx:if="{{editor.refundConflict}}" class="refund-actions">
+          <button class="refund-action" bindtap="excludeRefundAsReversed" disabled="{{disabled}}">按已退回处理</button>
+        </view>
         <view wx:if="{{!editor.refundConflict}}" class="refund-actions">
           <button wx:if="{{sheet.refundCanPending}}" class="refund-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled}}">暂记待关联</button>
           <button class="refund-action refund-action-muted" data-mode="unlinked" bindtap="selectEditorRefund" disabled="{{disabled}}">清除关联</button>

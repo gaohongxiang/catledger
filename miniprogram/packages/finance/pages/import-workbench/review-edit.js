@@ -389,6 +389,26 @@ module.exports = {
         'reviewEditSheet.refundLoading': false })
     } catch (error) { if (active()) this.setData({ 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundError': errorText(error) }) }
   },
+  // 原单关闭/失败却退款成功：默认按“已退回”处理——原单保持不入账，这笔退款也不入账，
+  // 净额 0；这是明确的业务决定，会写进本批决定里，不是静默丢弃。
+  async excludeRefundAsReversed() {
+    const token = this._reviewEditToken
+    const issue = token && token.row && token.row.pendingIssue
+    if (!editable(this, token) || !issue || issue.issueType !== 'refund_relation') return
+    const accepted = await new Promise(resolve => wx.showModal({ title: '按已退回处理',
+      content: '这笔退款对应的原单在账单里是“交易关闭／失败”。确认后原单和这笔退款都不入账，净额 0，原文仍保留。',
+      confirmText: '按已退回处理', success: resolve, fail: () => resolve({ confirm: false }) }))
+    if (!accepted.confirm || !current(this, token)) return
+    try {
+      this._draftSession.enqueue([{ kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
+        subjectIds: issue.subjectEventIds || [token.eventId],
+        decision: { decision: 'exclude_events', selection: { mode: 'all' } },
+        form: { issueDraft: this.data.issueDraft, historicalSelection: this.data.historicalSelection,
+          accountId: '', categoryId: '', categoryChanged: false } }])
+      this.closeReviewEdit()
+    } catch (error) { this.setData({ 'reviewEditSheet.error': errorText(error) }) }
+  },
+
   selectEditorRefund(event) {
     const token = this._reviewEditToken
     if (!editable(this, token)) return

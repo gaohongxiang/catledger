@@ -898,16 +898,6 @@ button::after { border: 0; }
   line-height: 1;
 }
 .review-status-tab-active .review-status-tab-count { color: var(--ui-accent-strong); background: transparent; }
-.pattern-batch-list { margin: 16rpx 0 8rpx; padding: 16rpx 20rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface-muted); }
-.pattern-batch-title { display: block; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
-.pattern-batch-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); margin-top: 12rpx; }
-.pattern-batch-copy { min-width: 0; flex: 1; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); line-height: 1.4; text-align: left; white-space: normal; }
-.pattern-batch-copy::after { border: 0; }
-.pattern-filter-note { display: block; margin: 8rpx 0 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
-.pattern-batch-label { display: block; overflow: hidden; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.pattern-batch-count { display: block; color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; }
-.pattern-batch-action { flex: 0 0 auto; min-height: 0; margin: 0; padding: 10rpx 18rpx; border: 1rpx solid var(--ui-accent); border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
-.pattern-batch-action::after { border: 0; }
 .review-batch-list { margin-top: 18rpx; min-height: 384rpx; }
 .review-batch { padding: 0 0 16rpx; }
 .review-batch + .review-batch { margin-top: 4rpx; }

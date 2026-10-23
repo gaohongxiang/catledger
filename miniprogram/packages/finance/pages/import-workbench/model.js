@@ -367,6 +367,15 @@ function buildIssueFieldsDraft(state) {
   return { valid: true, fields: fields }
 }
 
+// 退款关系只有这五种终态，列表副标题与详情标题共用同一套说法。
+const REFUND_STATE_LABELS = Object.freeze({
+  refund_relation_required: '退款 · 待关联原消费',
+  refund_relation_ambiguous: '退款 · 待选原消费',
+  refund_source_conflict: '退款 · 原单已关闭',
+  refund_amount_exceeded: '退款 · 可退金额不足',
+  refund_relation_invalid: '退款 · 关系需重核'
+})
+
 function issueView(issue) {
   const context = issue.accountContext || {}
   const subject = issue.subject ? eventView(issue.subject) : null
@@ -385,6 +394,8 @@ function issueView(issue) {
         : 'both'
     : ''
   let label = ISSUE_LABELS[issue.issueType] || '需要确认'
+  // 退款只有五种状态，标签直接说清是哪一种，用户不用点进去猜。
+  if (REFUND_STATE_LABELS[issue.primaryReasonCode]) label = REFUND_STATE_LABELS[issue.primaryReasonCode]
   if (issue.issueType === 'account_mapping' && context.label) label = context.label
   if (issue.issueType === 'transfer_accounts' && context.label) label = '资金流转 · ' + context.label
   if (aggregateRepayment) label = '还款分配待确认'
@@ -626,35 +637,6 @@ function reviewIssueRows(issues) {
       groupCount: counts[issue.issueType] || 0
     })
   })
-}
-
-// 同类待办：同一个原因、同一个对方的记录聚在一起，给一个明确的批量动作。
-// 只处理“语义已经确定、批量动作无歧义”的两类；其余只做展示分组，不提供批量。
-const PATTERN_BATCH_ACTIONS = Object.freeze({
-  refund_source_conflict: { action: 'exclude_events', label: '全部不计入本次账本', title: '原单状态与退款矛盾' },
-  refund_relation_required: { action: 'mark_refund_pending', label: '全部暂记待关联', title: '退款找不到原消费' },
-  refund_relation_ambiguous: { action: 'mark_refund_pending', label: '全部暂记待关联', title: '退款有多个原消费候选' }
-})
-function issuePatternGroups(issues) {
-  const groups = new Map()
-  for (const issue of issues || []) {
-    if (!issue || issue.status !== 'open') continue
-    const pattern = PATTERN_BATCH_ACTIONS[issue.primaryReasonCode]
-    if (!pattern) continue
-    const subject = issue.subject || {}
-    const who = String(subject.counterparty || subject.displayTitle || '').trim()
-    const key = [issue.issueType, issue.primaryReasonCode, who].join('|')
-    let group = groups.get(key)
-    if (!group) {
-      group = { key, label: pattern.title + (who ? ' · ' + who : ''),
-        action: pattern.action, actionLabel: pattern.label, count: 0, issues: [] }
-      groups.set(key, group)
-    }
-    group.count++
-    group.issues.push({ issueId: issue.issueId, issueType: issue.issueType, version: Number(issue.version) || 1,
-      subjectIds: [subject.eventId].filter(Boolean) })
-  }
-  return [...groups.values()].filter(group => group.count > 1)
 }
 
 function reviewIssueGroups(issues) {
@@ -1157,7 +1139,7 @@ module.exports = {
   normalizePaymentAccountName,
   partitionOpenIssues,
   relationChoiceView,
-  issuePatternGroups,
+  REFUND_STATE_LABELS,
   repaymentAllocationOptions,
   reviewIssueGroups,
   compareEvents,

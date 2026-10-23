@@ -839,10 +839,7 @@ module.exports = {
         Array.from(new Map(events.filter(event => event.pendingIssue).map(event => [event.pendingIssue.issueId,
           Object.assign({}, event.pendingIssue, { subject: event })])).values())
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
-      // 同类待办：同一原因、同一对方的记录，给一次批量处理的机会（只覆盖语义已确定的两类）。
-      const patternGroups = step === 3 ? model.issuePatternGroups(issues) : []
       const patch = presentation.emptyLists()
-      if (step === 3) patch.issuePatternGroups = patternGroups
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
@@ -856,14 +853,8 @@ module.exports = {
         patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })
         patch.accountMappingsExcluded = excluded
         patch.accountStepSummary = state.summary
-      } else if (kind === 'reviewGroups') {
-        const cards = presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))
-        // 同类待办可以“只看这组”：过滤掉其它待办，逐笔卡片仍在，批量按钮不会替用户做唯一选择。
-        const filter = this.data.patternFilter ? model.issuePatternGroups(issues).find(group => group.key === this.data.patternFilter) : null
-        const members = filter ? new Set(filter.issues.map(issue => issue.issueId)) : null
-        patch.reviewGroups = cards.length ? [{ key: 'pending-events',
-          issues: presentation.linkGroupRows(members ? cards.filter(card => members.has(card.issueId)) : cards) }] : []
-      }
+      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(
+        presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))) }] : []
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,
