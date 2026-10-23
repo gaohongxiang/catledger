@@ -139,6 +139,11 @@
           <text class="refund-conflict-copy">同一订单的消费在账单里是「交易关闭／失败」，之后又有一条退款成功。钱等于出去了又回来，净额是 0。</text>
           <text class="refund-conflict-copy">默认按已退回处理：原单保持不入账、这笔退款也不入账，原文与决定都保留。如果你确认当时确实消费过，请先核对两条原文再改判。</text>
         </view>
+        <view wx:if="{{editor.refundBlocked && !sheet.refundClosed}}" class="refund-conflict">
+          <text class="refund-conflict-title">{{editor.refundBlocked === 'amount' ? '可退金额不足' : '原消费关系已失效'}}</text>
+          <text class="refund-conflict-copy">{{editor.refundBlocked === 'amount' ? '这笔退款的金额超过了原消费剩余可退金额，可能原单被改过金额或时间，也可能已被其他退款占用。' : '原消费被排除、改动或删除后，原来的关联不再成立。'}}</text>
+          <text class="refund-conflict-copy">在下面重新选一笔原消费，或调整退款金额后再保存；都不合适可以先暂记待关联。</text>
+        </view>
         <!-- 范围切换固定成两个并排按钮：本批 / 已入账，始终可见，不靠空态里再冒出一个入口。 -->
         <view wx:if="{{!sheet.refundClosed}}" class="refund-scope">
           <button class="refund-scope-btn {{sheet.refundKind === 'event' ? 'is-active' : ''}}" data-kind="event" data-scope="matched" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">本批消费</button>
@@ -150,7 +155,10 @@
             <text wx:if="{{sheet.refundTotal}}" class="refund-candidates-count">{{sheet.refundTotal}} 笔</text>
             <text wx:if="{{sheet.refundLoading}}" class="refund-candidates-count">读取中…</text>
           </view>
-          <text wx:if="{{sheet.refundError}}" class="inline-error">{{sheet.refundError}}</text>
+          <view wx:if="{{sheet.refundError}}" class="refund-error">
+            <text class="inline-error">{{sheet.refundError}}</text>
+            <button class="review-text-action" data-kind="{{sheet.refundKind}}" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">重新读取</button>
+          </view>
           <button wx:for="{{sheet.refundChoices}}" wx:key="id" class="refund-candidate {{draft.refund.id === item.id ? 'is-selected' : ''}}" data-id="{{item.id}}" bindtap="selectEditorRefund" disabled="{{disabled || sheet.refundLoading}}" aria-role="radio" aria-checked="{{draft.refund.id === item.id}}">
             <view class="refund-candidate-head"><text class="refund-candidate-title">{{item.title}}</text><text class="refund-candidate-amount money-number">-{{item.amountText}}</text></view>
             <text wx:if="{{item.item && item.item !== item.title}}" class="refund-candidate-item">{{item.item}}</text>

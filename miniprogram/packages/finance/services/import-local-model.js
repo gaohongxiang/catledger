@@ -264,6 +264,24 @@ function create(facts) {
   const refundPolicy = require('../domain/import-review/refund-relation-policy')
   const evidenceMatching = require('../domain/import-review/evidence-matching')
   const MATCH_RANK = { exact_reference: 1, explicit_refund_evidence: 2, item_evidence: 3, merchant_evidence: 4 }
+  // 服务端整理时已经会标“原单关闭却退款成功”，但旧草稿是在规则更新前整理的。
+  // 这里用同一份纯规则在本机再算一次（幂等），避免同一笔在新旧草稿里显示成两种状态。
+  {
+    const conflictPolicy = require('../domain/import-review/refund-source-conflict')
+    const probe = [...events.values()].map(event => ({ ...event,
+      relationEvidence: relationEvidenceFor(event).relationEvidence, rows: undefined }))
+    for (const { refund, originals } of conflictPolicy.findRefundSourceConflicts(probe)) {
+      const current = events.get(refund.eventId)
+      if (!current) continue
+      current.reasonCodes = [...new Set([...(current.reasonCodes || []), 'refund_source_conflict'])]
+      current.fieldSources = { ...current.fieldSources, refundSourceConflict: { version: 1,
+        originalEventIds: originals.map(original => original.eventId).sort() } }
+      if (current.status === 'ready') current.status = 'needs_action'
+    }
+  }
+
+
+
   function relationEvidenceFor(event) {
     const linksOf = byEvent.get(event.eventId) || []
     const primary = linksOf.find(link => link.evidenceRole === 'primary') || linksOf[0]

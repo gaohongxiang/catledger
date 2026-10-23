@@ -68,3 +68,12 @@ test('待真实模板验证的微信状态不因为名称类似成功就获得�
     assert.ok(result.issues.some(issue => issue.code === 'row_status_unknown'))
   }
 })
+
+test('退款订单号是原订单号加后缀时仍算同一笔（平台派生编号）', async () => {
+  const suffixed = await plan({}, index => index === 1 ? { sourceOrderId: 'SYNTH-STATUS-ORDER_3316146025255005650' } : {})
+  assert.ok(suffixed.events.find(event => event.economicNature === 'refund').reasonCodes.includes('refund_source_conflict'))
+
+  // 没有明确分隔符的前缀巧合不算同一笔。
+  const glued = await plan({}, index => index === 1 ? { sourceOrderId: 'SYNTH-STATUS-ORDER3316146025255005650' } : {})
+  assert.ok(!glued.events.find(event => event.economicNature === 'refund').reasonCodes.includes('refund_source_conflict'))
+})

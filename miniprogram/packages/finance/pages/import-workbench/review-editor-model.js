@@ -403,6 +403,9 @@ function derive(row, draft, catalogs = {}) {
     // 同订单的原消费已关闭/失败却出现退款成功时，来源本身互相矛盾；
     // 这种退款不能当普通退款去挑原消费，必须从矛盾事项核对原文。
     refundConflict: Boolean((row.reasonCodes || []).includes('refund_source_conflict')),
+    // 可退金额不足或原关联失效：候选照常给，但要先说清为什么这笔还是待核对。
+    refundBlocked: Boolean((row.reasonCodes || []).includes('refund_amount_exceeded')) ? 'amount'
+      : Boolean((row.reasonCodes || []).includes('refund_relation_invalid')) ? 'invalid' : '',
     fieldErrors, errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
     canSave: supported && Boolean(changed) && errors.length === 0,
     complete: missing.length === 0 && !(facts?.blockingReasons || []).length && !(row.reasonCodes || []).some(reason => ['row_status_unknown','identity_conflict','same_event_candidate','refund_source_conflict','core_fields_conflict'].includes(reason)),

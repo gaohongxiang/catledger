@@ -7,6 +7,18 @@ function references(event) {
     .filter(value => /^(?:alipay|wechat)\|(?:transaction|order):/u.test(value) && !/[*＊•·xX]{2,}/u.test(value))
 }
 
+// 支付宝的退款行会在原订单号后面追加 "_<流水>"，平台号本身就是原单的派生，
+// 属于平台编码而商户自编号。只认“同一前缀 + 明确分隔符”，避免把两笔独立订单
+// 因为前缀巧合当成同一笔。
+function referenceMatches(left, right) {
+  if (left === right) return true
+  if (!/\|order:/u.test(left) || !/\|order:/u.test(right)) return false
+  const [short, long] = left.length <= right.length ? [left, right] : [right, left]
+  const head = long.slice(0, short.length)
+  const tail = long.slice(short.length)
+  return head === short && /^_/u.test(tail) && short.split(':')[1].length >= 10
+}
+
 function sameSource(left, right, sourceType) {
   const a = left.relationEvidence && left.relationEvidence.rows || []
   const b = right.relationEvidence && right.relationEvidence.rows || []
@@ -15,31 +27,35 @@ function sameSource(left, right, sourceType) {
 }
 
 function reliableSharedReference(left, right) {
-  const refs = new Set(references(left))
-  return references(right).some(reference => refs.has(reference) && sameSource(left, right, reference.split('|')[0]))
+  const refs = references(left)
+  return references(right).some(reference => refs.some(own => referenceMatches(own, reference)) &&
+    sameSource(left, right, reference.split('|')[0]))
 }
 
 function findRefundSourceConflicts(events) {
-  const byReference = new Map()
+  const closed = []
   for (const original of events) {
     if ((original.existingTransactionIds || []).length || !['expense', 'fee'].includes(original.economicNature)) continue
     const rows = original.relationEvidence && original.relationEvidence.rows || []
     if (!rows.length || !rows.every(row => row.direction === 'expense' && ['closed', 'failed'].includes(row.moneyEffect))) continue
-    for (const reference of references(original)) {
-      if (!byReference.has(reference)) byReference.set(reference, [])
-      byReference.get(reference).push(original)
-    }
+    if (!references(original).length) continue
+    closed.push(original)
   }
   const result = []
   for (const refund of events) {
     if (refund.economicNature !== 'refund' || !['ready', 'needs_action'].includes(refund.status)) continue
     const rows = refund.relationEvidence && refund.relationEvidence.rows || []
     if (!rows.length || !rows.every(row => row.sourceAction === 'refund_credit' && row.moneyEffect === 'financial')) continue
+    const refundRefs = references(refund)
     const matches = new Map()
-    for (const reference of references(refund)) for (const original of byReference.get(reference) || []) {
+    for (const original of closed) {
+      const shared = references(original).find(own => refundRefs.some(candidate => referenceMatches(own, candidate)))
+      if (!shared) continue
       const before = timeValue(original.utcAt), after = timeValue(refund.utcAt)
-      if (original.eventId !== refund.eventId && original.currency === refund.currency &&
-          before != null && after != null && before <= after && sameSource(original, refund, reference.split('|')[0])) matches.set(original.eventId, original)
+      if (original.eventId === refund.eventId || original.currency !== refund.currency) continue
+      if (before == null || after == null || before > after) continue
+      if (!sameSource(original, refund, shared.split('|')[0])) continue
+      matches.set(original.eventId, original)
     }
     if (matches.size) result.push({ refund, originals: [...matches.values()] })
   }
