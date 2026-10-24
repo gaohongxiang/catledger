@@ -266,3 +266,28 @@ test('金额方向必选：借贷含义未定时整页不可确认', () => {
   assert.equal(chosen.ready, true)
   assert.equal(chosen.tokens[3].value, '借方 = 流出')
 })
+
+test('表头行浮层：可步进也可输入，确定后重读预览，取消不请求', async () => {
+  const h = editableBank(), page = h.page
+  h.intercept = (action, input) => { assert.equal(action, 'imports.parseFile'); return previewResult(input.bankPreview.headerRow) }
+  page.openBankHeader()
+  assert.equal(page.data.bankHeaderEditing, true)
+  page.stepBankHeader({ currentTarget: { dataset: { delta: '1' } } })
+  assert.equal(page.data.bankMappingSheet.headerRowInput, '3', '步进在当前值上加一')
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(h.calls[0].input.bankPreview.headerRow, 3)
+
+  // 取消不回写：不进请求，直接关闭。
+  page.inputBankHeader(headerInput('12'))
+  page.closeBankHeader()
+  assert.equal(page.data.bankHeaderEditing, false)
+  assert.equal(h.calls.length, 1, '取消不触发请求，输入的防抖也随取消清掉')
+
+  page.openBankHeader()
+  page.stepBankHeader({ currentTarget: { dataset: { delta: '-1' } } })
+  page.confirmBankHeader()
+  assert.equal(page.data.bankHeaderEditing, false)
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(h.calls[h.calls.length - 1].input.bankPreview.headerRow, 11)
+  page.onUnload()
+})

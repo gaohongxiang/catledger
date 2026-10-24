@@ -69,8 +69,9 @@
 .bank-map-line.is-missing { color: var(--theme-warning, #a76416); }
 
 /* 无模式：每个值就是一个可点控件，点开原生选择器。 */
-.bank-tokens { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: var(--layout-space-3); }
-.bank-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 10rpx 18rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 24rpx; line-height: 1.5; }
+.bank-tokens { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: var(--layout-space-3); }
+.bank-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.6; }
+.bank-header-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 14rpx; border: 1rpx solid var(--ui-line); border-radius: 999rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; }
 .bank-token.is-warning { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
 .bank-caret { width: 0; height: 0; border-left: 8rpx solid transparent; border-right: 8rpx solid transparent; border-top: 8rpx solid currentColor; opacity: 0.6; }
 .bank-preview-head-cell { flex: 1 1 0; min-width: 0; }
@@ -80,12 +81,14 @@
 /* 表头行号：小浮层里同时支持步进和直接输入。 */
 .bank-header-layer { position: absolute; inset: 0; z-index: 3; display: flex; align-items: flex-end; }
 .bank-header-scrim { position: absolute; inset: 0; background: rgba(20, 18, 15, 0.32); }
-.bank-header-panel { position: relative; width: 100%; padding: 28rpx 30rpx calc(28rpx + env(safe-area-inset-bottom)); border-radius: 24rpx 24rpx 0 0; background: var(--ui-surface); }
+.bank-header-panel { position: relative; width: 100%; padding: 24rpx 30rpx calc(24rpx + env(safe-area-inset-bottom)); border-radius: 24rpx 24rpx 0 0; background: var(--ui-surface); }
+.bank-header-head { display: flex; align-items: center; justify-content: space-between; }
+.bank-header-close { padding: 8rpx 12rpx; color: var(--ui-muted); font-size: 34rpx; line-height: 1; }
 .bank-header-title { display: block; color: var(--ui-ink); font-size: var(--font-section, 32rpx); font-weight: 500; }
 .bank-header-controls { display: flex; align-items: center; gap: 16rpx; margin-top: 20rpx; }
-.bank-header-step { width: 92rpx; min-height: 0; margin: 0; padding: 14rpx 0; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface); color: var(--ui-ink); font-size: 30rpx; line-height: 1.2; }
+.bank-header-step { flex: 0 0 112rpx; width: 112rpx; min-height: 0; margin: 0; padding: 18rpx 0; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface); color: var(--ui-ink); font-size: 32rpx; line-height: 1.1; }
 .bank-header-step::after { border: 0; }
-.bank-header-input { flex: 1; height: 88rpx; padding: 0 20rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface); color: var(--ui-ink); font-size: 32rpx; text-align: center; }
+.bank-header-input { flex: 1 1 0; width: 0; min-width: 0; height: 84rpx; padding: 0 12rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface); color: var(--ui-ink); font-size: 34rpx; font-weight: 500; text-align: center; }
 .bank-header-copy { display: block; margin-top: 14rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; }
 .bank-header-actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
 .bank-header-actions button { flex: 1; margin: 0; }

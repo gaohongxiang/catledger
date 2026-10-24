@@ -12,22 +12,22 @@
         <picker range="{{bankMappingSheet.statementOptions}}" range-key="label" value="{{bankMappingSheet.statementIndex}}" data-key="statementKind" bindchange="changeBankMapping" disabled="{{busy}}">
           <view class="bank-token"><text>{{bankMappingSheet.tokens[0].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         </picker>
-        <view class="bank-token" bindtap="openBankHeader" aria-role="button"><text>{{bankMappingSheet.tokens[1].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
           <view class="bank-token"><text>{{bankMappingSheet.tokens[2].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         </picker>
         <picker wx:if="{{bankMappingSheet.draft.amountMode === 'signed'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.positiveIndex}}" data-key="positiveDirection" bindchange="changeBankMapping" disabled="{{busy}}">
-          <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].label}} {{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+          <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         </picker>
         <picker wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.debitIndex}}" data-key="debitDirection" bindchange="changeBankMapping" disabled="{{busy}}">
           <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         </picker>
       </view>
-      <text class="bank-mapping-copy">点一项直接改；金额方向决定收支，务必确认。</text>
 
       <view class="bank-group-head bank-preview-head">
         <text class="bank-group-title">读取预览</text>
-        <text class="bank-group-note">{{bankMappingSheet.previewLoading ? '正在读取…' : bankMappingSheet.previewPending ? '修改后自动识别' : '点表头换列'}}</text>
+        <view class="bank-header-token" bindtap="openBankHeader" aria-role="button">
+          <text>{{bankMappingSheet.tokens[1].value}}</text><text class="bank-caret" aria-hidden="true"></text>
+        </view>
       </view>
       <view class="bank-preview">
         <view class="bank-preview-row bank-preview-header">
@@ -41,12 +41,17 @@
         </view>
         <text wx:if="{{!bankMappingSheet.previewRows.length}}" class="bank-preview-empty">没有读到样例数据，请检查表头行号。</text>
       </view>
-      <text class="bank-mapping-copy">表头用的是账单原文列名；{{bankMappingSheet.readyLabel}}。</text>
+      <text class="bank-mapping-copy">{{bankMappingSheet.ready ? '表头用的是账单原文列名，点表头即可换列。' : bankMappingSheet.readyLabel + '：点上方标签直接选择。'}}</text>
+      <text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text>
 
+    </scroll-view>
       <view wx:if="{{bankHeaderEditing}}" class="bank-header-layer" catchtouchmove="preventTouchMove">
         <view class="bank-header-scrim" bindtap="closeBankHeader"></view>
         <view class="bank-header-panel">
-          <text class="bank-header-title">表头行号</text>
+          <view class="bank-header-head">
+            <text class="bank-header-title">表头行号</text>
+            <text class="bank-header-close" bindtap="closeBankHeader" aria-label="关闭">×</text>
+          </view>
           <view class="bank-header-controls">
             <button class="bank-header-step" data-delta="-1" bindtap="stepBankHeader" disabled="{{busy}}">-</button>
             <input class="bank-header-input" type="number" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" disabled="{{busy}}" />
@@ -59,11 +64,10 @@
           </view>
         </view>
       </view>
-    </scroll-view>
     <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
     <view class="bank-mapping-actions">
       <button class="secondary-button" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
-      <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy || !bankMappingSheet.ready}}" loading="{{busy}}">{{busy ? '正在读取' : bankMappingSheet.ready ? '确认并解析' : '补全必填列'}}</button>
+      <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
     </view>
   </view>
 </view>

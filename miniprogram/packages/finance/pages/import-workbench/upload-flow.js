@@ -405,7 +405,6 @@ module.exports = {
 
   closeBankHeader: function () {
     this.setData({ bankHeaderEditing: false })
-    return this.refreshBankPreview()
   },
 
   confirmBankHeader: function () {
@@ -474,7 +473,14 @@ module.exports = {
     if (this.blockFileNameEdit()) return
     if (this.blockPendingFileRename()) return
     if (this.data.bankMappingSheet.previewPending && !await this.refreshBankPreview()) return
-    const sheet = this.data.bankMappingSheet, result = bankMapping.payload(sheet)
+    const sheet = this.data.bankMappingSheet
+    if (!sheet.ready) {
+      this.setData({ 'bankMappingSheet.error': sheet.missingLabels.length
+        ? '还差' + sheet.missingLabels.join('、') + '：点预览表头选对应的列'
+        : '还差' + (sheet.draft.amountMode === 'signed' ? '正数表示' : '借贷含义') + '：点上方标签选择' })
+      return
+    }
+    const result = bankMapping.payload(sheet)
     if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
     const file = this.data.files.find(item => item.clientId === sheet.clientId)
     if (!file) return
