@@ -8,109 +8,57 @@
     <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="bank-mapping-scroll">
       <text class="bank-mapping-name">{{bankMappingSheet.name}}</text>
 
-      <view class="bank-summary {{bankMappingSheet.ready ? '' : 'is-warning'}}">
-        <text class="bank-summary-dot" aria-hidden="true"></text>
-        <text class="bank-summary-text">{{bankMappingSheet.summaryText}}</text>
-        <text class="bank-summary-tag">{{bankMappingSheet.ready ? '已识别' : bankMappingSheet.readyLabel}}</text>
+      <view class="bank-tokens">
+        <picker range="{{bankMappingSheet.statementOptions}}" range-key="label" value="{{bankMappingSheet.statementIndex}}" data-key="statementKind" bindchange="changeBankMapping" disabled="{{busy}}">
+          <view class="bank-token"><text>{{bankMappingSheet.tokens[0].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+        </picker>
+        <view class="bank-token" bindtap="openBankHeader" aria-role="button"><text>{{bankMappingSheet.tokens[1].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+        <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
+          <view class="bank-token"><text>{{bankMappingSheet.tokens[2].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+        </picker>
+        <picker wx:if="{{bankMappingSheet.draft.amountMode === 'signed'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.positiveIndex}}" data-key="positiveDirection" bindchange="changeBankMapping" disabled="{{busy}}">
+          <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].label}} {{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+        </picker>
+        <picker wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.debitIndex}}" data-key="debitDirection" bindchange="changeBankMapping" disabled="{{busy}}">
+          <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+        </picker>
       </view>
+      <text class="bank-mapping-copy">点一项直接改；金额方向决定收支，务必确认。</text>
 
-      <block wx:if="{{!bankMappingSheet.adjusting}}">
-        <view class="bank-group-head bank-preview-head">
-          <text class="bank-group-title">读取预览</text>
-          <text class="bank-group-note">{{bankMappingSheet.previewLoading ? '正在读取…' : bankMappingSheet.previewPending ? '修改后自动识别' : '前 3 行'}}</text>
+      <view class="bank-group-head bank-preview-head">
+        <text class="bank-group-title">读取预览</text>
+        <text class="bank-group-note">{{bankMappingSheet.previewLoading ? '正在读取…' : bankMappingSheet.previewPending ? '修改后自动识别' : '点表头换列'}}</text>
+      </view>
+      <view class="bank-preview">
+        <view class="bank-preview-row bank-preview-header">
+          <picker wx:for="{{bankMappingSheet.previewColumns}}" wx:key="key" wx:for-item="column" class="bank-preview-head-cell {{column.missing ? 'is-missing' : ''}}"
+            range="{{bankMappingSheet.columnOptions}}" range-key="name" value="{{column.selected}}" data-key="{{column.key}}" bindchange="changeBankMapping" disabled="{{busy}}">
+            <view class="bank-preview-cell"><text>{{column.header}}</text><text class="bank-caret" aria-hidden="true"></text></view>
+          </picker>
         </view>
-        <view class="bank-preview">
-          <view class="bank-preview-row bank-preview-header">
-            <text wx:for="{{bankMappingSheet.previewColumns}}" wx:key="key" class="bank-preview-cell">{{item.label}}</text>
+        <view wx:for="{{bankMappingSheet.previewRows}}" wx:key="key" wx:for-item="row" class="bank-preview-row">
+          <text wx:for="{{row.cells}}" wx:key="key" wx:for-item="cell" class="bank-preview-cell {{cell.missing ? 'is-missing' : ''}}">{{cell.missing ? '未选列' : cell.value}}</text>
+        </view>
+        <text wx:if="{{!bankMappingSheet.previewRows.length}}" class="bank-preview-empty">没有读到样例数据，请检查表头行号。</text>
+      </view>
+      <text class="bank-mapping-copy">表头用的是账单原文列名；{{bankMappingSheet.readyLabel}}。</text>
+
+      <view wx:if="{{bankHeaderEditing}}" class="bank-header-layer" catchtouchmove="preventTouchMove">
+        <view class="bank-header-scrim" bindtap="closeBankHeader"></view>
+        <view class="bank-header-panel">
+          <text class="bank-header-title">表头行号</text>
+          <view class="bank-header-controls">
+            <button class="bank-header-step" data-delta="-1" bindtap="stepBankHeader" disabled="{{busy}}">-</button>
+            <input class="bank-header-input" type="number" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" disabled="{{busy}}" />
+            <button class="bank-header-step" data-delta="1" bindtap="stepBankHeader" disabled="{{busy}}">+</button>
           </view>
-          <view wx:for="{{bankMappingSheet.previewRows}}" wx:key="key" wx:for-item="row" class="bank-preview-row">
-            <text wx:for="{{row.cells}}" wx:key="key" wx:for-item="cell" class="bank-preview-cell {{cell.missing ? 'is-missing' : ''}}">{{cell.missing ? '未选列' : cell.value}}</text>
+          <text class="bank-header-copy">可以步进，也可以直接输入；改完自动重读预览。</text>
+          <view class="bank-header-actions">
+            <button class="secondary-button" bindtap="closeBankHeader" disabled="{{busy}}">取消</button>
+            <button class="primary-button" bindtap="confirmBankHeader" disabled="{{busy}}">确定</button>
           </view>
-          <text wx:if="{{!bankMappingSheet.previewRows.length}}" class="bank-preview-empty">没有读到样例数据，请检查表头行号。</text>
         </view>
-
-        <view class="bank-group-head bank-map-head">
-          <text class="bank-group-title">列对应</text>
-          <button class="text-action bank-map-adjust" bindtap="toggleBankColumns" disabled="{{busy}}">调整</button>
-        </view>
-        <view class="bank-map-lines">
-          <text wx:for="{{bankMappingSheet.mappingLines}}" wx:key="key" class="bank-map-line {{item.missing ? 'is-missing' : ''}}">{{item.label}} ← {{item.column}}</text>
-        </view>
-        <text class="bank-mapping-copy">表头第 {{bankMappingSheet.preview.headerRow}} 行，{{bankMappingSheet.amountModes[bankMappingSheet.modeIndex].label}}。这几项不对时点“调整”。</text>
-      </block>
-
-      <block wx:if="{{bankMappingSheet.adjusting}}">
-        <view class="bank-group">
-          <text class="bank-group-title">文件识别</text>
-          <picker range="{{bankMappingSheet.statementOptions}}" range-key="label" value="{{bankMappingSheet.statementIndex}}" data-key="statementKind" bindchange="changeBankMapping" disabled="{{busy}}">
-            <view class="bank-mapping-row"><text>账单类型</text><view class="bank-field-value"><text wx:if="{{bankMappingSheet.statementAuto}}" class="bank-status bank-status-auto">已识别</text><text class="bank-column-value">{{bankMappingSheet.statementOptions[bankMappingSheet.statementIndex].label}} ›</text></view></view>
-          </picker>
-          <picker wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" range="{{bankMappingSheet.preview.sheets}}" range-key="name" value="{{bankMappingSheet.preview.sheetIndex}}" data-key="sheet" bindchange="refreshBankPreview" disabled="{{busy}}">
-            <view class="bank-mapping-row"><text>工作表</text><text>{{bankMappingSheet.preview.sheets[bankMappingSheet.preview.sheetIndex].name}} ›</text></view>
-          </picker>
-          <text wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" class="bank-mapping-copy">本次只读取所选工作表，请选择交易明细所在的表。</text>
-        </view>
-
-        <view class="bank-group">
-          <text class="bank-group-title">表格结构</text>
-          <view class="bank-mapping-row bank-mapping-header-row">
-            <text>表头行号</text>
-            <view class="bank-header-value"><text>第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" bindblur="refreshBankPreview" bindconfirm="refreshBankPreview" confirm-type="done" disabled="{{busy}}" /><text>行</text></view>
-          </view>
-          <text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text>
-          <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
-            <view class="bank-mapping-row"><text>金额格式</text><view class="bank-field-value"><text wx:if="{{!bankMappingSheet.amountModeAuto}}" class="bank-status bank-status-manual">已修改</text><text class="bank-column-value">{{bankMappingSheet.amountModes[bankMappingSheet.modeIndex].label}} ›</text></view></view>
-          </picker>
-          <picker wx:if="{{bankMappingSheet.draft.amountMode === 'signed'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.positiveIndex}}" data-key="positiveDirection" bindchange="changeBankMapping" disabled="{{busy}}">
-            <view class="bank-mapping-row"><text>正数表示</text><view class="bank-field-value"><text class="bank-status bank-status-{{bankMappingSheet.positiveStatus}}">{{bankMappingSheet.positiveStatus === 'auto' ? '已识别' : bankMappingSheet.positiveStatus === 'manual' ? '已修改' : '未选'}}</text><text class="bank-column-value">{{bankMappingSheet.directionOptions[bankMappingSheet.positiveIndex].label}} ›</text></view></view>
-          </picker>
-          <picker wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.debitIndex}}" data-key="debitDirection" bindchange="changeBankMapping" disabled="{{busy}}">
-            <view class="bank-mapping-row"><text>借方 / DR / D 表示</text><view class="bank-field-value"><text class="bank-status bank-status-{{bankMappingSheet.debitStatus}}">{{bankMappingSheet.debitStatus === 'auto' ? '已识别' : bankMappingSheet.debitStatus === 'manual' ? '已修改' : '未选'}}</text><text class="bank-column-value">{{bankMappingSheet.directionOptions[bankMappingSheet.debitIndex].label}} ›</text></view></view>
-          </picker>
-          <text wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" class="bank-mapping-copy">收支标记直接写“收入 / 支出”时，无需选择借贷含义。</text>
-        </view>
-
-        <view class="bank-group">
-          <view class="bank-group-head">
-            <text class="bank-group-title">必填列</text>
-            <text class="bank-group-note {{bankMappingSheet.ready ? '' : 'is-warning'}}">{{bankMappingSheet.readyLabel}}</text>
-          </view>
-          <block wx:for="{{bankMappingSheet.requiredFields}}" wx:key="key" wx:for-item="field">
-            <picker range="{{bankMappingSheet.columnOptions}}" range-key="name" value="{{field.selected}}" data-key="{{field.key}}" bindchange="changeBankMapping" disabled="{{busy}}">
-              <view class="bank-mapping-field bank-field-required {{field.status === 'missing' ? 'is-missing' : ''}}">
-                <view class="bank-mapping-row">
-                  <view class="bank-field-label"><text class="bank-required-dot" aria-hidden="true"></text><text>{{field.label}}</text></view>
-                  <view class="bank-field-value">
-                    <text class="bank-status bank-status-{{field.status}}">{{field.status === 'auto' ? '自动识别' : field.status === 'manual' ? '已修改' : '未选'}}</text>
-                    <text class="bank-column-value">{{field.value}} ›</text>
-                  </view>
-                </view>
-                <text wx:if="{{field.example && !bankMappingSheet.previewPending}}" class="bank-mapping-example">样例：{{field.example}}</text>
-              </view>
-            </picker>
-          </block>
-          <text wx:if="{{!bankMappingSheet.ready}}" class="bank-group-hint">未选的必填列无法开始解析；点一行即可选择对应列。</text>
-        </view>
-
-        <view class="bank-group">
-          <view class="bank-group-head"><text class="bank-group-title">更多列</text><text class="bank-group-note">可不选</text></view>
-          <block wx:for="{{bankMappingSheet.optionalFields}}" wx:key="key" wx:for-item="field">
-            <picker range="{{bankMappingSheet.columnOptions}}" range-key="name" value="{{field.selected}}" data-key="{{field.key}}" bindchange="changeBankMapping" disabled="{{busy}}">
-              <view class="bank-mapping-field">
-                <view class="bank-mapping-row">
-                  <text>{{field.label}}</text>
-                  <view class="bank-field-value">
-                    <text wx:if="{{field.status !== 'auto'}}" class="bank-status bank-status-{{field.status}}">{{field.status === 'manual' ? '已修改' : '未选'}}</text>
-                    <text class="bank-column-value">{{field.value}} ›</text>
-                  </view>
-                </view>
-                <text wx:if="{{field.example && !bankMappingSheet.previewPending}}" class="bank-mapping-example">样例：{{field.example}}</text>
-              </view>
-            </picker>
-          </block>
-        </view>
-        <button class="text-action bank-columns-toggle" bindtap="toggleBankColumns" disabled="{{busy}}">收起调整</button>
-      </block>
+      </view>
     </scroll-view>
     <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
     <view class="bank-mapping-actions">

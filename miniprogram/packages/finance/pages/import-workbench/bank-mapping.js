@@ -34,29 +34,42 @@ function view(clientId, name, preview, draft) {
       selected: selected, value: options[selected] ? options[selected].name : options[0].name,
       example: column == null ? '' : preview.samples.map(row => row[column] || '空').join(' / ') }
   })
-  // 预览表：把“系统读出来的样子”直接摆出来，比列号更能回答“选对了吗”。
+  // 预览表直接用账单原文列名；我们起的语义名只出现在选择器里。
   const headerName = index => {
     const header = (preview.headers || []).find(item => item.index === index)
     return header ? header.name : ''
   }
-  const columnText = index => index == null ? '未选' : '第 ' + (index + 1) + ' 列' + (headerName(index) ? ' · ' + headerName(index) : '')
   const amountKeys = current.amountMode === 'split' ? ['income', 'expense'] : ['amount']
-  const previewColumns = [{ key: 'transactionTime', label: '交易日期', required: true }]
+  const previewSpec = [{ key: 'transactionTime', label: '交易日期', required: true }]
     .concat(amountKeys.map(key => ({ key, label: key === 'income' ? '流入' : key === 'expense' ? '流出' : '交易金额', required: true })))
-    .concat([{ key: 'item', label: '摘要', required: false }])
+    .concat([{ key: 'item', label: '摘要', required: false }, { key: 'counterparty', label: '交易对方', required: false }])
+  const previewColumns = previewSpec.filter(column => column.required || current.columns[column.key] != null).slice(0, 3)
+    .map(column => {
+      const index = current.columns[column.key]
+      return { key: column.key, label: column.label, required: column.required, missing: column.required && index == null,
+        header: index == null ? '选择列' : headerName(index) || '第 ' + (index + 1) + ' 列',
+        selected: index == null ? 0 : index + 1 }
+    })
   const previewRows = (preview.samples || []).slice(0, 3).map((row, rowIndex) => ({ key: String(rowIndex),
     cells: previewColumns.map((column, cellIndex) => {
       const index = current.columns[column.key]
       return { key: column.key + '-' + cellIndex, value: index == null ? '' : String(row[index] == null ? '' : row[index]),
-        missing: column.required && index == null, required: column.required }
+        missing: column.missing, required: column.required }
     }) }))
-  const previewHeader = previewColumns.map(column => ({ key: column.key, label: column.label }))
-  const mappingLines = previewColumns.map(column => ({ key: column.key, label: column.label,
-    column: columnText(current.columns[column.key]), missing: column.required && current.columns[column.key] == null }))
-  const statementLabel = (STATEMENTS.find(item => item.value === (current.statementKind || 'standard')) || STATEMENTS[0]).label
-  const summaryText = [statementLabel, '表头第 ' + preview.headerRow + ' 行',
-    current.amountMode === 'signed' && current.positiveDirection ? '正数表示' + (current.positiveDirection === 'income' ? '流入' : '流出') : '']
-    .filter(Boolean).join(' · ')
+  const samplesHaveDebit = (preview.samples || []).some(row => /^(借|贷|借方|贷方|debit|credit|dr|cr|d|c)$/i
+    .test(String(row[current.columns.direction] || '').trim()))
+  const directionMissing = current.amountMode === 'signed' ? !current.positiveDirection
+    : current.amountMode === 'direction' ? (!current.debitDirection && samplesHaveDebit) : false
+  const directionLabel = current.amountMode === 'signed' ? '正数表示' : '借贷含义'
+  const directionValue = current.amountMode === 'signed'
+    ? (current.positiveDirection === 'income' ? '正数 = 流入' : current.positiveDirection === 'expense' ? '正数 = 流出' : '待选择')
+    : (current.debitDirection === 'income' ? '借方 = 流入' : current.debitDirection === 'expense' ? '借方 = 流出' : '待选择')
+  const tokens = [
+    { key: 'statementKind', label: '账单类型', value: (STATEMENTS.find(item => item.value === (current.statementKind || 'standard')) || STATEMENTS[0]).label, warning: false },
+    { key: 'headerRow', label: '表头', value: '第 ' + preview.headerRow + ' 行', warning: false },
+    { key: 'amountMode', label: '金额格式', value: (MODES.find(item => item.value === current.amountMode) || MODES[0]).label, warning: false },
+    { key: 'direction', label: directionLabel, value: directionValue, warning: directionMissing }
+  ]
   const requiredFields = fields.filter(field => field.required)
   const optionalFields = fields.filter(field => !field.required)
   const missingLabels = requiredFields.filter(field => field.status === 'missing').map(field => field.label)
@@ -65,16 +78,16 @@ function view(clientId, name, preview, draft) {
   const amountModeAuto = preview.suggested.amountMode === current.amountMode
   const positiveStatus = current.positiveDirection ? (preview.suggested.positiveDirection === current.positiveDirection ? 'auto' : 'manual') : 'missing'
   const debitStatus = current.debitDirection ? (preview.suggested.debitDirection === current.debitDirection ? 'auto' : 'manual') : 'missing'
+  const ready = (missingLabels.length === 0) && !directionMissing
   return { clientId, name, preview, draft: current, fields, requiredFields, optionalFields,
-    previewColumns: previewHeader, previewRows, mappingLines, summaryText,
+    previewColumns, previewRows, tokens, directionMissing, ready,
+    readyLabel: missingLabels.length ? '还差 ' + missingLabels.join('、') : directionMissing ? '还差' + directionLabel : requiredFields.length + ' 项已就绪',
     statementAuto, amountModeAuto, positiveStatus, debitStatus,
-    missingLabels, ready: missingLabels.length === 0,
-    readyLabel: missingLabels.length ? '还差 ' + missingLabels.join('、') : requiredFields.length + ' 项已就绪',
-    columnOptions: options,
+    missingLabels, columnOptions: options,
     amountModes: MODES, modeIndex: MODES.findIndex(mode => mode.value === current.amountMode),
     directionOptions: DIRECTIONS, positiveIndex: DIRECTIONS.findIndex(option => option.value === current.positiveDirection),
     debitIndex: DIRECTIONS.findIndex(option => option.value === current.debitDirection), headerRowInput: String(preview.headerRow),
-    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0,advanced: false, adjusting: false, error: '' }
+    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0, error: '' }
 }
 
 function payload(sheet) {

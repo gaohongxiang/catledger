@@ -262,7 +262,6 @@ module.exports = {
             debitDirection: previous.draft.debitDirection
           }) : undefined
           const next = bankMapping.view(clientId, namePatch.name || file.name, result.bankPreview, draft)
-          next.advanced = previous.advanced
           this.setData({ bankMappingSheet: next })
         }
       } else if (result.duplicateImportId) {
@@ -393,17 +392,36 @@ module.exports = {
     else if (value === 0) delete draft.columns[key]
     else draft.columns[key] = value - 1
     const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
-    next.advanced = sheet.advanced
-    next.adjusting = sheet.adjusting
     next.headerRowInput = sheet.headerRowInput
     next.previewPending = sheet.previewPending
     next.previewError = sheet.previewError
     this.setData({ bankMappingSheet: next })
   },
 
-  toggleBankColumns: function () {
-    const adjusting = !this.data.bankMappingSheet.adjusting
-    this.setData({ 'bankMappingSheet.adjusting': adjusting, 'bankMappingSheet.advanced': adjusting })
+  openBankHeader: function () {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    this.setData({ bankHeaderEditing: true })
+  },
+
+  closeBankHeader: function () {
+    this.setData({ bankHeaderEditing: false })
+    return this.refreshBankPreview()
+  },
+
+  confirmBankHeader: function () {
+    this.setData({ bankHeaderEditing: false })
+    return this.refreshBankPreview()
+  },
+
+  stepBankHeader: function (event) {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    const delta = Number(event.currentTarget.dataset.delta) || 0
+    const current = Number(this.data.bankMappingSheet.headerRowInput) || this.data.bankMappingSheet.preview.headerRow
+    const next = Math.max(1, Math.min(120, current + delta))
+    if (next === current) return
+    this.setData({ 'bankMappingSheet.headerRowInput': String(next), 'bankMappingSheet.previewPending': true,
+      'bankMappingSheet.previewError': false, 'bankMappingSheet.error': '' })
+    return this.refreshBankPreview()
   },
 
   inputBankHeader: function (event) {

@@ -214,9 +214,13 @@ test('必填列标清自动识别/已修改/未选，未选时禁止确认并说
   const amount = sheet.fields.find(field => field.key === 'amount')
   assert.equal(time.status, 'auto')
   assert.equal(amount.status, 'auto')
-  assert.equal(sheet.ready, true)
-  assert.equal(sheet.readyLabel, '3 项已就绪') // 日期、金额、借贷标记
+  // 样例含 DR，借贷含义未定时不算就绪（方向是必答题）。
+  assert.equal(sheet.ready, false)
+  assert.equal(sheet.readyLabel, '还差借贷含义')
   assert.equal(sheet.missingLabels.length, 0)
+  const directed = mapping.view('file', '合成.xls', preview, { ...sheet.draft, debitDirection: 'expense' })
+  assert.equal(directed.ready, true)
+  assert.equal(directed.readyLabel, '3 项已就绪')
 
   // 人工改过一列：标成“已修改”，不再算作自动识别。
   const changed = mapping.view('file', '合成.xls', preview, { ...sheet.draft,
@@ -233,22 +237,32 @@ test('必填列标清自动识别/已修改/未选，未选时禁止确认并说
   assert.match(mapping.payload(missing).error, /交易日期和金额/)
 })
 
-test('默认展示读取预览：前三行按语义列展开，缺列标出“未选列”', () => {
+test('默认展示读取预览：表头用账单原文列名，点表头即换列', () => {
   const sheet = mapping.view('file', '合成.xls', preview)
   assert.equal(sheet.previewRows.length, 1)
-  assert.deepEqual(sheet.previewColumns.map(column => column.label), ['交易日期', '交易金额', '摘要'])
+  assert.deepEqual(sheet.previewColumns.map(column => column.header), ['交易日期', '交易金额', '摘要'])
   assert.equal(sheet.previewRows[0].cells[0].value, '2026-09-01')
   assert.equal(sheet.previewRows[0].cells[1].value, '10')
   assert.equal(sheet.previewRows[0].cells[2].value, '合成项目')
-  assert.match(sheet.summaryText, /储蓄卡|信用卡/)
-  assert.match(sheet.summaryText, /表头第 2 行/)
-  assert.deepEqual(sheet.mappingLines.map(line => line.label), ['交易日期', '交易金额', '摘要'])
-  assert.match(sheet.mappingLines[0].column, /第 1 列/)
-  assert.equal(sheet.adjusting, false)
+  assert.deepEqual(sheet.tokens.map(token => token.label), ['账单类型', '表头', '金额格式', '借贷含义'])
+  assert.equal(sheet.tokens[1].value, '第 2 行')
 
-  // 金额列被清空：预览格标“未选列”，列对应也标缺项。
+  // 金额列被清空：表头写“选择列”，格子里标未选，确认被禁用。
   const missing = mapping.view('file', '合成.xls', preview, { ...sheet.draft, columns: { transactionTime: 0, direction: 2, item: 3 } })
   assert.equal(missing.previewRows[0].cells[1].missing, true)
-  assert.equal(missing.mappingLines.find(line => line.key === 'amount').missing, true)
+  assert.equal(missing.previewColumns[1].header, '选择列')
   assert.equal(missing.ready, false)
+  assert.match(missing.readyLabel, /交易金额/)
+})
+
+test('金额方向必选：借贷含义未定时整页不可确认', () => {
+  const sheet = mapping.view('file', '合成.xls', preview)
+  assert.equal(sheet.directionMissing, true, '样例里有 DR，必须确认借方含义')
+  assert.equal(sheet.ready, false)
+  assert.equal(sheet.tokens[3].warning, true)
+  assert.equal(sheet.tokens[3].value, '待选择')
+  const chosen = mapping.view('file', '合成.xls', preview, { ...sheet.draft, debitDirection: 'expense' })
+  assert.equal(chosen.directionMissing, false)
+  assert.equal(chosen.ready, true)
+  assert.equal(chosen.tokens[3].value, '借方 = 流出')
 })
