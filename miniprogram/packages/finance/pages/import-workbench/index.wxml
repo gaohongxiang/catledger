@@ -65,7 +65,6 @@
   <view wx:if="{{fileRenamePending}}" class="file-rename-recovery"><text>上次改名结果待确认</text><button class="text-action" bindtap="resumeFileRename" disabled="{{busy}}">继续确认</button></view>
 
   <view wx:if="{{resumeNotice}}" class="resume-gate" data-ui="resume-gate">
-    <text class="resume-gate-kicker">上次导入</text>
     <text class="resume-gate-title">{{resumeNotice.title}}</text>
     <text wx:if="{{resumeNotice.summary}}" class="resume-gate-summary">{{resumeNotice.summary}}</text>
     <text class="resume-gate-copy">{{resumeNotice.message}}</text>
