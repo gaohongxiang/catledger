@@ -232,3 +232,23 @@ test('必填列标清自动识别/已修改/未选，未选时禁止确认并说
   assert.match(missing.readyLabel, /还差 交易金额/)
   assert.match(mapping.payload(missing).error, /交易日期和金额/)
 })
+
+test('默认展示读取预览：前三行按语义列展开，缺列标出“未选列”', () => {
+  const sheet = mapping.view('file', '合成.xls', preview)
+  assert.equal(sheet.previewRows.length, 1)
+  assert.deepEqual(sheet.previewColumns.map(column => column.label), ['交易日期', '交易金额', '摘要'])
+  assert.equal(sheet.previewRows[0].cells[0].value, '2026-09-01')
+  assert.equal(sheet.previewRows[0].cells[1].value, '10')
+  assert.equal(sheet.previewRows[0].cells[2].value, '合成项目')
+  assert.match(sheet.summaryText, /储蓄卡|信用卡/)
+  assert.match(sheet.summaryText, /表头第 2 行/)
+  assert.deepEqual(sheet.mappingLines.map(line => line.label), ['交易日期', '交易金额', '摘要'])
+  assert.match(sheet.mappingLines[0].column, /第 1 列/)
+  assert.equal(sheet.adjusting, false)
+
+  // 金额列被清空：预览格标“未选列”，列对应也标缺项。
+  const missing = mapping.view('file', '合成.xls', preview, { ...sheet.draft, columns: { transactionTime: 0, direction: 2, item: 3 } })
+  assert.equal(missing.previewRows[0].cells[1].missing, true)
+  assert.equal(missing.mappingLines.find(line => line.key === 'amount').missing, true)
+  assert.equal(missing.ready, false)
+})

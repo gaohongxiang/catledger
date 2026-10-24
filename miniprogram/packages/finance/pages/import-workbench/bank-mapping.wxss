@@ -38,3 +38,32 @@
 .bank-status-manual { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 .bank-status-missing { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
 .bank-field-required.is-missing { border-radius: var(--theme-radius-small, 12rpx); outline: 1rpx solid var(--theme-warning, #a76416); outline-offset: -1rpx; }
+
+/* 摘要条：一句话回答“识别成什么”。 */
+.bank-summary { display: flex; align-items: center; gap: 10rpx; margin-top: var(--layout-space-3); padding: 16rpx 20rpx; border-radius: var(--theme-radius-large, 999rpx); background: var(--ui-accent-soft); }
+.bank-summary.is-warning { background: var(--theme-warning-soft, #fbf3e4); }
+.bank-summary-dot { flex: 0 0 auto; width: 10rpx; height: 10rpx; border-radius: 50%; background: var(--ui-accent); }
+.bank-summary.is-warning .bank-summary-dot { background: var(--theme-warning, #a76416); }
+.bank-summary-text { flex: 1; min-width: 0; color: var(--ui-accent-strong); font-size: 24rpx; line-height: 1.5; }
+.bank-summary.is-warning .bank-summary-text { color: var(--theme-warning, #a76416); }
+.bank-summary-tag { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: 22rpx; opacity: 0.8; }
+
+/* 预览表：读出来的东西直接摆出来，比列号更好判断。 */
+.bank-preview-head { margin-top: var(--layout-space-4); }
+.bank-preview { margin-top: 12rpx; overflow: hidden; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); }
+.bank-preview-row { display: flex; gap: 12rpx; padding: 14rpx 16rpx; border-top: 1rpx solid var(--ui-line); }
+.bank-preview-row:first-child { border-top: 0; }
+.bank-preview-header { background: var(--ui-surface-muted); }
+.bank-preview-header .bank-preview-cell { color: var(--ui-muted); font-size: 22rpx; }
+.bank-preview-cell { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--ui-ink); font-size: 24rpx; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.bank-preview-cell:first-child { flex: 1.4 1 0; }
+.bank-preview-cell.is-missing { color: var(--theme-warning, #a76416); }
+.bank-preview-empty { display: block; padding: 18rpx 16rpx; color: var(--theme-warning, #a76416); font-size: 22rpx; }
+
+/* 列对应：一行一项，缺项标黄。 */
+.bank-map-head { margin-top: var(--layout-space-4); }
+.bank-map-adjust { min-height: 0; margin: 0; padding: 0; background: transparent; color: var(--ui-accent-strong); font-size: 24rpx; }
+.bank-map-adjust::after { border: 0; }
+.bank-map-lines { margin-top: 12rpx; padding: 16rpx 18rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface); }
+.bank-map-line { display: block; color: var(--ui-ink); font-size: 24rpx; line-height: 1.7; }
+.bank-map-line.is-missing { color: var(--theme-warning, #a76416); }

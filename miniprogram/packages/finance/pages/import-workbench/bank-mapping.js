@@ -34,6 +34,29 @@ function view(clientId, name, preview, draft) {
       selected: selected, value: options[selected] ? options[selected].name : options[0].name,
       example: column == null ? '' : preview.samples.map(row => row[column] || '空').join(' / ') }
   })
+  // 预览表：把“系统读出来的样子”直接摆出来，比列号更能回答“选对了吗”。
+  const headerName = index => {
+    const header = (preview.headers || []).find(item => item.index === index)
+    return header ? header.name : ''
+  }
+  const columnText = index => index == null ? '未选' : '第 ' + (index + 1) + ' 列' + (headerName(index) ? ' · ' + headerName(index) : '')
+  const amountKeys = current.amountMode === 'split' ? ['income', 'expense'] : ['amount']
+  const previewColumns = [{ key: 'transactionTime', label: '交易日期', required: true }]
+    .concat(amountKeys.map(key => ({ key, label: key === 'income' ? '流入' : key === 'expense' ? '流出' : '交易金额', required: true })))
+    .concat([{ key: 'item', label: '摘要', required: false }])
+  const previewRows = (preview.samples || []).slice(0, 3).map((row, rowIndex) => ({ key: String(rowIndex),
+    cells: previewColumns.map((column, cellIndex) => {
+      const index = current.columns[column.key]
+      return { key: column.key + '-' + cellIndex, value: index == null ? '' : String(row[index] == null ? '' : row[index]),
+        missing: column.required && index == null, required: column.required }
+    }) }))
+  const previewHeader = previewColumns.map(column => ({ key: column.key, label: column.label }))
+  const mappingLines = previewColumns.map(column => ({ key: column.key, label: column.label,
+    column: columnText(current.columns[column.key]), missing: column.required && current.columns[column.key] == null }))
+  const statementLabel = (STATEMENTS.find(item => item.value === (current.statementKind || 'standard')) || STATEMENTS[0]).label
+  const summaryText = [statementLabel, '表头第 ' + preview.headerRow + ' 行',
+    current.amountMode === 'signed' && current.positiveDirection ? '正数表示' + (current.positiveDirection === 'income' ? '流入' : '流出') : '']
+    .filter(Boolean).join(' · ')
   const requiredFields = fields.filter(field => field.required)
   const optionalFields = fields.filter(field => !field.required)
   const missingLabels = requiredFields.filter(field => field.status === 'missing').map(field => field.label)
@@ -43,6 +66,7 @@ function view(clientId, name, preview, draft) {
   const positiveStatus = current.positiveDirection ? (preview.suggested.positiveDirection === current.positiveDirection ? 'auto' : 'manual') : 'missing'
   const debitStatus = current.debitDirection ? (preview.suggested.debitDirection === current.debitDirection ? 'auto' : 'manual') : 'missing'
   return { clientId, name, preview, draft: current, fields, requiredFields, optionalFields,
+    previewColumns: previewHeader, previewRows, mappingLines, summaryText,
     statementAuto, amountModeAuto, positiveStatus, debitStatus,
     missingLabels, ready: missingLabels.length === 0,
     readyLabel: missingLabels.length ? '还差 ' + missingLabels.join('、') : requiredFields.length + ' 项已就绪',
@@ -50,7 +74,7 @@ function view(clientId, name, preview, draft) {
     amountModes: MODES, modeIndex: MODES.findIndex(mode => mode.value === current.amountMode),
     directionOptions: DIRECTIONS, positiveIndex: DIRECTIONS.findIndex(option => option.value === current.positiveDirection),
     debitIndex: DIRECTIONS.findIndex(option => option.value === current.debitDirection), headerRowInput: String(preview.headerRow),
-    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0,advanced: false, error: '' }
+    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0,advanced: false, adjusting: false, error: '' }
 }
 
 function payload(sheet) {

@@ -394,13 +394,17 @@ module.exports = {
     else draft.columns[key] = value - 1
     const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
     next.advanced = sheet.advanced
+    next.adjusting = sheet.adjusting
     next.headerRowInput = sheet.headerRowInput
     next.previewPending = sheet.previewPending
     next.previewError = sheet.previewError
     this.setData({ bankMappingSheet: next })
   },
 
-  toggleBankColumns: function () { this.setData({ 'bankMappingSheet.advanced': !this.data.bankMappingSheet.advanced }) },
+  toggleBankColumns: function () {
+    const adjusting = !this.data.bankMappingSheet.adjusting
+    this.setData({ 'bankMappingSheet.adjusting': adjusting, 'bankMappingSheet.advanced': adjusting })
+  },
 
   inputBankHeader: function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
