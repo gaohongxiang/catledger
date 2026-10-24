@@ -207,3 +207,28 @@ test('关闭弹层或输入后换用户取消自动识别，不发送旧文件',
     page.onUnload()
   }
 })
+
+test('必填列标清自动识别/已修改/未选，未选时禁止确认并说明缺什么', () => {
+  const sheet = mapping.view('file', '合成.xls', preview)
+  const time = sheet.fields.find(field => field.key === 'transactionTime')
+  const amount = sheet.fields.find(field => field.key === 'amount')
+  assert.equal(time.status, 'auto')
+  assert.equal(amount.status, 'auto')
+  assert.equal(sheet.ready, true)
+  assert.equal(sheet.readyLabel, '3 项已就绪') // 日期、金额、借贷标记
+  assert.equal(sheet.missingLabels.length, 0)
+
+  // 人工改过一列：标成“已修改”，不再算作自动识别。
+  const changed = mapping.view('file', '合成.xls', preview, { ...sheet.draft,
+    columns: { ...sheet.draft.columns, amount: 3 } })
+  assert.equal(changed.fields.find(field => field.key === 'amount').status, 'manual')
+
+  // 必填未选：显式列出缺哪一项，confirm 按钮据此禁用。
+  const missing = mapping.view('file', '合成.xls', preview, { ...sheet.draft,
+    columns: { ...sheet.draft.columns, amount: null } })
+  assert.equal(missing.ready, false)
+  assert.deepEqual(missing.missingLabels, ['交易金额'])
+  assert.equal(missing.fields.find(field => field.key === 'amount').status, 'missing')
+  assert.match(missing.readyLabel, /还差 交易金额/)
+  assert.match(mapping.payload(missing).error, /交易日期和金额/)
+})

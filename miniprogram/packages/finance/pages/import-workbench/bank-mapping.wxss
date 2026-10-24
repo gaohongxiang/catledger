@@ -16,3 +16,25 @@
 .bank-mapping-actions { display: flex; gap: var(--layout-space-4); }
 .bank-mapping-actions button { flex: 1; width: 0; min-width: 0; max-width: none; margin: 0; padding: 0 20rpx; border-radius: 999rpx; white-space: nowrap; }
 .bank-mapping-actions .primary-button { flex: 2; }
+
+/* 分组：把“文件识别 / 表格结构 / 必填列 / 更多列”分开，避免一排排长得一样的行。 */
+.bank-group { margin-top: var(--layout-space-4); }
+.bank-group:first-of-type { margin-top: 0; }
+.bank-group-title { display: block; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); letter-spacing: 1rpx; }
+.bank-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--layout-space-3); }
+.bank-group-note { color: var(--ui-muted); font-size: 22rpx; }
+.bank-group-note.is-warning { color: var(--theme-warning, #a76416); }
+.bank-group-hint { display: block; margin-top: 8rpx; color: var(--theme-warning, #a76416); font-size: 22rpx; line-height: 1.6; }
+
+/* 必填行：左侧强调条 + 状态标签，未选时整行描边。 */
+.bank-field-required { position: relative; padding-left: 18rpx; }
+.bank-field-required::before { content: ''; position: absolute; left: 0; top: 18rpx; bottom: 18rpx; width: 4rpx; border-radius: 2rpx; background: var(--ui-accent); opacity: 0.35; }
+.bank-field-required.is-missing::before { background: var(--theme-warning, #a76416); opacity: 1; }
+.bank-field-label { display: flex; align-items: center; gap: 8rpx; color: var(--ui-ink); font-size: 26rpx; }
+.bank-required-dot { width: 8rpx; height: 8rpx; border-radius: 50%; background: var(--ui-accent); }
+.bank-field-value { display: flex; align-items: center; justify-content: flex-end; gap: 10rpx; flex: 1; min-width: 0; }
+.bank-status { flex: 0 0 auto; padding: 2rpx 10rpx; border-radius: 999rpx; font-size: 20rpx; line-height: 1.6; }
+.bank-status-auto { background: var(--ui-surface-muted); color: var(--ui-muted); }
+.bank-status-manual { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.bank-status-missing { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
+.bank-field-required.is-missing { border-radius: var(--theme-radius-small, 12rpx); outline: 1rpx solid var(--theme-warning, #a76416); outline-offset: -1rpx; }

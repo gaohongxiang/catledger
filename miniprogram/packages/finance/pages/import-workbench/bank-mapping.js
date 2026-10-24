@@ -22,16 +22,31 @@ function view(clientId, name, preview, draft) {
   const options = [{ index: -1, name: '不使用这一列' }].concat(preview.headers.map(function (header) {
     return { index: header.index, name: '第 ' + (header.index + 1) + ' 列 · ' + header.name }
   }))
+  const suggested = preview.suggested.columns || {}
   const fields = Object.keys(FIELD_LABELS).filter(function (field) {
     return !['amount', 'direction', 'income', 'expense'].includes(field) || amountFields.includes(field)
   }).map(function (field) {
     const column = current.columns[field]
     const selected = column == null ? 0 : column + 1
-    return { key: field, label: FIELD_LABELS[field], required: required.includes(field),
+    // 每个字段标清来源：自动识别、人工改过、还没选。必填未选要显眼。
+    const status = column == null ? 'missing' : suggested[field] === column ? 'auto' : 'manual'
+    return { key: field, label: FIELD_LABELS[field], required: required.includes(field), status,
       selected: selected, value: options[selected] ? options[selected].name : options[0].name,
       example: column == null ? '' : preview.samples.map(row => row[column] || '空').join(' / ') }
   })
-  return { clientId, name, preview, draft: current, fields, columnOptions: options,
+  const requiredFields = fields.filter(field => field.required)
+  const optionalFields = fields.filter(field => !field.required)
+  const missingLabels = requiredFields.filter(field => field.status === 'missing').map(field => field.label)
+  // 结构类设置也标来源：自动识别 / 已修改 / 未选（借贷含义这类必答项）。
+  const statementAuto = (preview.suggested.statementKind || 'standard') === (current.statementKind || 'standard')
+  const amountModeAuto = preview.suggested.amountMode === current.amountMode
+  const positiveStatus = current.positiveDirection ? (preview.suggested.positiveDirection === current.positiveDirection ? 'auto' : 'manual') : 'missing'
+  const debitStatus = current.debitDirection ? (preview.suggested.debitDirection === current.debitDirection ? 'auto' : 'manual') : 'missing'
+  return { clientId, name, preview, draft: current, fields, requiredFields, optionalFields,
+    statementAuto, amountModeAuto, positiveStatus, debitStatus,
+    missingLabels, ready: missingLabels.length === 0,
+    readyLabel: missingLabels.length ? '还差 ' + missingLabels.join('、') : requiredFields.length + ' 项已就绪',
+    columnOptions: options,
     amountModes: MODES, modeIndex: MODES.findIndex(mode => mode.value === current.amountMode),
     directionOptions: DIRECTIONS, positiveIndex: DIRECTIONS.findIndex(option => option.value === current.positiveDirection),
     debitIndex: DIRECTIONS.findIndex(option => option.value === current.debitDirection), headerRowInput: String(preview.headerRow),
