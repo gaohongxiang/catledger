@@ -67,13 +67,35 @@ function serverAgeMs(update) {
   const time = Date.parse(update && update.updatedAt)
   return Number.isFinite(time) ? Math.max(0, Date.now() - time) : null
 }
+const RESUME_STEPS = { 1: '选择账单', 2: '确认账户', 3: '整理账目', 4: '确认入账' }
+
+function resumeSummary(resume) {
+  const progress = resume && resume.progress
+  if (!progress) return ''
+  const parts = ['第 ' + progress.step + ' 步 · ' + (RESUME_STEPS[progress.step] || '整理账目')]
+  if (progress.pending) parts.push(progress.pending + ' 笔待核对')
+  if (progress.categories) parts.push(progress.categories + ' 笔待分类')
+  if (!progress.pending && !progress.categories) parts.push('核对与分类都已完成')
+  return parts.join(' · ')
+}
+
+function keepUntilText(at) {
+  const value = Number(at)
+  if (!Number.isFinite(value)) return ''
+  const date = new Date(value), now = new Date(), pad = number => String(number).padStart(2, '0')
+  const sameDay = date.toDateString() === now.toDateString()
+  return (sameDay ? '' : (date.getMonth() + 1) + '月' + date.getDate() + '日 ') + pad(date.getHours()) + ':' + pad(date.getMinutes())
+}
+
 function resumeNotice(resume, extra) {
   const state = resume.state
   const source = resume.source || 'local'
   const continueLabel = state === 'semantic' ? '重新整理并继续'
     : state === 'server_changed' ? '重新下载并继续'
-      : state === 'post_pending' ? '继续核实入账结果' : state === 'recovery_failed' ? '联网核实并恢复' : '继续查看'
-  const abandonLabel = state === 'recovery_failed' || state === 'post_pending' ? '核实并重新开始' : state === 'reparse' ? '放弃并重新选择' : '放弃并重新开始'
+      : state === 'post_pending' ? '继续核实入账结果' : state === 'recovery_failed' ? '联网核实并恢复'
+        : state === 'idle' ? '继续上次导入' : '继续查看'
+  const abandonLabel = state === 'recovery_failed' || state === 'post_pending' ? '核实并重新开始'
+    : state === 'reparse' ? '放弃并重新选择' : state === 'idle' ? '放弃，重新选账单' : '放弃并重新开始'
   return Object.assign({
     source,
     state,
@@ -85,8 +107,11 @@ function resumeNotice(resume, extra) {
     continueLabel,
     abandonLabel,
     originalMissing: Boolean(resume.originalMissing),
-    title: resume.title || (source === 'server' ? '上次导入已超过 24 小时' : '上次导入已超过 12 小时'),
-    message: resume.message || ''
+    title: resume.title || (source === 'server' ? '上次导入还没完成' : '上次导入还没完成'),
+    summary: resumeSummary(resume),
+    message: resume.message || (state === 'idle' && resume.keepUntil
+      ? '本机草稿保留到 ' + keepUntilText(resume.keepUntil) + '，之后需要重新上传账单。继续查看不会重新上传，也不会入账。'
+      : resume.keepUntil ? '本机草稿保留到 ' + keepUntilText(resume.keepUntil) + '，之后需要重新上传账单。' : '')
   }, extra || {})
 }
 function pendingPrepare() {
@@ -548,6 +573,13 @@ module.exports = {
     if (!updateId || this.data.abandoningRestore) return
     if(['recovery_failed','post_pending'].includes(this.data.resumeNotice?.state))return this.recoverDamagedDraft(true)
     if(this.data.resumeNotice && this.data.resumeNotice.canAbandon === false) return
+    // 放弃是破坏性操作：先确认，并写清会丢什么、不会影响什么。
+    if (this.data.resumeNotice && this.data.resumeNotice.state === 'idle') {
+      const answer = await new Promise(resolve => wx.showModal({ title: '放弃上次导入？',
+        content: '本机草稿和已保存的账户、分类、退款选择都会删除，账单需要重新上传。已经入账的记录不受影响。',
+        confirmText: '放弃', confirmColor: '#a03c2c', success: resolve, fail: () => resolve({ confirm: false }) }))
+      if (!answer.confirm) return
+    }
     const load = this._updateLoad
     if (load) load.cancelled = true
     this.setData({ abandoningRestore: true, busy: true, errorMessage: '' })

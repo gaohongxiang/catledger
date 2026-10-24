@@ -101,6 +101,23 @@ function cleanupIdle(scope, now = Date.now(), limit = 20, excludeId = null) {
   }
   return cleaned
 }
+// 门禁只读一次本机草稿来给出进度摘要：步数、待核对、待分类。全程不联网。
+function resumeProgress(restored, deps) {
+  try {
+    const probe = sessionFactory.create({ ...deps, restored })
+    const view = probe.view || {}, workbench = view.workbench || {}
+    const countOf = (list, value) => Number(((list || []).find(row => row.value === value) || {}).count || 0)
+    const accounts = workbench.accountStepSummary || {}
+    const progress = {
+      step: Number(accounts.pending) > 0 ? 2 : 3,
+      pending: countOf(workbench.reviewStatusTabs, 'pending'),
+      categories: countOf(workbench.categoryStatusTabs, 'pending'),
+      total: Number((view.update && view.update.counts && view.update.counts.finalEventCount) || 0)
+    }
+    probe.close?.()
+    return progress
+  } catch (_) { return null }
+}
 function restore(updateId, options = {}){
   bindOwner()
   const current=router.session(updateId)
@@ -153,8 +170,12 @@ function restore(updateId, options = {}){
     }))
   }
   if (activityState.state === 'idle' && !options.force) {
-    return localGate(updateId, 'idle', { lastActiveAt, activity: 'idle', canContinue: true,
-      title: '上次导入已超过 12 小时', message: '本机仍保留完整草稿和已保存的选择，但没有自动打开。继续查看不会重新上传或入账。' })
+    // 本机读一次草稿，只为显示“做到哪一步、还剩多少”；不联网、不改变任何状态。
+    const progress = resumeProgress(restored, deps)
+    const keepUntil = activity && activity.lastActiveAt
+      ? Number(activity.lastActiveAt) + resume.SNAPSHOT_RETENTION_MS : null
+    return localGate(updateId, 'idle', { lastActiveAt, activity: 'idle', canContinue: true, progress, keepUntil,
+      title: '上次导入还没完成', message: '' })
   }
   try { deps.files.touch({ lastActiveAt: clock(options)() }) } catch (_) {}
   const session=sessionFactory.create({...deps,restored});session.activity=restored.activity||activity;router.bind(session);return session

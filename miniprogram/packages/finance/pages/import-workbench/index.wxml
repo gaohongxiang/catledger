@@ -67,6 +67,7 @@
   <view wx:if="{{resumeNotice}}" class="resume-gate" data-ui="resume-gate">
     <text class="resume-gate-kicker">上次导入</text>
     <text class="resume-gate-title">{{resumeNotice.title}}</text>
+    <text wx:if="{{resumeNotice.summary}}" class="resume-gate-summary">{{resumeNotice.summary}}</text>
     <text class="resume-gate-copy">{{resumeNotice.message}}</text>
     <view class="resume-gate-actions">
       <button wx:if="{{resumeNotice.canContinue}}" class="primary-button resume-gate-continue" bindtap="continueBlockedResume" disabled="{{busy}}">{{resumeNotice.continueLabel}}</button>

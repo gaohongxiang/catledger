@@ -120,7 +120,10 @@ test('本机活动时间：12h 不自动打开，继续后刷新；24h 清理；
   const idle = manager.restore(value.update.updateId, { now: () => clock })
   assert.equal(idle.resume.state, 'idle')
   assert.equal(idle.resume.canContinue, true)
-  assert.match(idle.resume.title, /12 小时/)
+  assert.match(idle.resume.title, /上次导入还没完成/)
+  assert.ok(idle.resume.progress, '门禁要给出本地进度摘要')
+  assert.equal(idle.resume.progress.step > 1, true)
+  assert.ok(Number(idle.resume.keepUntil) > createdAt, '要给出草稿保留到什么时候')
   assert.equal(store.activity().lastActiveAt, createdAt, '仅检查不能刷新活动时间')
 
   clock = createdAt + 14 * HOUR
