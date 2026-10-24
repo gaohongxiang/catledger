@@ -61,12 +61,13 @@ function view(clientId, name, preview, draft) {
   const directionMissing = current.amountMode === 'signed' ? !current.positiveDirection
     : current.amountMode === 'direction' ? (!current.debitDirection && samplesHaveDebit) : false
   const directionLabel = current.amountMode === 'signed' ? '正数表示' : '借贷含义'
+  // 未选时把“缺什么”写在标签上，别只写“待选择”。
   const directionValue = current.amountMode === 'signed'
-    ? (current.positiveDirection === 'income' ? '正数 = 流入' : current.positiveDirection === 'expense' ? '正数 = 流出' : '待选择')
-    : (current.debitDirection === 'income' ? '借方 = 流入' : current.debitDirection === 'expense' ? '借方 = 流出' : '待选择')
+    ? (current.positiveDirection === 'income' ? '正数 = 流入' : current.positiveDirection === 'expense' ? '正数 = 流出' : '正数方向待选')
+    : (current.debitDirection === 'income' ? '借方 = 流入' : current.debitDirection === 'expense' ? '借方 = 流出' : '借贷含义待选')
   const tokens = [
     { key: 'statementKind', label: '账单类型', value: (STATEMENTS.find(item => item.value === (current.statementKind || 'standard')) || STATEMENTS[0]).label, warning: false },
-    { key: 'headerRow', label: '表头', value: '第 ' + preview.headerRow + ' 行', warning: false },
+    { key: 'headerRow', label: '表头', value: '表头 ' + preview.headerRow + ' 行', warning: false },
     { key: 'amountMode', label: '金额格式', value: (MODES.find(item => item.value === current.amountMode) || MODES[0]).label, warning: false },
     { key: 'direction', label: directionLabel, value: directionValue, warning: directionMissing }
   ]

@@ -245,7 +245,7 @@ test('默认展示读取预览：表头用账单原文列名，点表头即换�
   assert.equal(sheet.previewRows[0].cells[1].value, '10')
   assert.equal(sheet.previewRows[0].cells[2].value, '合成项目')
   assert.deepEqual(sheet.tokens.map(token => token.label), ['账单类型', '表头', '金额格式', '借贷含义'])
-  assert.equal(sheet.tokens[1].value, '第 2 行')
+  assert.equal(sheet.tokens[1].value, '表头 2 行')
 
   // 金额列被清空：表头写“选择列”，格子里标未选，确认被禁用。
   const missing = mapping.view('file', '合成.xls', preview, { ...sheet.draft, columns: { transactionTime: 0, direction: 2, item: 3 } })
@@ -260,7 +260,7 @@ test('金额方向必选：借贷含义未定时整页不可确认', () => {
   assert.equal(sheet.directionMissing, true, '样例里有 DR，必须确认借方含义')
   assert.equal(sheet.ready, false)
   assert.equal(sheet.tokens[3].warning, true)
-  assert.equal(sheet.tokens[3].value, '待选择')
+  assert.equal(sheet.tokens[3].value, '借贷含义待选', '未选的标签要写清楚缺什么')
   const chosen = mapping.view('file', '合成.xls', preview, { ...sheet.draft, debitDirection: 'expense' })
   assert.equal(chosen.directionMissing, false)
   assert.equal(chosen.ready, true)

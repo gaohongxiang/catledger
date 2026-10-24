@@ -21,13 +21,12 @@
         <picker wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.debitIndex}}" data-key="debitDirection" bindchange="changeBankMapping" disabled="{{busy}}">
           <view class="bank-token {{bankMappingSheet.tokens[3].warning ? 'is-warning' : ''}}"><text>{{bankMappingSheet.tokens[3].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
         </picker>
+        <view class="bank-token" bindtap="openBankHeader" aria-role="button"><text>{{bankMappingSheet.tokens[1].value}}</text><text class="bank-caret" aria-hidden="true"></text></view>
       </view>
 
       <view class="bank-group-head bank-preview-head">
         <text class="bank-group-title">读取预览</text>
-        <view class="bank-header-token" bindtap="openBankHeader" aria-role="button">
-          <text>{{bankMappingSheet.tokens[1].value}}</text><text class="bank-caret" aria-hidden="true"></text>
-        </view>
+        <text class="bank-group-note">{{bankMappingSheet.previewLoading ? '正在读取…' : bankMappingSheet.previewPending ? '修改后自动识别' : '点表头换列'}}</text>
       </view>
       <view class="bank-preview">
         <view class="bank-preview-row bank-preview-header">
@@ -45,7 +44,15 @@
       <text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text>
 
     </scroll-view>
-      <view wx:if="{{bankHeaderEditing}}" class="bank-header-layer" catchtouchmove="preventTouchMove">
+    <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
+    <view class="bank-mapping-actions">
+      <button class="secondary-button" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
+      <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{bankHeaderEditing}}" class="bank-header-layer" catchtouchmove="preventTouchMove">
         <view class="bank-header-scrim" bindtap="closeBankHeader"></view>
         <view class="bank-header-panel">
           <view class="bank-header-head">
@@ -64,10 +71,3 @@
           </view>
         </view>
       </view>
-    <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
-    <view class="bank-mapping-actions">
-      <button class="secondary-button" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
-      <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
-    </view>
-  </view>
-</view>
