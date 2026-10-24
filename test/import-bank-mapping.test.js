@@ -291,3 +291,13 @@ test('表头行浮层：可步进也可输入，确定后重读预览，取消�
   assert.equal(h.calls[h.calls.length - 1].input.bankPreview.headerRow, 11)
   page.onUnload()
 })
+
+test('必填未选时“确认并解析”不可点击，文案仍说明缺什么', () => {
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/bank-mapping.wxml'), 'utf8')
+  const confirm = markup.slice(markup.indexOf('bindtap="confirmBankMapping"') - 120, markup.indexOf('bindtap="confirmBankMapping"') + 120)
+  assert.match(confirm, /disabled="\{\{busy \|\| !bankMappingSheet\.ready\}\}"/, '未就绪时按钮必须禁用')
+  assert.match(markup, /bankMappingSheet\.ready \? '表头用的是账单原文列名/)
+  const sheet = mapping.view('file', '合成.xls', preview)
+  assert.equal(sheet.ready, false)
+})

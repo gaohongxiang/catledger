@@ -69,8 +69,10 @@
 .bank-map-line.is-missing { color: var(--theme-warning, #a76416); }
 
 /* 无模式：每个值就是一个可点控件，点开原生选择器。 */
-.bank-tokens { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: var(--layout-space-3); }
-.bank-tokens picker, .bank-tokens .bank-token { max-width: 100%; }
+/* 固定两行：文件/表头一行，金额读取方式一行。不靠自动换行，避免挤成 3+1。 */
+.bank-token-row { display: flex; flex-wrap: nowrap; gap: 10rpx; margin-top: 12rpx; }
+.bank-token-row picker { min-width: 0; }
+.bank-token-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bank-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.6; }
 .bank-header-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 14rpx; border: 1rpx solid var(--ui-line); border-radius: 999rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; }
 .bank-token.is-warning { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
