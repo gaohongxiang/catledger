@@ -48,12 +48,11 @@ test('首页数字不继续使用窄体 DIN Alternate 或负字距', () => {
   assert.match(body, /font-variant-numeric:\s*tabular-nums/)
 })
 
-test('暖橘渐变限定在首页主题变量，不污染其他主题和页面', () => {
-  assert.match(style, /\.home-page\.theme-warm-ledger\s*\{/)
-  const warm = rule('.home-page.theme-warm-ledger')
-  assert.match(warm, /--home-hero-image:\s*linear-gradient/)
+test('净值卡渐变只从主题 hero token 取色，不写主题私有覆盖', () => {
+  const card = rule('.net-worth-card')
+  assert.match(card, /background-image:\s*linear-gradient\([^;]*var\(--theme-hero-start[^;]*var\(--theme-hero-end/)
   assert.equal((style.match(/linear-gradient\(/g) || []).length, 1)
-  assert.match(rule('.net-worth-card'), /background-image:\s*var\(--home-hero-image, none\)/)
+  assert.doesNotMatch(style, /\.home-page\.theme-[\w-]+\s*\{/)
   assert.doesNotMatch(style, /--theme-[\w-]+\s*:/)
   assert.doesNotMatch(style, /@font-face|https?:\/\//)
 })

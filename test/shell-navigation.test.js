@@ -20,7 +20,7 @@ function instance(definition, component) {
 }
 
 function fixture() {
-  const h = runtime(new Map([['catledger_theme_v1', 'ticket-proof']]), { realTheme: true })
+  const h = runtime(new Map([['catledger_theme_v1', 'navy-ledger']]), { realTheme: true })
   const host = instance(h.load('shell/host').createHost())
   host.route = 'shell/index'
   const nodes = new Map()
@@ -119,7 +119,7 @@ test('注册后切主题再首挂载时，就绪门和当前主题同批提交�
   }
   const home = mount('home', { data: {}, onShow() { shows++ } }).component
   host.onHide()
-  service.selectTheme('ticket-proof')
+  service.selectTheme('navy-ledger')
   home.onShow()
   assert.equal(shows, 1)
 })

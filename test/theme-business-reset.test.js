@@ -21,7 +21,7 @@ test('工作台退出登录和切换用户只重置业务初值，主题始终�
   for (const mode of ['logout', 'new-owner']) await t.test(mode, async () => {
     const h = workbenchRuntime(fixture(0), { realTheme: true, initialView: false, pageOptions: { fresh: '1' } })
     const page = h.page, theme = h.load(path.resolve(__dirname, '../miniprogram/theme/service.js'))
-    theme.selectTheme('ticket-proof')
+    theme.selectTheme('navy-ledger')
     const presentation = theme.currentPresentation()
     page.setData({ files: [{ id: 'synthetic-old-file' }], currentStep: 3, errorMessage: '旧业务错误' })
     const verifyFrames = recordThemes(page, presentation)
@@ -53,7 +53,7 @@ test('贷款页面跨读会话重置只使用业务字段，失败重试不会�
   for (const [name, load, query, label] of loanPages) await t.test(label || name, async () => {
     const h = readRuntime(undefined, { realTheme: true })
     const theme = h.load('theme/service')
-    theme.selectTheme('red-editorial')
+    theme.selectTheme('taro-note')
     // 网络失败使读取停在可重试状态；本测试关注真实 Page 与会话重置，不伪造财务响应。
     h.respond = async () => { throw new Error('synthetic offline') }
     const page = h.page(name)
@@ -66,13 +66,13 @@ test('贷款页面跨读会话重置只使用业务字段，失败重试不会�
     const rowsField = ['accounts', 'items', 'assets'].find(key => Array.isArray(page._readInitial[key]))
     assert.ok(rowsField, '应有可观察的业务列表字段')
     page.setData({ [rowsField]: [{ id: 'synthetic-old-owner-row' }] })
-    theme.selectTheme('ticket-proof')
+    theme.selectTheme('navy-ledger')
     const presentation = theme.currentPresentation(), verifyFrames = recordThemes(page, presentation)
     h.cache.reset()
     await page[load]()
     assert.equal(page.data[rowsField].length, 0, '换会话后读取失败也必须清除旧业务列表')
     verifyFrames()
-    assert.equal(page.data.themeId, 'ticket-proof')
+    assert.equal(page.data.themeId, 'navy-ledger')
     page.onUnload()
   })
 })

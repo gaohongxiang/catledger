@@ -18,4 +18,4 @@ registry.listThemes().forEach(function (theme) {
     fs.writeFileSync(path.join(directory, name), svg)
   })
 })
-console.log('已生成六主题本地矢量图标。')
+console.log('已生成三主题本地矢量图标。')

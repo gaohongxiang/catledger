@@ -8,19 +8,9 @@
   line-height: 1.5;
 }
 
-/* 首页净值卡保留已确认轻渐变，其他表面复用全局暖橘。 */
-.home-page.theme-warm-ledger {
-  --home-page: #faf8f4;
-  --home-surface: #fffefd;
-  --home-surface-muted: #f4eee3;
-  --home-ink: #2c2823;
-  --home-muted: #70685f;
-  --home-line: #eae4dc;
-  --home-hero-image: linear-gradient(135deg, rgba(0, 0, 0, .08) 0%, rgba(0, 0, 0, 0) 42%, var(--theme-hero-end, #be5b24) 100%);
-}
-
-/* 除暖橘的渐变外，首页所有表面都走 --home-* → --theme-* 的既有回退链，
-   不为任何单一主题写页面级覆盖：覆盖会让新主题各自长一套私色，也会反向遮蔽基础规则。 */
+/* 首页所有表面都走 --home-* → --theme-* 的既有回退链，
+   不为任何单一主题写页面级覆盖：覆盖会让新主题各自长一套私色，也会反向遮蔽基础规则。
+   净值卡的渐变同样只从 hero token 取色，换主题即换卡面。 */
 
 .home-page .money-number { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -68,7 +58,7 @@
   overflow: hidden;
   color: var(--theme-hero-ink, #FFFFFF);
   background-color: var(--theme-hero-start, #be5b24);
-  background-image: var(--home-hero-image, none);
+  background-image: linear-gradient(135deg, var(--theme-hero-start, #be5b24) 0%, var(--theme-hero-end, #be5b24) 100%);
   border: 1rpx solid rgba(0, 0, 0, .035);
   border-radius: var(--theme-radius-xl, 32rpx);
   box-shadow: var(--theme-shadow-lifted);

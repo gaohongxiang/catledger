@@ -101,7 +101,7 @@ test('主宿主与独立页面以主题 page-meta 开头，兼容入口没有第
   assert.deepEqual(offenders, [], '页面缺少统一主题外壳声明')
 })
 
-// 外壳值必须从 token 派生。写死任何一支颜色，都会在六套主题里错五套。
+// 外壳值必须从 token 派生。写死任何一支颜色，都会在三套主题里错两套。
 test('外壳字段与主题 token 同源，深色主题自动换成浅色前景', function () {
   const registry = require('../miniprogram/theme/registry')
   registry.listThemes().forEach(function (item) {

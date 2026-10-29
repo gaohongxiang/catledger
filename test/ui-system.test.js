@@ -17,20 +17,19 @@ function businessMarkup(page) {
   return read('miniprogram/' + (factories[route] ? route.replace(/index$/, 'panel') : route) + '.wxml')
 }
 
-test('全页面暖橘表面与强调色分离，仅首页保留局部渐变', function () {
+test('默认主题的强调色与表面分离，首页只保留净值卡一道主题渐变', function () {
   const registry = require('../miniprogram/theme/registry')
-  const warm = registry.getTheme(registry.DEFAULT_THEME_ID)
+  const current = registry.getTheme(registry.DEFAULT_THEME_ID)
   const homeStyle = read('miniprogram/pages/index/index.wxss')
 
-  assert.equal(warm.tokens.accent, '#BE5B24')
-  assert.equal(warm.tokens.surfaceMuted, '#F4EEE3')
-  assert.equal(warm.tokens.accentSoft, '#F0E2CE')
-  assert.equal(warm.tokens.heroStart, '#BE5B24')
-  assert.equal(warm.tokens.heroEnd, '#BE5B24')
-  assert.equal(warm.tokens.heroInk, '#FFFFFF')
-  assert.equal(warm.tokens.heroValueInk, '#FFFFFF')
-  assert.match(homeStyle, /\.home-page\.theme-warm-ledger\s*\{[^}]*--home-hero-image:\s*linear-gradient/)
+  assert.equal(current.id, 'gilded-ledger')
+  assert.equal(current.tokens.accent, '#D8B25E')
+  assert.equal(current.tokens.heroStart, '#171410')
+  assert.equal(current.tokens.heroEnd, '#2A2114')
+  assert.equal(current.tokens.heroValueInk, '#E7C77E')
+  assert.notEqual(current.tokens.accent, current.tokens.surface)
   assert.equal((homeStyle.match(/linear-gradient\(/g) || []).length, 1)
+  assert.doesNotMatch(homeStyle, /\.home-page\.theme-[\w-]+\s*\{/)
 })
 
 test('底栏只保留导航和记账入口样式', function () {
@@ -60,7 +59,7 @@ test('一级页共享稳定的页面骨架与触控基线', function () {
   })
 })
 
-test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', function () {
+test('非样板页面保留轻量主题，渐变只留在净值卡上', function () {
   const registry = require('../miniprogram/theme/registry')
   const sharedStyles = [
     'miniprogram/pages/transactions/index.wxss',
@@ -72,9 +71,7 @@ test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', funct
 
   registry.listThemes().forEach(function (item) {
     const theme = registry.getTheme(item.id)
-    // 卡面渐变只允许出现在深色主题的 hero 上（黑金底需要一道浅浮雕才不发闷）；
-    // 浅色主题的 hero 必须纯色，页面里也不许自己写渐变。
-    if (theme.semanticTone !== 'dark') assert.equal(theme.tokens.heroStart, theme.tokens.heroEnd, item.id + ' 浅色主题的 hero 必须纯色')
+    // 卡面渐变只由 hero token 决定，页面里不许自己写渐变（幅度另在注册表测试里受控）。
     assert.doesNotMatch(theme.tokens.shadowSoft, /\d+rpx\s+\d+rpx\s+0\s/)
     assert.doesNotMatch(theme.tokens.shadowLifted, /\d+rpx\s+\d+rpx\s+0\s/)
   })
@@ -82,8 +79,8 @@ test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', funct
   assert.doesNotMatch(sharedStyles, /font-weight:\s*650/)
   assert.doesNotMatch(sharedStyles, /linear-gradient|radial-gradient/)
   const homeStyle = read('miniprogram/pages/index/index.wxss')
-  const outsideWarmScope = homeStyle.replace(/\.home-page\.theme-warm-ledger\s*\{[^}]*\}/g, '')
-  assert.doesNotMatch(outsideWarmScope, /linear-gradient|radial-gradient/)
+  const withoutHeroCard = homeStyle.replace(/\.net-worth-card\s*\{[^}]*\}/, '')
+  assert.doesNotMatch(withoutHeroCard, /linear-gradient|radial-gradient/)
 })
 
 test('退款与其他待整理问题复用同一卡片骨架', function () {

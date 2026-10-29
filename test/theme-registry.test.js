@@ -48,10 +48,10 @@ function withThemeRuntime(options, run) {
   }
 }
 
-test('主题注册表提供六套唯一且完整的视觉方案', function () {
+test('主题注册表提供三套唯一且完整的视觉方案', function () {
   const themes = registry.listThemes()
-  assert.equal(themes.length, 6)
-  assert.equal(new Set(themes.map(function (theme) { return theme.id })).size, 6)
+  assert.equal(themes.length, 3)
+  assert.equal(new Set(themes.map(function (theme) { return theme.id })).size, 3)
   themes.forEach(function (theme) {
     assert.ok(theme.name)
     assert.ok(theme.description)
@@ -68,7 +68,7 @@ function channels(hex) {
 }
 
 // 语义色只允许「同一个色相在不同明暗背景上换等价色」，不允许换色相、更不允许收支对调。
-test('六套主题共享收支语义：浅底用原色，深底用同色相的提亮版', function () {
+test('三套主题共享收支语义：浅底用原色，深底用同色相的提亮版', function () {
   const light = registry.SEMANTIC_TOKENS
   const dark = registry.SEMANTIC_DARK_TOKENS
 
@@ -93,27 +93,31 @@ test('六套主题共享收支语义：浅底用原色，深底用同色相的�
     assert.doesNotMatch(presentation.themeStyle, /--theme-(?:income|expense):/)
   })
 
-  assert.equal(registry.SEMANTIC_TOKENS.income, '#477153')
-  assert.equal(registry.SEMANTIC_TOKENS.expense, '#B54738')
+  assert.equal(registry.SEMANTIC_TOKENS.income, '#2F7A4E')
+  assert.equal(registry.SEMANTIC_TOKENS.expense, '#B23A2A')
 })
 
-test('六套主题主卡大金额与卡面保持大字对比度', function () {
+test('三套主题主卡大金额与卡面保持大字对比度', function () {
   registry.listThemes().forEach(function (item) {
     const tokens = registry.getTheme(item.id).tokens
-    assert.ok(contrastRatio(tokens.heroStart, tokens.heroValueInk) >= 3, item.id + ' 主卡大金额对比度不足')
+    assert.ok(contrastRatio(tokens.heroStart, tokens.heroValueInk) >= 3, item.id + ' 主卡起点端大金额对比度不足')
+    assert.ok(contrastRatio(tokens.heroEnd, tokens.heroValueInk) >= 3, item.id + ' 主卡终点端大金额对比度不足')
+    // 卡面渐变只是同一块底色上的轻微提亮：两端拉太开会让人误以为卡面分了两块，
+    // 也会让压在渐变上的大字在某些位置掉到可读线以下。
+    assert.ok(contrastRatio(tokens.heroStart, tokens.heroEnd) <= 1.6, item.id + ' 主卡渐变幅度过大')
   })
 })
 
-test('无效主题安全回退到暖橘手账', function () {
+test('无效主题安全回退到默认主题', function () {
   assert.equal(registry.normalizeThemeId('unknown-theme'), registry.DEFAULT_THEME_ID)
   assert.equal(registry.getTheme('unknown-theme').id, registry.DEFAULT_THEME_ID)
 })
 
 test('页面主题只输出受控的语义变量', function () {
-  const presentation = registry.getThemePresentation('ticket-proof')
-  assert.equal(presentation.themeId, 'ticket-proof')
-  assert.equal(presentation.themeClass, 'theme-ticket-proof')
-  const tokens = registry.getTheme('ticket-proof').tokens
+  const presentation = registry.getThemePresentation('navy-ledger')
+  assert.equal(presentation.themeId, 'navy-ledger')
+  assert.equal(presentation.themeClass, 'theme-navy-ledger')
+  const tokens = registry.getTheme('navy-ledger').tokens
   assert.match(presentation.themeStyle, new RegExp('--theme-hero-start:' + tokens.heroStart + ';'))
   assert.match(presentation.themeStyle, new RegExp('--theme-shadow-soft:' + tokens.shadowSoft.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ';'))
   assert.match(presentation.themeStyle, /--theme-radius-xl:32rpx;/)
@@ -132,17 +136,17 @@ test('主题服务只在本机保存选择并同步页面、底栏与外壳字�
 
     Object.assign(page, service.page({ data: page.data }))
     service.component({}).lifetimes.attached.call(tabBar)
-    service.selectTheme('emerald-list')
+    service.selectTheme('taro-note')
     page.onLoad()
 
-    assert.equal(runtime.storage[service.THEME_STORAGE_KEY], 'emerald-list')
-    assert.equal(runtime.app.globalData.themeId, 'emerald-list')
-    assert.equal(pagePatches.at(-1).themeId, 'emerald-list')
-    assert.equal(tabBarPatches.at(-1).themeId, 'emerald-list')
-    assert.equal(service.currentTokens().accent, registry.getTheme('emerald-list').tokens.accent)
+    assert.equal(runtime.storage[service.THEME_STORAGE_KEY], 'taro-note')
+    assert.equal(runtime.app.globalData.themeId, 'taro-note')
+    assert.equal(pagePatches.at(-1).themeId, 'taro-note')
+    assert.equal(tabBarPatches.at(-1).themeId, 'taro-note')
+    assert.equal(service.currentTokens().accent, registry.getTheme('taro-note').tokens.accent)
     assert.ok(runtime.systemCalls.some(call => call[0] === 'navigation'), '当前页面必须发出原生配色')
-    assert.equal(pagePatches.at(-1).themeNavBackground, registry.getTheme('emerald-list').tokens.navBackground)
-    assert.equal(pagePatches.at(-1).themePageColor, registry.getTheme('emerald-list').tokens.page)
+    assert.equal(pagePatches.at(-1).themeNavBackground, registry.getTheme('taro-note').tokens.navBackground)
+    assert.equal(pagePatches.at(-1).themePageColor, registry.getTheme('taro-note').tokens.page)
   })
 })
 
@@ -165,18 +169,18 @@ test('同一主题返回已加载页面时不重复替换页面和底栏主题�
     const tabBar = { data: {}, setData: function (patch) { Object.assign(this.data, patch); tabUpdates += 1 } }
     const page = { data: {}, getTabBar: function () { return tabBar }, setData: function (patch) { Object.assign(this.data, patch); pageUpdates += 1 } }
     Object.assign(page, service.page({ data: page.data }))
-    service.selectTheme('red-editorial')
+    service.selectTheme('taro-note')
     service.component({}).lifetimes.attached.call(tabBar)
     page.onLoad()
     page.onShow()
     assert.equal(pageUpdates, 1)
     assert.equal(tabUpdates, 1)
-    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/red-editorial')
-    service.selectTheme('warm-ledger')
+    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/taro-note')
+    service.selectTheme('gilded-ledger')
     page.onShow()
     assert.equal(pageUpdates, 2)
     assert.equal(tabUpdates, 2)
-    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/warm-ledger')
+    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/gilded-ledger')
   })
 })
 

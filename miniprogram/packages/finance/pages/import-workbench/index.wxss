@@ -20,24 +20,6 @@
   --ui-account-create-bg: var(--ui-accent-soft);
   --ui-account-create-ink: var(--ui-accent-strong);
 }
-.import-page.theme-warm-ledger {
-  --ui-page: #faf8f4;
-  --ui-surface: #fffefd;
-  --ui-surface-muted: #f4eee3;
-  --ui-ink: #2c2823;
-  --ui-muted: #70685f;
-  --ui-subtle: #79716a;
-  --ui-line: #eae4dc;
-  --ui-border: #d4ccc3;
-  --ui-accent: #be5b24;
-  --ui-accent-strong: #a34d20;
-  --ui-accent-soft: #f0e2ce;
-  --ui-on-accent: #ffffff;
-  --ui-secondary: #70685f;
-  --ui-secondary-soft: #f4eee3;
-  --ui-account-create-bg: #b35f32;
-  --ui-account-create-ink: #ffffff;
-}
 .import-page .serif-title { font-weight: 500; letter-spacing: 0; }
 .import-page .money-number { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .import-page {

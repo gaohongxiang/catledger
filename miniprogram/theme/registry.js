@@ -1,14 +1,14 @@
-const DEFAULT_THEME_ID = 'warm-ledger'
+const DEFAULT_THEME_ID = 'gilded-ledger'
 
 // 财务语义色：表达收/支与方向（收绿支红），与「主题色 / 强调色」(accent) 物理隔离——
 // accent 表达品牌，语义色只表达含义。新增主题时只能引用本对象，不得另写一份硬编码。
 //
 // 深浅底两套同色相等价色：红永远是支出红、绿永远是收入绿，改变的只是同一个色相在
-// 不同亮度背景上的可读性（#477153 压在 #100F0D 上只有 3.3:1，小字读不清）。
+// 不同亮度背景上的可读性（#2F7A4E 压在 #100F0D 上只有 3.4:1，小字读不清）。
 // 主题用 semanticTone 声明自己站在哪一侧，默认浅底。
 const SEMANTIC_TOKENS = Object.freeze({
-  income: '#477153',
-  expense: '#B54738'
+  income: '#2F7A4E',
+  expense: '#B23A2A'
 })
 
 const SEMANTIC_DARK_TOKENS = Object.freeze({
@@ -56,97 +56,14 @@ const TOKEN_NAMES = [
   'navFront'
 ]
 
+// 三套主题各承担一种角色，不再按色相堆数量：
+// 玄金账簿是唯一的深色方案（通用），藏蓝手账偏男性、香芋紫笺偏女性的明亮方案。
 const THEMES = [
   {
-    id: 'warm-ledger',
-    name: '暖橘手账',
-    eyebrow: 'WARM LEDGER',
-    description: '暖白、陶橘与轻灰，清秀而有温度。',
-    tokens: {
-      page: '#FAF8F4', canvasTop: '#FAF8F4', canvasMid: '#FAF8F4', canvasBottom: '#FAF8F4',
-      surface: '#FFFEFD', surfaceMuted: '#F4EEE3', ink: '#2C2823', textMuted: '#70685F', textSubtle: '#79716A',
-      accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#F0E2CE', onAccent: '#FFFFFF',
-      secondary: '#70685F', secondarySoft: '#F4EEE3', line: '#EAE4DC', border: '#D4CCC3',
-      heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
-      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#B07726', warningSoft: '#FBEFD9', danger: '#A95132', dangerSoft: '#F6E4D4',
-      shadowSoft: '0 8rpx 28rpx rgba(190,91,36,.07)', shadowLifted: '0 8rpx 22rpx rgba(145,87,36,.10)', shimmer: 'rgba(255,255,255,.62)',
-      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#FAF8F4', navFront: '#000000'
-    }
-  },
-  {
-    id: 'emerald-list',
-    name: '青绿清单',
-    eyebrow: 'EMERALD LIST',
-    description: '从薄荷浅绿到浓郁青绿，适合高频查看与整理。',
-    tokens: {
-      page: '#F2F7F3', canvasTop: '#F7FAF7', canvasMid: '#EEF5F0', canvasBottom: '#F5F8F4',
-      surface: '#FFFFFF', surfaceMuted: '#E6F5EC', ink: '#17231D', textMuted: '#526E60', textSubtle: '#607C6E',
-      accent: '#087D5B', accentStrong: '#087654', accentSoft: '#CFEBDD', onAccent: '#F8FFFC',
-      secondary: '#2F7258', secondarySoft: '#E0F1E7', line: '#CBE5D8', border: '#9DCFB9',
-      heroStart: '#197858', heroEnd: '#197858', heroInk: '#F8FFFC', heroValueInk: '#EAF6EF', heroMuted: '#E5F3EC',
-      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#96701A', warningSoft: '#FAF2DA', danger: '#A94739', dangerSoft: '#F6E3DE',
-      shadowSoft: '0 8rpx 28rpx rgba(8,125,91,.07)', shadowLifted: '0 8rpx 22rpx rgba(11,143,104,.10)', shimmer: 'rgba(255,255,255,.7)',
-      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F2F7F3', navFront: '#000000'
-    }
-  },
-  {
-    id: 'red-editorial',
-    name: '红印编辑',
-    eyebrow: 'RED EDITORIAL',
-    description: '克制的砖红与纸白，像一本有批注的财务月刊。',
-    tokens: {
-      page: '#F9F4F1', canvasTop: '#FFFCFA', canvasMid: '#F8F1EE', canvasBottom: '#FCF7F4',
-      surface: '#FFFEFC', surfaceMuted: '#F7E3E3', ink: '#2A211F', textMuted: '#795F59', textSubtle: '#8A6D64',
-      accent: '#B74F43', accentStrong: '#9F4137', accentSoft: '#ECC7C4', onAccent: '#FFFDFC',
-      secondary: '#96584D', secondarySoft: '#F2DADA', line: '#E8CDCC', border: '#D3A29F',
-      heroStart: '#AD493E', heroEnd: '#AD493E', heroInk: '#FFFDFC', heroValueInk: '#FBEAE4', heroMuted: '#FAEBE7',
-      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#9E7326', warningSoft: '#FAF0DC', danger: '#A93830', dangerSoft: '#F8E1DC',
-      shadowSoft: '0 8rpx 28rpx rgba(183,79,67,.07)', shadowLifted: '0 8rpx 20rpx rgba(159,65,55,.09)', shimmer: 'rgba(255,255,255,.62)',
-      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F9F4F1', navFront: '#000000'
-    }
-  },
-  {
-    id: 'graphite-order',
-    name: '石墨秩序',
-    eyebrow: 'GRAPHITE ORDER',
-    description: '低饱和石墨灰，强调数字、层级与安静的留白。',
-    tokens: {
-      page: '#F4F4F2', canvasTop: '#FAFAF8', canvasMid: '#F3F3F1', canvasBottom: '#F7F7F5',
-      surface: '#FFFFFF', surfaceMuted: '#EBECF0', ink: '#27272A', textMuted: '#626675', textSubtle: '#747887',
-      accent: '#52525B', accentStrong: '#3F3F46', accentSoft: '#DCDEE5', onAccent: '#FFFFFF',
-      secondary: '#6B6E7D', secondarySoft: '#E7E8EE', line: '#DADCE3', border: '#BABEC9',
-      heroStart: '#626269', heroEnd: '#626269', heroInk: '#FFFFFF', heroValueInk: '#F0EFED', heroMuted: '#F0F0F3',
-      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#86682F', warningSoft: '#F5EFE2', danger: '#9C4236', dangerSoft: '#F3E1DC',
-      shadowSoft: '0 8rpx 28rpx rgba(63,63,70,.07)', shadowLifted: '0 7rpx 18rpx rgba(39,39,42,.08)', shimmer: 'rgba(255,255,255,.75)',
-      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F4F2', navFront: '#000000'
-    }
-  },
-  {
-    id: 'zen-ink',
-    name: '墨绿留白',
-    eyebrow: 'ZEN INK',
-    description: '墨绿、米白与细线，让账目有更舒展的呼吸感。',
-    tokens: {
-      page: '#F4F7F3', canvasTop: '#FAFCF9', canvasMid: '#F1F5F0', canvasBottom: '#F7F9F6',
-      surface: '#FEFFFC', surfaceMuted: '#E8EFE4', ink: '#2B302C', textMuted: '#5C7159', textSubtle: '#70836B',
-      accent: '#4A5D52', accentStrong: '#394940', accentSoft: '#D7E3D3', onAccent: '#FCFFFC',
-      secondary: '#536D4F', secondarySoft: '#E4ECDF', line: '#CFDDC9', border: '#B0C3AA',
-      heroStart: '#526B55', heroEnd: '#526B55', heroInk: '#FCFFFC', heroValueInk: '#EEF3EF', heroMuted: '#EDF3E9',
-      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#87692B', warningSoft: '#F6F1E0', danger: '#934E3D', dangerSoft: '#F1E3DE',
-      shadowSoft: '0 8rpx 28rpx rgba(74,93,82,.07)', shadowLifted: '0 7rpx 18rpx rgba(50,68,57,.07)', shimmer: 'rgba(255,255,255,.65)',
-      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F7F3', navFront: '#000000'
-    }
-  },
-  {
-    id: 'ticket-proof',
-    name: '票据凭证',
-    eyebrow: 'TICKET PROOF',
-    description: '黑底、暗金与暖白，像一叠压印过金箔的凭证。',
+    id: 'gilded-ledger',
+    name: '玄金账簿',
+    eyebrow: 'GILDED LEDGER',
+    description: '墨黑底、暗金与暖白，像一册压过金箔的账簿。',
     // 唯一站在深色底上的主题：收支红绿改用同色相的提亮版，小字才读得清。
     semanticTone: 'dark',
     tokens: {
@@ -159,6 +76,40 @@ const THEMES = [
       warning: '#E0A65C', warningSoft: '#2E2416', danger: '#E08A6F', dangerSoft: '#3A2118',
       shadowSoft: '0 10rpx 30rpx rgba(0,0,0,.45)', shadowLifted: '0 10rpx 24rpx rgba(0,0,0,.55)', shimmer: 'rgba(216,178,94,.16)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#100F0D', navFront: '#ffffff'
+    }
+  },
+  {
+    id: 'navy-ledger',
+    name: '藏蓝手账',
+    eyebrow: 'NAVY LEDGER',
+    description: '藏蓝与雾白，克制利落，白天高频翻看也不刺眼。',
+    tokens: {
+      page: '#EFF4FA', canvasTop: '#F3F7FC', canvasMid: '#EFF4FA', canvasBottom: '#F3F7FC',
+      surface: '#FFFFFF', surfaceMuted: '#E4ECF6', ink: '#17212E', textMuted: '#566375', textSubtle: '#64707F',
+      accent: '#2F5A87', accentStrong: '#24486E', accentSoft: '#DCE8F5', onAccent: '#FFFFFF',
+      secondary: '#4A6E92', secondarySoft: '#E4ECF6', line: '#DDE7F2', border: '#C2D2E4',
+      heroStart: '#2F5A87', heroEnd: '#3E6E9F', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#DCE8F5',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
+      warning: '#96701A', warningSoft: '#FAF2DA', danger: '#A94739', dangerSoft: '#F6E3DE',
+      shadowSoft: '0 8rpx 28rpx rgba(47,90,135,.07)', shadowLifted: '0 8rpx 22rpx rgba(36,72,110,.10)', shimmer: 'rgba(255,255,255,.7)',
+      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#EFF4FA', navFront: '#000000'
+    }
+  },
+  {
+    id: 'taro-note',
+    name: '香芋紫笺',
+    eyebrow: 'TARO NOTE',
+    description: '香芋紫配淡紫纸，柔和但不含糊。',
+    tokens: {
+      page: '#F6F1FA', canvasTop: '#F9F5FC', canvasMid: '#F6F1FA', canvasBottom: '#F9F5FC',
+      surface: '#FFFFFF', surfaceMuted: '#F0E8F7', ink: '#2A2330', textMuted: '#6E6179', textSubtle: '#7C7086',
+      accent: '#8E6F9F', accentStrong: '#7A5C8B', accentSoft: '#EFE4F5', onAccent: '#FFFFFF',
+      secondary: '#7A6B85', secondarySoft: '#F0E8F7', line: '#EAE0F0', border: '#D5C6DF',
+      heroStart: '#826795', heroEnd: '#9E83B0', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#F0E8F7',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
+      warning: '#96701A', warningSoft: '#FAF2DA', danger: '#A94739', dangerSoft: '#F6E3DE',
+      shadowSoft: '0 8rpx 28rpx rgba(142,111,159,.08)', shadowLifted: '0 8rpx 22rpx rgba(122,92,139,.10)', shimmer: 'rgba(255,255,255,.7)',
+      radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F6F1FA', navFront: '#000000'
     }
   }
 ]

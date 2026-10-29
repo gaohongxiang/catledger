@@ -8,7 +8,7 @@ const { themeRuntime } = require('./helpers/theme-runtime')
 const root = path.join(__dirname, '..', 'miniprogram')
 
 function pageRuntime() {
-  const runtime = themeRuntime({ themeId: 'warm-ledger' })
+  const runtime = themeRuntime({ themeId: 'gilded-ledger' })
   const modules = new Map()
   runtime.session = 0
   runtime.approved = true
@@ -94,11 +94,11 @@ test('真实统计页隐藏后跟随主题重绘 SVG 与图例，保留金额且
   runtime.currentPages = []
   runtime.nativeCalls.length = 0
 
-  runtime.service.selectTheme('ticket-proof')
+  runtime.service.selectTheme('navy-ledger')
 
   const tokens = runtime.service.currentTokens()
   const svg = decodeURIComponent(page.data.charts.monthlyChart.src)
-  assert.equal(page.data.themeId, 'ticket-proof')
+  assert.equal(page.data.themeId, 'navy-ledger')
   assert.notEqual(page.data.charts.monthlyChart.src, previousChart)
   for (const color of [tokens.line, tokens.textMuted, tokens.income, tokens.expense]) {
     assert.ok(svg.includes('"' + color + '"'), 'SVG 未使用有效主题色 ' + color)
@@ -110,7 +110,7 @@ test('真实统计页隐藏后跟随主题重绘 SVG 与图例，保留金额且
   assert.equal(runtime.requests.length, requestCount)
   assert.equal(runtime.nativeCalls.length, 0, '隐藏统计页不得改写当前系统栏')
   const chartPatchCount = page.patches.filter(patch => Object.hasOwn(patch, 'charts')).length
-  runtime.service.selectTheme('ticket-proof')
+  runtime.service.selectTheme('navy-ledger')
   assert.equal(page.patches.filter(patch => Object.hasOwn(patch, 'charts')).length, chartPatchCount)
 })
 
@@ -123,16 +123,16 @@ test('换用户会话后切主题不会重绘上一用户的缓存，返回页�
   runtime.session += 1
   runtime.approved = false
 
-  runtime.service.selectTheme('ticket-proof')
+  runtime.service.selectTheme('navy-ledger')
 
-  assert.equal(page.data.themeId, 'ticket-proof')
+  assert.equal(page.data.themeId, 'navy-ledger')
   assert.equal(page.data.charts.monthlyChart.src, oldChart)
   assert.equal(page.patches.filter(patch => Object.hasOwn(patch, 'charts')).length, chartPatchCount)
   page.activate()
   assert.equal(page.data.charts, null)
   assert.equal(page.data.hasLoaded, false)
   assert.equal(page._statisticsResult, null)
-  assert.equal(page.data.themeId, 'ticket-proof', '业务会话重置不能回滚当前主题')
+  assert.equal(page.data.themeId, 'navy-ledger', '业务会话重置不能回滚当前主题')
 })
 
 test('真实主题页保存失败提示重试并保持原选择，恢复存储后可再次切换', function () {
@@ -140,21 +140,21 @@ test('真实主题页保存失败提示重试并保持原选择，恢复存储�
   const page = runtime.loadPage('pages/theme/index')
   page.onLoad({})
   runtime.writeError = true
-  const event = { currentTarget: { dataset: { id: 'ticket-proof' } } }
+  const event = { currentTarget: { dataset: { id: 'navy-ledger' } } }
 
   assert.doesNotThrow(() => page.chooseTheme(event))
 
-  assert.equal(page.data.themeId, 'warm-ledger')
-  assert.equal(page.data.themes.find(theme => theme.selected).id, 'warm-ledger')
-  assert.equal(runtime.storage.get(runtime.service.THEME_STORAGE_KEY), 'warm-ledger')
+  assert.equal(page.data.themeId, 'gilded-ledger')
+  assert.equal(page.data.themes.find(theme => theme.selected).id, 'gilded-ledger')
+  assert.equal(runtime.storage.get(runtime.service.THEME_STORAGE_KEY), 'gilded-ledger')
   assert.equal(runtime.toasts.length, 1)
   assert.match(runtime.toasts[0], /保存|重试/)
   assert.doesNotMatch(runtime.toasts[0], /已切换/)
   runtime.writeError = false
   page.chooseTheme(event)
-  assert.equal(page.data.themeId, 'ticket-proof')
-  assert.equal(page.data.themes.find(theme => theme.selected).id, 'ticket-proof')
-  assert.equal(runtime.storage.get(runtime.service.THEME_STORAGE_KEY), 'ticket-proof')
+  assert.equal(page.data.themeId, 'navy-ledger')
+  assert.equal(page.data.themes.find(theme => theme.selected).id, 'navy-ledger')
+  assert.equal(runtime.storage.get(runtime.service.THEME_STORAGE_KEY), 'navy-ledger')
   assert.match(runtime.toasts.at(-1), /已切换/)
 })
 
@@ -169,7 +169,7 @@ test('统计补全入口等待结束时页面已隐藏，不重新激活原生�
   const active = runtime.page(runtime.service.page({ data: {} }))
   active.onLoad({})
   runtime.currentPages = [active]
-  runtime.service.selectTheme('ticket-proof')
+  runtime.service.selectTheme('navy-ledger')
   runtime.nativeCalls.length = 0
   const requestCount = runtime.requests.length
 
@@ -193,7 +193,7 @@ test('统计页已卸载时等待中的补全回调不重新订阅页面或接�
   const active = runtime.page(runtime.service.page({ data: {} }))
   active.onLoad({})
   runtime.currentPages = [active]
-  runtime.service.selectTheme('ticket-proof')
+  runtime.service.selectTheme('navy-ledger')
   runtime.nativeCalls.length = 0
   const patchCount = statistics.patches.length
   // 业务请求已结束；其完成通知晚于页面卸载。
@@ -204,7 +204,7 @@ test('统计页已卸载时等待中的补全回调不重新订阅页面或接�
   assert.equal(runtime.nativeCalls.length, 0)
   assert.equal(statistics._readClosed, true)
   assert.equal(statistics.patches.length, patchCount)
-  runtime.service.selectTheme('emerald-list')
+  runtime.service.selectTheme('taro-note')
   assert.equal(statistics.patches.length, patchCount, '已卸载实例不得被迟到 onShow 重新订阅')
 })
 

@@ -89,9 +89,10 @@ test('整批入账门禁保留，单笔保存使用统一派生校验', () => {
   assert.match(markup, /bindtap="confirmDistinct"/)
   assert.match(markup, /template is="record-source-fields"/)
 })
-test('暖橘局部令牌不改其他主题；标题正常字距与常规正文', () => {
-  assert.match(style, /\.import-page\.theme-warm-ledger/)
-  assert.match(style, /--ui-surface-muted:\s*#f4eee3/i)
+test('导入页表面全部走主题令牌，不写主题私有覆盖；标题正常字距与常规正文', () => {
+  assert.match(style, /\.import-page\s*\{[^}]*--ui-accent:\s*var\(--theme-accent\)/)
+  assert.match(style, /--ui-surface-muted:\s*var\(--theme-surface-muted\)/)
+  assert.doesNotMatch(style, /\.import-page\.theme-/)
   assert.match(style, /\.import-page \.serif-title[^}]*letter-spacing:\s*0/)
   assert.doesNotMatch(style, /@font-face|https?:\/\//)
 })
