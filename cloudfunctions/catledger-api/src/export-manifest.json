@@ -848,6 +848,7 @@
       "loan_id",
       "reference_key",
       "reference_label",
+      "plan_label",
       "period_number",
       "total_terms",
       "component",

@@ -13,7 +13,9 @@ const detailForm = require('./detail-form')
 const reviewEdit = require('./review-edit')
 const excludedReview = require('./excluded-review')
 const postingFlow = require('./posting-flow')
+const theme = require('../../../../theme/service')
 
+// 页面重置只恢复业务字段，当前主题由生命周期适配器独立维护。
 const initialData = Object.assign({}, pairingReview.initialData, {
     pairingEntry: null,
     restoreUpdateId: '',
@@ -33,6 +35,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     directoryBodyLayout: null,
     files: [],
     bankMappingSheet: null,
+    bankMoreColumnsOpen: false,
     bankHeaderEditing: false,
     fileAttentionSheet: null,
     fileNameEdit: null,
@@ -44,7 +47,9 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     historicalLoading: false,
     historicalError: '',
     uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
-    pendingInstallments: false,
+    pendingInstallments: 0,
+    pendingInstallmentsMore: false,
+    pendingInstallmentNames: '',
     update: null,
     sources: [],
     events: [],
@@ -134,6 +139,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     issueMembersError: '',
     issueRelationsLoading: false,
     issueRelationsError: '',
+    issueRefundPending: null,
     issueCanSubmit: false,
     issueStale: false,
     issueFieldsCanSave: false,
@@ -153,14 +159,10 @@ const initialData = Object.assign({}, pairingReview.initialData, {
       newAccountName: '',
       accountTypeIndex: 2
     }
-    // 主题注入值（themeClass／themeStyle）刻意不放进 initialData：它们由 theme/service 的
-    // bindPage 按当前主题注入，属于环境值而不是页面状态。一旦成为重置字段，onShow 在登录态
-    // 尚未就绪时的 setData(initialData) 就会把已注入的主题冲成空，而登录静默完成后只回调
-    // resumeInitialLoad、不会再触发 onShow，主题就补不回来，页面永久掉回默认白底。
   })
 
 // 每个页面处理者只有一个明确归属；不依赖对象覆盖顺序。
-Page({
+Page(theme.page({
   data: initialData,
   businessData: runtime.businessData,
   mappingState: accountReview.mappingState,
@@ -190,6 +192,9 @@ Page({
   closeBankMapping: uploadFlow.closeBankMapping,
   cancelBankPreview: uploadFlow.cancelBankPreview,
   changeBankMapping: uploadFlow.changeBankMapping,
+  chooseBankDirection: uploadFlow.chooseBankDirection,
+  toggleBankSettings: uploadFlow.toggleBankSettings,
+  toggleBankMoreColumns: uploadFlow.toggleBankMoreColumns,
   openBankHeader: uploadFlow.openBankHeader,
   closeBankHeader: uploadFlow.closeBankHeader,
   confirmBankHeader: uploadFlow.confirmBankHeader,
@@ -225,10 +230,8 @@ Page({
   reviewBeforeCategory: transactionReview.reviewBeforeCategory,
   openPendingRecord: transactionReview.openPendingRecord,
   openPreviewRow: transactionReview.openPreviewRow,
-  assignPendingInterest: reviewEdit.assignPendingInterest,
-  openEditorPendingInterest: reviewEdit.openEditorPendingInterest,
+  toggleEditorPendingInterest: reviewEdit.toggleEditorPendingInterest,
   selectEditorInstallmentPlan: reviewEdit.selectEditorInstallmentPlan,
-  clearEditorInstallmentPlan: reviewEdit.clearEditorInstallmentPlan,
   viewTransactions: postingFlow.viewTransactions,
   viewStatistics: postingFlow.viewStatistics,
   completeCategories: postingFlow.completeCategories,
@@ -332,14 +335,18 @@ Page({
   pendingDuplicateEdit: duplicateEdit.pendingDuplicateEdit,
   openReviewEdit: reviewEdit.openReviewEdit,
   changeReviewedNature: reviewEdit.changeReviewedNature,
+  openNatureSheet: reviewEdit.openNatureSheet,
+  closeNatureSheet: reviewEdit.closeNatureSheet,
+  selectEditorNature: reviewEdit.selectEditorNature,
   selectReviewedAccount: reviewEdit.selectReviewedAccount,
   invalidateReviewEdit: reviewEdit.invalidateReviewEdit,
   closeReviewEdit: reviewEdit.closeReviewEdit,
   changeEditorText: reviewEdit.changeEditorText,
-  toggleEditorDetails: reviewEdit.toggleEditorDetails,
   loadEditorSuggestions: reviewEdit.loadEditorSuggestions,
   selectEditorSuggestion: reviewEdit.selectEditorSuggestion,
   changeEditorMode: reviewEdit.changeEditorMode,
+  toggleRepaymentDetails: reviewEdit.toggleRepaymentDetails,
+  setEditorTreatment: reviewEdit.setEditorTreatment,
   addFundsAccount: reviewEdit.addFundsAccount,
   changeFundsAmount: reviewEdit.changeFundsAmount,
   removeFundsAccount: reviewEdit.removeFundsAccount,
@@ -361,6 +368,7 @@ Page({
 
   refreshReviewEdit: reviewEdit.refreshReviewEdit,
   saveReviewEdit: reviewEdit.saveReviewEdit,
+  saveEditorAttributions: reviewEdit.saveEditorAttributions,
   excludeRefundAsReversed: reviewEdit.excludeRefundAsReversed,
   pendingReviewEdit: reviewEdit.pendingReviewEdit,
   searchDirectory: accountReview.searchDirectory,
@@ -408,4 +416,4 @@ Page({
   changeFinalPage: postingFlow.changeFinalPage,
   openFinalAccount: postingFlow.openFinalAccount,
   postUpdate: postingFlow.postUpdate
-})
+}))

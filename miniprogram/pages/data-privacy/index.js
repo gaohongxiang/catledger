@@ -3,9 +3,9 @@ const exportsService=require('../../services/export-files')
 const session=require('../../services/page-read-session')
 const theme=require('../../theme/service')
 const login=require('../../services/login-guard')
-Page({
+Page(theme.page({
   data:{busy:false,rows:0,complete:false,errorMessage:'',statusText:'',loggedIn:false},
-  onLoad(){theme.bindPage(this);session.begin(this,['busy','rows','complete','errorMessage','statusText'],[]);this._files=exportsService.createExportFiles(wx)},
+  onLoad(){session.begin(this,['busy','rows','complete','errorMessage','statusText'],[]);this._files=exportsService.createExportFiles(wx)},
   onShow(){this.setData({loggedIn:getApp().hasLoginApproval()});if(this._result&&Date.now()>=this._result.expiresAt)this.clearExport()},
   onUnload(){session.end(this);this._run=(this._run||0)+1;if(this._result)this._files.remove(this._result.files)},
   generate(){
@@ -30,4 +30,4 @@ Page({
     if(Date.now()>=result.expiresAt){this.clearExport();this.setData({errorMessage:'导出已过期，请重新生成'});return}
     wx.shareFileMessage({filePath:result.files[kind],fileName:'招财猫记账本导出.'+kind,fail:()=>wx.showToast({title:'未分享文件',icon:'none'})})
   }
-})
+}))

@@ -551,7 +551,7 @@ async function postInTransaction(connection, uid, data, requestDigest) {
   if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
   let created = 0, reused = 0, refundContext = null
-  const transactionRows = [], linkRows = [], newByIdentity = new Map(), bookedRepayments = [], installmentRows = [], installmentInBatch = new Map()
+  const transactionRows = [], linkRows = [], newByIdentity = new Map(), repaymentSettlements = [], installmentRows = [], installmentInBatch = new Map()
   const installmentStore = require('./installment-items')
   async function flush() {
     await insertMany(connection, `INSERT INTO catledger_transactions
@@ -567,7 +567,9 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
     // prepareImport 在服务端核对账户 type=credit，其他账户拒绝该分期账单路径。
     const prepared = await installmentStore.prepareImport(connection,uid,event,eventIdentities)
-    if (prepared && prepared.creditStatement===true && prepared.component==='principal') event.confirmedCreditInstallmentPrincipal=true
+    // 分期本金默认只保存来源；用户改判成支出、费用或收入时按实际流水入账，不能跳过交易。
+    if (prepared && prepared.creditStatement===true && prepared.component==='principal' &&
+      event.economicNature===ECONOMIC_NATURE.REPAYMENT) event.confirmedCreditInstallmentPrincipal=true
     const installmentKey = prepared && (prepared.loanId || prepared.referenceKey || prepared.identityId)
       ? [prepared.accountId,prepared.loanId || prepared.referenceKey || prepared.identityId,prepared.periodNumber,prepared.component].join(':') : null
     const sameInstallment = installmentKey && installmentInBatch.get(installmentKey)
@@ -613,7 +615,7 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     }
     for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
       transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
-    if (event.fieldSources.loanRepayment) bookedRepayments.push({ event,transactions })
+    if (event.fieldSources.loanRepayment) repaymentSettlements.push({ event,transactions })
     if (prepared) {
       const transactionId=transactions[0] && transactions[0].transactionId
       installmentRows.push({prepared,transactionId})
@@ -687,7 +689,7 @@ async function postInTransaction(connection, uid, data, requestDigest) {
   )
   if (completed.affectedRows !== 1) throw importError('CONFLICT')
   const loanVersions = new Map()
-  for (const { event,transactions } of bookedRepayments) {
+  for (const { event,transactions } of repaymentSettlements) {
     const input = repaymentInput(event)
     if (input.mode === 'associate') {
       const previous = loanVersions.get(input.loanId)
@@ -695,14 +697,16 @@ async function postInTransaction(connection, uid, data, requestDigest) {
       loanVersions.set(input.loanId,{ base:input.loanVersion,count:(previous ? previous.count : 0) + 1 })
       input.loanVersion += previous ? previous.count : 0
     }
-    const [links] = await connection.execute(`SELECT link_id AS linkId,transaction_id AS transactionId,transaction_version AS transactionVersion,
-      role,creation_method AS creationMethod FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL`,[uid,event.eventId])
-    const sourceEvent = { eventId:event.eventId,updateId,version:event.version+1,state:'posted',status:'posted',economicNature:event.economicNature,
-      flowDirection:event.flowDirection,ledgerAccountId:event.ledgerAccountId,counterpartyLedgerAccountId:event.counterpartyLedgerAccountId,
-      categoryId:event.categoryId,manualFieldMask:event.manualFieldMask,fieldSources:event.fieldSources,reasonCodes:event.reasonCodes,
-      updateVersion:appliedVersion,updateStatus:'posted' }
-    await repaymentBooking.persist(connection,uid,input,{ totalMinor:event.amountMinor,localAt:event.localAt,utcAt:event.utcAt,
-      timezoneOffsetMinutes:event.timezoneOffsetMinutes,transactions,source:{ event:sourceEvent,links } })
+    await repaymentBooking.settle(connection,uid,input,{ totalMinor:event.amountMinor,localAt:event.localAt,utcAt:event.utcAt,
+      timezoneOffsetMinutes:event.timezoneOffsetMinutes,transactions,source:async () => {
+        const [links] = await connection.execute(`SELECT link_id AS linkId,transaction_id AS transactionId,transaction_version AS transactionVersion,
+          role,creation_method AS creationMethod FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL`,[uid,event.eventId])
+        const sourceEvent = { eventId:event.eventId,updateId,version:event.version+1,state:'posted',status:'posted',economicNature:event.economicNature,
+          flowDirection:event.flowDirection,ledgerAccountId:event.ledgerAccountId,counterpartyLedgerAccountId:event.counterpartyLedgerAccountId,
+          categoryId:event.categoryId,manualFieldMask:event.manualFieldMask,fieldSources:event.fieldSources,reasonCodes:event.reasonCodes,
+          updateVersion:appliedVersion,updateStatus:'posted' }
+        return { event:sourceEvent,links }
+      } })
   }
   return commandResult(connection, uid, updateId, data)
 }

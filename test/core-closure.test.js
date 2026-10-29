@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
+const { readSource } = require('./helpers/source-files')
 const path = require('node:path')
 const test = require('node:test')
 const { pageRoute } = require('./helpers/page-routes')
@@ -7,11 +7,11 @@ const { pageRoute } = require('./helpers/page-routes')
 const root = path.resolve(__dirname, '..')
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), 'utf8')
+  return readSource(path.join(root, relativePath))
 }
 
-test('protected subpages share the same login sheet component', () => {
-  for (const page of ['accounts', 'categories', 'transaction-editor', 'statistics', 'import-workbench']) {
+test('protected subpages and the main host share the same login sheet component', () => {
+  for (const page of ['accounts', 'categories', 'transaction-editor', 'import-workbench']) {
     const directory = path.posix.dirname(pageRoute(page))
     const config = JSON.parse(read(`miniprogram/${directory}/index.json`))
     assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
@@ -22,10 +22,15 @@ test('protected subpages share the same login sheet component', () => {
   }
   const tabConfig = JSON.parse(read('miniprogram/custom-tab-bar/index.json'))
   assert.equal(tabConfig.usingComponents['login-sheet'], '/components/login-sheet/index')
+  assert.match(read('miniprogram/custom-tab-bar/index.wxml'), /<login-sheet id="loginSheet"/)
+  assert.match(read('miniprogram/pages/statistics/page.js'), /loginGuard\.run/)
+  assert.match(read('miniprogram/shell/panel.js'), /requestLogin:[\s\S]*bar\.requestLogin/)
+  const hostConfig = JSON.parse(read('miniprogram/shell/index.json'))
+  assert.equal(hostConfig.usingComponents['main-tabs'], '/custom-tab-bar/index')
 })
 
 test('profile keeps personal settings and does not duplicate ledger settings', () => {
-  const profile = read('miniprogram/pages/profile/index.wxml')
+  const profile = read('miniprogram/pages/profile/panel.wxml')
   assert.doesNotMatch(profile, /账本设置|openLedger/)
   assert.match(profile, /title="主题"/)
   assert.match(profile, /title="数据与隐私"/)
@@ -44,7 +49,7 @@ test('public contract exposes category lifecycle and linked refunds', () => {
 })
 
 test('home requests the dashboard directly and bootstraps only an uninitialized user', () => {
-  const source = read('miniprogram/pages/index/index.js')
+  const source = read('miniprogram/pages/index/page.js')
   assert.match(source, /api\.callApi\('dashboard\.get'/)
   assert.match(source, /error\.code !== 'INITIALIZATION_REQUIRED'/)
   assert.match(source, /return api\.bootstrap\(\{ force: true \}\)\.then/)

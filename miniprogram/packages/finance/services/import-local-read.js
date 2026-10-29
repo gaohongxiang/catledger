@@ -116,7 +116,8 @@ function create(model) {
           transaction:(model.supplemental||facts).history.find(item=>item.transactionId===row.objectId)||null}
       }).sort(chronological)
       const result=page(action,data,rows,'memberId')
-      return action==='reviewIssues.get'?{...result,issue:issuePageValue(issueView(issue)),subject:issueView(issue).subject,members:result.items}:{...result,issueId:issue.issueId,issueVersion:issue.version}
+      if(action!=='reviewIssues.get')return{...result,issueId:issue.issueId,issueVersion:issue.version}
+      return {...result,issue:issuePageValue(issueView(issue)),subject:issueView(issue).subject,members:result.items}
     }
     if(action==='financeUpdates.options'){
       const dataFacts=model.supplemental||facts,key=data.kind==='loans'?'loanId':data.kind==='categories'?'categoryId':'accountId'

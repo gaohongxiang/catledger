@@ -123,26 +123,170 @@ test('分配超额/重复/负数拒绝；组合还款与多还入分配只产生
   assert.deepEqual(transactionDrafts(next).map(part=>[part.sourceAccountId,part.destinationAccountId,part.amountMinor]).sort(byTarget),
     [[wallet.accountId,credit.accountId,'6000'],[wallet.accountId,debt.accountId,'4000']].sort(byTarget))
 })
-test('分期本金仅修改来源事实、显示同一账户控件，不能改成实付', () => {
+test('分期本金保留来源与单账户控件，可改判为支出、费用、收入或待确认', () => {
   const row=base('repayment',{ledgerAccountId:credit.accountId,fieldSources:{installment:{creditStatement:true,component:'principal',periodNumber:2,totalTerms:12}}})
   const next=prepare(row,{fields:{amountMinor:'9000'},sourceCorrection:{periodNumber:3,totalTerms:12}})
   assert.equal(next.fieldSources.installment.periodNumber,2)
   assert.equal(next.fieldSources.editorOverrides.sourceCorrection.periodNumber,3)
   assert.equal(model.derive(publicRow(row),model.create(publicRow(row)),catalog).showLoan,false)
-  invalid(()=>prepare(row,{fields:{economicNature:'expense'}}));invalid(()=>prepare(row,{sourceCorrection:{periodNumber:13,totalTerms:12}}));invalid(()=>prepare(row,{sourceCorrection:{periodNumber:601,totalTerms:601}}))
+  assert.deepEqual(policy.capability(row).natures,['repayment','expense','fee','income','unknown'])
+  const view=change(row,[['economicNature','expense']])
+  assert.equal(view.payload.fields.economicNature,'expense')
+  const changed=prepare(row,view.payload)
+  assert.equal(changed.economicNature,'expense');assert.equal(changed.flowDirection,'outflow')
+  assert.deepEqual(evaluatePostability(changed).reasonCodes,['category_required'])
+  const drafts=transactionDrafts(changed)
+  assert.equal(drafts.length,1);assert.equal(drafts[0].type,'expense');assert.equal(drafts[0].sourceAccountId,credit.accountId)
+  for(const nature of ['refund','internal_transfer','borrow']) invalid(()=>prepare(row,{fields:{economicNature:nature}}))
+  invalid(()=>prepare(row,{sourceCorrection:{periodNumber:13,totalTerms:12}}));invalid(()=>prepare(row,{sourceCorrection:{periodNumber:601,totalTerms:601}}))
+  // 本金行的字段冲突正是这次改判的字段：合法性质且来源没有别的硬阻断时随保存消除。
+  const conflicted={...row,reasonCodes:['core_fields_conflict']}
+  assert.equal(prepare(conflicted,{fields:{economicNature:'expense'}}).reasonCodes.includes('core_fields_conflict'),false)
+  const blocked={...conflicted,fieldSources:{...row.fieldSources,semanticBlockers:['row_semantic_conflict']}}
+  assert.ok(prepare(blocked,{fields:{economicNature:'expense'}}).reasonCodes.includes('core_fields_conflict'))
 })
 test('不完整本息费保留明确零值；不把错误输入悄悄当零或旧金额', () => {
   const row=base('repayment',{counterpartyLedgerAccountId:debt.accountId})
-  const view=change(row,[['repaymentMode','loan'],['principalInput','90'],['interestInput',''],['feeInput','0']])
+  const view=change(row,[['repaymentDetails',true],['principalInput','90'],['interestInput',''],['feeInput','0']])
   assert.equal(view.canSave,true);assert.equal(view.complete,false)
   const next=prepare(row,view.payload)
   assert.equal(next.fieldSources.loanRepayment.mode,'review');assert.equal(next.fieldSources.editorOverrides.incompleteRepayment.feeMinor,'0')
   assert.equal(evaluatePostability(next).status,'needs_action')
-  const bad=change(row,[['repaymentMode','loan'],['principalInput','90x']]);assert.equal(bad.canSave,false)
+  const bad=change(row,[['repaymentDetails',true],['principalInput','90x']]);assert.equal(bad.canSave,false)
   assert.match(bad.fieldErrors.repayment,/格式不正确/)
-  const over=change(row,[['repaymentMode','loan'],['principalInput','110'],['interestInput',''],['feeInput','0']])
+  const over=change(row,[['repaymentDetails',true],['principalInput','110'],['interestInput',''],['feeInput','0']])
   assert.equal(over.canSave,false);assert.match(over.fieldErrors.repayment,/超过付款总额/)
   invalid(()=>prepare(row,over.payload))
+})
+test('还款分项填 0 不要求处理方式，整笔可直接确认', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
+  const view = change(row, [['repaymentDetails',true], ['principalInput','100'], ['interestInput','0'], ['feeInput','0']])
+  assert.equal(view.canSave, true); assert.equal(view.complete, true)
+  const decision = view.payload.decisions.repayment
+  assert.equal(decision.confirmed, true); assert.equal(decision.mode, 'defer')
+  assert.equal(decision.interestMinor, '0'); assert.equal(decision.feeMinor, '0')
+  assert.equal(decision.interestTreatment, 'expense'); assert.equal(decision.feeTreatment, 'expense')
+  const next = prepare(row, view.payload)
+  assert.equal(next.fieldSources.loanRepayment.mode, 'defer')
+  assert.equal(next.fieldSources.loanRepayment.interestTreatment, 'expense')
+})
+test('利息／手续费留空不问处理方式，也不显示这两行', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
+  const view = change(row, [['repaymentDetails',true], ['principalInput','100'], ['interestInput',''], ['feeInput','']])
+  assert.equal(view.interestPositive, false); assert.equal(view.feePositive, false)
+  assert.equal(view.canSave, true); assert.equal(view.complete, false)
+  assert.equal(view.payload.decisions.repayment.mode, 'review')
+  const filled = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0']])
+  assert.equal(filled.interestPositive, true); assert.equal(filled.feePositive, false)
+})
+test('非零利息默认记一笔，选好分类即可确认；显式改成待核对才留空', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
+  const view = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0']])
+  assert.equal(view.interestTreatmentLabel, '没记过，记一笔')
+  assert.equal(view.canSave, true); assert.equal(view.complete, false)
+  assert.equal(view.payload.decisions.repayment.draft.interestTreatment, 'expense')
+  const confirmed = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestCategoryId',randomUUID()]])
+  assert.equal(confirmed.complete, true)
+  assert.equal(confirmed.payload.decisions.repayment.confirmed, true)
+  const pending = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','']])
+  assert.equal(pending.payload.decisions.repayment.mode, 'review')
+  assert.equal(pending.payload.decisions.repayment.draft.interestTreatment, null)
+  const next = prepare(row, pending.payload)
+  assert.equal(next.fieldSources.loanRepayment.mode, 'review')
+  assert.equal(next.fieldSources.editorOverrides.incompleteRepayment.interestTreatment, null)
+})
+test('只提交待核对状态时保留已填还款明细', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
+  const first = prepare(row, { decisions: { repayment: { mode: 'review', draft: { mode:'defer', principalMinor:'9000',
+    interestMinor:null, feeMinor:'0', interestTreatment:null, feeTreatment:null, interestCategoryId:null, feeCategoryId:null, chargeAllocations:[] } } } })
+  assert.equal(first.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
+  const second = prepare(first, { decisions: { repayment: { mode: 'review' } } })
+  assert.equal(second.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
+  assert.equal(second.fieldSources.loanRepayment.mode, 'review')
+  const third = prepare(second, { fields: { note: '只改备注' } })
+  assert.equal(third.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
+})
+test('信用卡也能关联分期计划，与贷款同一套落账规则', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId }), loanId = randomUUID()
+  const view = change(row, [['repaymentDetails',true], ['loanMode','associate'], ['loanId',loanId], ['loanVersion',2],
+    ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','expense'], ['interestCategoryId',randomUUID()]])
+  assert.equal(view.creditPayee, true); assert.equal(view.loanPayee, true)
+  assert.equal(view.canSave, true); assert.equal(view.complete, true)
+  const decision = view.payload.decisions.repayment
+  assert.equal(decision.mode, 'associate'); assert.equal(decision.loanId, loanId)
+  assert.equal(decision.interestTreatment, 'expense'); assert.equal(decision.chargeAllocations.length, 0)
+  const next = prepare(row, view.payload)
+  assert.equal(next.fieldSources.loanRepayment.mode, 'associate')
+  assert.equal(next.fieldSources.loanRepayment.loanId, loanId)
+  // 不展开明细也能整笔关联：整笔记为本金。
+  const whole = change(row, [['loanMode','associate'], ['loanId',loanId], ['loanVersion',2]])
+  assert.equal(whole.complete, true)
+  assert.equal(whole.payload.decisions.repayment.mode, 'associate')
+  assert.equal(whole.payload.decisions.repayment.principalMinor, '10000')
+})
+test('信用卡关联计划时“记过只冲抵”要选全收费项；不关联仍只计入转账', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
+  const associated = change(row, [['repaymentDetails',true], ['loanMode','associate'], ['loanId',randomUUID()], ['loanVersion',2],
+    ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
+  assert.equal(associated.complete, false)
+  assert.equal(associated.payload.decisions.repayment.mode, 'review')
+  const deferred = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
+  assert.equal(deferred.complete, true)
+  assert.equal(deferred.payload.decisions.repayment.interestTreatment, 'accrued')
+  assert.equal(deferred.payload.decisions.repayment.chargeAllocations.length, 0)
+})
+test('信用卡已记利息只计入转账，不再生成费用', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
+  const view = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
+  assert.equal(view.canSave, true); assert.equal(view.complete, true)
+  const decision = view.payload.decisions.repayment
+  assert.equal(decision.confirmed, true); assert.equal(decision.interestTreatment, 'accrued')
+  assert.equal(decision.chargeAllocations.length, 0)
+  const drafts = transactionDrafts(prepare(row, view.payload))
+  assert.deepEqual(drafts.map(draft => [draft.type, String(draft.amountMinor)]), [['transfer','10000']])
+})
+test('收起还款明细会解除已保存决定，并保留确认要求', () => {
+  const repayment = { confirmed: true, mode: 'defer', assetAccountId: wallet.accountId, liabilityAccountId: debt.accountId,
+    principalMinor: '10000', interestMinor: '0', feeMinor: '0', interestTreatment: 'expense', feeTreatment: 'expense',
+    interestCategoryId: null, feeCategoryId: null, chargeAllocations: [] }
+  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId, loanRepayment: repayment, fieldSources: { loanRepayment: repayment } })
+  const view = change(row, [['repaymentDetails', false]])
+  assert.equal(view.payload.decisions.repayment, null)
+  assert.throws(() => prepare(row, view.payload), error => error.code === 'VALIDATION_ERROR' || error.publicCode === 'VALIDATION_ERROR')
+  const next = prepare(row, { ...view.payload, acknowledgedChanges: ['repayment'] })
+  assert.equal(next.fieldSources.loanRepayment, null)
+})
+test('贷款账户不展开明细也能整笔关联计划', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
+  assert.equal(model.derive(publicRow(row), model.create(publicRow(row)), catalog).loanPayee, true)
+  const view = change(row, [['loanMode','associate'], ['loanId',randomUUID()], ['loanVersion',2]])
+  assert.equal(view.canSave, true); assert.equal(view.complete, true)
+  const decision = view.payload.decisions.repayment
+  assert.equal(decision.confirmed, true); assert.equal(decision.mode, 'associate')
+  assert.equal(decision.principalMinor, '10000'); assert.equal(decision.interestMinor, '0'); assert.equal(decision.feeMinor, '0')
+  assert.deepEqual(transactionDrafts(prepare(row, view.payload)).map(draft => [draft.type, String(draft.amountMinor)]), [['transfer','10000']])
+  const missingPlan = change(row, [['loanMode','associate']])
+  assert.equal(missingPlan.complete, false)
+  assert.equal(missingPlan.payload.decisions.repayment.mode, 'review')
+})
+test('信用卡收款端同样显示贷款计划组', () => {
+  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
+  const view = model.derive(publicRow(row), model.create(publicRow(row)), catalog)
+  assert.equal(view.loanPayee, true); assert.equal(view.creditPayee, true); assert.equal(view.showLoan, true)
+  // 只有付给资产账户时才没有计划可关联。
+  const bankRow = base('repayment', { counterpartyLedgerAccountId: bank.accountId })
+  assert.equal(model.derive(publicRow(bankRow), model.create(publicRow(bankRow)), catalog).loanPayee, false)
+})
+test('恢复只有待核对状态的重试请求不抹掉已填明细', () => {
+  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId, fieldSources: {
+    loanRepayment: { mode: 'review' },
+    editorOverrides: { version: 1, incompleteRepayment: { mode:'defer', principalMinor:'9000', interestMinor:null, feeMinor:'0',
+      interestTreatment:null, feeTreatment:null, interestCategoryId:null, feeCategoryId:null, chargeAllocations:[] } } } }))
+  const restored = model.restore(row, { decisions: { repayment: { mode: 'review' } } })
+  assert.equal(restored.repaymentDetails, true)
+  assert.equal(restored.principalInput, '90.00')
+  assert.equal(restored.interestTreatment, '')
+  assert.equal(restored.loanMode, 'defer')
 })
 test('合并唯一人工文本含显式清空；两个冲突值不静默选主记录', () => {
   const primary=base(), secondary=prepare(base(),{fields:{note:'',counterparty:'合成修改对方'}})
@@ -160,6 +304,19 @@ test('退款候选 SQL 仅绑定查询，历史累计包含未入账引用，不
     if(kind==='transaction') assert.match(queries[1].sql,/historical_primary/)
   }
 })
+test('退款暂记是用户决定：候选和其他待核对项不构成门禁，只有来源冲突拒绝', () => {
+  const row = base('refund')
+  assert.equal(refund.pendingState(row).allowed, true)
+  // 有候选、有硬阻断或还没读另一个范围，都不替用户拒绝“先不关联”。
+  assert.equal(refund.pendingState({ ...row, reasonCodes: ['row_status_unknown', 'refund_relation_required'] }).allowed, true)
+  const conflict = refund.pendingState({ ...row, fieldSources: { refundSourceConflict: {} } })
+  assert.equal(conflict.allowed, false); assert.equal(conflict.reason, 'source_conflict')
+  assert.equal(refund.pendingState({ ...row, reasonCodes: ['refund_source_conflict'] }).reason, 'source_conflict')
+  assert.equal(refund.pendingState({ ...row, economicNature: 'expense' }).reason, 'not_refund')
+  // 这是一个纯判断，不再为暂记额外查询两个候选范围。
+  assert.equal(refund.pendingState.length, 1)
+})
+
 const tap=(data)=>({currentTarget:{dataset:data}})
 test('UE47 旧服务无 editorFacts 时只读，不能通过输入或保存伪造编辑成功',async()=>{
   const h=runtime(fixture(1,true)),page=h.page
@@ -188,26 +345,34 @@ test('真实 Page：普通字段点同组第二笔只打开第二笔，已填值
   assert.equal(h.events[0].note,undefined)
   page.onUnload()
 })
-test('真实 Page：退款候选晚到或失败不能替新金额启用暂记；输入不被读取覆盖',async()=>{
+test('真实 Page：退款候选晚到或失败不改写输入；暂记不依赖候选读取',async()=>{
   const data=fixture(1,true);data.events[0].economicNature='refund'
   const h=runtime(data),page=h.page
-  let release
+  let release, held = false
   // 打开编辑器就会读取本批候选，所以拦截必须在打开之前装好，才能拿到“晚到”的时机。
-  h.intercept=(action)=>action==='economicEvents.refundCandidates'?new Promise(resolve=>{release=resolve}):undefined
+  // 只扣住第一次读取；本批为空后自动补查“已入账”的那次正常返回。
+  h.intercept=(action)=>{ if (action!=='economicEvents.refundCandidates') return undefined; if (held) return undefined; held=true; return new Promise(resolve=>{release=resolve}) }
   await page.openReviewEdit(tap({id:h.events[0].eventId}))
   await flush()
   const loading=page._reviewEditToken.refundRead
-  page.changeEditorText({currentTarget:{dataset:{field:'amountInput'}},detail:{value:'2.00'}})
+  // 候选还在读时也可以先决定暂不关联：这个决定不等候选。
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled,true)
+  page.selectEditorRefund(tap({mode:'pending'}))
+  assert.equal(page.data.reviewEditSheet.draft.refund.mode,'pending')
+  page.changeEditorText({currentTarget:{dataset:{field:'note'}},detail:{value:'先记下，稍后补关联'}})
   release({viewVersion:h.summary.viewVersion,items:[],total:0,nextCursor:null});await loading
-  assert.equal(page.data.reviewEditSheet.draft.amountInput,'2.00');assert.notEqual(page.data.reviewEditSheet.refundCanPending,true)
-  assert.equal(page.data.reviewEditSheet.refundTotal,null)
+  assert.equal(page.data.reviewEditSheet.draft.note,'先记下，稍后补关联')
+  assert.equal(page.data.reviewEditSheet.refundTotal,0)
+  // 晚到的候选不覆盖用户刚写的备注，也不改变暂记决定。
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus,'已设为暂记待关联')
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled,false)
   page.onUnload()
 })
 
 test('隐藏本息费不随多账户模式提交；缺账户的组成保留合法未完成草稿', () => {
   const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
   let draft = model.create(publicRow(row))
-  for (const [key, value] of [['repaymentMode','loan'], ['principalInput','100'], ['interestInput','0'], ['feeInput','0']]) draft = model.change(publicRow(row), draft, key, value)
+  for (const [key, value] of [['repaymentDetails',true], ['principalInput','100'], ['interestInput','0'], ['feeInput','0']]) draft = model.change(publicRow(row), draft, key, value)
   const partial = model.derive(publicRow(row), model.change(publicRow(row), draft, 'counterpartyLedgerAccountId', ''), catalog)
   assert.equal(partial.canSave, true)
   assert.equal(partial.payload.decisions.repayment.mode, 'review')
@@ -239,7 +404,7 @@ test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前
 test('UE10 贷款延后关联不提交隐藏计划和分类，切回恢复输入', () => {
   const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId }))
   let draft = model.create(row)
-  for (const [key, value] of [['repaymentMode','loan'], ['loanMode','associate'], ['loanId',randomUUID()],
+  for (const [key, value] of [['repaymentDetails',true], ['loanMode','associate'], ['loanId',randomUUID()],
     ['loanVersion',2], ['principalInput','90'], ['interestInput',''], ['interestCategoryId',randomUUID()], ['interestTreatment','accrued'], ['feeInput','0'], ['loanMode','defer']]) draft = model.change(row, draft, key, value)
   const saved = model.derive(row, draft, catalog).payload.decisions.repayment.draft
   assert.equal(saved.loanId, null); assert.equal(saved.loanVersion, null); assert.equal(saved.interestCategoryId, null)
@@ -262,7 +427,7 @@ test('UE41 冻结请求恢复完整金额、时间、组成、贷款和明确清
 test('UE40 真实 Page 过期后重读保留完整草稿，必须人工再次保存', async () => {
   const h = runtime(fixture(1, true)), page = h.page
   await page.openReviewEdit(tap({ id: h.events[0].eventId }))
-  for (const [field, value] of [['note',''], ['amountInput','23.45'], ['time','10:23:59']]) page.changeEditorText({ currentTarget: { dataset: { field } }, detail: { value } })
+  for (const [field, value] of [['note',''], ['evidenceNote','冻结前保留的说明']]) page.changeEditorText({ currentTarget: { dataset: { field } }, detail: { value } })
   const originalDraft = JSON.stringify(page._reviewEditToken.draft)
   page.invalidateReviewEdit()
   h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
@@ -276,20 +441,121 @@ test('UE40 真实 Page 过期后重读保留完整草稿，必须人工再次保
   page.onUnload()
 })
 
-test('UE25 真实 Page 候选总数、失败与两范围检查共同决定暂记资格', async () => {
+test('UE25 真实 Page：暂记不等待候选，也不再要求用户先切换范围', async () => {
   const data = fixture(1, true); data.events[0].economicNature = 'refund'
   const h = runtime(data), page = h.page
+  h.refundCandidates = { event: [], transaction: [] }
   await page.openReviewEdit(tap({ id: h.events[0].eventId }))
-  await page.loadEditorRefunds(tap({ kind: 'event' }))
-  assert.equal(page.data.reviewEditSheet.refundCanPending, false)
-  h.intercept = action => { if (action === 'economicEvents.refundCandidates') throw Error('合成候选失败') }
-  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
-  assert.equal(page.data.reviewEditSheet.refundCanPending, false)
-  h.intercept = null
-  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
-  assert.equal(page.data.reviewEditSheet.refundCanPending, true)
+  await page._reviewEditToken.refundRead
+  const pending = page.data.reviewEditSheet.editor.refundActions.pending
+  assert.equal(pending.enabled, true)
+  assert.match(pending.reason, /补关联/)
+  assert.equal(h.calls.filter(call => call.action === 'economicEvents.refundCandidates' && call.input.kind === 'transaction').length, 0,
+    '暂记不需要额外拉已入账列表')
   page.selectEditorRefund(tap({ mode: 'pending' }))
   assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'pending')
+  // 草稿已经暂记时不再留一个重复的“暂记待关联”，改成可撤销的「取消暂记」。
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.visible, false)
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.label, '取消暂记')
+  page.selectEditorRefund(tap({ mode: 'clear' }))
+  assert.equal(page.data.reviewEditSheet.draft.refund, null)
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled, true)
+  page.onUnload()
+})
+
+test('UE25b 有候选时仍可暂记：含义是“这些都不是，先不关联”', async () => {
+  const data = fixture(1, true); data.events[0].economicNature = 'refund'
+  const h = runtime(data), page = h.page
+  h.refundCandidates = { event: [{ id: 'synthetic-original', version: 1, kind: 'event', amountMinor: '100',
+    remainingMinor: '100', localAt: '2026-09-01 10:00:00', utcAt: '2026-09-01 02:00:00', currency: 'CNY' }], transaction: [] }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page._reviewEditToken.refundRead
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '待选原消费')
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled, true)
+  // 选了一笔后，暂记仍然可点；保存时会把这次选择换成“暂不关联”。
+  page.selectEditorRefund(tap({ id: 'synthetic-original' }))
+  assert.match(page.data.reviewEditSheet.editor.refundActions.pending.reason, /选中的原消费不会生效/)
+  // 取消本次选择靠再点卡片；不再多出「取消选择」按钮，只保留暂记入口。
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.visible, false)
+  page.selectEditorRefund(tap({ mode: 'pending' }))
+  assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'pending')
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '已设为暂记待关联')
+  // 再点已选中的候选即取消选择；暂记草稿已存在时先取消暂记。
+  page.selectEditorRefund(tap({ mode: 'clear' }))
+  assert.equal(page.data.reviewEditSheet.draft.refund, null)
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '待选原消费')
+  page.selectEditorRefund(tap({ id: 'synthetic-original' }))
+  assert.equal(page.data.reviewEditSheet.draft.refund.id, 'synthetic-original')
+  page.selectEditorRefund(tap({ id: 'synthetic-original' }))
+  assert.equal(page.data.reviewEditSheet.draft.refund, null)
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '待选原消费')
+  page.onUnload()
+})
+
+test('UE25c 候选读取失败只影响候选列表，不阻塞暂记；重试后候选恢复', async () => {
+  const data = fixture(1, true); data.events[0].economicNature = 'refund'
+  const h = runtime(data), page = h.page
+  h.refundCandidates = { event: [], transaction: [] }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page._reviewEditToken.refundRead
+  h.intercept = action => { if (action === 'economicEvents.refundCandidates') throw Error('合成候选失败') }
+  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+  let pending = page.data.reviewEditSheet.editor.refundActions.pending
+  assert.equal(pending.enabled, true, '候选读取失败不妨碍用户选择暂不关联')
+  assert.match(page.data.reviewEditSheet.refundError, /合成候选失败/)
+  page.selectEditorRefund(tap({ mode: 'pending' }))
+  assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'pending')
+  h.intercept = null
+  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+  pending = page.data.reviewEditSheet.editor.refundActions.pending
+  // 草稿已暂记：暂记按钮让位给「取消暂记」，而不是变灰。
+  assert.equal(pending.visible, false)
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.label, '取消暂记')
+  page.onUnload()
+})
+
+test('UE25d 已保存关系再点候选是取消本次选择，清除已保存关系仍是明确动作', async () => {
+  const data = fixture(1, true); data.events[0].economicNature = 'refund'
+  data.events[0].detailFacts = { refund: { status: 'confirmed', autoLinked: false, originals: [
+    { eventId: 'synthetic-original', localAt: '2026-09-01 10:00', amountMinor: '100', categoryName: '合成分类' }] } }
+  const h = runtime(data), page = h.page
+  h.refundCandidates = { event: [], transaction: [] }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page._reviewEditToken.refundRead
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '已关联原消费')
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.visible, true)
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.label, '清除关联')
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.target, 'saved')
+  page.selectEditorRefund(tap({ mode: 'clear' }))
+  assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'unlinked')
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '已清除关联')
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.clear.label, '撤销清除')
+  page.selectEditorRefund(tap({ mode: 'clear' }))
+  assert.equal(page.data.reviewEditSheet.draft.refund, null)
+  assert.equal(page.data.reviewEditSheet.editor.refundStatus, '已关联原消费')
+  page.onUnload()
+})
+
+test('UE25e 翻页后仍能选中上一页的候选，不会在点卡片时查不到数据', async () => {
+  const data = fixture(1, true); data.events[0].economicNature = 'refund'
+  const h = runtime(data), page = h.page
+  const card = id => ({ id, version: 1, kind: 'event', amountMinor: '100', remainingMinor: '100',
+    localAt: '2026-09-01 10:00:00', utcAt: '2026-09-01 02:00:00', currency: 'CNY', merchant: '合成商户-' + id })
+  h.intercept = (action, input) => {
+    if (action !== 'economicEvents.refundCandidates') return
+    return input.cursor
+      ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [card('synthetic-later')], total: 2, nextCursor: null }
+      : { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [card('synthetic-earlier')], total: 2, nextCursor: '1' }
+  }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page._reviewEditToken.refundRead
+  await page.loadEditorRefunds(tap({ kind: 'event', more: true }))
+  assert.equal(page.data.reviewEditSheet.refundChoices.length, 2)
+  // 第一页的卡片在读完第二页后仍可点选；候选数据不能只剩最后一页。
+  page.selectEditorRefund(tap({ id: 'synthetic-earlier' }))
+  assert.equal(page._reviewEditToken.draft.refund?.id, 'synthetic-earlier')
+  page.selectEditorRefund(tap({ id: 'synthetic-later' }))
+  assert.equal(page._reviewEditToken.draft.refund?.id, 'synthetic-later')
   page.onUnload()
 })
 

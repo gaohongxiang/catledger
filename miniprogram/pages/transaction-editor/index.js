@@ -22,8 +22,7 @@ function findIndex(items, key, value) {
 }
 
 
-Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').createLoanContext({ api, session: pageReadSession, navigate: options => wx.navigateTo(options) }), {
-  data: {
+const businessInitialData = {
     refundNextCursor:null,refundCanPrevious:false,refundMonth:'',refundSearch:'',refundAccounts:[{accountId:null,name:'全部消费账户'}],refundAccountIndex:0,
     loanContext: null, loanContextLoading: false, loanContextError: '', loanManaged: false,
     mode: 'create',
@@ -33,6 +32,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     categoryDirty: false,
     transactionId: '',
     version: 0,
+    canLinkRefund: false,
     typeOptions: TYPE_OPTIONS,
     typeIndex: 0,
     accounts: [],
@@ -62,10 +62,12 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     saving: false,
     openingImport: false,
     errorMessage: ''
-  },
+  }
+
+Page(themeService.page(Object.assign({}, require('./refund-lookup'), require('./loan-context').createLoanContext({ api, session: pageReadSession, navigate: options => wx.navigateTo(options) }), {
+  data: businessInitialData,
 
   onLoad: function (options) {
-    themeService.bindPage(this)
     this._directId=options&&options.transactionId||null
     this._directVisible=true
     this._refundDirectId=options&&options.originalTransactionId||null
@@ -79,7 +81,12 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
 
   onShow: function () {
     this._directVisible=true
-    themeService.bindPage(this)
+    // 从“记一笔原消费”返回：新支出不会自动出现在已缓存的候选里，重新查询一次。
+    if (this.data.mode === 'link-refund' && this._refundRefreshPending) {
+      this._refundRefreshPending = false
+      loginGuard.run(this, () => this.loadRefundables({ force: true }))
+      return
+    }
     if (!pageReadSession.isCurrent(this) || !this.data.catalogReady ||
         this._catalogToken !== api.cacheToken('catalog.get')) {
       loginGuard.run(this, this.prepareForm.bind(this))
@@ -91,7 +98,26 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   onUnload: function () { pageReadSession.end(this) },
 
   updateNavigationTitle: function () {
-    if (wx.setNavigationBarTitle) wx.setNavigationBarTitle({ title: this.data.loanManaged || this.data.readonlyDetail ? '账单详情' : this.data.mode === 'create' ? '记一笔' : '编辑账单' })
+    if (wx.setNavigationBarTitle) wx.setNavigationBarTitle({ title: this.data.loanManaged || this.data.readonlyDetail ? '账单详情'
+      : this.data.mode === 'create' ? '记一笔' : this.data.mode === 'link-refund' ? '关联原消费' : '编辑账单' })
+  },
+
+  // 已入账但未关联原消费的退款（例如导入时选择暂记）：从账单详情明确进入关联页，
+  // 不在列表行点击时替换掉只读详情。
+  openLinkRefund: function () {
+    if (!this.data.readonlyDetail || !this.data.canLinkRefund || this.data.saving) return
+    const transaction = this._detailTransaction
+    if (!transaction) return
+    app.globalData.editingTransaction = transaction
+    // 关联完成后回到账目列表（列表 onShow 会重读）；不在只读详情上留下过期的“待关联”。
+    wx.redirectTo({ url: '/pages/transaction-editor/index?mode=link-refund' })
+  },
+
+  // 原消费账单从未导入时，允许先补一笔支出，再回到本页关联；不自动伪造银行扣款。
+  addOriginalExpense: function () {
+    if (this.data.mode !== 'link-refund' || this.data.saving) return
+    this._refundRefreshPending = true
+    wx.navigateTo({ url: '/pages/transaction-editor/index?mode=create' })
   },
 
   openImport: function () {
@@ -110,7 +136,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
 
   beginRead: function () {
     return pageReadSession.begin(this,
-      Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
+      Object.keys(businessInitialData).filter(key => !['mode', 'readonlyDetail'].includes(key)),
       ['_directLoad','_directTransaction','_directContext','_loanLoad', '_initialized', '_writeFinished', '_deleteConfirming', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
         '_detailTransaction', '_editingTransaction', '_catalogCategories', '_refundQuery', '_refundCursor', '_refundPrevious'])
   },
@@ -147,6 +173,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
         this._detailTransaction = editing
         const detail = buildReadonlyDetail(editing, [], this.data.mode === 'import' && ['income', 'expense'].includes(editing.type))
         this.setData({ detail, transactionId: editing.transactionId, version: editing.version,
+          canLinkRefund: Boolean(editing.canLinkRefund),
           selectedCategoryId: editing.category && editing.category.categoryId || null })
       } else if (editing) {
         this.fillEditingTransaction(editing)
@@ -436,4 +463,4 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
       fail: function () { if (isCurrent()) { self._deleteConfirming = false; self.setData({ errorMessage: '删除确认未完成，请重试' }) } }
     })
   }
-}))
+})))

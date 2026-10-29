@@ -23,7 +23,7 @@ function bankFile(rows, explicit = false) {
   if (explicit) headers.push('分期编号', '当前期数', '总期数', '分期分项')
   return Buffer.from([headers.join(','), ...rows.map(row => [
     '2026-09-03', row.amount || '100.00', '支出', row.label, 'SYNTHETIC-LABEL-CARD', row.flow,
-    '合成摘要回归', ...(explicit ? [row.reference || '', row.period || '', row.terms || '', row.component || ''] : [])
+    row.summary || '合成摘要回归', ...(explicit ? [row.reference || '', row.period || '', row.terms || '', row.component || ''] : [])
   ].join(','))].join('\n'))
 }
 
@@ -52,6 +52,14 @@ test('银行分期摘要：真实解析、最小权限 MySQL、独立来源与 v
         return c
       }
       const events = async (c, updateId) => (await c.imp('economicEvents.list', { updateId })).items
+      async function detail(c, updateId, eventId) {
+        let cursor = null, text = ''
+        do {
+          const result = await c.imp('economicEvents.detail', { updateId, eventId, cursor })
+          text += result.part; cursor = result.nextCursor
+        } while (cursor)
+        return JSON.parse(text)
+      }
       const issues = async (c, updateId) => (await c.imp('reviewIssues.list', { updateId, status: 'open' })).items
       const sources = async c => (await c.api('loans.installmentSources', {})).items
       const ledger = async c => (await lab.owner.execute(
@@ -127,45 +135,104 @@ test('银行分期摘要：真实解析、最小权限 MySQL、独立来源与 v
         assert.ok(view.items.every(item => !item.complete), '出账和关联不能确认已还')
       }
 
-      await t.test('两类固定本金只保留来源，连写利息只记一笔费用；正常消费不暴露分期投影', async () => {
+      await t.test('两本金摘要保留计划名，两利息逐笔明确归属后入账，本金不伪造交易', async () => {
         const c = await context(), before = await ledger(c)
         const update = await prepare(c, [
-          { flow: 'SYNTHETIC-CASH', label: CASH_PRINCIPAL },
-          { flow: 'SYNTHETIC-BILL', label: BILL_PRINCIPAL },
-          { flow: 'SYNTHETIC-INTEREST', label: INTEREST, amount: '3.00' },
+          // 持久化契约取本金摘要；其他用例仍保留仅交易类型含分期事实的识别覆盖。
+          { flow: 'SYNTHETIC-CASH', label: CASH_PRINCIPAL, summary: CASH_PRINCIPAL },
+          { flow: 'SYNTHETIC-BILL', label: BILL_PRINCIPAL, summary: BILL_PRINCIPAL },
+          { flow: 'SYNTHETIC-INTEREST', label: INTEREST, summary: INTEREST, amount: '3.00' },
+          { flow: 'SYNTHETIC-INTEREST-SECOND', label: INTEREST, summary: INTEREST, amount: '5.00' },
           { flow: 'SYNTHETIC-PURCHASE', label: '消费', amount: '4.00' }
         ], { replay: true })
         const rows = await events(c, update.updateId)
-        assert.equal(rows.length, 4)
+        assert.equal(rows.length, 5)
         const cash = rows.find(row => row.installment && row.installment.originKind === 'cash_borrowing')
         const bill = rows.find(row => row.installment && row.installment.component === 'principal' && row !== cash)
-        const interest = rows.find(row => row.installment && row.installment.component === 'interest')
-        billing(cash, 'principal', 'cash_borrowing'); billing(bill, 'principal'); billing(interest, 'interest')
+        const interests = rows.filter(row => row.installment && row.installment.component === 'interest').sort((a, b) => Number(a.amountMinor) - Number(b.amountMinor))
+        const [interest, secondInterest] = interests
+        billing(cash, 'principal', 'cash_borrowing'); billing(bill, 'principal')
+        interests.forEach(row => billing(row, 'interest'))
         for (const row of [cash, bill]) {
           assert.equal(row.economicNature, 'repayment')
           assert.equal(row.ledgerAccountId, c.accountId)
           assert.equal(row.counterpartyLedgerAccountId, null)
         }
-        const purchase = rows.find(row => row.eventId !== cash.eventId && row.eventId !== bill.eventId && row.eventId !== interest.eventId)
+        const purchase = rows.find(row => !row.installment)
         assert.equal(Object.hasOwn(purchase, 'installment'), false)
         assert.ok(!(await issues(c, update.updateId)).some(row => row.issueType === 'transfer_accounts'))
         assert.deepEqual(await ledger(c), before, '解析和整理不能写入正式交易')
         assert.deepEqual(await sources(c), [], '未入账来源不提前进入待关联列表')
+        const pendingIds = async () => (await c.imp('economicEvents.list', { updateId: update.updateId, view: 'review_pending' }))
+          .items.map(row => row.eventId).sort()
+        assert.deepEqual(await pendingIds(), interests.map(row => row.eventId).sort())
+        const attribution = (await issues(c, update.updateId)).filter(row => row.primaryReasonCode === 'installment_attribution_required')
+        assert.equal(attribution.length, 1); assert.equal(attribution[0].memberCount, 2)
+        await assert.rejects(c.imp('financeUpdates.post', { requestId: randomUUID(), updateId: update.updateId,
+          version: (await summary(c, update.updateId)).version }), { publicCode: 'UNRESOLVED_IMPORT' })
+        assert.deepEqual(await ledger(c), before); assert.deepEqual(await sources(c), [])
+        for (const [index, row] of interests.entries()) {
+          const current = (await events(c, update.updateId)).find(event => event.eventId === row.eventId)
+          await c.imp('financeUpdates.setReview', { requestId: randomUUID(), updateId: update.updateId,
+            updateVersion: (await summary(c, update.updateId)).version, eventId: current.eventId,
+            eventVersion: current.version, editorVersion: 1, fields: {},
+            sourceCorrection: { planLabel: index === 0 ? '电销现分按月收6期' : '电销总账分月6期' } })
+          assert.deepEqual(await pendingIds(), index === 0 ? [secondInterest.eventId] : [])
+        }
         const posted = await post(c, update.updateId, true)
-        assert.equal(posted.posting.createdTransactionCount, 2)
+        assert.equal(posted.posting.createdTransactionCount, 3)
         const items = await sources(c)
-        assert.equal(items.length, 3)
-        assert.equal(new Set(items.map(row => row.identityId)).size, 3)
+        assert.equal(items.length, 4)
+        assert.equal(new Set(items.map(row => row.identityId)).size, 4)
         assert.ok(items.every(row => row.active && row.accountId === c.accountId && row.loanId === null && row.referenceKey === null && row.referenceLabel === null))
+        // 本金取摘要去期次；费用取明确指定，不能把利息泛称当成计划名。
+        assert.equal(items.find(row => row.eventId === cash.eventId).planLabel, '电销现分按月收6期')
+        assert.equal(items.find(row => row.eventId === bill.eventId).planLabel, '电销总账分月6期')
+        assert.equal(items.find(row => row.eventId === interest.eventId).planLabel, '电销现分按月收6期')
+        assert.equal(items.find(row => row.eventId === secondInterest.eventId).planLabel, '电销总账分月6期')
+        // 整批过滤只返回本批来源，游标与过滤参数绑定。
+        assert.deepEqual((await c.api('loans.installmentSources', { updateId: update.updateId })).items.map(row => row.itemId), items.map(row => row.itemId))
+        assert.deepEqual((await c.api('loans.installmentSources', { updateId: randomUUID() })).items, [])
+        const firstPage = await c.api('loans.installmentSources', { updateId: update.updateId, pageSize: 1 })
+        assert.ok(firstPage.nextCursor)
+        await assert.rejects(c.api('loans.installmentSources', { updateId: randomUUID(), pageSize: 1, cursor: firstPage.nextCursor }), { publicCode: 'CONFLICT' })
         for (const event of [cash, bill]) assert.equal(items.find(row => row.eventId === event.eventId).transactionId, null)
         const cost = items.find(row => row.eventId === interest.eventId)
         assert.equal(cost.component, 'interest'); assert.equal(cost.amountMinor, '300'); assert.ok(cost.transactionId)
         const booked = (await ledger(c)).filter(row => !before.some(prior => prior.transaction_id === row.transaction_id))
-        assert.equal(booked.length, 2); assert.ok(booked.every(row => row.type === 'expense'))
+        assert.equal(booked.length, 3); assert.ok(booked.every(row => row.type === 'expense'))
         assert.equal(booked.filter(row => row.transaction_id === cost.transactionId).length, 1)
         const [links] = await lab.owner.execute(`SELECT event_id AS eventId FROM catledger_economic_event_transactions
           WHERE uid=? AND update_id=? AND superseded_at IS NULL`, [c.uid, update.updateId])
         assert.ok(links.every(row => ![cash.eventId, bill.eventId].includes(row.eventId)), '本金不能伪造转账或支出')
+      })
+
+      await t.test('分期本金可改判为实际支出：保留来源并只创建一笔真实流水', async () => {
+        const c = await context(), before = await ledger(c)
+        const update = await prepare(c, [{ flow: 'SYNTHETIC-RECLASS-PRINCIPAL', label: BILL_PRINCIPAL }])
+        const [principal] = await events(c, update.updateId)
+        assert.equal(principal.economicNature, 'repayment')
+        await c.imp('financeUpdates.setReview', { requestId: randomUUID(), updateId: update.updateId,
+          updateVersion: (await summary(c, update.updateId)).version, eventId: principal.eventId,
+          eventVersion: principal.version, editorVersion: 1, fields: { economicNature: 'expense' } })
+        const [edited] = await events(c, update.updateId)
+        assert.equal(edited.economicNature, 'expense')
+        assert.equal(edited.status, 'ready')
+        assert.deepEqual(edited.reasonCodes, ['category_required'])
+        assert.equal((await detail(c, update.updateId, edited.eventId)).editorFacts.recordRole, 'installment_source')
+        const posted = await post(c, update.updateId)
+        assert.equal(posted.posting.createdTransactionCount, 1)
+        const booked = (await ledger(c)).filter(row => !before.some(prior => prior.transaction_id === row.transaction_id))
+        assert.equal(booked.length, 1)
+        assert.equal(booked[0].type, 'expense'); assert.equal(booked[0].source_account_id, c.accountId)
+        assert.equal(String(booked[0].amount_minor), '10000')
+        const [item] = await sources(c)
+        assert.equal(item.component, 'principal'); assert.equal(item.eventId, principal.eventId)
+        assert.equal(item.transactionId, booked[0].transaction_id)
+        const [[link]] = await lab.owner.execute(`SELECT COUNT(*) AS n FROM catledger_economic_event_transactions
+          WHERE uid=? AND update_id=? AND event_id=? AND transaction_id=? AND superseded_at IS NULL`,
+        [c.uid, update.updateId, principal.eventId, booked[0].transaction_id])
+        assert.equal(Number(link.n), 1)
       })
 
       await t.test('无合同号的同额同一期独立来源不归一，关联与新建计划只影响明确选中的来源', async () => {

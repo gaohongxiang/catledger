@@ -59,6 +59,31 @@ test('不同支付方式的消费不算同一笔候选', async () => {
   assert.equal(model.refundCandidates(refund, 'event').length, 0, '换了一张卡就不是这一笔')
 })
 
+test('本机暂记同口径：有候选也能暂不关联，来源冲突拒绝', async () => {
+  const value = await facts({ content: rowsOf([PURCHASE_REFUNDED, REFUND_SMALL, UNRELATED]), mapped: true })
+  const model = local.create(value), refund = refundEvent(model)
+  assert.equal(model.refundCandidates(refund, 'event').length, 1, '此时确实有一笔可关联的原消费')
+  model.edit({ eventId: refund.eventId, editorVersion: 1, decisions: { refund: { mode: 'pending' } } })
+  const after = model.events.get(refund.eventId)
+  assert.equal(after.fieldSources.refundRelation.status, 'pending')
+  assert.equal(after.fieldSources.refundRelation.confirmedBy, 'user')
+
+  // 原单已关闭却退款成功：正确结果是按已退回处理，不能留成“以后补关联”。
+  const closed = '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-A1,SYNTH-ORDER-A,SYNTH-M-A,'
+  const conflictValue = await facts({ content: rowsOf([
+    closed,
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-A2,SYNTH-ORDER-A,SYNTH-M-A,'
+  ]), mapped: true })
+  const conflictModel = local.create(conflictValue), conflict = refundEvent(conflictModel)
+  assert.throws(() => conflictModel.edit({ eventId: conflict.eventId, editorVersion: 1,
+    decisions: { refund: { mode: 'pending' } } }), error => error.code === 'LOCAL_RECHECK_REQUIRED' && /按已退回处理/.test(error.message))
+  // 快照只带回原因码、没带字段来源时，暂记同样必须拒绝；与服务端的判定口径一致。
+  assert.ok(conflict.reasonCodes.includes('refund_source_conflict'))
+  delete conflict.fieldSources.refundSourceConflict
+  assert.throws(() => conflictModel.edit({ eventId: conflict.eventId, editorVersion: 1,
+    decisions: { refund: { mode: 'pending' } } }), error => error.code === 'LOCAL_RECHECK_REQUIRED' && /按已退回处理/.test(error.message))
+})
+
 test('选中原消费后退款事项收尾，事件不再停在待核对', async () => {
   const value = await facts({ content: rowsOf([PURCHASE_REFUNDED, REFUND_SMALL, UNRELATED]), mapped: true })
   const model = local.create(value)
@@ -93,14 +118,16 @@ test('本批没有匹配项时自动列出全部消费，仍只有两个范围�
     call++
     return call === 1
       ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [], total: 0, nextCursor: null }
-      : { protocolVersion: 2, viewVersion: h.summary.viewVersion, total: 1, nextCursor: null, items: [{ id: 'fallback', version: 1,
-          kind: 'event', amountMinor: '6400', remainingMinor: '6400', localAt: '2026-08-13 14:06', merchant: '合成平台商户' }] }
+      : { protocolVersion: 2, viewVersion: h.summary.viewVersion, total: 1, nextCursor: null,
+          items: [{ id: 'fallback', version: 1, kind: 'event', amountMinor: '6400', remainingMinor: '6400',
+            localAt: '2026-08-13 14:06', merchant: '合成平台商户' }] }
   }
   await page.openReviewEdit(editor.tap({ id: data.events[0].eventId }))
   await page._reviewEditToken.refundRead
   const sheet = page.data.reviewEditSheet
   assert.equal(sheet.refundScope, 'all', '没有匹配项时自动退到全部消费')
   assert.equal(sheet.refundChoices.length, 1)
+  assert.equal(sheet.editor.refundActions.pending.enabled, true, '候选数量和暂记无关')
   assert.equal(h.calls.filter(row => row.action === 'economicEvents.refundCandidates').length, 2)
   page.onUnload()
 })
@@ -130,6 +157,8 @@ test('退款冲突这笔：默认按已退回处理，写进本批决定且不�
   await page.openReviewEdit({ currentTarget: { dataset: { id: refund.eventId } } })
   assert.equal(page.data.reviewEditSheet.editor.refundConflict, true, '应识别为原单已关闭')
   await page.excludeRefundAsReversed()
+  assert.ok(h.wx.modal, '应先弹出确认框，而不是静默返回')
+  assert.ok(Array.from(h.wx.modal.confirmText).length <= 4, '确认按钮文字要在微信的 4 字上限内，否则弹窗不会出现')
   assert.equal(h.local.model.choices.reviews.size, 1, '写入一条人工决定')
   const after = h.local.model.events.get(refund.eventId)
   assert.equal(after.status, 'excluded')

@@ -69,10 +69,14 @@ test('分类与核对维度独立，整理、确认和完成页共用同一行�
   assert.match(markup, /recordSummary.excludedCount/)
   assert.match(markup, /recordSummary.duplicateCount/)
 })
-test('统一摘要直接编辑付款总额，组成金额与核对说明在同一模板', () => {
+test('摘要卡只读展示账单事实，组成金额与核对说明在同一模板', () => {
   const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
   assert.match(fields, /class="(?:[^"]*\s)?editor-amount(?:\s[^"]*)?"/)
-  assert.match(fields, /data-field="amountInput" bindinput="changeEditorText"/)
+  // 金额、日期、时间、交易对方来自账单，不在核对页改写；备注仍可编辑。
+  assert.doesNotMatch(fields, /data-field="amountInput"/)
+  assert.doesNotMatch(fields, /data-field="time"/)
+  assert.doesNotMatch(fields, /data-field="counterparty"/)
+  assert.match(fields, /data-field="note" bindinput="changeEditorText"/)
   assert.match(fields, /bindinput="changeFundsAmount"/)
   assert.match(fields, /maxlength="300" data-field="evidenceNote"/)
   assert.doesNotMatch(markup, /payment-resolution-form|changePaymentRow/)

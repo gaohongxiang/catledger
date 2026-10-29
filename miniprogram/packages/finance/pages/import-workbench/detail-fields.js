@@ -20,7 +20,8 @@ function natureLabel(row) {
   const installment = installmentOf(row)
   if (installment && installment.creditStatement) {
     const label = { principal: '分期出账', interest: '分期利息', fee: '分期手续费' }[installment.component]
-    if (label) return label
+    // 本金默认是“分期出账”；用户明确改判成支出、收入、费用或待确认后，按经济性质显示。
+    if (label && (installment.component !== 'principal' || !row.economicNature || row.economicNature === 'repayment')) return label
   }
   return NATURE_LABELS[row.economicNature] || NATURE_LABELS.unknown
 }
@@ -107,8 +108,8 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
       add('principal', '偿还本金', money(loan.principalMinor), false)
       add('interest', '本次利息', money(loan.interestMinor), false)
       add('fee', '本次费用', money(loan.feeMinor), false)
-      for (const key of ['interest', 'fee']) add(key + '-treatment', key === 'interest' ? '利息处理' : '费用处理',
-        { expense: '补记本次费用', accrued: '清偿已记费用，不重复支出' }[loan[key + 'Treatment']], false)
+      for (const key of ['interest', 'fee']) add(key + '-treatment', key === 'interest' ? '利息怎么记' : '费用怎么记',
+        { expense: '没记过，记一笔', accrued: '记过，只冲抵，不重复支出' }[loan[key + 'Treatment']], false)
     }
   }
   if (installment) {

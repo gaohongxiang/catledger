@@ -9,7 +9,7 @@ const { decorateAccount } = require('../accounts/model')
 const { present: presentLoan } = require('../../services/loan-present')
 const billing = require('../../utils/account-billing')
 
-Page({
+Page(themeService.page({
   data: {
     accountId: '',
     account: null,
@@ -33,12 +33,10 @@ Page({
   },
 
   onLoad: function (query) {
-    themeService.bindPage(this)
     this.setData({ accountId: String(query && query.accountId || '') })
   },
 
   onShow: function () {
-    themeService.bindPage(this)
     loginGuard.run(this, this.loadAccount.bind(this))
   },
 
@@ -322,4 +320,4 @@ Page({
       fail: function () { if (self._archiveConfirming === confirmation) self._archiveConfirming = false; resolve() }
     }))
   }
-})
+}))

@@ -1,3 +1,14 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{!readonlyDetail && !loanManaged}}" class="editor-heading content-inset">
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
@@ -71,6 +82,10 @@
       <button class="secondary-button" bindtap="previousRefundPage" disabled="{{saving || refundablesLoading || !refundCanPrevious}}">上一页原消费</button>
       <button class="secondary-button" bindtap="nextRefundPage" disabled="{{saving || refundablesLoading || !refundNextCursor}}">下一页原消费</button>
     </view>
+    <block wx:if="{{mode === 'link-refund'}}">
+      <text class="loan-context-note content-inset">原消费账单从未导入过？可以先按原消费的日期、金额和账户记一笔支出，保存后回到这里选中它再关联。</text>
+      <view class="form-row content-inset"><button class="secondary-button" bindtap="addOriginalExpense" disabled="{{saving}}">记一笔原消费</button></view>
+    </block>
     <view wx:if="{{mode !== 'link-refund'}}" class="form-row form-row-pair content-inset">
       <picker class="half-picker" mode="date" value="{{date}}" bindchange="changeDate" disabled="{{saving}}">
         <view><text class="form-label">日期</text><text class="form-value">{{date}}</text></view>
@@ -102,6 +117,7 @@
     </view>
     <button wx:if="{{detail.canEditCategory && categoryDirty}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || !catalogReady || categoryIndex < 0}}" bindtap="saveDetailCategory">保存分类</button>
   </block>
+  <button wx:if="{{transactionId && readonlyDetail && canLinkRefund && !loanManaged}}" class="secondary-button" bindtap="openLinkRefund" disabled="{{saving}}">关联原消费</button>
   <button wx:if="{{transactionId && readonlyDetail && loanContext.transaction.type === 'expense' && !loanManaged}}" class="secondary-button" bindtap="startRefund" disabled="{{saving || loanContextLoading}}">为这笔消费记退款</button>
   <ui-state wx:if="{{transactionId && loanContextLoading}}" description="正在核对贷款与分期关联…" />
   <view wx:if="{{transactionId && loanContextError}}" class="catalog-retry content-inset"><text class="catalog-retry-message">{{loanContextError}}</text><button class="catalog-retry-button" bindtap="loadLoanContext" disabled="{{loanContextLoading}}">重试关联信息</button></view>

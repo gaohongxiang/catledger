@@ -11,12 +11,12 @@ test('CSV 文本阻止公式与控制前缀，JSONL 保持原文及整数精度�
  const f=fixture(),value={table:'catledger_transactions',row:{transaction_id:'合成',type:'expense',amount_minor:'9223372036854775807',note:'=SUM(1,2)\n合成🐱'}}
  const line=JSON.stringify(value)+'\n';let page=0
  const result=await f.service.generate({requestId:'synthetic',isCurrent:()=>true,call:async(action)=>{
-  if(action==='dataExports.start')return {exportId:'00000000-0000-4000-8000-000000000001',format:'catledger-jsonl-v1',schemaVersion:34,tables:['catledger_transactions']}
+  if(action==='dataExports.start')return {exportId:'00000000-0000-4000-8000-000000000001',format:'catledger-jsonl-v1',schemaVersion:35,tables:['catledger_transactions']}
   if(action==='dataExports.page')return ++page===1?{text:line.slice(0,30),bytes:30,rows:0,totalRows:0,nextCursor:'part'}:{text:line.slice(30),bytes:200,rows:1,totalRows:1,nextCursor:null,completeToken:'end'}
   assert.equal(action,'dataExports.finish');return {complete:true,rows:1,exportId:'synthetic'}
  }})
  const records=f.files.get(result.files.jsonl).trimEnd().split('\n').map(line=>JSON.parse(line))
- assert.deepEqual(records[0],{format:'catledger-jsonl-v1',schemaVersion:34,tables:['catledger_transactions']})
+ assert.deepEqual(records[0],{format:'catledger-jsonl-v1',schemaVersion:35,tables:['catledger_transactions']})
  assert.deepEqual(records[1],value)
  assert.deepEqual(records[2],{completed:true,rows:1,exportId:'synthetic'})
  assert.match(f.files.get(result.files.csv),/"'=SUM\(1,2\)/);assert.match(f.files.get(result.files.csv),/9223372036854775807/)

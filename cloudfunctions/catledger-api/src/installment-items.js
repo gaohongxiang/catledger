@@ -1,9 +1,18 @@
 // 两支云函数独立打包相同领域文件；任何入账/关联都在原用户锁事务中执行。
 const { randomUUID } = require('node:crypto')
+const { planNameFromItem, confirmedPlan } = require('./installment-plan')
 const fail = code => { throw Object.assign(new Error(code), { code, publicCode: code }) }
+// 计划名是账单事实的持久副本：本金摘要去掉期次后缀。利息／手续费行自身摘要只有
+// “分期付款利息”这类泛称，不能当计划名；只有人工指定或整理阶段已判定的归属才落库。
+// 没有计划名时留 NULL，读取方沿用原展示，不按金额或行序补猜。
+function planLabelOf(event, evidence) {
+  if (evidence.component === 'principal') return planNameFromItem(event.item || '').slice(0, 120) || null
+  const attribution = event.fieldSources && event.fieldSources.installmentAttribution
+  return String(confirmedPlan(event) || attribution && attribution.planLabel || '').trim().slice(0, 120) || null
+}
 // 调用方持有用户级写锁；附加只读收费来源关系不申请 UPDATE 锁。
 const ITEM_SELECT = `SELECT i.item_id AS itemId,i.account_id AS accountId,i.loan_id AS loanId,
-  i.reference_key AS referenceKey,i.reference_label AS referenceLabel,i.period_number AS periodNumber,i.total_terms AS totalTerms,
+  i.reference_key AS referenceKey,i.reference_label AS referenceLabel,i.plan_label AS planLabel,i.period_number AS periodNumber,i.total_terms AS totalTerms,
   i.component,i.amount_minor AS amountMinor,i.occurred_date AS occurredDate,i.origin,i.source_event_id AS eventId,
   i.source_identity_id AS identityId,i.transaction_id AS transactionId,i.canonical,i.active,i.version,
   t.version AS transactionVersion,t.deleted_at AS transactionDeleted,t.amount_minor AS transactionAmount,
@@ -26,7 +35,7 @@ function publicItem(row) {
     (row.component === 'principal' || row.coverageState==='baseline'&&String(row.coveredAmount)===String(row.amountMinor) || row.transactionId && row.transactionDeleted == null && row.transactionType === 'expense' &&
       (row.transactionAccount === row.accountId || row.registeredTransactionId === row.transactionId || row.coverageState==='covered'&&row.coveringTransactionId===row.transactionId) && (String(row.transactionAmount) === String(row.amountMinor) || row.coverageState === 'covered' && row.coveringTransactionId === row.transactionId && String(row.coveredAmount) === String(row.amountMinor)))
   return { itemId:row.itemId,accountId:row.accountId,loanId:row.loanId,referenceKey:row.referenceKey,referenceLabel:row.referenceLabel,
-    periodNumber:Number(row.periodNumber),totalTerms:row.totalTerms==null?null:Number(row.totalTerms),component:row.component,
+    planLabel:row.planLabel || null,periodNumber:Number(row.periodNumber),totalTerms:row.totalTerms==null?null:Number(row.totalTerms),component:row.component,
     amountMinor:String(row.amountMinor),occurredDate:row.occurredDate,origin:row.origin,eventId:row.eventId,updateId:row.updateId,
     identityId:row.identityId,transactionId:row.transactionId,transactionVersion:Number(row.transactionVersion || 0),
     canonical:Boolean(row.canonical),active:valid,version:Number(row.version) }
@@ -53,8 +62,8 @@ async function canonicalItem(c,uid,loanId,periodNumber,component) {
 async function insertItem(c,uid,value) {
   const itemId=value.itemId || randomUUID()
   await c.execute(`INSERT INTO catledger_installment_items
-    (uid,item_id,account_id,loan_id,reference_key,reference_label,period_number,total_terms,component,amount_minor,occurred_date,origin,source_event_id,source_identity_id,transaction_id,canonical)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[uid,itemId,value.accountId,value.loanId||null,value.referenceKey||null,value.referenceLabel||null,
+    (uid,item_id,account_id,loan_id,reference_key,reference_label,plan_label,period_number,total_terms,component,amount_minor,occurred_date,origin,source_event_id,source_identity_id,transaction_id,canonical)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[uid,itemId,value.accountId,value.loanId||null,value.referenceKey||null,value.referenceLabel||null,value.planLabel||null,
     value.periodNumber,value.totalTerms||null,value.component,String(value.amountMinor),value.occurredDate,value.origin,
     value.eventId||null,value.identityId||null,value.transactionId||null,value.canonical===false?0:1])
   return itemId
@@ -71,7 +80,9 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   const editor=event.fieldSources && event.fieldSources.editorOverrides
   const evidence=raw && {...raw,...(editor && editor.version===1 ? editor.sourceCorrection || {} : {})}
   if (!evidence) return null
-  if (evidence.component==='principal' ? event.economicNature!=='repayment' : !['expense','fee'].includes(event.economicNature)) return null
+  // 本金行默认“还款”只保存来源；用户改判成支出、费用或收入时仍保存来源，并与实际流水关联。
+  if (evidence.component==='principal' ? !['repayment','expense','fee','income'].includes(event.economicNature)
+    : !['expense','fee'].includes(event.economicNature)) return null
   if (evidence.creditStatement!==true) fail('LOAN_SOURCE_MISMATCH')
   const [[account]]=await c.execute('SELECT type FROM catledger_accounts WHERE uid=? AND account_id=?',[uid,event.ledgerAccountId])
   if (!account || account.type!=='credit') fail('LOAN_SOURCE_MISMATCH')
@@ -96,6 +107,7 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   if (reviewedTransactionId && canonical && canonical.transactionId!==reviewedTransactionId) fail('LOAN_SOURCE_MISMATCH')
   if (!reviewedTransactionId) await assertCostSource(c,uid,{...evidence,eventId:event.eventId,identityId},canonical)
   return { ...evidence,accountId:event.ledgerAccountId,loanId:chargeMatch && chargeMatch.loanId || loan && loan.loanId || previous && previous.loanId || null,
+    planLabel:planLabelOf(event,evidence),
     amountMinor:String(event.amountMinor),occurredDate:event.localDate,origin:'import',eventId:event.eventId,identityId,
     chargeMatch,skipFinancial:chargeMatch&&chargeMatch.state==='baseline',existingItem:previous,canonicalItem:canonical,reuseTransactionId:chargeMatch && chargeMatch.transactionId || canonical && canonical.transactionId,
     reuseTransactionVersion:chargeMatch && chargeMatch.transactionVersion || canonical && canonical.transactionVersion }
@@ -124,4 +136,4 @@ async function persistReviewedImports(c,uid,updateId,events,identities) {
     await persistImport(c,uid,prepared,link.transactionId)
   }
 }
-module.exports={ITEM_SELECT,publicItem,boundLoan,canonicalItem,insertItem,assertCostSource,prepareImport,persistImport,persistReviewedImports}
+module.exports={ITEM_SELECT,publicItem,planLabelOf,boundLoan,canonicalItem,insertItem,assertCostSource,prepareImport,persistImport,persistReviewedImports}

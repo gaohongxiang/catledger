@@ -9,16 +9,27 @@
       <block wx:elif="{{reviewEditSheet.record}}">
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
         <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
-        <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围）<text class="app-chevron">›</text></button>
-        <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />
-        <view wx:for="{{reviewEditSheet.sources}}" wx:key="evidenceId" class="evidence-card">
-          <view class="evidence-card-head"><text class="evidence-role">{{item.sourceCaption}}</text></view>
-          <skeleton-rows wx:if="{{item.loading}}" rows="{{2}}" />
-          <view class="evidence-fields"><view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.name}}</text><text selectable class="evidence-value">{{field.value === '' ? '（空）' : field.value}}</text></view></view>
-          <text wx:if="{{item.error}}" class="sheet-copy">{{item.error}}</text>
-          <button wx:if="{{item.incomplete || item.error}}" class="account-source-link" bindtap="openEditorOriginal" disabled="{{reviewEditSheet.saving}}">{{item.error ? '重新读取原文' : '继续查看较长原文'}}</button>
+        <!-- 整组关系入口：只承接同笔判断、来源冲突和字段冲突；分期归属、退款和账户各有自己的区域。
+             原始交易只保留下面的来源条，不再重复一行“原始交易”标题。 -->
+        <view wx:if="{{reviewEditSheet.sources.length || reviewEditSheet.evidenceLoading || reviewEditSheet.groupAction || reviewEditSheet.evidenceError || reviewEditSheet.moreEvidence}}" class="evidence-section">
+          <view wx:if="{{reviewEditSheet.groupAction}}" class="review-relation-callout {{reviewEditSheet.saving || reviewEditSheet.pending ? 'is-disabled' : ''}}"
+            bindtap="openEditorIssue" aria-role="button" aria-disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}" aria-label="{{reviewEditSheet.groupAction.label}}">
+            <view class="review-relation-copy">
+              <text class="review-relation-title">{{reviewEditSheet.groupAction.label}}</text>
+              <text class="review-relation-hint">{{reviewEditSheet.groupAction.hint}}</text>
+            </view>
+            <text class="review-relation-chevron" aria-hidden="true">›</text>
+          </view>
+          <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />
+          <view wx:for="{{reviewEditSheet.sources}}" wx:key="evidenceId" class="evidence-card">
+            <view class="evidence-card-head"><text class="evidence-role">{{item.sourceCaption}}</text></view>
+            <skeleton-rows wx:if="{{item.loading}}" rows="{{2}}" />
+            <view class="evidence-fields"><view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.name}}</text><text selectable class="evidence-value">{{field.value === '' ? '（空）' : field.value}}</text></view></view>
+            <text wx:if="{{item.error}}" class="sheet-copy">{{item.error}}</text>
+            <button wx:if="{{item.incomplete || item.error}}" class="account-source-link" bindtap="openEditorOriginal" disabled="{{reviewEditSheet.saving}}">{{item.error ? '重新读取原文' : '继续查看较长原文'}}</button>
+          </view>
+          <text wx:if="{{reviewEditSheet.evidenceError}}" class="inline-error">{{reviewEditSheet.evidenceError}}</text><button wx:if="{{reviewEditSheet.moreEvidence || reviewEditSheet.evidenceError}}" class="review-text-action" bindtap="loadEditorEvidence">继续读取来源</button>
         </view>
-        <text wx:if="{{reviewEditSheet.evidenceError}}" class="inline-error">{{reviewEditSheet.evidenceError}}</text><button wx:if="{{reviewEditSheet.moreEvidence || reviewEditSheet.evidenceError}}" class="review-text-action" bindtap="loadEditorEvidence">继续读取来源</button>
       </block>
     </scroll-view>
     <view class="sheet-actions">
@@ -27,10 +38,31 @@
       <button wx:if="{{reviewEditSheet.saved || (reviewEditSheet.stale && !reviewEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshReviewEdit" disabled="{{reviewEditSheet.saving}}">{{reviewEditSheet.saved ? '刷新列表' : '重新核验'}}</button>
       <view wx:elif="{{reviewEditSheet.judgmentEditable}}" class="editor-actions-row">
         <button class="editor-judgment-btn" bindtap="openEditorRepaymentJudgment" disabled="{{reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved}}">{{reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '不是同一笔' : '修改同笔判断'}}</button>
-        <button class="sheet-confirm" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.editor.complete ? '保存本笔核对' : reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '仅保存草稿' : '保存本笔草稿'}}</button>
+        <button class="sheet-confirm" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '仅保存草稿' : '保存本笔草稿'}}</button>
       </view>
-      <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
-      <button class="evidence-return editor-cancel" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}">取消修改</button>
+      <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
+      <button class="evidence-return editor-cancel" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}">放弃修改</button>
     </view>
+  </view>
+</view>
+<!-- 性质切换列表：只列当前行可切换的经济性质；分期角色和还款渠道不进入这里。 -->
+<view wx:if="{{reviewEditSheet && reviewEditSheet.natureOpen}}" class="sheet-layer nature-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeNatureSheet"></view>
+  <view class="workflow-sheet nature-sheet">
+    <view class="sheet-handle"></view>
+    <view class="nature-sheet-head">
+      <text class="nature-sheet-title">改交易性质</text>
+      <button class="review-sheet-close nature-sheet-close" bindtap="closeNatureSheet" aria-label="关闭性质选择"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button>
+    </view>
+    <view class="nature-options" aria-role="radiogroup" aria-label="交易性质">
+      <view wx:for="{{reviewEditSheet.editor.natureOptions}}" wx:key="value" class="nature-option {{item.value === reviewEditSheet.draft.economicNature ? 'is-selected' : ''}}" data-index="{{index}}" bindtap="selectEditorNature" aria-role="radio" aria-checked="{{item.value === reviewEditSheet.draft.economicNature}}" aria-label="{{item.label}}{{item.hint ? '，' + item.hint : ''}}">
+        <view class="nature-option-copy">
+          <text class="nature-option-label">{{item.label}}</text>
+          <text wx:if="{{item.hint}}" class="nature-option-hint">{{item.hint}}</text>
+        </view>
+        <view class="nature-option-check" aria-hidden="true"><image wx:if="{{item.value === reviewEditSheet.draft.economicNature}}" class="nature-option-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
+      </view>
+    </view>
+    <text wx:if="{{reviewEditSheet.natureHint}}" class="nature-sheet-hint">{{reviewEditSheet.natureHint}}</text>
   </view>
 </view>

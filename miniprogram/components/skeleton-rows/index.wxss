@@ -16,10 +16,11 @@
   border-radius: var(--theme-radius-small, 12rpx);
 }
 
+/* 扫光高光走 --theme-shimmer：深色主题上白光是一道刺眼的横条，改用主题色的极淡提亮。 */
 .sk-shimmer::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+  background: linear-gradient(90deg, transparent, var(--theme-shimmer, rgba(255, 255, 255, .55)), transparent);
   transform: translateX(-100%);
   animation: sk-sweep var(--layout-motion-shimmer, 1400ms) ease-in-out infinite;
   content: '';

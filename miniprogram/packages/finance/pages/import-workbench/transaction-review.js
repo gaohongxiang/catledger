@@ -6,6 +6,7 @@ const { errorText, direction } = require('./presentation')
 const api = require('../../../../services/catledger-import')
 const readCache = require('../../../../services/read-cache')
 const inlineEvidence = require('./inline-evidence')
+const refundState = require('./refund-state')
 const observer = require('../../../../services/read-observer')
 
 function evidenceCurrent(page, token) {
@@ -145,7 +146,7 @@ async function showIssueEditor(event, savedForm) {
   const token = this._issueEvidenceToken = { issueId, session: this._viewSession, version: this._viewSession.summary.viewVersion,
     scope: readCache.getSession(), startedAt: Date.now(), savedForm }
   this.setData({ currentIssue: model.issueView(summary), currentMembers: [], issueEvents: [], issueVisibleEvents: [], issueRelations: [],
-    issueFacts: null, issueFactsLoading: false, issueFactsError: '', issueDetail: null,
+    issueFacts: null, issueFactsLoading: false, issueFactsError: '', issueDetail: null, issueRefundPending: null,
     issueDetailsLoading: true, issueDetailsReady: false, issueDetailsError: '', issueCanSubmit: false, issueStale: false,
     issueMembersError: '', issueRelationsError: '', issueRelationsLoading: false, issueSourceExpanded: true,
     issueEvidenceLoading: true, issueEvidenceTotal: Number(summary.memberCount || 0), memberPage: null, relationPage: null,
@@ -161,7 +162,11 @@ async function showIssueEditor(event, savedForm) {
     token.details = details
     const currentIssue = model.issueView(Object.assign({}, details.issue, { subject: issueSubject(details, summary.subject) }))
     const members = details.members.filter(row => row.event)
-    this.setData({ currentIssue, issueEvents: members.map(row => model.eventView(row.event)),
+    // 暂记是用户的决定，不依赖候选多少或额外资格读取；只有来源冲突时没有“以后补关联”
+    // 这条路径，按钮隐藏。问题面板与单笔编辑器共用这一条判断。
+    const issueRefundPending = currentIssue.issueType === 'refund_relation'
+      ? refundState.pendingAction({ conflict: currentIssue.refundSourceConflict }) : null
+    this.setData({ currentIssue, issueRefundPending, issueEvents: members.map(row => model.eventView(row.event)),
       issueVisibleEvents: members.map(row => Object.assign({}, presentation.record(row.event), { evidenceLoading: true, evidence: [] })) },
     () => markIssue(this, token, 'review_content'))
     // 与目录和原文并行补充当前笔只读事实，失败不会重读已成功的目录或覆盖输入。
@@ -305,7 +310,8 @@ module.exports = {
       this.finishInputEditing()
       this._issueEvidenceToken = null
       this._issueEvidenceRecords = []
-      this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null, issueVisibleEvents: [], issueCanSubmit: false, issueDetailsReady: false })
+      this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null, issueVisibleEvents: [], issueCanSubmit: false,
+        issueDetailsReady: false, issueRefundPending: null })
     }
     this.applyPendingBackgroundView()
   },
@@ -467,10 +473,14 @@ module.exports = {
   },
 
   // 问题面板里的原消费候选：点选后由底部按钮确认，和单笔编辑器同样的两步。
+  // 再点已选项取消选择，避免“选过一次就只能在候选里换”。
   selectIssueRefund: function (event) {
     const id = event.currentTarget.dataset.id
     if (!id || this.data.busy) return
-    this.setData({ 'issueDraft.targetEventId': id })
+    const targetEventId = this.data.issueDraft.targetEventId === id ? '' : id
+    this.setData({ 'issueDraft.targetEventId': targetEventId,
+      issueRefundPending: refundState.pendingAction({ conflict: this.data.currentIssue?.refundSourceConflict,
+        draftLink: Boolean(targetEventId) }) })
   },
 
   linkIssueRefund: function () {
@@ -480,6 +490,12 @@ module.exports = {
   },
 
   markIssueRefundPending: function () {
+    const action = this.data.issueRefundPending
+    if (!action || !action.visible) return
+    if (!action.enabled) {
+      if (action.reason) this.setData({ errorMessage: action.reason })
+      return
+    }
     return this.resolveIssue('mark_refund_pending', {})
   },
 
@@ -524,7 +540,11 @@ module.exports = {
 
   selectHistoricalTransaction: function (event) {
     if (this.data.busy || this.data.historicalLoading) return
-    const row = this.data.historicalCandidates.find(item => item.transactionId === event.currentTarget.dataset.id && !item.stale)
+    const id = event.currentTarget.dataset.id
+    if (this.data.historicalSelection === id) {
+      return this.setData({ historicalSelection: '', historicalSelectionVerified: false })
+    }
+    const row = this.data.historicalCandidates.find(item => item.transactionId === id && !item.stale)
     if (row) this.setData({ historicalSelection: row.transactionId, historicalSelectionVerified: true })
   },
 
@@ -574,7 +594,11 @@ module.exports = {
       token.relationMembers = response.items.filter(member => member.relation)
       const choices = token.relationMembers.map(member => model.relationChoiceView(editorPreview(member.relation.targetEvent), member.relation))
       const patch = { issueRelations: choices, relationPage: response.page, issueRelationsLoading: false }
-      if (token.initialized && !this.data.issueDraft.targetEventId && choices.length === 1 && response.total === 1) patch['issueDraft.targetEventId'] = choices[0].targetEventId
+      if (token.initialized && !this.data.issueDraft.targetEventId && choices.length === 1 && response.total === 1) {
+        patch['issueDraft.targetEventId'] = choices[0].targetEventId
+        patch.issueRefundPending = refundState.pendingAction({ conflict: this.data.currentIssue?.refundSourceConflict,
+          draftLink: true })
+      }
       this.setData(patch); this.updateIssueReadiness()
     } catch (error) { if (pager === this._relationPager && issueCurrent(this, token)) this.setData({ issueRelationsLoading: false, issueRelationsError: errorText(error), issueCanSubmit: false }) }
   },

@@ -1,0 +1,101 @@
+<view class="page-canvas statistics-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
+  <view class="month-switcher">
+    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
+    <picker mode="date" fields="month" value="{{month}}" bindchange="chooseMonth"><text class="month-current money-number">{{monthLabel}}</text></picker>
+    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><chevron-icon size="{{30}}" /></view>
+  </view>
+
+  <view class="summary-strip {{incomeText.length > 12 || expenseText.length > 12 || netText.length > 12 ? 'summary-strip-stacked' : ''}}">
+    <view class="inline-sync summary-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
+    <view class="summary-cell"><text class="summary-label">收入</text><text class="summary-value money-number income-color">{{hasLoaded ? incomeText : '—'}}</text></view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell"><text class="summary-label">支出</text><text class="summary-value money-number expense-color">{{hasLoaded ? expenseText : '—'}}</text></view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell"><text class="summary-label">结余</text><text class="summary-value money-number">{{hasLoaded ? netText : '—'}}</text></view>
+  </view>
+
+  <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看收支统计"><button class="guest-login-button" size="mini" bindtap="promptLogin"><text class="guest-login-label">登录</text></button></ui-state>
+  <skeleton-rows wx:elif="{{!hasLoaded && !errorMessage}}" rows="{{4}}" />
+  <block wx:if="{{hasLoaded}}">
+  <section-header class="stats-section" compact title="收支构成" />
+  <view class="composition-card">
+    <view class="composition-pair">
+      <view class="composition-column">
+      <button class="composition-choice {{categoryKind === 'expense' ? 'composition-selected' : ''}}" data-kind="expense" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'expense' ? '收起支出分类' : '展开支出分类'}}">
+        <text class="band-label">支出</text>
+        <view class="band" aria-hidden="true"><block wx:for="{{expenseCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
+        <ticker-number class="composition-amount expense-color money-number" value="{{expenseText}}" />
+        <text class="composition-toggle">{{categoryKind === 'expense' ? '收起分类' : '展开分类'}}</text>
+      </button>
+      </view>
+      <view class="composition-column">
+      <button class="composition-choice {{categoryKind === 'income' ? 'composition-selected' : ''}}" data-kind="income" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'income' ? '收起收入分类' : '展开收入分类'}}">
+        <text class="band-label">收入</text>
+        <view class="band" aria-hidden="true"><block wx:for="{{incomeCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
+        <ticker-number class="composition-amount income-color money-number" value="{{incomeText}}" />
+        <text class="composition-toggle">{{categoryKind === 'income' ? '收起分类' : '展开分类'}}</text>
+      </button>
+      </view>
+    </view>
+    <view wx:if="{{categoryKind}}" class="composition-details">
+      <text class="composition-detail-title">{{categoryKind === 'expense' ? '支出分类' : '收入分类'}}</text>
+      <block wx:if="{{categoryKind === 'expense' ? expenseCategories.length : incomeCategories.length}}">
+        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-unclassified="{{!item.categoryId}}" data-id="{{item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="button">
+          <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" system-key="{{item.systemKey}}" icon-kind="{{item.categoryId ? '' : 'uncategorized'}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId || item.children.length}}" direction="{{expandedCategoryId === item.categoryId ? 'down' : 'right'}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
+          <view wx:if="{{expandedCategoryId === item.categoryId && item.children.length}}" class="category-breakdown"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="categoryId" class="breakdown-row"><text>{{child.name}}</text><text class="money-number">{{child.amountText}}</text></view></view>
+        </view>
+      </block>
+      <text wx:else class="composition-empty">这个月还没有{{categoryKind === 'expense' ? '支出' : '收入'}}。</text>
+      <text wx:if="{{categoryKind === 'expense' ? charts.expenseRing.hasNegative : charts.incomeRing.hasNegative}}" class="ring-footnote">占比按正净额分类合计计算，退款抵减为负的分类单列。</text>
+    </view>
+  </view>
+
+  <section-header class="stats-section" compact title="近六个月"><view class="chart-legend"><text class="legend-income">收入</text><text class="legend-expense">支出</text></view></section-header>
+  <view class="graph-surface">
+    <view class="trend-selection" wx:if="{{selectedTrend}}">
+      <text class="trend-selected-month">{{selectedTrend.monthLabel}}</text>
+      <view class="trend-selection-values"><view><text class="trend-value-label">收入</text><text class="income-color money-number">{{selectedTrend.incomeText}}</text></view><view><text class="trend-value-label">支出</text><text class="expense-color money-number">{{selectedTrend.expenseText}}</text></view></view>
+    </view>
+    <view class="graph-scale"><text>上限 {{charts.monthlyChart.maxText}}</text><text>下限 {{charts.monthlyChart.minText}}</text></view>
+    <view class="graph-image-wrap"><image class="graph-image" src="{{charts.monthlyChart.src}}" mode="scaleToFill" aria-label="近六个月收支柱状图" />
+      <view class="graph-hit"><view wx:for="{{cashFlowTrend}}" wx:key="month" class="graph-hit-column" bindtap="selectTrend" data-index="{{index}}" aria-role="button" aria-label="{{item.month}}，收入{{item.incomeText}}，支出{{item.expenseText}}"></view></view>
+    </view>
+    <view class="graph-axis"><text wx:for="{{cashFlowTrend}}" wx:key="month" class="{{selectedTrend.month === item.month ? 'axis-month-selected' : ''}}">{{item.monthText}}月</text></view>
+  </view>
+
+  <section-header class="stats-section" compact title="支出日历"><text class="section-note">颜色越深，净支出越多</text></section-header>
+  <view class="graph-surface calendar-surface">
+    <view class="calendar-grid"><text wx:for="{{weekdays}}" wx:key="*this" class="calendar-weekday">{{item}}</text></view>
+    <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : 'heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.date + '净支出' + item.expenseText}}"><text>{{item.dayText}}</text></view></view>
+    <view class="chart-detail"><text wx:if="{{selectedDay}}">{{selectedDay.date}} · 净支出 {{selectedDay.expenseText}}</text><text wx:else>点击日期查看金额；绿色表示当天退款抵减后净支出为负。</text></view>
+  </view>
+
+
+
+
+  </block>
+  <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{categorySheetOpen}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+    <view class="sheet-scrim" bindtap="closeCategoryCompletion"></view>
+    <view class="category-sheet">
+      <view class="sheet-handle"></view>
+      <button class="sheet-close-button" bindtap="closeCategoryCompletion" disabled="{{categorySaving}}" aria-label="关闭分类面板">关闭</button>
+      <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
+      <block wx:if="{{!selectedCategoryGroup}}">
+        <text class="sheet-title serif-title">补全待分类账目</text><text class="sheet-copy">相同来源和交易特征已归为一组，一次选择即可整组补全。</text>
+        <view wx:if="{{categorySheetLoading}}" class="sheet-status">正在整理待分类账目…</view>
+        <view wx:elif="{{categoryGroups.length}}" class="category-group-list">
+          <list-row wx:for="{{categoryGroups}}" wx:key="groupKey" title="{{item.title}}" note="{{item.kindLabel}} · {{item.count}} 笔" divider="{{false}}" data-key="{{item.groupKey}}" bindtap="selectCategoryGroup"><text class="category-group-amount money-number">{{item.amountText}}</text></list-row>
+        </view>
+        <view wx:else class="sheet-empty">这个月的分类已经完整。</view>
+      </block>
+      <block wx:else>
+        <button class="sheet-back" disabled="{{categorySaving}}" bindtap="returnToCategoryGroups">返回待分类账目</button><text class="sheet-kicker">{{selectedCategoryGroup.kindLabel}}分类</text><text class="sheet-title serif-title">{{selectedCategoryGroup.title}}</text><text class="sheet-copy">本组 {{selectedCategoryGroup.count}} 笔，共 {{selectedCategoryGroup.amountText}}</text>
+        <category-picker class="category-picker-control" range="{{categoryOptions}}" value="{{completionCategoryIndex}}" bindchange="selectCompletionCategory" disabled="{{categorySaving}}"><view class="completion-category-trigger">{{completionCategoryIndex >= 0 ? categoryOptions[completionCategoryIndex].name : '选择大类或子类'}}<chevron-icon direction="down" size="{{24}}" /></view></category-picker>
+        <button class="primary-button primary-button-medium sheet-save" disabled="{{!selectedCategoryId || categorySaving}}" loading="{{categorySaving}}" bindtap="saveCategoryCompletion">保存分类</button>
+      </block>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,18 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar title="{{navTitle}}" front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
+<view class="main-shell {{themeClass}}" style="{{themeStyle}}">
+  <view class="shell-panel" hidden="{{activeTab !== 'home'}}"><home-panel wx:if="{{mounted.home}}" id="panel-home" bind:panelready="registerPanel" /></view>
+  <view class="shell-panel" hidden="{{activeTab !== 'transactions'}}"><transactions-panel wx:if="{{mounted.transactions}}" id="panel-transactions" bind:panelready="registerPanel" /></view>
+  <view class="shell-panel" hidden="{{activeTab !== 'statistics'}}"><statistics-panel wx:if="{{mounted.statistics}}" id="panel-statistics" bind:panelready="registerPanel" /></view>
+  <view class="shell-panel" hidden="{{activeTab !== 'profile'}}"><profile-panel wx:if="{{mounted.profile}}" id="panel-profile" bind:panelready="registerPanel" /></view>
+  <main-tabs id="main-tabs" bind:tabchange="switchTab" />
+</view>

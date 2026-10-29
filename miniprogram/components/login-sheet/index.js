@@ -4,16 +4,15 @@ const readCache = require('../../services/read-cache')
 const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
 
-Component({
+Component(themeService.component({
   data: {
     open: false, automatic: false, submitting: false, errorMessage: '',
     avatarUrl: '', nickname: '', nicknameFocused: false, nicknameShake: false,
     nicknameMaxLength: profilePresentation.NICKNAME_MAX_LENGTH,
-    stage: 'loading', themeClass: '', themeStyle: ''
+    stage: 'loading'
   },
 
   lifetimes: {
-    attached: function () { this.setData(themeService.currentPresentation()) },
     ready: function () { return this.startOnLaunch() },
     detached: function () {
       if (this.data.automatic && this.data.open && this._attemptSession === readCache.getSession() && !app.hasLoginApproval()) {
@@ -24,17 +23,22 @@ Component({
   },
 
   pageLifetimes: {
-    show: function () { return this.startOnLaunch() }
+    show: function () { this._pageVisible = true; return this.startOnLaunch() },
+    hide: function () { this._pageVisible = false }
   },
 
   methods: {
     startOnLaunch: function () {
       if (!app.globalData.loginStartupPending || !app.globalData.cloudAvailable) return
-      return this.show({ automatic: true, afterLogin: function () {
-        const pages = getCurrentPages()
-        const page = pages[pages.length - 1]
-        if (page && typeof page.onShow === 'function') page.onShow()
-      } })
+      return this.show({ automatic: true, afterLogin: () => this.notifyLoginChange() })
+    },
+
+    notifyLoginChange: function () {
+      if (this._pageVisible === false || typeof getCurrentPages !== 'function') return
+      const pages = getCurrentPages()
+      const page = pages[pages.length - 1]
+      if (page && typeof page.refreshActivePanel === 'function') page.refreshActivePanel()
+      else if (page && typeof page.onShow === 'function') page.onShow()
     },
 
     show: function (options) {
@@ -55,10 +59,10 @@ Component({
       this._profileRequestId = null
       this._attempt = {}
       this._attemptSession = readCache.getSession()
-      this.setData(Object.assign({}, themeService.currentPresentation(), {
+      this.setData({
         open: true, automatic, submitting: false, errorMessage: '',
         avatarUrl: '', nickname: '', nicknameFocused: false, stage: 'loading'
-      }))
+      })
       // 启动即识别微信账号，已设置资料的用户无需再点击登录或保存。
       return this.identify()
     },
@@ -72,11 +76,7 @@ Component({
       this._profileRequestId = null
       this._loginLoad = null
       this.setData({ open: false, submitting: false, errorMessage: '' })
-      if (typeof getCurrentPages === 'function') {
-        const pages = getCurrentPages()
-        const page = pages[pages.length - 1]
-        if (page && typeof page.onShow === 'function') page.onShow()
-      }
+      this.notifyLoginChange()
     },
 
     captureAttempt: function () {
@@ -195,4 +195,4 @@ Component({
       })
     }
   }
-})
+}))

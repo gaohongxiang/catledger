@@ -1,7 +1,6 @@
 {
   "navigationBarTitleText": "分类管理",
   "enablePullDownRefresh": true,
-  "backgroundColor": "#F8F3EA",
   "usingComponents": {
     "login-sheet": "/components/login-sheet/index",
     "list-row": "/components/list-row/index",

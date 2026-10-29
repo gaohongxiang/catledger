@@ -4,6 +4,7 @@ const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../../miniprogram/services/read-cache')
 const root = path.join(__dirname, '..', '..', 'miniprogram')
 const { pageRoute } = require('./page-routes')
+const { pageDefinition } = require('./page-definitions')
 function runtime(savedStorage, options = {}) {
   let now = 0, balance = '10000'
   const modules = new Map(), calls = [], pages = new Map(), storage = savedStorage || new Map()
@@ -25,7 +26,7 @@ function runtime(savedStorage, options = {}) {
       if (h.deferNavigation) return
       if (h.failNavigation && options.fail) options.fail()
       if (options.complete) options.complete()
-    }, switchTab(options) { h.navigation.push(options.url) }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
+    }, reLaunch(options) { h.navigation.push(options.url); if (options.success) options.success(); if (options.complete) options.complete() }, switchTab(options) { h.navigation.push(options.url) }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
     enableAlertBeforeUnload(options) { h.unloadAlerts.push(options && options.message || '') }, disableAlertBeforeUnload() { h.unloadAlerts.push(false) },
     cloud: { init() {}, callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
@@ -70,7 +71,9 @@ function runtime(savedStorage, options = {}) {
       restore: () => null, ensureResume: async () => null, localDecisions: () => null, clearLocal() {},
       settleLegacy: async view => ({ view }), prepare: async view => view
     }
-    if (filename.includes('/theme/')) return { install() {}, bindPage() {}, bindTabBar() {}, currentPresentation: () => ({}), currentTokens: () => ({ accent: '#000' }) }
+    // 业务测试保留原生命周期；主题集成回归可显式加载真实适配器。
+    if (filename.includes('/theme/') && !options.realTheme) return { install() {}, page: definition => definition, component: definition => definition,
+      initialData: () => ({}), currentPresentation: () => ({}), currentTokens: () => ({ accent: '#000' }) }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
@@ -88,7 +91,8 @@ function runtime(savedStorage, options = {}) {
   h.page = name => {
     if (pages.has(name)) return pages.get(name)
     const route = pageRoute(name)
-    const definition = load(path.join(root, route + '.js'))
+    const themeService = load(path.join(root, 'theme/service.js'))
+    const definition = pageDefinition(root, route, load, { app, api: h.api, themeService, wx })
     const loading = []
     const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), route, getTabBar: () => null,
       setData(patch, callback) { if (Object.hasOwn(patch, 'loading')) loading.push(patch.loading)

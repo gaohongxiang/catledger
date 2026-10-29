@@ -1,5 +1,6 @@
 const { commandResult } = require('../command-result')
 const { importError } = require('../errors')
+const { route, writesLoanPayment } = require('../repayment-policy')
 const { insertAction, selectUpdate } = require('../finance-update-repository')
 const { selectDomainEvents, loadReferenceCatalog, saveEvents } = require('./event-store')
 const { updateMappingMemberVersions, createFollowUpIssues } = require('./issue-store')
@@ -41,7 +42,8 @@ async function prepareRepayment(connection, uid, updateId, event, value, { edito
       const catalog = await loadReferenceCatalog(connection,uid,updateId,[event])
       const asset = catalog.accounts.get(decision.assetAccountId) || catalog.drafts.get(decision.assetAccountId)
       const debt = catalog.accounts.get(decision.liabilityAccountId) || catalog.drafts.get(decision.liabilityAccountId)
-      if (!asset || !debt || !['cash','bank','wallet','other_asset'].includes(asset.type) || debt.type !== 'other_liability') throw importError('VALIDATION_ERROR')
+      // 信用卡和其他负债都可以持有计划；收费项台账跟着计划走，两类账户同一套校验。
+      if (!route(asset, debt)) throw importError('VALIDATION_ERROR')
     }
   }
   const partial = editor && event.fieldSources.editorOverrides?.incompleteRepayment
@@ -85,7 +87,9 @@ async function prepareRepayment(connection, uid, updateId, event, value, { edito
       if (loan.accountId !== decision.liabilityAccountId || !loan.baselineDate || loan.baselinePrincipalMinor == null ||
         event.localAt.slice(0,10) < String(loan.baselineDate).slice(0,10)) throw importError('VALIDATION_ERROR')
       await require('../loan-charge-payments').validate(connection, uid, loan, decision, { paymentDate: event.localAt.slice(0,10) })
-    } else if (decision.chargeAllocations.length || ['interest','fee'].some(key => decision[key+'Treatment'] === 'accrued' && decision[key+'Minor'] !== '0')) {
+    } else if (decision.chargeAllocations.length ||
+      (!writesLoanPayment(decision, debt) && ['interest','fee'].some(key => decision[key+'Treatment'] === 'accrued' && decision[key+'Minor'] !== '0'))) {
+      // 收费项只能随计划冲抵；这次不落付款记录时（信用卡未关联计划），已记金额只计入转账。
       throw importError('LOAN_CHARGE_COVERAGE')
     }
   }

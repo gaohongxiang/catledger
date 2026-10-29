@@ -62,28 +62,39 @@ test('分期归属：真实 MySQL JSON、往返保存、旧事项修复与页签
           updateVersion: (await summary(c)).update.version, eventId, eventVersion: event.version,
           editorVersion: 1, fields: {}, sourceCorrection: { planLabel } })
       }
-      async function pendingGroup(c, pendingCharges = 2) {
+      async function pendingGroup(c, count = 2, expectedIds = null) {
         const pending = await events(c, 'review_pending'), open = await issues(c)
-        assert.equal(pending.length, 4)
+        assert.equal(pending.length, count)
+        assert.ok(pending.every(event => event.installment.component === 'interest' && event.reasonCodes.includes(REASON)))
+        if (expectedIds) assert.deepEqual(pending.map(event => event.eventId).sort(), [...expectedIds].sort())
         assert.equal(open.length, 1)
-        assert.equal(open[0].memberCount, 4)
+        assert.equal(open[0].memberCount, count)
         const cards = presentation.splitInstallmentCards(pending.map(event => presentation.pendingCard(event, false)))
-        assert.equal(cards.length, 2)
+        assert.equal(cards.length, count)
         for (const card of cards) {
-          assert.equal(card.subjects[0].rowRoleKey, 'principal')
-          assert.equal(card.installmentPendingRows.length, pendingCharges)
+          assert.equal(card.subjects.length, 1)
+          assert.equal(card.subjects[0].rowRoleKey, 'interest')
+          assert.equal(card.subjects[0].installmentPending, true)
+          assert.equal(card.installmentPendingCount, undefined)
         }
-        const [members] = await lab.owner.execute(`SELECT e.field_sources_json AS fields, m.sort_order AS position
+        assert.equal(presentation.installmentPendingNote(cards), count === 2 ? '本期利息待归属 2 笔' : '')
+        const [members] = await lab.owner.execute(`SELECT e.event_id AS eventId, e.field_sources_json AS fields, m.sort_order AS position
           FROM catledger_review_issue_members m JOIN catledger_economic_events e
           ON e.uid=m.uid AND e.update_id=m.update_id AND e.event_id=m.object_id
           WHERE m.uid=? AND m.update_id=? AND m.issue_id=? ORDER BY m.sort_order`, [c.uid, c.updateId, open[0].issueId])
         assert.equal(typeof members[0].fields, 'object', '使用 mysql2 默认 JSON 类型，不能模拟成字符串')
-        assert.deepEqual(members.slice(0, 2).map(row => row.fields.installment.component), ['principal', 'principal'])
+        assert.deepEqual(members.map(row => row.fields.installment.component), Array(count).fill('interest'))
+        assert.deepEqual(members.map(row => row.eventId).sort(), pending.map(event => event.eventId).sort())
+        const reviewed = await events(c, 'review_completed')
+        assert.equal(reviewed.filter(event => event.installment.component === 'principal').length, 3,
+          '本金全部留在已核对，不受其他利息归属影响')
         return cards
       }
       async function splitLegacy(c, { closedKey = false } = {}) {
         const open = await issues(c), id = open[0].issueId
-        const charges = (await events(c)).filter(row => row.installment && row.installment.periodNumber === 3 && row.installment.component === 'interest')
+        const current = await events(c)
+        const charges = current.filter(row => row.installment && row.installment.periodNumber === 3 && row.installment.component === 'interest')
+        const principals = current.filter(row => row.installment && row.installment.periodNumber === 3 && row.installment.component === 'principal')
         await lab.owner.execute('DELETE FROM catledger_review_issue_members WHERE uid=? AND issue_id=?', [c.uid, id])
         await lab.owner.execute("UPDATE catledger_review_issues SET status='resolved',blocking=0,member_count=0 WHERE uid=? AND issue_id=?", [c.uid, id])
         if (closedKey) {
@@ -91,24 +102,30 @@ test('分期归属：真实 MySQL JSON、往返保存、旧事项修复与页签
           await lab.owner.execute('UPDATE catledger_review_issues SET issue_key=? WHERE uid=? AND issue_id=?', [key, c.uid, id])
           return
         }
-        for (const charge of charges) {
+        for (const [index, charge] of charges.entries()) {
           const issueId = randomUUID()
           await lab.owner.execute(`INSERT INTO catledger_review_issues
             (uid,issue_id,update_id,issue_key,issue_key_version,issue_type,status,version,blocking,primary_reason_code,member_count,candidate_count,rule_version,reason_codes_json)
-            SELECT uid,?,update_id,?,issue_key_version,issue_type,'open',1,1,primary_reason_code,1,0,rule_version,reason_codes_json
+            SELECT uid,?,update_id,?,issue_key_version,issue_type,'open',1,1,primary_reason_code,2,0,rule_version,reason_codes_json
             FROM catledger_review_issues WHERE uid=? AND issue_id=?`, [issueId, digestParts('synthetic-split', issueId), c.uid, id])
           await lab.owner.execute(`INSERT INTO catledger_review_issue_members
             (uid,member_id,update_id,issue_id,object_type,object_id,object_version,member_role,sort_order)
             VALUES (?,?,?,?,'event',?,?,'subject',0)`, [c.uid, randomUUID(), c.updateId, issueId, charge.eventId, charge.version])
+          // 模拟旧事项把本金与利息捆绑；重新整理必须移除本金成员。
+          const principal = principals[index]
+          await lab.owner.execute(`INSERT INTO catledger_review_issue_members
+            (uid,member_id,update_id,issue_id,object_type,object_id,object_version,member_role,sort_order)
+            VALUES (?,?,?,?,'event',?,?,'subject',1)`, [c.uid, randomUUID(), c.updateId, issueId, principal.eventId, principal.version])
         }
       }
-      await t.test('新批次的待定本息合为两张计划卡，确定归属的本息留在已核对', async () => {
+      await t.test('新批次只有两笔未归属利息待核对，本金和已归属本息留在已核对', async () => {
         const c = await context()
         await pendingGroup(c)
         const reviewed = await events(c, 'review_completed'), cards = presentation.buildReviewedCards(reviewed, { fullEvents: reviewed })
-        assert.equal(cards.length, 1)
-        assert.equal(cards[0].rows.length, 2)
-        assert.equal(cards[0].amountText, '¥153.00')
+        assert.equal(cards.length, 3)
+        assert.deepEqual(cards.map(card => card.rows.length).sort(), [1, 1, 2])
+        assert.equal(cards.find(card => card.rows.length === 2).amountText, '¥153.00')
+        assert.equal(reviewed.length, 4)
       })
       await t.test('拆散的旧事项收拢后更换视图版本，重复整理不写；失败回滚并隔离其他用户', async () => {
         const c = await context(), other = await context()
@@ -145,12 +162,12 @@ test('分期归属：真实 MySQL JSON、往返保存、旧事项修复与页签
         assert.deepEqual(await dump(other, 'catledger_review_issues', 'issue_id'), otherIssues)
         assert.deepEqual(await dump(c, 'catledger_transactions', 'transaction_id'), [])
       })
-      await t.test('两轮指定、取消再指定均保留整组，历史事项键不能阻止恢复', async () => {
+      await t.test('两轮指定逐笔退出、取消逐笔恢复，历史事项键不能阻止待办重建', async () => {
         const c = await context(), beforeAccounts = await dump(c, 'catledger_accounts', 'account_id')
         const charges = (await events(c)).filter(row => row.installment && row.installment.periodNumber === 3 && row.installment.component === 'interest')
         for (let round = 0; round < 2; round++) {
           await assign(c, charges[0].eventId, PLAN_A)
-          await pendingGroup(c, 1)
+          await pendingGroup(c, 1, [charges[1].eventId])
           await assign(c, charges[1].eventId, PLAN_B)
           assert.equal((await events(c, 'review_pending')).length, 0)
           assert.equal((await issues(c)).length, 0)
@@ -159,14 +176,14 @@ test('分期归属：真实 MySQL JSON、往返保存、旧事项修复与页签
           assert.equal(cards.length, 3)
           assert.ok(cards.every(card => card.rows.length === 2))
           await assign(c, charges[0].eventId, null)
-          await pendingGroup(c, 1)
+          await pendingGroup(c, 1, [charges[0].eventId])
           await assign(c, charges[1].eventId, null)
-          await pendingGroup(c)
+          await pendingGroup(c, 2, charges.map(charge => charge.eventId))
         }
         assert.deepEqual(await dump(c, 'catledger_accounts', 'account_id'), beforeAccounts)
         assert.deepEqual(await dump(c, 'catledger_transactions', 'transaction_id'), [])
       })
-      await t.test('旧归属事项已收尾但费用仍待指定时，重新整理可以补齐整组', async () => {
+      await t.test('旧归属事项已收尾但费用仍待指定时，重新整理只补回待归属费用', async () => {
         const c = await context()
         await splitLegacy(c, { closedKey: true })
         const history = (await dump(c, 'catledger_review_issues', 'issue_id')).filter(row => row.primary_reason_code === REASON)

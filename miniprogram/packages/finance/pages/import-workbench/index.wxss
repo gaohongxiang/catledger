@@ -851,24 +851,6 @@ button::after { border: 0; }
 .review-installment-total-label { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 .review-installment-total-amount { color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 600; }
 .review-installment-total-amount.row-expense { color: var(--sem-expense, #b54738); }
-/* 待核对：本期次还没指定归属的利息挂在每张计划卡里，点一笔就把它归到这张卡的计划。
-   本金标题标明计划，卡头保留性质与当前待办，块内只留可直接点的利息行。 */
-.review-attribution-pending { margin-top: var(--layout-space-3); padding: var(--layout-space-3) var(--layout-space-4);
-  border-radius: var(--theme-radius-small); background: var(--ui-accent-soft); }
-.review-attribution-pending .review-pending-row:first-child { margin-top: 0; }
-.review-pending-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: var(--layout-space-2);
-  padding: 10rpx var(--layout-space-3);
-  border-radius: var(--theme-radius-small);
-  background: var(--ui-surface);
-}
-.review-pending-copy { display: flex; flex-direction: column; min-width: 0; }
-.review-pending-title { font-size: var(--font-caption, 26rpx); color: var(--ui-ink); }
-.review-pending-amount { margin-top: 4rpx; font-size: var(--font-caption, 24rpx); color: var(--ui-muted); }
-.review-pending-flag { flex-shrink: 0; margin-left: var(--layout-space-3); font-size: var(--font-caption, 24rpx); color: var(--ui-accent-strong); }
 .review-installment-partial-note {
   display: block;
   padding: 12rpx 20rpx 14rpx;
@@ -901,6 +883,7 @@ button::after { border: 0; }
 .review-batch-list { margin-top: 18rpx; min-height: 384rpx; }
 .review-batch { padding: 0 0 16rpx; }
 .review-batch + .review-batch { margin-top: 4rpx; }
+.review-batch-note { display: block; margin: 0 0 10rpx; padding: 0 4rpx; color: var(--ui-muted); font-size: 24rpx; line-height: 1.5; }
 .review-decision-card {
   width: 100%;
   min-width: 100%;
@@ -1331,6 +1314,7 @@ button::after { border: 0; }
   font-size: var(--font-caption, 24rpx);
   line-height: 1.6;
 }
+.done-section .secondary-button { width: 100%; margin-top: 24rpx; }
 .done-actions { margin-top: var(--layout-space-6); }
 .done-actions button { width: 100%; }
 .done-button { margin-top: 0; }
@@ -2791,7 +2775,7 @@ button::after { border: 0; }
 }
 
 .repayment-ownership { margin: 0 0 16rpx; padding: 0 22rpx 16rpx; border: 1rpx solid var(--ui-line); border-top: 0; border-radius: 0 0 var(--theme-radius-medium, 18rpx) var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
-.review-editor-sheet .repayment-mode-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); box-sizing: border-box; width: 100%; max-width: none; min-height: 88rpx; margin: 0; padding: 16rpx 0; border: 0; border-top: 1rpx solid var(--ui-line); border-radius: 0; background: transparent; line-height: 1.5; text-align: left; }
+.review-editor-sheet .repayment-mode-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); box-sizing: border-box; width: 100%; max-width: none; min-height: 88rpx; margin: 0; padding: 16rpx 0; border: 0; border-top: 1rpx solid var(--ui-line); border-radius: 0; background: transparent; color: var(--ui-ink); line-height: 1.5; text-align: left; }
 .repayment-mode-row::after { border: 0; }
 .repayment-mode-label { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; }
 .repayment-mode-value { display: inline-flex; align-items: center; gap: var(--layout-space-1); color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; }
@@ -2891,17 +2875,6 @@ button::after { border: 0; }
 .duplicate-edit-sheet > .review-sheet-heading,
 .duplicate-edit-sheet > .sheet-copy { flex-shrink: 0; }
 
-/* 性质、金额与来源摘要置前，待补字段保持单一入口；长内容不挤压按钮。 */
-.detail-nature-first { margin-bottom: var(--layout-space-3); padding: 16rpx 22rpx 18rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
-.repayment-summary-card { margin-bottom: 0; border-bottom: 0; border-radius: var(--theme-radius-medium, 18rpx) var(--theme-radius-medium, 18rpx) 0 0; }
-.issue-summary-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4rpx 20rpx; }
-.issue-summary-picker { display: flex; align-items: center; min-width: 0; min-height: 88rpx; }
-.issue-summary-nature { display: inline-flex; align-items: center; gap: 6rpx; min-height: 0; padding: 6rpx 20rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; font-weight: 500; line-height: 1.5; }
-.issue-summary-picker .issue-summary-nature { min-height: 0; }
-.issue-summary-amount { min-width: 0; margin-left: auto; color: var(--ui-ink); font-size: var(--font-title, 40rpx); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
-.issue-summary-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6rpx 18rpx; margin-top: 6rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
-.issue-summary-party { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.issue-summary-time { flex: 0 0 auto; margin-left: auto; }
 .transaction-detail-fields { margin-bottom: var(--layout-space-3); }
 .detail-fact-row { box-sizing: border-box; min-height: 72rpx; align-items: center; gap: var(--layout-space-4); padding: 16rpx 0; }
 .detail-fact-row .mapping-label { flex: 0 0 164rpx; }

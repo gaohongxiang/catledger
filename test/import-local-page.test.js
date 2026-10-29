@@ -74,11 +74,12 @@ test('本地真实 Page 贷款目录、费用分配和本息费编辑不补读�
   const h=await localWorkbench(t,value),page=h.page,id=value.events[0].eventId
   h.local.call('financeUpdates.setReview',{eventId:id,editorVersion:1,fields:{economicNature:'repayment',counterpartyLedgerAccountId:value.accounts[2].accountId,amountMinor:'10000'}})
   page.applyUpdateView(h.local.view);await page.setStep({currentStep:3});await page.openReviewEdit(tap({id}))
-  page.changeEditorMode(tap({field:'repaymentMode',value:'loan'}))
+  page.toggleRepaymentDetails()
   page.changeEditorMode(tap({field:'loanMode',value:'associate'}))
   assert.equal(page.selectEditorDirectory(value.loans[0],'editorLoan'),true,page.data.reviewEditSheet.error)
   text(page,'principalInput','92');text(page,'interestInput','8');text(page,'feeInput','0')
-  page.changeEditorMode(tap({field:'interestTreatment',value:'accrued'}))
+  // 没保存过时默认“没记过，记一笔”；三选一里直接点“记过，只冲抵”。
+  page.setEditorTreatment(tap({field:'interestTreatment',value:'accrued'}))
   await page.loadEditorCharges()
   assert.equal(page.data.reviewEditSheet.chargeChoices.length,1,page.data.reviewEditSheet.chargeError)
   page.selectEditorCharge(tap({id:chargeId}))
@@ -111,13 +112,95 @@ test('本地真实 Page 分期归属选择、清除和整组状态更新不补�
   await page.setStep({currentStep:3});await page.openReviewEdit(tap({id}))
   assert.equal(page._reviewEditToken.view.attribution.plans.length,2)
   page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  // 可选单选：再点已选中的计划即取消归属，回到待核对。
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  assert.equal(page.data.reviewEditSheet.draft.planLabel, '')
+  assert.equal(page.data.reviewEditSheet.editor.attribution.required, true)
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
   await page.saveReviewEdit()
   assert.equal(h.local.model.events.get(id).fieldSources.editorOverrides.sourceCorrection.planLabel,'电销现分按月收12期',page.data.reviewEditSheet?.error)
   assert.equal(h.local.model.events.get(id).reasonCodes.includes('installment_attribution_required'),false)
-  await page.openReviewEdit(tap({id}));page.clearEditorInstallmentPlan();await page.saveReviewEdit()
+  await page.openReviewEdit(tap({id}));page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}));await page.saveReviewEdit()
   assert.equal(h.local.model.events.get(id).fieldSources.editorOverrides.sourceCorrection.planLabel,undefined)
   assert.equal(h.local.model.events.get(id).reasonCodes.includes('installment_attribution_required'),true)
   assert.equal(h.network.length,0)
+})
+
+test('真实 Page：待归属利息独立成卡，本金确定后不再陪等',async t=>{
+  const value=await facts({count:4})
+  const labels=['电销总账分月12期第12期共12期','电销现分按月收12期第12期共12期','分期付款利息第12期共12期','分期付款利息第12期共12期']
+  value.events.forEach((event,index)=>{
+    const principal=index<2
+    Object.assign(event,{economicNature:principal?'repayment':'fee',flowDirection:principal?'neutral':'outflow',
+      ledgerAccountId:value.accounts[1].accountId,categoryId:principal?null:value.categories[0].categoryId,
+      status:'ready',reasonCodes:[],accountGroupingKey:'synthetic-bank|6106',
+      display:{item:labels[index],counterparty:'',sourceNote:''},
+      primaryEvidence:{...event.primaryEvidence,item:labels[index],sourceType:'bank'},
+      fieldSources:{installment:{schema:2,creditStatement:true,factKind:'billing',component:principal?'principal':'interest',
+        periodNumber:12,totalTerms:12,originKind:'unconfirmed',referenceKey:null,referenceLabel:null}}})
+  })
+  const planner=require('../cloudfunctions/catledger-import/src/organizer-planner')
+  planner.applyInstallmentAttribution(value.events)
+  const planned=planner.buildReviewIssues(value.update.updateId,value.events,[],[],randomUUID)
+  value.issues=planned.issues.map(issue=>({...issue,subjectEventIds:planned.members.filter(row=>row.issueId===issue.issueId&&row.objectType==='event').map(row=>row.objectId)}))
+  value.members=planned.members
+  const h=await localWorkbench(t,value),page=h.page
+  await page.setStep({currentStep:3})
+  const principalIds=value.events.slice(0,2).map(event=>event.eventId), interestIds=value.events.slice(2).map(event=>event.eventId)
+  // 本金已经确定：不再挂在待核对里陪着等利息，直接回已核对。
+  const cards=(page.data.reviewGroups||[]).flatMap(group=>group.issues||[])
+  assert.equal(cards.some(card=>(card.subjects||[]).some(row=>principalIds.includes(row.eventId))),false)
+  // 待核对只剩两笔没归属的利息，各是一张卡；点它就能选归到哪笔本金。
+  assert.equal(cards.length,2)
+  assert.equal(cards.every(card=>card.subjects.length===1&&card.subjects[0].rowRoleKey==='interest'),true)
+  await page.openReviewEdit(tap({id:interestIds[0]}))
+  assert.equal(page.data.reviewEditSheet.editor.attribution.role,'charge',page.data.reviewEditSheet.error)
+  assert.equal(page.data.reviewEditSheet.editor.attribution.plans.length,2)
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  await page.saveReviewEdit()
+  await h.flush()
+  const assigned=h.local.model.events.get(interestIds[0])
+  assert.equal(assigned.fieldSources.editorOverrides.sourceCorrection.planLabel,'电销现分按月收12期')
+  assert.equal(assigned.reasonCodes.includes('installment_attribution_required'),false)
+  // 另一笔还没定：待核对只剩它一条，本金始终不需要人来核对。
+  for(const id of principalIds)assert.equal(h.local.model.events.get(id).status,'ready')
+  const openIssues=[...h.local.model.issues.values()].filter(issue=>issue.status==='open')
+  assert.equal(openIssues.length,1)
+  assert.deepEqual(openIssues[0].subjectEventIds||[],[interestIds[1]])
+  assert.equal(h.network.length,0)
+})
+
+test('真实 Page：只指定一笔时另一笔仍在待核对，本金早已进已核对',async t=>{
+  const value=await facts({count:4})
+  const labels=['电销总账分月12期第12期共12期','电销现分按月收12期第12期共12期','分期付款利息第12期共12期','分期付款利息第12期共12期']
+  value.events.forEach((event,index)=>{
+    const principal=index<2
+    Object.assign(event,{economicNature:principal?'repayment':'fee',flowDirection:principal?'neutral':'outflow',
+      ledgerAccountId:value.accounts[1].accountId,categoryId:principal?null:value.categories[0].categoryId,
+      status:'ready',reasonCodes:[],accountGroupingKey:'synthetic-bank|6106',
+      display:{item:labels[index],counterparty:'',sourceNote:''},
+      primaryEvidence:{...event.primaryEvidence,item:labels[index],sourceType:'bank'},
+      fieldSources:{installment:{schema:2,creditStatement:true,factKind:'billing',component:principal?'principal':'interest',
+        periodNumber:12,totalTerms:12,originKind:'unconfirmed',referenceKey:null,referenceLabel:null}}})
+  })
+  const planner=require('../cloudfunctions/catledger-import/src/organizer-planner')
+  planner.applyInstallmentAttribution(value.events)
+  const planned=planner.buildReviewIssues(value.update.updateId,value.events,[],[],randomUUID)
+  value.issues=planned.issues.map(issue=>({...issue,subjectEventIds:planned.members.filter(row=>row.issueId===issue.issueId&&row.objectType==='event').map(row=>row.objectId)}))
+  value.members=planned.members
+  const h=await localWorkbench(t,value),page=h.page
+  await page.setStep({currentStep:3})
+  const principalIds=value.events.slice(0,2).map(event=>event.eventId), interestIds=value.events.slice(2).map(event=>event.eventId)
+  await page.openReviewEdit(tap({id:interestIds[0]}))
+  page.selectEditorInstallmentPlan(tap({plan:'电销总账分月12期'}))
+  await page.saveReviewEdit()
+  await h.flush()
+  // 指定成功：这笔不再待归属，另一笔仍是待核对里唯一的事；两笔本金一直都不在待核对。
+  assert.equal(h.local.model.events.get(interestIds[0]).reasonCodes.includes('installment_attribution_required'),false)
+  for(const id of principalIds)assert.equal(h.local.model.events.get(id).status,'ready')
+  const openIssues=[...h.local.model.issues.values()].filter(issue=>issue.status==='open'&&issue.primaryReasonCode==='installment_attribution_required')
+  assert.equal(openIssues.length,1)
+  assert.deepEqual(openIssues[0].subjectEventIds||[],[interestIds[1]])
 })
 
 test('完整草稿真实 Page：本批与原消费都在本机，退款候选读取零网络',async t=>{

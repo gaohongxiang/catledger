@@ -2,13 +2,14 @@ const api = require('../../../../services/catledger-import')
 const cache = require('../../../../services/read-cache')
 const pending = require('../../../../services/pending-ledger-write')
 const presentation = require('./presentation')
-const { record, errorText, sourceCaption, refundCandidateView, canChangeJudgment } = presentation
+const { record, errorText, sourceCaption, refundCandidateView, canChangeJudgment, groupReviewAction } = presentation
 const model = require('./review-editor-model')
 const { readDetail } = require('./detail-reader')
 const { previewFields } = require('./inline-evidence')
 const { setChangedData } = require('../../services/view-patch')
 const ACTION = 'financeUpdates.setReview'
-const TEXT_FIELDS = new Set(['amountInput','date','time','counterparty','note','evidenceNote','principalInput','interestInput','feeInput','periodInput','totalTermsInput'])
+// 账单事实（金额、日期、时间、交易对方）只读：核对页只接受用户自己的记账决定，不接受旧控件事件改写原文。
+const TEXT_FIELDS = new Set(['note','evidenceNote','principalInput','interestInput','feeInput','periodInput','totalTermsInput'])
 function current(page, token) {
   return Boolean(token && page._viewActive && page._reviewEditToken === token && page.data.reviewEditSheet &&
     page._viewEpoch === token.epoch && page._viewSession === token.session && cache.getSession() === token.scope && getApp().hasLoginApproval())
@@ -19,38 +20,64 @@ function editable(page, token) {
     token.row.editorFacts?.version === 1 && !token.row.editorFacts.readonly &&
     !sheet.stale && !sheet.loading && !sheet.saving && !sheet.pending && !sheet.saved
 }
+// 本次草稿里勾选、且仍属于“本期未归属”的利息。已保存或已经离开候选的行不重复写。
+// 归属改动有两类：把未归属的勾给本卡，和把已归到本卡的取消掉。两者都要逐笔写回。
+function pendingAttributionChanges(token) {
+  if (!token || token.view?.attribution?.role !== 'principal') return { assign: [], clear: [] }
+  const ids = new Set((token.view.attribution.pending || []).map(item => item.eventId))
+  const pick = set => [...(set || [])].filter(id => ids.has(id))
+  return { assign: pick(token.attributionSelections), clear: pick(token.attributionClears) }
+}
 function packetFor(page, eventId) {
   const packet = pending.pending()
   return packet && packet.target === 'import' && packet.action === ACTION && page.data.update &&
     packet.payload.updateId === page.data.update.updateId && (!eventId || packet.payload.eventId === eventId) ? packet : null
 }
 function refresh(page) {
-  const token = page._reviewEditToken
+  const token = page._reviewEditToken, sheet = page.data.reviewEditSheet || {}
   const view = token.view = model.derive(token.row, token.draft, { accounts: [...token.accounts.values()],
-    categories: [...token.categories.values()], siblings: token.siblings || [] })
+    categories: [...token.categories.values()], siblings: token.siblings || [],
+    // 本金编辑器里的未归属利息是可勾选候选；勾选只存在草稿里，保存时才逐笔写回。
+    pendingSelections: token.attributionSelections || new Set(),
+    // 已归到本卡的利息点一下取消归属：取消也只在草稿里，保存时才写回。
+    pendingClears: token.attributionClears || new Set(),
+    // 状态文案和暂记动作由模型统一派生，模板不再自己拼条件。候选数量只用于区分
+    // “还有候选可选”和“当前没有候选项”，不决定暂记能不能点。
+    refundCandidateCount: (sheet.refundChoices || []).length, refundStale: Boolean(sheet.refundStale) })
   const labels = view.accountFields
   const { payload, ...visibleEditor } = view
   const { dirty, dormant, acknowledgedChanges, ...visibleDraft } = token.draft
-  setChangedData(page, { reviewEditSheet: { ...page.data.reviewEditSheet, draft: visibleDraft, editor: visibleEditor,
+  setChangedData(page, { reviewEditSheet: { ...sheet, draft: visibleDraft, editor: visibleEditor,
     economicNature: token.draft.economicNature,
     ledgerAccountId: token.draft.ledgerAccountId, counterpartyLedgerAccountId: token.draft.counterpartyLedgerAccountId,
     accountLabel: labels.find(field => field.key === 'account')?.label || '资金账户',
     destinationLabel: labels.find(field => field.key === 'counterparty')?.label || '资金账户',
-    accountFields: labels, hasDestination: labels.length === 2,
-    canSave: view.canSave, error: '' } })
+    accountFields: labels, hasDestination: labels.length === 2, refundClosed: Boolean(view.refundConflict),
+    attributionSelected: Boolean(
+      (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)),
+    canSave: view.canSave || Boolean(
+      (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)), error: '' } })
 }
 function update(page, key, value) {
   const token = page._reviewEditToken
   if (!editable(page, token)) return
   const next = model.change(token.row, token.draft, key, value)
   if (next === token.draft) return
+  // 本金字段和利息归属共用一个保存动作；本金字段真的改了才清掉勾选，
+  // 避免保存时只写归属、漏掉本金改动。
+  if (token.attributionSelections && token.attributionSelections.size) token.attributionSelections.clear()
+  if (token.attributionClears && token.attributionClears.size) token.attributionClears.clear()
   token.draft = next; token.editVersion = (token.editVersion || 0) + 1
-  if (['economicNature','amountInput','date','time','ledgerAccountId','counterpartyLedgerAccountId'].includes(key)) {
-    token.refundEpoch = (token.refundEpoch || 0) + 1; token.refundChecked = {}; token.refundOptions = []; token.refundCursor = null
+  if (['economicNature','ledgerAccountId','counterpartyLedgerAccountId'].includes(key)) {
+    token.refundEpoch = (token.refundEpoch || 0) + 1; token.refundOptions = []; token.refundCursor = null
     token.draft.refund = null
-    page.setData({ 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundCanPending': false, 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundError': '' })
+    // 金额、时间和对方是只读账单事实；性质或收款账户一改，候选就必须重新核对，
+    // 不能继续显示旧候选或空态，否则“本批没有能退这笔的消费”会变成一句假话。
+    page.setData({ 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundLoading': false,
+      'reviewEditSheet.refundStale': true, 'reviewEditSheet.refundTotal': null,
+      'reviewEditSheet.refundError': '', 'reviewEditSheet.refundHistoryPending': false })
   }
-  if (['loanId','loanMode','repaymentMode','owner','economicNature'].includes(key)) {
+  if (['loanId','loanMode','owner','economicNature'].includes(key) || key === 'repaymentDetails' && !next.repaymentDetails) {
     token.chargeEpoch = (token.chargeEpoch || 0) + 1
     if (key === 'loanId') { token.charges.clear(); token.chargeCursor = null; token.draft.chargeAllocations = [] }
     page.setData({ 'reviewEditSheet.chargeLoading': false, 'reviewEditSheet.chargeError': '', 'reviewEditSheet.chargeChoices': [], 'reviewEditSheet.chargeMore': false })
@@ -98,12 +125,20 @@ module.exports = {
       this.data.reviewEditSheet?.saving || this.data.update.status !== 'review') return
     const token = this._reviewEditToken = { session: this._viewSession, scope: cache.getSession(), epoch: this._viewEpoch,
       version: this._viewSession.summary.viewVersion, eventId, updateVersion: this.data.update.version,
-      accounts: new Map(), categories: new Map(), charges: new Map(), sourceCount: 0, evidenceSources: [], focusIssueId: event.currentTarget.dataset.focusIssueId || '' }
+      accounts: new Map(), categories: new Map(), charges: new Map(), sourceCount: 0, evidenceSources: [],
+      // 本金编辑器里勾选的利息只在本机草稿里，保存时才逐笔写回，和退款候选的选择语义一致。
+      attributionSelections: new Set(),
+      // 已归到本卡的利息被点掉时记在这里，保存时清空那笔的归属。
+      attributionClears: new Set(),
+      focusIssueId: event.currentTarget.dataset.focusIssueId || '' }
     this.setData({ reviewEditSheet: { eventId, record: null, loading: true, saving: false, pending: false,
-      saved: false, stale: false, canSave: false, error: '', detailsExpanded: false,
+      saved: false, stale: false, canSave: false, error: '',
+      natureOpen: false, natureHint: '',
       suggestionLoading: false, suggestionError: '', suggestionMore: false,
       sources: [], evidenceLoading: true, evidenceError: '', moreEvidence: false,
-      chargeChoices: [], chargeLoading: false, chargeError: '', chargeMore: false, refundChoices: [], refundKind: 'event', refundLoading: false, refundError: '', refundTotal: null } })
+      chargeChoices: [], chargeLoading: false, chargeError: '', chargeMore: false,
+      refundChoices: [], refundKind: 'event', refundLoading: false, refundError: '', refundTotal: null,
+      refundStale: false, refundHistoryPending: false } })
     try {
       const verified = this._reviewDetailToken
       const row = verified?.eventId === eventId && verified.version === token.version && verified.row ||
@@ -112,30 +147,30 @@ module.exports = {
       if (!row || !['ready', 'needs_action'].includes(row.status)) throw Error('交易已变化，请返回刷新列表')
       token.row = row
       // 同组行只在打开时取一次：分期归属区据此列出本期次还没指定归属的利息。
-      token.siblings = (this._businessData && this._businessData.events || []).map(record)
+      const siblingRows = this._businessData && this._businessData.events || []
+      token.siblings = siblingRows.map(record)
+      // 保存勾选时要用原事件版本逐笔写回；展示投影不带 version，这里保留一份原始行。
+      token.siblingRows = new Map(siblingRows.map(row => [row.eventId, row]))
       const packet = packetFor(this, eventId)
       token.payload = packet && packet.payload
       token.draft = packet ? model.restore(row, packet.payload) : model.create(row)
       for (const item of [].concat(this.data.accounts || [], this.data.accountDrafts || [], row.detailFacts?.accounts || [])) token.accounts.set(item.accountId, item)
       for (const item of [].concat(this.data.categories || [], row.detailFacts?.categories || [])) token.categories.set(item.categoryId, item)
       if (row.categoryId && row.categoryName) token.categories.set(row.categoryId, { categoryId: row.categoryId, name: row.categoryName, kind: model.categoryKind(row.economicNature) })
+      // 多来源合成、（重复页签的）记录都能改同笔判断；不能只看是不是还款渠道。
+      const judgmentEditable = this.data.update.status === 'review' && Boolean(
+        (this.data.duplicateReviewEvents || []).some(item => item.eventId === eventId) ||
+        canChangeJudgment(row) || row && row.repaymentChannel)
+      // 同笔判断已经由底部“修改同笔判断”承接，不再在来源区重复一个入口。
+      const groupAction = groupReviewAction(row.pendingIssue, judgmentEditable)
       this.setData({ 'reviewEditSheet.record': record(row), 'reviewEditSheet.loading': false,
         'reviewEditSheet.pending': Boolean(packet), 'reviewEditSheet.issue': row.pendingIssue || null,
-        'reviewEditSheet.groupReview': Boolean(row.pendingIssue && (['same_event','identity_conflict','field_conflict','installment_origin'].includes(row.pendingIssue.issueType) ||
-          ['row_status_unknown','transaction_status_unknown','source_profile_unknown','identity_review_required','row_semantic_conflict','refund_source_conflict','account_mapping_conflict'].includes(row.pendingIssue.primaryReasonCode))),
+        'reviewEditSheet.groupAction': groupAction,
         'reviewEditSheet.attention': (row.reviewAttention?.steps || []).filter(step => row.status !== 'ready' || step.key !== 'review'),
         'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }),
-        // 多来源合成、（重复页签的）记录都能改同笔判断；不能只看是不是还款渠道。
-        'reviewEditSheet.refundClosed': Boolean((this.data.reviewEditSheet.editor || {}).refundConflict),
-        'reviewEditSheet.judgmentEditable': this.data.update.status === 'review' && Boolean(
-          (this.data.duplicateReviewEvents || []).some(item => item.eventId === eventId) ||
-          canChangeJudgment(row) || row && row.repaymentChannel) })
+        'reviewEditSheet.judgmentEditable': judgmentEditable })
       refresh(this)
-      // 从待核对卡的“归入本计划”进来时把归属预选成那张卡的计划：用户看到的就是这笔费用要归到哪，
-      // 关系仍要点保存才成立——归属会改写这笔费用的解读，不能靠一次误触生效。
-      const preset = event.currentTarget.dataset.planLabel
-      if (preset && (token.view.attribution?.plans || []).some(item => item.planName === preset)) update(this, 'planLabel', preset)
       if (packet) this.setData({ 'reviewEditSheet.canSave': true })
       token.suggestionRead = this.loadEditorSuggestions()
       token.evidenceRead = evidence(this, token)
@@ -144,31 +179,31 @@ module.exports = {
       if (token.view.refund && editable(this, token)) token.refundRead = this.loadEditorRefunds({ currentTarget: { dataset: {} } })
     } catch (error) { if (current(this, token)) this.setData({ 'reviewEditSheet.loading': false, 'reviewEditSheet.error': errorText(error) }) }
   },
-  // 待核对计划卡里的“归入本计划”：打开这笔利息的编辑器并把归属预选成这张卡的计划。
-  assignPendingInterest(event) {
-    const data = event.currentTarget.dataset
-    if (!data.id || !data.plan || this.data.busy) return
-    return this.openReviewEdit({ currentTarget: { dataset: { id: data.id, focusIssueId: data.issueId || '', planLabel: data.plan } } })
-  },
-  // 本金编辑器里的“归入本计划”：先保存本笔的改动，再打开那笔利息并把归属预选成本计划。
-  openEditorPendingInterest(event) {
+  // 本金编辑器里的未归属利息是可选候选：点一下勾选，再点取消，保存时逐笔归到本计划。
+  toggleEditorPendingInterest(event) {
     const token = this._reviewEditToken
-    const data = event.currentTarget.dataset
-    if (!current(this, token) || !data.id || !data.plan || this.data.reviewEditSheet.saving) return
+    if (!current(this, token) || !editable(this, token)) return
     if (Object.keys(token.draft.dirty).length) {
-      this.setData({ 'reviewEditSheet.error': '请先保存本笔修改，再指定利息归属；归属不会顺带保存本笔字段' })
+      this.setData({ 'reviewEditSheet.error': '请先保存本笔修改，再选择利息归属' })
       return
     }
-    this.closeReviewEdit()
-    return this.assignPendingInterest({ currentTarget: { dataset: { id: data.id, plan: data.plan } } })
+    const id = String(event.currentTarget.dataset.id || '')
+    const item = (token.view?.attribution?.pending || []).find(row => row.eventId === id)
+    // 已归到别的本金的利息只作展示：点它不生效，改归属要去那笔利息所在的卡里取消。
+    if (!item || item.disabled) return
+    const selections = token.attributionSelections || (token.attributionSelections = new Set())
+    const clears = token.attributionClears || (token.attributionClears = new Set())
+    if (item.mine) {
+      // 已归到本卡：点一下＝取消归属，保存后这笔回到本期待指定。
+      if (clears.has(id)) clears.delete(id)
+      else clears.add(id)
+    } else if (selections.has(id)) selections.delete(id)
+    else selections.add(id)
+    refresh(this)
   },
   changeEditorText(event) {
     const key = event.currentTarget.dataset.field
     if (TEXT_FIELDS.has(key)) update(this, key, String(event.detail.value))
-  },
-  toggleEditorDetails() {
-    if (!current(this, this._reviewEditToken) || this.data.reviewEditSheet.saving) return
-    this.setData({ 'reviewEditSheet.detailsExpanded': !this.data.reviewEditSheet.detailsExpanded })
   },
   async loadEditorSuggestions(event) {
     const token = this._reviewEditToken
@@ -203,41 +238,77 @@ module.exports = {
     const account = suggestion?.candidates.find(item => item.accountId === event.currentTarget.dataset.id)
     if (account) this.selectEditorDirectory(account, suggestion.target)
   },
+  // 性质是这张表单的模式：独立一行打开列表，选完立即重建下面全部区域。
+  // 分期本金默认“分期出账”，可改判为支出、收入、手续费或待确认；分期利息和手续费由来源确定，只读。
+  openNatureSheet() {
+    const token = this._reviewEditToken
+    if (!editable(this, token) || !token.view?.natureEditable) return
+    const draft = token.draft, resets = [], hints = []
+    if (token.view.principal) hints.push('本金行改判为支出、收入或手续费后会按实际流水入账；同一笔消费已入账时不要重复选择。')
+    if (draft.refund) resets.push('退款原消费')
+    if ((draft.chargeAllocations || []).length) resets.push('费用分配')
+    if (token.attributionSelections && token.attributionSelections.size) resets.push('利息归属')
+    if (resets.length) hints.push('切换会清空已选的' + resets.join('、') + '，需要的话重新选一次。')
+    this.setData({ 'reviewEditSheet.natureOpen': true, 'reviewEditSheet.natureHint': hints.join(' ') })
+  },
+  closeNatureSheet() {
+    if (this.data.reviewEditSheet?.natureOpen) this.setData({ 'reviewEditSheet.natureOpen': false, 'reviewEditSheet.natureHint': '' })
+  },
+  selectEditorNature(event) {
+    const index = Number(event.currentTarget.dataset.index)
+    const options = this.data.reviewEditSheet?.editor?.natureOptions || []
+    if (!Number.isInteger(index) || !options[index]) return
+    this.changeReviewedNature({ detail: { value: index } })
+    this.closeNatureSheet()
+  },
   changeReviewedNature(event) {
     const token = this._reviewEditToken
-    if (!editable(this, token)) return
+    if (!editable(this, token) || !token.view?.natureEditable) return
     const option = token.view.natureOptions[Number(event.detail.value)]
     if (!option) return
     this.closeDirectory()
     update(this, 'economicNature', option.value)
-    token.refundEpoch = (token.refundEpoch || 0) + 1
-    this.setData({ 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundLoading': false })
+    // 切到退款是离散动作：立即按新性质读一次候选，不要等用户再点“本批消费”。
+    if (token.view.refund && editable(this, token)) token.refundRead = this.loadEditorRefunds({ currentTarget: { dataset: {} } })
   },
   changeEditorMode(event) {
     const { field, value } = event.currentTarget.dataset
     // 资金结构不再是一个可点的模式：拆开/收起来自账户行的加号与删除，composition 只由 addFundsAccount
     // 和 removeFundsAccount 改写，界面没有直接切换它的入口。
-    const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'], repaymentMode: ['ordinary','loan'],
-      loanMode: ['defer','associate'], interestTreatment: ['expense','accrued'], feeTreatment: ['expense','accrued'],
-      repaymentChannelConfirmed: [true, false] }
+    const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'],
+      loanMode: ['defer','associate'], repaymentChannelConfirmed: [true, false] }
     if (!choices[field]?.includes(value)) return
     const token = this._reviewEditToken
     if (!editable(this, token) || field === 'owner' && value === 'other' && token.draft.composition === 'repayment') return
-    this.closeDirectory(); update(this, field, value)
+    this.closeDirectory()
+    // 可选单选（代还处理方式）允许回到“未选”：再点已选项清空。贷款关联仍是必选，
+    // 点已选项保持幂等，不制造假空值。
+    if (field === 'otherTreatment' && token.draft.otherTreatment === value) return update(this, field, '')
+    update(this, field, value)
+  },
+  // 还款明细是可选的展开区：收起表示“整笔就是还款本金”。已关联计划时收起仍保留整笔关联；
+  // 没关联计划时，收起会解除已有拆分决定。
+  toggleRepaymentDetails() {
+    const token = this._reviewEditToken
+    if (!editable(this, token)) return
+    this.closeDirectory()
+    update(this, 'repaymentDetails', !token.draft.repaymentDetails)
+  },
+  // 处理方式三选一：没记过记一笔／记过只冲抵／待核对。三个选项同时摆出来，点哪个是哪个，
+  // 不再“点一下换一档”让人猜。信用卡的“记过只冲抵”只把金额计入转账，不生成费用；贷款才会关联收费项。
+  setEditorTreatment(event) {
+    const token = this._reviewEditToken, { field, value } = event.currentTarget.dataset
+    if (!editable(this, token) || !['interestTreatment','feeTreatment'].includes(field) || !['expense','accrued',''].includes(value)) return
+    this.closeDirectory()
+    update(this, field, value)
   },
   // 分期费用归属：只能从服务端下发的候选计划里选，避免客户端自造计划名。
+  // 与退款原消费同一条可选单选规则：再点已选中的计划即取消归属，回到待核对。
   selectEditorInstallmentPlan(event) {
     const token = this._reviewEditToken
     if (!editable(this, token)) return
     const plan = (token.view.attribution?.plans || []).find(item => item.planName === event.currentTarget.dataset.plan)
-    if (plan) update(this, 'planLabel', plan.planName)
-  },
-  // 清除人工指定的归属：保存时 sourceCorrection.planLabel 以 null 下发，服务端删键后
-  // 归属退回待定，事件连同所在整组回到待核对。已自动判出的结论不改，用户仍可改选别的计划。
-  clearEditorInstallmentPlan() {
-    const token = this._reviewEditToken
-    if (!editable(this, token)) return
-    update(this, 'planLabel', '')
+    if (plan) update(this, 'planLabel', plan.selected ? '' : plan.planName)
   },
   // 资金路径的账户级操作。加号往当前端点组追加一行账户；composition 只在这里被读写，
   // 模板不再需要知道“组合支付/多个还入”这两个模式名。能否点、是否已在分摊都由视图的
@@ -361,10 +432,13 @@ module.exports = {
     const fingerprint = fingerprintOf()
     const epoch = token.refundEpoch = (token.refundEpoch || 0) + 1
     const active = () => editable(this, token) && token.refundEpoch === epoch && fingerprint === fingerprintOf()
-    token.refundOptions = []
+    // 继续读取更多时保留前面页的完整候选，否则翻页后点上一页的卡片会查不到数据，
+    // 看起来像“这张卡点不动”。重新筛选才从空列表开始。
+    if (!more) token.refundOptions = []
     this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundScope': scope, 'reviewEditSheet.refundLoading': true,
-      'reviewEditSheet.refundError': '',
+      'reviewEditSheet.refundError': '', 'reviewEditSheet.refundStale': false,
       ...(!more ? { 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundMore': false } : {}) })
+    refresh(this)
     try {
       const fields = { amountMinor: model.minor(token.draft.amountInput), occurredLocalAt: token.draft.date + ' ' + token.draft.time,
         timezoneOffsetMinutes: token.row.editorFacts.timezoneOffsetMinutes, ledgerAccountId: token.draft.ledgerAccountId || null }
@@ -380,31 +454,42 @@ module.exports = {
       }
       token.refundCursor = result.nextCursor
       const views = result.items.map(refundCandidateView)
-      token.refundOptions = result.items
-      token.refundChecked = { ...(token.refundChecked || {}), [kind]: result.total }
+      token.refundOptions = more ? (token.refundOptions || []).concat(result.items) : result.items
       const page = more ? (this.data.reviewEditSheet.refundChoices || []).concat(views) : views
       this.setData({ 'reviewEditSheet.refundChoices': page,
         'reviewEditSheet.refundClosedOriginal': kind === 'event' ? (result.closedOriginal || null) : this.data.reviewEditSheet.refundClosedOriginal,
-        // 只有平台编号对得上才算状态四（可“按已退回处理”）；商家单号相同只是提示，
-        // 不能据此把关闭单当成同一订单的退款依据（见退款来源冲突规则）。
-        'reviewEditSheet.refundClosed': Boolean((this.data.reviewEditSheet.editor || {}).refundConflict),
         'reviewEditSheet.refundHistoryPending': kind === 'transaction' ? result.serverReviewPending === true : this.data.reviewEditSheet.refundHistoryPending,
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
-        'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&
-          !token.row.refundSourceConflict && !(token.row.editorFacts.blockingReasons || []).length,
-        'reviewEditSheet.refundLoading': false })
-    } catch (error) { if (active()) this.setData({ 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundError': errorText(error) }) }
+        'reviewEditSheet.refundStale': false, 'reviewEditSheet.refundLoading': false })
+      refresh(this)
+    } catch (error) {
+      if (active()) {
+        this.setData({ 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundError': errorText(error) })
+        refresh(this)
+      }
+    }
   },
   // 原单关闭/失败却退款成功：默认按“已退回”处理——原单保持不入账，这笔退款也不入账，
   // 净额 0；这是明确的业务决定，会写进本批决定里，不是静默丢弃。
   async excludeRefundAsReversed() {
     const token = this._reviewEditToken
     const issue = token && token.row && token.row.pendingIssue
-    if (!editable(this, token) || !issue || issue.issueType !== 'refund_relation') return
+    if (!editable(this, token)) return
+    // 按钮只在原因码带 refund_source_conflict 时出现，但可处理事项可能已被账户等其他
+    // 问题顶到 pendingIssue 之外。这里明说原因，不能再静默返回让按钮看起来点不动。
+    if (!issue || issue.issueType !== 'refund_relation') {
+      this.setData({ 'reviewEditSheet.error': '这笔退款的核对事项已变化，请返回列表刷新后再试' })
+      return
+    }
     const accepted = await new Promise(resolve => wx.showModal({ title: '按已退回处理',
       content: '这笔退款对应的原单在账单里是“交易关闭／失败”。确认后原单和这笔退款都不入账，净额 0，原文仍保留。',
-      confirmText: '按已退回处理', success: resolve, fail: () => resolve({ confirm: false }) }))
-    if (!accepted.confirm || !current(this, token)) return
+      // confirmText 最多 4 个字符；超长时微信直接 fail，弹窗不会出现，看起来就像按钮没反应。
+      confirmText: '确认退回', success: resolve, fail: error => resolve({ confirm: false, error }) }))
+    if (!accepted.confirm) {
+      if (accepted.error && current(this, token)) this.setData({ 'reviewEditSheet.error': '确认窗口没有打开，请再点一次' })
+      return
+    }
+    if (!current(this, token)) return
     try {
       this._draftSession.enqueue([{ kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
         subjectIds: issue.subjectEventIds || [token.eventId],
@@ -415,21 +500,38 @@ module.exports = {
     } catch (error) { this.setData({ 'reviewEditSheet.error': errorText(error) }) }
   },
 
+  // 退款原消费是“可选单选”，不是必须永远有值：再点已选项取消这次选择，回到上一次
+  // 已保存的关联（没有则是未选）。清除已保存关系仍走明确的“清除关联”，不会被一次误触拆掉。
+  // 暂记是否可点只认模型派生的 editor.refundActions.pending，事件层不再自判一遍候选数。
   selectEditorRefund(event) {
     const token = this._reviewEditToken
     if (!editable(this, token)) return
-    if (this.data.reviewEditSheet.refundLoading) return
-    const mode = event.currentTarget.dataset.mode
-    if (mode === 'pending' && this.data.reviewEditSheet.refundCanPending) update(this, 'refund', { mode: 'pending' })
-    else if (mode === 'unlinked') update(this, 'refund', { mode: 'unlinked' })
-    else {
-      const item = token.refundOptions?.find(row => row.id === event.currentTarget.dataset.id)
-      if (item) update(this, 'refund', { mode: 'link', kind: item.kind, id: item.id, version: item.version })
+    const data = event.currentTarget.dataset, draft = token.draft
+    if (data.mode === 'pending') {
+      // 按钮在草稿已暂记时会让位给「取消暂记」；这里仍支持直接再点一次撤销，
+      // 避免资格变化后只剩一个点不动的灰按钮。
+      if (draft.refund?.mode === 'pending') return update(this, 'refund', null)
+      const action = this.data.reviewEditSheet.editor?.refundActions?.pending
+      if (action && action.enabled) update(this, 'refund', { mode: 'pending' })
+      else if (action && action.reason) this.setData({ 'reviewEditSheet.error': action.reason })
+      return
     }
+    if (data.mode === 'clear' || data.mode === 'unlinked') {
+      // 有本次草稿选择时先取消草稿；没有草稿选择才清除已保存关系。
+      if (draft.refund) update(this, 'refund', null)
+      else update(this, 'refund', { mode: 'unlinked' })
+      return
+    }
+    // 候选卡要有当前列表才能选；暂记和撤销不依赖候选读取，不必跟着一起等。
+    if (this.data.reviewEditSheet.refundLoading) return
+    const item = token.refundOptions?.find(row => row.id === data.id)
+    if (!item) return
+    const selected = draft.refund?.mode === 'link' && draft.refund.id === item.id
+    update(this, 'refund', selected ? null : { mode: 'link', kind: item.kind, id: item.id, version: item.version })
   },
   async loadEditorCharges(event) {
     const token = this._reviewEditToken
-    if (!editable(this, token) || !token.view.showLoan || !token.draft.loanId || token.draft.loanMode !== 'associate') return
+    if (!editable(this, token) || !token.view.showLoan || !token.draft.repaymentDetails || !token.draft.loanId || token.draft.loanMode !== 'associate') return
     const loanId = token.draft.loanId, epoch = token.chargeEpoch = (token.chargeEpoch || 0) + 1
     const active = () => editable(this, token) && token.chargeEpoch === epoch && token.draft.loanId === loanId
     this.setData({ 'reviewEditSheet.chargeLoading': true, 'reviewEditSheet.chargeError': '' })
@@ -478,9 +580,11 @@ module.exports = {
   },
   loadEditorEvidence() { const token = this._reviewEditToken; if (current(this, token)) return evidence(this, token) },
   async openEditorIssue() {
-    const token = this._reviewEditToken, issue = this.data.reviewEditSheet?.issue
-    if (!current(this, token) || !issue || Object.keys(token.draft.dirty).length) {
-      if (current(this, token)) this.setData({ 'reviewEditSheet.error': '请先保存当前修改，再核对关系；关系判断不会自动保存本笔字段' })
+    const token = this._reviewEditToken, sheet = this.data.reviewEditSheet, issue = sheet?.issue
+    if (!current(this, token) || !sheet?.groupAction || sheet.saving || sheet.pending) return
+    if (!issue) return
+    if (Object.keys(token.draft.dirty).length) {
+      this.setData({ 'reviewEditSheet.error': '请先保存当前修改，再核对关系；关系判断不会自动保存本笔字段' })
       return
     }
     this.closeReviewEdit()
@@ -538,9 +642,61 @@ module.exports = {
       wx.showToast({ title: token.receipt.event?.status === 'needs_action' ? '已保存，仍有待核对事项' : '本笔修改已保存', icon: 'none' })
     } catch (_) { if (current(this, token)) this.setData({ 'reviewEditSheet.saving': false, 'reviewEditSheet.error': '修改已保存，列表暂未刷新，请重试刷新' }) }
   },
+  async saveEditorAttributions(token, changes) {
+    const planLabel = token.view?.attribution?.planLabel || ''
+    if (changes.assign.length && !planLabel) {
+      this.setData({ 'reviewEditSheet.error': '这笔本金还没有计划名，不能指定利息归属' })
+      return
+    }
+    // 先勾给本卡，再取消已归到本卡的：两件事都是对单笔利息写 planLabel（null 表示清除）。
+    const tasks = changes.assign.map(id => ({ id, planLabel }))
+      .concat(changes.clear.map(id => ({ id, planLabel: null })))
+    this.setData({ 'reviewEditSheet.saving': true, 'reviewEditSheet.error': '' })
+    let updateVersion = token.updateVersion
+    let last = null
+    const done = []
+    try {
+      for (const task of tasks) {
+        const id = task.id
+        const raw = token.siblingRows && token.siblingRows.get(id)
+        if (!raw) throw Object.assign(new Error('这笔利息已变化，请重新打开'), { code: 'CONFLICT' })
+        const result = await pending.send('import', ACTION, {
+          updateId: this.data.update.updateId, updateVersion, eventId: id,
+          eventVersion: raw.version, editorVersion: 1, sourceCorrection: { planLabel: task.planLabel }
+        }, { exact: true, canSend: () => current(this, token) })
+        if (!current(this, token)) return
+        last = result.result
+        updateVersion = last.update.version
+        if (last.event && Number.isInteger(last.event.version)) raw.version = last.event.version
+        // 本组快照同步成这一轮的结果，下一次 refresh 不再按旧归属显示。
+        const sibling = (token.siblings || []).find(row => row.eventId === id)
+        if (sibling) {
+          sibling.installmentPlanLabel = task.planLabel || ''
+          if (sibling.installmentAttribution) sibling.installmentAttribution = { ...sibling.installmentAttribution, planLabel: task.planLabel || '' }
+        }
+        if (token.attributionSelections) token.attributionSelections.delete(id)
+        if (token.attributionClears) token.attributionClears.delete(id)
+        done.push(id)
+      }
+      token.receipt = last ? { update: last.update } : null
+      this.setData({ 'reviewEditSheet.saving': false })
+      return this.refreshReviewEdit()
+    } catch (error) {
+      if (!current(this, token)) return
+      this.setData({ 'reviewEditSheet.saving': false })
+      refresh(this)
+      this.setData({ 'reviewEditSheet.error': done.length
+        ? `已归 ${done.length} 笔，剩余 ${ids.length - done.length} 笔未保存，请重试`
+        : errorText(error) })
+    }
+  },
   async saveReviewEdit() {
     const token = this._reviewEditToken, sheet = this.data.reviewEditSheet
     if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave || !sheet.pending && !editable(this, token)) return
+    // 本金编辑器里勾选的利息是另一笔事件：先逐笔写回归属，再走原来的本笔保存/刷新。
+    // 两件事不混在一个请求里，服务端仍按单笔事务复核；部分失败时保留未保存的勾选。
+    const changes = pendingAttributionChanges(token)
+    if (changes.assign.length || changes.clear.length) return this.saveEditorAttributions(token, changes)
     const editVersion = token.editVersion || 0
     const payload = token.payload || { updateId: this.data.update.updateId, updateVersion: token.updateVersion,
       eventId: token.eventId, eventVersion: token.row.version, ...token.view.payload }

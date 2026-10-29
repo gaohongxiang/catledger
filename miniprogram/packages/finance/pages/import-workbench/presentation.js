@@ -10,7 +10,7 @@ function emptyLists() {
 // 展示层只传模板使用的字段；证据、成员全集与操作版本保留在业务视图。
 function record(event) {
   const view = model.eventView(event), result = {}
-  ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayDetailMeta',
+  ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayTime', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
     'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision',
     'amountMinor', 'rowTitle', 'rowMeta', 'rowSource', 'rowRole', 'rowRoleKey', 'installmentRole',
@@ -48,7 +48,7 @@ function card(issue) {
 function pendingPreview(row) {
   const result = {}
   for (const key of ['eventId', 'displayDate', 'amountText', 'directionClass', 'pairingDecision', 'natureLabel', 'detailRequired',
-    'rowRole', 'rowRoleKey', 'installmentRole', 'installmentPeriod', 'installmentPlan', 'installmentKey',
+    'rowRole', 'rowRoleKey', 'installmentRole',     'installmentPeriod', 'installmentPlan', 'installmentKey',
     'installmentPlanLabel', 'installmentAttribution']) {
     if (row[key] !== undefined) result[key] = row[key]
   }
@@ -147,18 +147,23 @@ function linkGroupRows(cards) {
 }
 
 // 待核对里的分期组：一个本金计划一张卡（与已核对的一计划一卡同一口径），本金行是卡片的入口。
-// 归属没定的利息不属于任何计划，因此不单独占一张卡，而是作为“本期次待指定”的行挂在每张计划卡里：
-// 用户看到的是“这张卡是哪个计划、本期次还有哪几笔利息要挑给它”，点一下就带着这张卡的计划打开那一笔。
-// 全部指定完，整组一起离开待核对，在已核对里按计划合并回一计划一卡。
+// 卡面只展示本卡自己的本金与已归属的费用；归属还没定的利息不属于任何计划，自己单独一张卡，
+// 点它选归到哪笔本金。本金一旦确定就进已核对，不陪等别的利息。
+// 打开本金编辑器仍按本期次列出全部费用，已归到本卡的可以取消，已归到别家的只读。
 // 拆分范围限定在同一个待核对事项内：事项决定这组行要一起被处理，卡片只是它的呈现。
 function splitInstallmentCards(cards) {
   const groups = new Map()
   ;(cards || []).forEach(function (card, index) {
     // 按期次分组，不限定在同一事项内：老批次里本金和利息各是一条单笔事项，
     // 按事项分组会让同一计划的本息永远合不到一张卡——用户看到的就是“本金一张、利息一张”。
-    const key = (card.subjects[0] || {}).installmentKey
+    const first = card.subjects[0] || {}
+    const key = first.installmentKey
     if (!key) return
-    const groupKey = key
+    // 还没归属的费用不属于任何计划：自己成组、保持原卡单独出现，
+    // 用户点它就能选归到哪笔本金；混进期次组会被计划卡顶掉。
+    const open = Boolean(first.rowRoleKey) && first.rowRoleKey !== 'principal' &&
+      !String(first.installmentPlanLabel || '').trim()
+    const groupKey = open ? key + '@' + first.eventId : key
     if (!groups.has(groupKey)) groups.set(groupKey, { index: index, cards: [], rows: [] })
     const group = groups.get(groupKey)
     group.cards.push(card)
@@ -171,15 +176,14 @@ function splitInstallmentCards(cards) {
     // 计划名：本金行取自己的计划，费用行取已确认的归属。归属未定的费用没有计划，只能当候选。
     const planOf = row => String(row.rowRoleKey === 'principal' ? row.installmentPlan || '' : row.installmentPlanLabel || '').trim()
     const buckets = new Map()
-    const pending = []
     group.rows.forEach(function (row) {
       const plan = planOf(row)
-      if (row.rowRoleKey && !plan) return pending.push(row)
+      if (row.rowRoleKey && !plan) return
       if (!plan) return
       if (!buckets.has(plan)) buckets.set(plan, [])
       buckets.get(plan).push(row)
     })
-    // 一个计划也要并成一张卡：本金是入口，本期次的费用挂在同一张卡里，一个计划的本息一眼看完。
+    // 一个计划也要并成一张卡：本金是入口，本期次已归好的费用挂在同一张卡里，一个计划的本息一眼看完。
     // 只有连计划行都没有时才保持原状（费用行自己找不到可挂的本金卡）。
     if (!buckets.size) return
     const plans = []
@@ -197,22 +201,23 @@ function splitInstallmentCards(cards) {
       // 卡的基底取本金所在的那张：卡头点击打开的是本金的待办；没有本金行时才落到首张。
       // 卡头沿用性质与当前待办；计划名已在本金标题中展示，不能覆盖性质。
       const base = group.cards[Math.max(0, group.rows.indexOf(rows[0]))]
+      // 卡面只有本卡的行：本金在前，本卡已归属的费用跟在后面。归属未定的利息自己是一张卡，
+      // 不混进计划卡，也不再往卡头追加“还有几笔”——别的利息归谁跟这张卡无关。
       const card = Object.assign({}, base, {
         eventId: rows[0].eventId,
         installmentKey: rows[0].installmentKey,
         installmentPlan: item.plan,
         subjects: rows,
         scopeCount: rows.length,
-        groupCount: rows.length,
-        ...(pending.length ? { installmentPendingRows: pending.map(row => ({
-          eventId: row.eventId, plan: item.plan, title: row.rowTitle || row.displayTitle || '分期费用',
-          amountText: row.amountText, displayDate: row.displayDate || '' })) } : {})
+        // 计划卡是“一计划一笔决定”：卡里的本息行属于同一个计划，不是几张待判断的独立交易。
+        // 继承事项的成员数会把“同组 4 笔”挂在这张卡上，读起来像要批量处理整组，取消掉。
+        groupCount: undefined
       })
       const list = split.get(group.index) || []
       list.push(card)
       split.set(group.index, list)
     })
-    // 原始卡片不再单独出现：本金与已归利息已经进了各自的计划卡，归属未定的费用挂在卡内。
+    // 本金与本卡已归利息进了各自的计划卡；未归属费用已经单独成组，不会被这里收走。
     group.cards.forEach(function (card) { dropped.add(card) })
   })
   if (!split.size) return cards
@@ -223,6 +228,16 @@ function splitInstallmentCards(cards) {
     else if (!dropped.has(card)) result.push(card)
   })
   return result
+}
+
+// 待核对列表的组标题：本期次还有几笔利息没定归属，是这一组共有的事实。
+// 放在组标题上只说一次；卡头只写「利息待归属」，否则每张卡重复同一句“还有 N 笔”，
+// 读起来像“这张卡要配 N 笔”。只有一笔时不写——那是废话，卡片本身就在。
+function installmentPendingNote(cards) {
+  const pending = (cards || []).filter(function (card) {
+    return (card.subjects || []).some(function (row) { return row.installmentPending })
+  })
+  return pending.length > 1 ? '本期利息待归属 ' + pending.length + ' 笔' : ''
 }
 
 function excludedGroups(events, expanded) {
@@ -263,13 +278,25 @@ function installmentCard(id, plan, rows, options) {
   }
 }
 
+// 卡内行固定「本金在上，费用在下」。顺序不能跟随事件生成顺序：利息行往往先于本金行入库，
+// 直接按原序渲染，用户看到的就是「利息在上、本金在下」，读起来像两笔不相干的账。
+function sortInstallmentRows(rows) {
+  return (rows || []).slice().sort(function (left, right) {
+    return Number(right.rowRoleKey === 'principal') - Number(left.rowRoleKey === 'principal') ||
+      String(left.displayDate || '').localeCompare(String(right.displayDate || '')) ||
+      String(left.eventId).localeCompare(String(right.eventId))
+  })
+}
+
 // 把一个期次组拆成「一计划一卡」。计划名只能从本金摘要取：账单原文的利息行只有期次，
 // 不带计划名，所以利息归属按「人工确认 → 摘要包含计划名 → 本期次唯一本金」的顺序判定，
 // 判不出来就单独成卡说明原因，不按金额或顺序猜。
 function installmentCards(group, whole) {
-  const first = group.rows[0]
+  // 卡头与卡内行都按同一顺序取：本金是这一期的入口，标题也该说本金的计划，而不是先入库的利息摘要。
+  const ordered = sortInstallmentRows(group.rows)
+  const first = ordered[0]
   const firstPlan = first.installmentPlan || first.rowTitle || first.displayTitle
-  if (!whole) return [installmentCard(group.key, firstPlan, group.rows, { complete: false })]
+  if (!whole) return [installmentCard(group.key, firstPlan, ordered, { complete: false })]
   const plans = []
   group.rows.forEach(function (row) {
     if (row.rowRoleKey !== 'principal') return
@@ -295,14 +322,21 @@ function installmentCards(group, whole) {
     orphan.push(row)
   })
   const cards = []
-  buckets.forEach(function (rows, plan) { cards.push(installmentCard(group.key + '|' + plan, plan, rows, {})) })
+  buckets.forEach(function (rows, plan) { cards.push(installmentCard(group.key + '|' + plan, plan, sortInstallmentRows(rows), {})) })
   if (ambiguous.length) {
-    cards.push(installmentCard(group.key + '|?', '利息待归属', ambiguous,
+    cards.push(installmentCard(group.key + '|?', '利息待归属', sortInstallmentRows(ambiguous),
       { noTotal: true, note: '本期次有 ' + plans.length + ' 个分期计划，账单未标明这笔费用属于哪一个。' }))
   }
   if (orphan.length) {
-    cards.push(installmentCard(group.key + '|!', '利息待归属', orphan,
-      { noTotal: true, note: '本期次没有识别到分期本金行，无法判断这笔费用的归属。' }))
+    // 本页只剩费用行，但归属上下文列出了本期次的本金候选：本金没消失，是被分页切到了另一页。
+    // 这种情况既不能说“没有识别到本金”，也不能拿单独的利息算一个“本期合计”给用户。
+    const principalElsewhere = orphan.some(function (row) {
+      const attribution = row.installmentAttribution
+      return Boolean(attribution) && Array.isArray(attribution.plans) && attribution.plans.length > 0
+    })
+    cards.push(installmentCard(group.key + '|!', '利息待归属', sortInstallmentRows(orphan), principalElsewhere
+      ? { noTotal: true, complete: false, note: '本期本金在另一页，翻页后可对照' }
+      : { noTotal: true, note: '本期次没有识别到分期本金行，无法判断这笔费用的归属。' }))
   }
   return cards
 }
@@ -476,6 +510,18 @@ function mergedSourceCount(row) {
 function canChangeJudgment(row, duplicate) {
   return Boolean(duplicate || row && (row.pairingDecision || mergedSourceCount(row) > 1))
 }
+// 单笔编辑器里的“整组关系”入口只服务这两种情况：同笔判断、来源/字段冲突。
+// 分期归属有自己的候选勾选，退款和账户也各有字段区，不能被这个泛化入口截走。
+const GROUP_REVIEW_ACTIONS = Object.freeze({
+  same_event: { label: '核对同笔关系', hint: '这笔可能和另一笔是同一笔交易，避免重复记账' },
+  identity_conflict: { label: '核对来源冲突', hint: '来源编号相同，但记录内容不一致' },
+  field_conflict: { label: '核对字段冲突', hint: '不同来源对同一笔的描述不一致' }
+})
+function groupReviewAction(issue, judgmentEditable) {
+  if (!issue || issue.issueType === 'same_event' && judgmentEditable) return null
+  const action = GROUP_REVIEW_ACTIONS[issue.issueType]
+  return action ? { ...action } : null
+}
 
 function moneyText(minor) {
   if (minor == null || !/^\d+$/u.test(String(minor))) return ''
@@ -532,4 +578,4 @@ function refundCandidateView(item) {
   }
 }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf, mergedSourceCount, canChangeJudgment }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, installmentPendingNote, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf, mergedSourceCount, canChangeJudgment, groupReviewAction }

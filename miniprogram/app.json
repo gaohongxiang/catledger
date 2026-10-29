@@ -1,5 +1,6 @@
 {
   "pages": [
+    "shell/index",
     "pages/index/index",
     "pages/transactions/index",
     "pages/ledger/index",
@@ -40,29 +41,5 @@
     "navigationBarBackgroundColor": "#FAF8F4",
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "招财猫记账本"
-  },
-  "tabBar": {
-    "custom": true,
-    "color": "#746A60",
-    "selectedColor": "#BE5B24",
-    "backgroundColor": "#FFFEFD",
-    "list": [
-      {
-        "pagePath": "pages/index/index",
-        "text": "首页"
-      },
-      {
-        "pagePath": "pages/transactions/index",
-        "text": "明细"
-      },
-      {
-        "pagePath": "pages/statistics/index",
-        "text": "统计"
-      },
-      {
-        "pagePath": "pages/profile/index",
-        "text": "我的"
-      }
-    ]
   }
 }

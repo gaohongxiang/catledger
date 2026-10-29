@@ -72,7 +72,7 @@ test('导入工作台沿用按需登录与主题组件', function () {
   assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
   assert.match(source, /loginGuard\.run/)
   assert.match(source, /loginGuard\.run\(this, this\.openFilePicker\.bind\(this\)\)/)
-  assert.match(source, /themeService\.bindPage/)
+  assert.match(source, /Page\(theme\.page\(/)
   assert.match(markup, /id="page-login-sheet"/)
 })
 
@@ -210,7 +210,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(editorFields, /refund-candidates-head[\s\S]*读取中/)
   assert.match(editorFields, /class="refund-empty"/)
   assert.match(editorFields, /bindtap="selectEditorRefund"/)
-  assert.match(editorFields, /sheet.refundCanPending/)
+  assert.match(editorFields, /editor\.refundActions\.pending/)
   // 退款范围固定成两个并排按钮：本批消费 / 已入账记录，始终可见。
   assert.match(editorFields, /class="refund-scope"/)
   assert.match(editorFields, /data-kind="event" data-scope="matched"/)

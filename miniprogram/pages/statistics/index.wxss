@@ -336,13 +336,27 @@
 .cumulative-total { display: block; padding: 0 12rpx 20rpx; color: var(--theme-accent-strong); font-size: var(--font-title, 40rpx); overflow-wrap: anywhere; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--layout-space-1); }
 .calendar-weekday { text-align: center; color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); line-height: 52rpx; }
-.calendar-cell { display: flex; min-height: 64rpx; align-items: center; justify-content: center; border-radius: var(--theme-radius-small, 12rpx); font-size: var(--font-caption, 24rpx); }
+.calendar-cell { position: relative; display: flex; overflow: hidden; min-height: 64rpx; align-items: center; justify-content: center; border-radius: var(--theme-radius-small, 12rpx); color: var(--theme-ink); font-size: var(--font-caption, 24rpx); }
+.calendar-cell > text { position: relative; z-index: 1; }
 .heat-0 { background: var(--theme-surface-muted); color: var(--theme-text-muted); }
-.heat-1 { background: #f8e6dc; color: #793629; }
-.heat-2 { background: #efc3ad; color: #793629; }
-.heat-3 { background: #d98e70; color: #302019; }
-.heat-4 { background: #b54738; color: #ffffff; }
-.heat-refund { background: #d6e8d7; color: #315c3a; }
+/* 浓淡只靠同一支支出色叠不同透明度，不写死一组热力色。
+   写死的浅色阶在深色主题上就是一片惨白——日历是最容易暴露这点的组件。 */
+.heat-1::before,
+.heat-2::before,
+.heat-3::before,
+.heat-4::before,
+.heat-refund::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--sem-expense);
+  content: '';
+}
+.heat-1::before { opacity: .12; }
+.heat-2::before { opacity: .24; }
+.heat-3::before { opacity: .36; }
+.heat-4::before { opacity: .5; }
+.heat-refund::before { background: var(--sem-income); opacity: .16; }
 .calendar-cell-today { box-shadow: inset 0 0 0 2rpx var(--theme-accent, #be5b24); color: var(--theme-accent-strong, #a34d20); font-weight: 600; }
  .composition-card { background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-xl, 32rpx); padding: 20rpx 24rpx; }
 .composition-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--layout-space-4); }

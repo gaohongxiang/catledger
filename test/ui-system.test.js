@@ -1,13 +1,20 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const { readSource } = require('./helpers/source-files')
 const path = require('node:path')
 const { pageRoute } = require('./helpers/page-routes')
+const { factories } = require('./helpers/page-definitions')
 
 const root = path.join(__dirname, '..')
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), 'utf8')
+  return readSource(path.join(root, relativePath))
+}
+
+function businessMarkup(page) {
+  const route = pageRoute(page)
+  return read('miniprogram/' + (factories[route] ? route.replace(/index$/, 'panel') : route) + '.wxml')
 }
 
 test('全页面暖橘表面与强调色分离，仅首页保留局部渐变', function () {
@@ -48,7 +55,7 @@ test('一级页共享稳定的页面骨架与触控基线', function () {
   assert.doesNotMatch(appStyle, /linear-gradient/)
 
   pages.forEach(function (page) {
-    const markup = read('miniprogram/' + pageRoute(page) + '.wxml')
+    const markup = businessMarkup(page)
     assert.match(markup, /page-canvas/)
   })
 })
@@ -65,7 +72,9 @@ test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', funct
 
   registry.listThemes().forEach(function (item) {
     const theme = registry.getTheme(item.id)
-    assert.equal(theme.tokens.heroStart, theme.tokens.heroEnd)
+    // 卡面渐变只允许出现在深色主题的 hero 上（黑金底需要一道浅浮雕才不发闷）；
+    // 浅色主题的 hero 必须纯色，页面里也不许自己写渐变。
+    if (theme.semanticTone !== 'dark') assert.equal(theme.tokens.heroStart, theme.tokens.heroEnd, item.id + ' 浅色主题的 hero 必须纯色')
     assert.doesNotMatch(theme.tokens.shadowSoft, /\d+rpx\s+\d+rpx\s+0\s/)
     assert.doesNotMatch(theme.tokens.shadowLifted, /\d+rpx\s+\d+rpx\s+0\s/)
   })
@@ -165,8 +174,8 @@ test('最终入账展示财务与相同记录拆分并提供入账后的去向',
 })
 
 test('统计页保留半年趋势与日历，收支同卡且无重复每日柱图', function () {
-  const template = read('miniprogram/pages/statistics/index.wxml')
-  const source = read('miniprogram/pages/statistics/index.js')
+  const template = read('miniprogram/pages/statistics/panel.wxml')
+  const source = read('miniprogram/pages/statistics/page.js')
 
   assert.match(template, /近六个月/)
   assert.doesNotMatch(template, /每日收支|⌄|metric-strip|recent-month/)
@@ -189,9 +198,9 @@ test('统计页保留半年趋势与日历，收支同卡且无重复每日柱�
 })
 
 test('收支构成以彩色分段带为主视觉，环形图退场，当日格子主橙高亮', function () {
-  const template = read('miniprogram/pages/statistics/index.wxml')
+  const template = read('miniprogram/pages/statistics/panel.wxml')
   const style = read('miniprogram/pages/statistics/index.wxss')
-  const source = read('miniprogram/pages/statistics/index.js')
+  const source = read('miniprogram/pages/statistics/page.js')
   const model = read('miniprogram/pages/statistics/model.js')
 
   assert.match(template, /<block wx:for="{{expenseCategories}}"[^>]*>\s*<view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item\.barWidth}}; background: {{item\.bandColor}};/)
@@ -281,7 +290,7 @@ test('账户详情独立页：余额大卡、流水入口、负债贷款区与�
   assert.match(source, /wx\.navigateTo\(\{ url: '\/pages\/account-transactions\/index\?accountId='/)
   assert.match(read('miniprogram/app.json'), /"pages\/account-transactions\/index"/)
   assert.match(read('miniprogram/pages/account-transactions/index.js'), /createTransactionsPage\(true,/)
-  assert.match(read('miniprogram/pages/account-transactions/index.wxml'), /include src="\.\.\/transactions\/index\.wxml"/)
+  assert.match(fs.readFileSync(path.join(root, 'miniprogram/pages/account-transactions/index.wxml'), 'utf8'), /include src="\.\.\/transactions\/content\.wxml"/)
   assert.match(style, /\.ad-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(style, /\.ad-actions \{[^}]*background:\s*var\(--theme-surface/)
   assert.match(style, /\.ad-icon-button \{[^}]*min-height:\s*88rpx|\.ad-icon-button \{[^}]*height:\s*88rpx/)
@@ -322,7 +331,7 @@ test('分类管理与账户详情共用整行查看和渐进式管理动作', fu
 })
 
 test('首页只保留三条最近账目以避免摘要页重心下坠', function () {
-  const homeScript = read('miniprogram/pages/index/index.js')
+  const homeScript = read('miniprogram/pages/index/page.js')
   const homeStyle = read('miniprogram/pages/index/index.wxss')
 
   assert.match(homeScript, /HOME_RECENT_LIMIT\s*=\s*3/)
@@ -331,11 +340,11 @@ test('首页只保留三条最近账目以避免摘要页重心下坠', function
   assert.match(sectionHeaderStyle, /\.sh-title[^}]*font-weight:\s*500/)
   assert.match(homeStyle, /\.timeline-label[^}]*font-weight:\s*400/)
   assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*var\(--font-caption, 24rpx\)/)
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="还没有账目"/)
+  assert.match(read('miniprogram/pages/index/panel.wxml'), /<empty-cat wx:else title="还没有账目"/)
 })
 
 test('首页卡片外沿与文字使用内收的双基线', function () {
-  const template = read('miniprogram/pages/index/index.wxml')
+  const template = read('miniprogram/pages/index/panel.wxml')
   const style = read('miniprogram/pages/index/index.wxss')
 
   assert.match(template, /class="home-header home-content-line"/)
@@ -345,7 +354,7 @@ test('首页卡片外沿与文字使用内收的双基线', function () {
 })
 
 test('首页月度摘要直接展示在净值卡右栏，无数据显示 —', function () {
-  const template = read('miniprogram/pages/index/index.wxml')
+  const template = read('miniprogram/pages/index/panel.wxml')
 
   assert.match(template, /monthIncomeText : '—'/)
   assert.match(template, /monthExpenseText : '—'/)
@@ -353,7 +362,7 @@ test('首页月度摘要直接展示在净值卡右栏，无数据显示 —', f
 })
 
 test('我的页不恢复账户设置或账本设置', function () {
-  const profile = read('miniprogram/pages/profile/index.wxml')
+  const profile = read('miniprogram/pages/profile/panel.wxml')
   assert.doesNotMatch(profile, /账户设置|账本设置/)
   assert.match(profile, /title="主题"/)
   assert.match(profile, /title="数据与隐私"/)
@@ -362,8 +371,8 @@ test('我的页不恢复账户设置或账本设置', function () {
 })
 
 test('首页与我的共用同一个头像展示字段', function () {
-  const home = read('miniprogram/pages/index/index.wxml')
-  const profile = read('miniprogram/pages/profile/index.wxml')
+  const home = read('miniprogram/pages/index/panel.wxml')
+  const profile = read('miniprogram/pages/profile/panel.wxml')
 
   assert.match(home, /class="home-logo" src="\{\{displayAvatarUrl\}\}"/)
   assert.match(profile, /class="profile-logo" src="\{\{displayAvatarUrl\}\}"/)
@@ -371,11 +380,11 @@ test('首页与我的共用同一个头像展示字段', function () {
 })
 
 test('分类瓷贴接入明细、统计、分类管理与记一笔，账户行首使用主题账户图标', function () {
-  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.label\}\}"/)
-  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.categoryId \? item\.name : ''\}\}"/)
+  assert.match(read('miniprogram/pages/transactions/panel.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.label\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/panel.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.categoryId \? item\.name : ''\}\}"/)
   assert.match(read('miniprogram/pages/categories/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.name\}\}"/)
   assert.match(read('miniprogram/pages/transaction-editor/index.wxml'), /<category-tile[^>]*hide-name name="\{\{categories\[categoryIndex\]\.name\}\}"/)
-  assert.doesNotMatch(read('miniprogram/pages/statistics/index.wxml'), /ring-dot/)
+  assert.doesNotMatch(read('miniprogram/pages/statistics/panel.wxml'), /ring-dot/)
 
   const accountsMarkup = read('miniprogram/pages/accounts/index.wxml')
   assert.equal((accountsMarkup.match(/account-type-icon/g) || []).length, 3)
@@ -421,7 +430,7 @@ test('page-head 统一全部页面页头，徽章按需只留真实业务上下�
   assert.match(read('miniprogram/components/page-head/index.wxml'), /wx:if="\{\{badge\}\}"/)
   assert.match(read('miniprogram/components/page-head/index.wxss'), /\.ph-plain \.ph-top/)
   ;['index', 'statistics', 'data-privacy'].forEach(function (page) {
-    const markup = read('miniprogram/' + pageRoute(page) + '.wxml')
+    const markup = businessMarkup(page)
     const headers = markup.match(/<section-header[^>]*>/g) || []
     assert.ok(headers.length > 0, page + ' 应保留页内小节')
     headers.forEach(function (tag) { assert.match(tag, /compact/, page + ' section-header 仅允许 compact：' + tag) })
@@ -430,13 +439,13 @@ test('page-head 统一全部页面页头，徽章按需只留真实业务上下�
 })
 
 test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="还没有账目"/)
-  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
+  assert.match(read('miniprogram/pages/index/panel.wxml'), /<empty-cat wx:else title="还没有账目"/)
+  assert.match(read('miniprogram/pages/transactions/panel.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
   assert.match(read('miniprogram/packages/finance/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
   assert.match(read('miniprogram/packages/finance/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
   assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
   assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
+  assert.match(read('miniprogram/pages/index/panel.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
 })
 
 test('empty-cat 升级场景卡：径向光圈、星点与 hide-art 无图变体', function () {
@@ -464,7 +473,7 @@ test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
 })
 
 test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，编辑逻辑不变', function () {
-  const markup = read('miniprogram/pages/profile/index.wxml')
+  const markup = read('miniprogram/pages/profile/panel.wxml')
   const style = read('miniprogram/pages/profile/index.wxss')
   assert.match(markup, /class="profile-avatar-button[^"]*"[^>]*open-type="chooseAvatar"[^>]*bindchooseavatar="chooseAvatar"/)
   assert.doesNotMatch(markup, />取消<|>保存<|profile-avatar-label|profile-id-copy/)
@@ -488,21 +497,40 @@ test('ticker-number 逐位滚动接入首页净值与统计总额', function () 
   assert.match(markup, /translateY\(\{\{item\.top\}\}\)/)
   assert.match(style, /transition:\s*transform 600ms var\(--motion-ticker-timing/)
   assert.match(style, /prefers-reduced-motion:\s*reduce/)
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<ticker-number class="net-worth-number money-number" value="\{\{loggedIn && hasDashboard \? netWorthText : '—'\}\}"/)
-  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount expense-color money-number" value="\{\{expenseText\}\}"/)
-  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount income-color money-number" value="\{\{incomeText\}\}"/)
+  assert.match(read('miniprogram/pages/index/panel.wxml'), /<ticker-number class="net-worth-number money-number" value="\{\{loggedIn && hasDashboard \? netWorthText : '—'\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/panel.wxml'), /<ticker-number class="composition-amount expense-color money-number" value="\{\{expenseText\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/panel.wxml'), /<ticker-number class="composition-amount income-color money-number" value="\{\{incomeText\}\}"/)
 })
 
 test('skeleton-rows 骨架屏替换四处读取中状态', function () {
   const style = read('miniprogram/components/skeleton-rows/index.wxss')
   assert.match(style, /animation:\s*sk-sweep var\(--layout-motion-shimmer, 1400ms\)/)
   assert.match(style, /prefers-reduced-motion:\s*reduce/)
-  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<skeleton-rows wx:elif="\{\{loading && !hasLoaded\}\}" rows="\{\{4\}\}"/)
-  assert.doesNotMatch(read('miniprogram/pages/transactions/index.wxml'), /正在读取账目…/)
+  // 扫光高光必须走主题变量：写死白光在深色主题上就是一道横着划过的白条。
+  assert.match(style, /linear-gradient\(90deg, transparent, var\(--theme-shimmer/)
+  assert.match(read('miniprogram/pages/transactions/panel.wxml'), /<skeleton-rows wx:elif="\{\{loading && !hasLoaded\}\}" rows="\{\{4\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/transactions/panel.wxml'), /正在读取账目…/)
   assert.match(read('miniprogram/pages/accounts/index.wxml'), /<skeleton-rows wx:if="\{\{loading && !hasLoaded\}\}"/)
-  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<skeleton-rows wx:elif="\{\{!hasLoaded && !errorMessage\}\}"/)
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<skeleton-rows wx:elif="\{\{loading\}\}" rows="\{\{3\}\}"/)
-  assert.doesNotMatch(read('miniprogram/pages/index/index.wxml'), /正在读取最近账目…/)
+  assert.match(read('miniprogram/pages/statistics/panel.wxml'), /<skeleton-rows wx:elif="\{\{!hasLoaded && !errorMessage\}\}"/)
+  assert.match(read('miniprogram/pages/index/panel.wxml'), /<skeleton-rows wx:elif="\{\{loading\}\}" rows="\{\{3\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/index/panel.wxml'), /正在读取最近账目…/)
+})
+
+// 支出日历的浓淡是"同一支支出色的深浅"，不是一组写死的浅色阶。
+// 写死的浅色阶在深色主题上会让整块日历惨白，比配色偏差更像渲染错误。
+test('支出日历的浓淡由收支语义色叠透明度决定', function () {
+  const style = read('miniprogram/pages/statistics/index.wxss')
+  ;['heat-1', 'heat-2', 'heat-3', 'heat-4'].forEach(function (level) {
+    const rule = new RegExp('\\.' + level + '::before\\s*\\{([^}]*)\\}').exec(style)
+    assert.ok(rule, '缺少 ' + level + ' 的叠色层')
+    assert.match(rule[1], /opacity:\s*\.\d+/, level + ' 没有浓淡差别')
+  })
+  assert.match(style, /\.heat-refund::before \{[^}]*background: var\(--sem-income\)/)
+  const heatStart = style.indexOf('.heat-1::before,')
+  const heatEnd = style.indexOf('.calendar-cell-today')
+  assert.ok(heatStart > 0 && heatEnd > heatStart, '日历浓淡规则块找不到')
+  assert.doesNotMatch(style.slice(heatStart, heatEnd), /#[0-9a-fA-F]{6}/, '日历浓淡里还留着写死的色值')
+  assert.match(style, /\.heat-0 \{[^}]*var\(--theme-surface-muted\)/)
 })
 
 test('按压回弹：按钮体系与可点卡片统一 scale 回弹', function () {
@@ -521,7 +549,7 @@ test('校验抖动：login-sheet、profile、loan-detail 三处接入', function
   assert.match(appStyle, /@keyframes field-error-shake/)
   assert.match(appStyle, /\.field-error-shake \{\s*animation:\s*field-error-shake 360ms/)
   assert.match(appStyle, /\.field-error-inline/)
-  assert.match(read('miniprogram/pages/profile/index.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
+  assert.match(read('miniprogram/pages/profile/panel.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxml'), /nicknameShake \? 'login-nickname-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxss'), /@keyframes login-nickname-shake/)
   const loanDetailMarkup = read('miniprogram/packages/finance/pages/loan-detail/index.wxml')
@@ -539,17 +567,17 @@ test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻
   assert.match(appStyle, /--layout-motion-enter:\s*380ms/)
   const capped = /animation-delay: \{\{index < 10 \? index \* 70 : 700\}\}ms/
   const files = [
-    'miniprogram/pages/transactions/index.wxml',
+    'miniprogram/pages/transactions/panel.wxml',
     'miniprogram/pages/accounts/index.wxml',
-    'miniprogram/pages/statistics/index.wxml',
-    'miniprogram/pages/index/index.wxml'
+    'miniprogram/pages/statistics/panel.wxml',
+    'miniprogram/pages/index/panel.wxml'
   ]
   files.forEach(function (file) {
     const markup = read(file)
     assert.match(markup, /row-enter/, file)
     assert.match(markup, capped, file + ' 延迟应封顶')
   })
-  assert.match(read('miniprogram/pages/transactions/index.wxml'), /\{\{staggerOn \? 'row-enter' : ''\}\}/, '明细翻页追加不入场')
+  assert.match(read('miniprogram/pages/transactions/panel.wxml'), /\{\{staggerOn \? 'row-enter' : ''\}\}/, '明细翻页追加不入场')
   const reduced = appStyle.slice(appStyle.indexOf('prefers-reduced-motion'))
   assert.match(reduced, /animation-delay:\s*0ms !important/, '减少动态效果须同时取消延迟')
 })
@@ -576,7 +604,7 @@ test('瓷贴默认分类与自定义分类均有图标，原生渲染不依赖�
 })
 
 test('明细按天分组：组头标签与分页同日合并', function () {
-  const markup = read('miniprogram/pages/transactions/index.wxml')
+  const markup = read('miniprogram/pages/transactions/panel.wxml')
   const source = read('miniprogram/pages/transactions/page.js')
   assert.match(markup, /<text wx:if="\{\{item\.dayLabel\}\}" class="detail-group content-inset">\{\{item\.dayLabel\}\}<\/text>/)
   assert.match(source, /function attachDayLabels\(rows, previousDay\)/)

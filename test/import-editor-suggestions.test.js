@@ -17,14 +17,12 @@ for (const direction of ['expense', 'income']) test('建议账户按真实还入
     { ...credit, accountId: 'archived', archivedAt: '2026-01-01' },
     { ...credit, accountId: 'wrong-type', type: 'bank' }, { ...credit, accountId: 'foreign-currency', currency: 'USD' }] })
   await page._reviewEditToken.suggestionRead
-  assert.equal(page.data.reviewEditSheet.detailsExpanded, false)
   assert.deepEqual(plain(view(page).bankSuggestion.candidates.map(item => item.accountId)), [credit.accountId])
   assert.equal(choices(h).length, 1, '应按银行查完整目录，不能仅用预载账户')
   assert.equal(choices(h)[0].input.pageSize, 12)
   assert.equal(view(page).routeFields[1].accountId, '', '读取不能自动选择')
   edit(page, 'note', '保留正在编辑的备注')
-  page.toggleEditorDetails(); page.toggleEditorDetails()
-  assert.equal(choices(h).length, 1, '普通输入与展开不重复查询')
+  assert.equal(choices(h).length, 1, '普通输入不重复查询建议账户')
   page.selectEditorSuggestion(tap({ id: 'wrong-type' }))
   assert.equal(view(page).routeFields[1].accountId, '')
   page.selectEditorSuggestion(tap({ id: credit.accountId }))
@@ -55,7 +53,7 @@ for (const transition of ['close', 'hide', 'nature', 'owner', 'manual']) test('�
   assert.equal(writes(h).length, 0)
 })
 
-test('建议读取失败可重试，且贷款负债模式不推荐信用卡', async t => {
+test('建议读取失败可重试，还款还入端接受信用卡', async t => {
   let fail = true
   const { page, h } = await open(t, row('expense'), { accounts: [credit], intercept: (action, input) => {
     if (action === 'financeUpdates.options' && input.query === '中信银行' && fail) throw new Error('synthetic read failure')
@@ -66,7 +64,8 @@ test('建议读取失败可重试，且贷款负债模式不推荐信用卡', as
   await page.loadEditorSuggestions(tap({ retry: true }))
   assert.equal(page.data.reviewEditSheet.suggestionError, '')
   assert.equal(view(page).bankSuggestion.candidates.length, 1)
-  mode(page, 'repaymentMode', 'loan')
-  assert.ok(!view(page).bankSuggestion)
+  // 还款的还入端统一是负债账户，信用卡也是合法候选；贷款与否由还款构成决定。
+  assert.ok(view(page).bankSuggestion)
+  assert.ok(view(page).bankSuggestion.candidates.some(item => item.accountId === credit.accountId))
   assert.equal(writes(h).length, 0)
 })

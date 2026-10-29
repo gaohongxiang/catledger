@@ -10,7 +10,6 @@ const ledgerApi = require('../../../../services/catledger-api')
 const viewSession = require('../../services/import-view-session')
 const loginGuard = require('../../../../services/login-guard')
 const importPerformance = require('../../services/import-performance')
-const themeService = require('../../../../theme/service')
 const readCache = require('../../../../services/read-cache')
 const pendingWrites = require('../../../../services/pending-ledger-write')
 const reviewLayout = require('./review-layout')
@@ -161,7 +160,6 @@ module.exports = {
     this._viewOwner = currentOwner()
     this._viewScope = readCache.getSession()
     this.setData({ pageLoading: false, pageError: '', directoryPage: null })
-    themeService.bindPage(this)
     this._requestIds = {}
     this._abandonedUpdateId = null
     this._accountConfirmed = new Map()
@@ -220,7 +218,6 @@ module.exports = {
     if (this._draftSession && this._draftSession.touch) this._draftSession.touch()
     this.syncFileRenamePending()
     this.restoreFileNameEdit()
-    themeService.bindPage(this)
     const revision = getApp().globalData.ledgerRevision || 0
     if (returning && this._prepareRestore && !this.data.update && !this._pendingInitialLoad) {
       this._pendingInitialLoad = { updateId: null, restoreLast: true, visible: true, attempt: null }
@@ -780,13 +777,21 @@ module.exports = {
     setChangedData(this, patch)
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
+    // 入账后只按本批来源找待补分期，其他批次的待补记录不在这里冒充本批成果。
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
       const key=view.update.updateId+':'+view.viewVersion
       if(this._installmentPendingKey!==key){
-        this._installmentPendingKey=key;this.setData({pendingInstallments:false})
-        ledgerApi.callApi('loans.installmentSources',{pageSize:1},{force:true}).then(result=>{if(this._viewActive && this._installmentPendingKey===key)this.setData({pendingInstallments:result.items.length>0})}).catch(()=>{})
+        this._installmentPendingKey=key;this.setData({pendingInstallments:0,pendingInstallmentsMore:false,pendingInstallmentNames:''})
+        ledgerApi.callApi('loans.installmentSources',{updateId:view.update.updateId,pageSize:20},{force:true}).then(result=>{
+          if(!this._viewActive || this._installmentPendingKey!==key)return
+          // 已入账卡直接点名本次待补的计划，用户不必先跳到另一个列表再猜是哪一笔。
+          const names=[...new Set(result.items.map(item=>String(item.planLabel||item.referenceLabel||'').trim()).filter(Boolean))]
+          // 只有本批来源；一页够点名，超过一页只标“以上”，不在这里继续翻页。
+          this.setData({pendingInstallments:result.items.length,pendingInstallmentsMore:Boolean(result.nextCursor),
+            pendingInstallmentNames:names.slice(0,2).join('、')})
+        }).catch(()=>{})
       }
-    } else {this._installmentPendingKey=null;this.setData({pendingInstallments:false})}
+    } else {this._installmentPendingKey=null;this.setData({pendingInstallments:0,pendingInstallmentsMore:false,pendingInstallmentNames:''})}
     if (view.update.status === 'review') {
       if (!this._draftSession || this._draftSession.view.update.updateId !== view.update.updateId) {
         if (this._unsubscribeDraft) this._unsubscribeDraft()
@@ -885,8 +890,13 @@ module.exports = {
         patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })
         patch.accountMappingsExcluded = excluded
         patch.accountStepSummary = state.summary
-      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(
-        presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))) }] : []
+      } else if (kind === 'reviewGroups') {
+        // 组级笔数（本期还有几笔利息没定归属）放组标题，卡头只写状态，避免每张卡重复一遍。
+        const cards = presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))
+        patch.reviewGroups = events.length ? [{ key: 'pending-events',
+          installmentNote: presentation.installmentPendingNote(cards),
+          issues: presentation.linkGroupRows(cards) }] : []
+      }
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,

@@ -1,10 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
+const { readSource } = require('./helpers/source-files')
 const path = require('node:path')
-const read = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8')
+const read = (p) => readSource(path.join(__dirname, '..', p))
 const style = read('miniprogram/pages/index/index.wxss')
-const markup = read('miniprogram/pages/index/index.wxml')
+const markup = read('miniprogram/pages/index/panel.wxml')
 const tabStyle = read('miniprogram/custom-tab-bar/index.wxss')
 const tabMarkup = read('miniprogram/custom-tab-bar/index.wxml')
 
@@ -159,7 +159,7 @@ test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
 })
 
 test('时段问候移到页头标题之上，分栏统计留在 hero 卡内', () => {
-  const source = read('miniprogram/pages/index/index.js')
+  const source = read('miniprogram/pages/index/page.js')
   assert.match(markup, /class="home-greeting">\{\{todayLabel\}\}/)
   assert.doesNotMatch(markup, /net-worth-greeting/)
   assert.ok(markup.indexOf('class="home-greeting"') < markup.indexOf('class="home-title'), '问候应在主标题之前')

@@ -114,17 +114,18 @@ function createInstallmentService({getPool,selectLoan}) {
   async function installmentSources(context) {
     return read(context,async(c,uid,revision)=>{
       const data=context.data,limit=size(data),accountId=data.accountId?validateId(data.accountId):null
-      const itemId=data.itemId?validateId(data.itemId):null,cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
-      if(cursor&&(cursor.action!=='loans.installmentSources'||cursor.uid!==uid||cursor.accountId!==accountId||cursor.itemId!==itemId||cursor.revision!==revision))throw ledgerError('CONFLICT')
+      const itemId=data.itemId?validateId(data.itemId):null,updateId=data.updateId?validateId(data.updateId):null
+      const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
+      if(cursor&&(cursor.action!=='loans.installmentSources'||cursor.uid!==uid||cursor.accountId!==accountId||cursor.itemId!==itemId||cursor.updateId!==updateId||cursor.revision!==revision))throw ledgerError('CONFLICT')
       const [rows]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.active=1 AND i.loan_id IS NULL
-        ${accountId?'AND i.account_id=?':''} ${itemId?'AND i.item_id=?':''} ${cursor?'AND i.item_id>?':''}
+        ${accountId?'AND i.account_id=?':''} ${itemId?'AND i.item_id=?':''} ${updateId?'AND e.update_id=?':''} ${cursor?'AND i.item_id>?':''}
         AND (i.source_event_id IS NULL OR e.status IN ('posted','corrected') OR (e.status='excluded' AND u.status='posted'
           AND EXISTS(SELECT 1 FROM catledger_economic_event_transactions h WHERE h.uid=i.uid AND h.event_id=i.source_event_id
             AND h.transaction_id=i.transaction_id AND h.role='historical_primary' AND h.superseded_at IS NULL AND h.transaction_version=t.version)))
         AND (i.component='principal' OR (t.deleted_at IS NULL AND t.transaction_id IS NOT NULL))
-        ORDER BY i.item_id LIMIT ?`,[uid,...(accountId?[accountId]:[]),...(itemId?[itemId]:[]),...(cursor?[cursor.last]:[]),limit+1])
+        ORDER BY i.item_id LIMIT ?`,[uid,...(accountId?[accountId]:[]),...(itemId?[itemId]:[]),...(updateId?[updateId]:[]),...(cursor?[cursor.last]:[]),limit+1])
       const items=rows.slice(0,limit).map(publicItem).filter(item=>item.active)
-      return {items,nextCursor:rows.length>limit?encodeCursor(context.subjectHash,{action:'loans.installmentSources',uid,accountId,itemId,revision,last:rows[limit-1].itemId}):null}
+      return {items,nextCursor:rows.length>limit?encodeCursor(context.subjectHash,{action:'loans.installmentSources',uid,accountId,itemId,updateId,revision,last:rows[limit-1].itemId}):null}
     })
   }
   async function linkInstallmentSource(context) {

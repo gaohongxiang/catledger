@@ -1,0 +1,13 @@
+{
+  "component": true,
+  "usingComponents": {
+    "section-header": "/components/section-header/index",
+    "list-row": "/components/list-row/index",
+    "category-tile": "/components/category-tile/index",
+    "ticker-number": "/components/ticker-number/index",
+    "skeleton-rows": "/components/skeleton-rows/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
+  }
+}

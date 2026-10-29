@@ -1,3 +1,14 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
 <import src="detail-fields.wxml" />
 <import src="review-cards.wxml" />
 <template name="record-count-formula">
@@ -340,6 +351,7 @@
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">
+            <text wx:if="{{item.installmentNote}}" class="review-batch-note">{{item.installmentNote}}</text>
             <button wx:for="{{item.issues}}" wx:for-item="issue" wx:key="eventId" class="review-decision-card {{issue.groupPos ? 'card-group-' + issue.groupPos : ''}}" data-id="{{issue.eventId}}" data-issue-id="{{issue.issueId}}" bindtap="openPendingRecord" aria-label="{{issue.batchDecision}} {{issue.label}}">
               <template is="review-card-heading" data="{{card: issue, pending: true}}" />
               <view class="review-preview-list review-decision-previews">
@@ -347,16 +359,6 @@
                   <template is="review-record-content" data="{{record: preview, allowPairing: true}}" />
                 </view>
                 <text wx:if="{{issue.hiddenSubjectCount}}" class="review-preview-more">另有 {{issue.hiddenSubjectCount}} 笔将应用同一决定</text>
-              </view>
-              <view wx:if="{{issue.installmentPendingRows}}" class="review-attribution-pending">
-                <view class="review-pending-row" wx:for="{{issue.installmentPendingRows}}" wx:for-item="pending" wx:key="eventId"
-                  data-id="{{pending.eventId}}" data-plan="{{pending.plan}}" data-issue-id="{{issue.issueId}}" catchtap="assignPendingInterest">
-                  <view class="review-pending-copy">
-                    <text class="review-pending-title">{{pending.displayDate}} {{pending.title}}</text>
-                    <text class="review-pending-amount money-number">{{pending.amountText}}</text>
-                  </view>
-                  <text class="review-pending-flag">归入本计划 ›</text>
-                </view>
               </view>
             </button>
           </view>
@@ -511,6 +513,7 @@
   <view wx:if="{{currentStep === 4 && phase === 'done'}}" class="done-section">
     <view class="done-mark"><view class="done-check"></view></view>
     <text class="done-title serif-title">这批账单已经入账。</text>
+    <text wx:if="{{pendingInstallments}}" class="done-copy">本次有 {{pendingInstallments}}{{pendingInstallmentsMore ? ' 条以上' : ' 条'}}分期账单项还没有计划{{pendingInstallmentNames ? '，例如' + pendingInstallmentNames : ''}}。</text>
     <button wx:if="{{pendingInstallments}}" class="secondary-button" bindtap="openInstallmentSources">补充分期记录</button>
     <view class="review-count-formulas final-count-formulas">
       <template is="record-count-formula" data="{{totalCount: recordSummary.totalCount, activeCount: recordSummary.activeCount, excludedCount: recordSummary.excludedCount, duplicateCount: recordSummary.duplicateCount}}" />
@@ -764,6 +767,7 @@
           <text wx:if="{{item.matchLabel}}" class="refund-candidate-match">匹配依据：{{item.matchLabel}}</text>
           <view class="refund-candidate-radio" aria-hidden="true" />
         </button>
+        <text wx:if="{{issueDraft.targetEventId}}" class="sheet-copy">已选中的原消费再点一次可取消。</text>
         <button wx:if="{{issueDraft.targetEventId}}" class="account-source-link" data-id="{{issueDraft.targetEventId}}" bindtap="openIssueRefundSource" disabled="{{busy}}">查看这笔原消费的原始记录 ›</button>
         <text wx:if="{{!issueRelations.length && !issueRelationsLoading}}" class="sheet-copy">本批没有能作为原消费的记录；可从对应记录进入单笔核对查已入账的原消费，或先暂记待关联。</text>
         <view wx:if="{{relationPage && (relationPage.hasPrevious || relationPage.hasNext)}}" class="list-pagination">
@@ -829,7 +833,8 @@
         <button wx:if="{{currentIssue.historicalDuplicate}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkHistoricalTransaction" disabled="{{!issueCanSubmit || busy || historicalLoading || !historicalSelectionVerified}}">与选中记录是同一笔，不再入账</button>
         <button wx:if="{{currentIssue.issueType === 'same_event' || currentIssue.issueType === 'identity_conflict'}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmDistinct" disabled="{{!issueCanSubmit || busy || historicalLoading || (currentIssue.historicalDuplicate && (historicalError || !historicalCandidates.length))}}">{{currentIssue.historicalDuplicate ? '都不是同一笔，保留本次记录' : '是多笔独立记录'}}</button>
         <button wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkIssueRefund" disabled="{{!issueCanSubmit || busy || !issueDraft.targetEventId}}">确认这笔原消费</button>
-        <button wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict}}" class="sheet-secondary" bindtap="markIssueRefundPending" disabled="{{!issueCanSubmit || busy}}">暂记待关联</button>
+        <button wx:if="{{currentIssue.issueType === 'refund_relation' && !currentIssue.refundSourceConflict && (!issueRefundPending || issueRefundPending.visible)}}" class="sheet-secondary" bindtap="markIssueRefundPending" disabled="{{!issueCanSubmit || busy || !issueRefundPending || !issueRefundPending.enabled}}">暂记待关联</button>
+        <text wx:if="{{issueRefundPending && issueRefundPending.reason}}" class="sheet-save-hint">{{issueRefundPending.reason}}</text>
         <text wx:if="{{currentIssue.issueType === 'installment_origin'}}" class="sheet-copy">这是旧版分期核对记录。请查看本笔来源并重新整理本批；本金出账只登记来源，入账后可关联分期计划。</text>
         <view class="sheet-utility-actions">
           <button size="mini" class="sheet-secondary" bindtap="closeIssue">稍后处理</button>

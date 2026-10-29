@@ -144,7 +144,8 @@
       ],
       "rules": [
         "当前用户及批次内的只读查询。fields 允许本笔尚未保存的 amountMinor、occurredLocalAt、timezoneOffsetMinutes；性质不需先保存为退款。事件版本及游标绑定完整筛选指纹，拒绝跨用户/批次和过期游标。",
-        "候选区分本批事件和正式历史交易，检查有效性、时间、CNY、保护依赖与累计可退额。候选 total 是整个筛选范围计数，加载失败和末页都不代表没有候选。读取不修改事件、关系或贷款。"
+        "候选区分本批事件和正式历史交易，检查有效性、时间、CNY、保护依赖与累计可退额。候选 total 是整个筛选范围计数，加载失败和末页都不代表没有候选。读取不修改事件、关系或贷款。",
+        "候选只帮助用户选择，不决定能否暂记待关联。暂记是“先入账、暂不冲减支出”的用户决定，候选数量、是否读过另一个范围和其他待核对项都不构成门禁；只有来源冲突（原单已关闭/失败）没有补关联路径，保存时由服务端拒绝。"
       ]
     },
     "reviewIssues.members": {
@@ -443,6 +444,9 @@
         "members",
         "total",
         "nextCursor"
+      ],
+      "rules": [
+        "refund_relation 问题的主事件带 reasonCodes；问题面板据此识别来源冲突并决定暂记动作。暂记不依赖候选数量或额外资格字段，有候选时表示“这些都不是，先不关联”，保存时服务端仍复核退款性质与来源冲突并撤销已提出的关系。"
       ]
     },
     "reviewIssues.resolve": {
@@ -822,7 +826,7 @@
         "旧调用不带 editorVersion 时保留三字段及原阻断保护；editorVersion=1 扩展为当前 eventId 的单笔原子草稿编辑，支持 ready/needs_action，拒绝 posted/corrected/excluded。",
         "fields 只接受 economicNature、amountMinor、occurredLocalAt、timezoneOffsetMinutes、ledgerAccountId、counterpartyLedgerAccountId、categoryId、counterparty、note；不传保留，null 清除可空字段，空字符串明确清空文本。金额为非负整数分字符串，日期严格往返，币种仅 CNY，拒绝未知/只读键。",
         "composition={kind:single|payment|repayment,parts?:[{accountId,amountMinor}],evidenceNote?,incomplete?} 显式替换分配；不完整组成单独持久化并阻断入账，不冒充 confirmed 分配。",
-        "decisions={ownership?:{owner:self|other,treatment?:expense|pending}|null,repayment?:原本息费决定|{mode:review,draft}|null,refund?:{mode:link|pending|unlinked,kind?:event|transaction,id?,version?},repaymentChannel?:{confirmed:true}}；关联候选稳定 ID/版本及累计上限在事务内重验，收费项使用现行领域规则。",
+        "decisions={ownership?:{owner:self|other,treatment?:expense|pending}|null,repayment?:原本息费决定|{mode:review,draft}|null,refund?:{mode:link|pending|unlinked,kind?:event|transaction,id?,version?},repaymentChannel?:{confirmed:true}}；关联候选稳定 ID/版本及累计上限在事务内重验，收费项使用现行领域规则。refund.mode=pending 表示用户决定先入账、这次不关联任何原消费：不再要求两个范围无候选，保存时撤销已有 proposed/confirmed 关系；来源冲突仍拒绝。",
         "sourceCorrection 只修正分期来源：periodNumber／totalTerms 为期次，planLabel 为本期次费用所属计划，且只接受该事件 installmentAttribution.plans 里的计划名——客户端不能自造计划名，归属也不写入资金语义。待核对里同一期次按本金计划分成「一计划一卡」：归属未定的费用不单独占卡，而是挂在本期次各张本金卡里等用户逐笔指定，本金卡就是入口；从卡里点一笔只是把归属预选进那笔费用的编辑器，仍要点保存才生效。保存后服务端回头核对整组，本期次已没有待指定的费用就把同组本金和其余费用一起收尾；acknowledgedChanges 只接受 composition、repayment、refund，确认不能绕过依赖检查。原始账单、身份及真实来源阻断保留；普通保存不改其他成员、长期映射或正式账本。",
         "沿原用户锁、批次/事件双版本和 requestId 回执提交；字段、关系、问题成员、版本和回执全部成功或全部回滚。",
         "新版客户端传 expectedRelations:[{kind:event|transaction|refund_relation|loan,id,version}] 作为当前依赖快照；事务重读完整集合拒绝过期或漏项。新增关联仍由对应明确决定的 ID/版本校验。",

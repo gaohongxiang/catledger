@@ -76,6 +76,26 @@ test('已下载历史随字段重算，旧人工确认失效；快照外范围�
   assert.equal(JSON.stringify(decoded),original)
 })
 
+test('分期本金改判解决字段冲突：本机草稿同步收起冲突事项', async () => {
+  const { randomUUID } = require('node:crypto'), value = await facts({ count: 1 }), event = value.events[0]
+  const credit = value.accounts.find(account => account.type === 'credit')
+  Object.assign(event, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: credit.accountId,
+    reasonCodes: ['core_fields_conflict'],
+    fieldSources: { ...event.fieldSources, installment: { creditStatement: true, component: 'principal', periodNumber: 1, totalTerms: 6 } } })
+  const issueId = randomUUID()
+  value.issues.push({ issueId, issueType: 'field_conflict', primaryReasonCode: 'core_fields_conflict',
+    reasonCodes: ['core_fields_conflict'], status: 'open', blocking: true, version: 1, memberCount: 1, candidateCount: 0,
+    subjectEventIds: [event.eventId] })
+  value.members.push({ memberId: randomUUID(), issueId, objectType: 'event', objectId: event.eventId,
+    objectVersion: event.version, memberRole: 'subject', sortOrder: 0 })
+  const model = local.create(value)
+  model.edit({ eventId: event.eventId, editorVersion: 1, fields: { economicNature: 'expense' } })
+  assert.equal(model.events.get(event.eventId).economicNature, 'expense')
+  assert.equal(model.events.get(event.eventId).reasonCodes.includes('core_fields_conflict'), false)
+  assert.equal(model.issues.get(issueId).status, 'resolved')
+  assert.equal(model.issues.get(issueId).blocking, false)
+})
+
 test('24990 行本地核对：单笔保存/摘要仅更新关联对象，分页渲染有界', {timeout:120000}, async t => {
   const before=process.memoryUsage().heapUsed,prepare=performance.now(),value=await facts({count:24990})
   const start=performance.now(),model=local.create(value),reader=read.create(model),initialized=performance.now()

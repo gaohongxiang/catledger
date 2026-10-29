@@ -5,11 +5,12 @@ const theme = require('../../../../theme/service')
 const { present } = require('./model')
 const money=require('../../../../utils/money')
 const retainedView=items=>items.map(f=>({...f,componentText:f.component==='interest'?'利息':'手续费',amountText:money.formatMinor(f.amountMinor)}))
-Page({
-  data: { retainedCharges:[],retainedTotal:0,retainedOpen:false,retainedNextCursor:null,retainedCanPrevious:false,retainedLoading:false,retainedError:'',scoped: false, scopeAccount: null, pendingInstallmentCount: 0, pendingRepaymentCount: 0, items: [], loading: false, hasLoaded: false, errorMessage: '', nextCursor: null, canPrevious: false },
-  onLoad(query) { this._accountId = query && query.accountId || ''; this.setData({ scoped: Boolean(this._accountId) }); theme.bindPage(this); this._previous = []; this._cursor = null },
+const businessInitialData = { retainedCharges:[],retainedTotal:0,retainedOpen:false,retainedNextCursor:null,retainedCanPrevious:false,retainedLoading:false,retainedError:'',scoped: false, scopeAccount: null, pendingInstallmentCount: 0, pendingRepaymentCount: 0, items: [], loading: false, hasLoaded: false, errorMessage: '', nextCursor: null, canPrevious: false }
+
+Page(theme.page({
+  data: businessInitialData,
+  onLoad(query) { this._accountId = query && query.accountId || ''; this.setData({ scoped: Boolean(this._accountId) }); this._previous = []; this._cursor = null },
   onShow() {
-    theme.bindPage(this)
     return loginGuard.run(this, () => {
       if (this.data.hasLoaded && !api.isFresh('loans.list', this.loanQuery())) { this._cursor = null; this._previous = [] }
       return this.loadLoans()
@@ -20,7 +21,7 @@ Page({
   onPullDownRefresh() { return this.firstPage().finally(() => wx.stopPullDownRefresh()) },
   loanQuery() { return Object.assign({ pageSize: 20, cursor: this._cursor || null }, this._accountId ? { accountId: this._accountId } : {}) },
   loadLoans(force) {
-    const current = pageReadSession.begin(this, Object.keys(this.data), ['_load','_cursor','_previous','_retainedCursor','_retainedPrevious','_retainedQuery'])
+    const current = pageReadSession.begin(this, Object.keys(businessInitialData), ['_load','_cursor','_previous','_retainedCursor','_retainedPrevious','_retainedQuery'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
     this._load = (async () => {
@@ -65,4 +66,4 @@ Page({
     if (this.data.loading || (this._accountId && (!this.data.scopeAccount || this.data.scopeAccount.archived))) return
     return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/finance/pages/loan-form/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') }))
   }
-})
+}))

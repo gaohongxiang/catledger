@@ -1,9 +1,3 @@
 {
-  "navigationBarTitleText": "我的",
-  "enablePullDownRefresh": true,
-  "backgroundColor": "#F8F3EA",
-  "usingComponents": {
-    "list-row": "/components/list-row/index",
-    "ui-state": "/components/ui-state/index"
-  }
+  "navigationBarTitleText": "招财猫记账本"
 }

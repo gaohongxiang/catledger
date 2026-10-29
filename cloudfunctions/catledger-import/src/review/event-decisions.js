@@ -191,17 +191,18 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
     affected.push(...await saveEvents(connection, uid, updateId, events.map(event => ({ current: event,
               next: { ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes), resolvingIssueType: issue.issueType } })), actionId))
   } else if (decision === 'mark_refund_pending') {
-    if (events.length !== 1 || Number(issue.candidateCount) !== 0) throw importError('VALIDATION_ERROR')
+    if (events.length !== 1) throw importError('VALIDATION_ERROR')
     const source = events[0]
-    if (source.economicNature !== ECONOMIC_NATURE.REFUND) throw importError('VALIDATION_ERROR')
-    const [proposed] = await connection.execute(
-      `SELECT relation_id AS relationId
-               FROM catledger_economic_event_relations
-              WHERE uid = ? AND update_id = ? AND source_event_id = ?
-                AND relation_type = 'refund_of' AND status = 'proposed' FOR UPDATE`,
-      [uid, updateId, source.eventId]
-    )
-    if (proposed.length !== 0) throw importError('VALIDATION_ERROR')
+    if (!require('./editor-refund').pendingState(source).allowed) throw importError('VALIDATION_ERROR')
+    // 暂记的含义是“这次不关联任何原消费”。已经提出的候选关系要一并撤销，
+    // 不能留下一笔仍被下游当成关联的关系，也不能因为候选多就拒绝用户的选择。
+    // 与单笔保存共用同一动作：人工拒绝后，重新整理不会把它悄悄恢复成自动关联。
+    await connection.execute(`UPDATE catledger_economic_event_relations SET status='rejected',manual=1,version=version+1
+      WHERE uid = ? AND update_id = ? AND source_event_id = ? AND relation_type = 'refund_of'
+        AND status IN ('proposed','confirmed')`, [uid, updateId, source.eventId])
+    await connection.execute(`UPDATE catledger_economic_event_transactions SET superseded_at=CURRENT_TIMESTAMP(3)
+      WHERE uid = ? AND update_id = ? AND event_id = ? AND role = 'refund_original' AND superseded_at IS NULL`,
+    [uid, updateId, source.eventId])
     const next = {
       ...source,
       fieldSources: {

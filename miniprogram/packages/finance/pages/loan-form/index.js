@@ -12,19 +12,21 @@ function repaymentPreview(result,repaymentRows){
   const preview=planModel.previewView(result,Math.max(24,...repaymentRows.map(r=>r.periodNumber)))
   return {...preview,rows:preview.rows.map(r=>({...r,repaymentChoice:choices.has(r.periodNumber),repaymentPaid:choices.get(r.periodNumber)===true}))}
 }
-Page({
-  ...require('../../services/historical-charge-coverage').methods,
-  data:{...require('../../services/historical-charge-coverage').initial,repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+const businessInitialData = {...require('../../services/historical-charge-coverage').initial,repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
-    discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },
-  onLoad(query){this._query=query || {};theme.bindPage(this);this.setData({accountLocked:!!this._query.accountId && !this._query.loanId,baselineDate:this._query.baselineDate || model.today(),sourceReady:(!this._query.accountId && !this._query.sourceTransactionId) || !!this._query.loanId,sourceLocked:!!(this._query.sourceTransactionId || this._query.sourceItemId)})},
+    discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false }
+
+Page(theme.page({
+  ...require('../../services/historical-charge-coverage').methods,
+  data:businessInitialData,
+  onLoad(query){this._query=query || {};this.setData({accountLocked:!!this._query.accountId && !this._query.loanId,baselineDate:this._query.baselineDate || model.today(),sourceReady:(!this._query.accountId && !this._query.sourceTransactionId) || !!this._query.loanId,sourceLocked:!!(this._query.sourceTransactionId || this._query.sourceItemId)})},
   onShow(){return login.run(this,()=>this.load())},
   onHide(){session.end(this)},
   onUnload(){session.end(this)},
   async load(){
     if(this.data.saving)return
-    const current=session.begin(this,Object.keys(this.data),['_preview','_initialized','_historyCoverageToken','_historyRecommendToken','_historyCoverageAccount'])
+    const current=session.begin(this,Object.keys(businessInitialData),['_preview','_initialized','_historyCoverageToken','_historyRecommendToken','_historyCoverageAccount'])
     this.setData({loading:true,errorMessage:'',hasPending:!!pending.pending(),...(!this._query.loanId && (this.data.accountLocked || this.data.sourceLocked) ? {sourceReady:false} : {})})
     try{
       if(pending.pending()) {try{const recovered=await pending.verify();if(current()&&recovered){this.accept(recovered);return}}catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}}
@@ -43,7 +45,9 @@ Page({
         const result=await api.callApi('loans.installmentSources',{itemId:this._query.sourceItemId},{force:true});if(!current())return
         const source=result.items[0];if(!source)throw new Error('该账单已关联或状态变化，请返回重新读取')
         accountId=source.accountId
-        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'，保存后放入对应期次。请填写分期方案，再勾选已还的期次。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
+        // 计划名优先用账单里持久化的计划名；没有时才退回合同编号标签，最后才是通用名。
+        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'，保存后放入对应期次。请填写分期方案，再勾选已还的期次。',
+        ...(!this._initialized?{name:source.planLabel||source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
       }
       const accountIndex=accounts.findIndex(a=>a.accountId===accountId)
       this.setData({accounts,accountIndex})
@@ -125,4 +129,4 @@ Page({
     }catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}
     finally{if(current())this.setData({saving:false})}
   }
-})
+}))

@@ -1,3 +1,14 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <page-head has-actions class="content-inset" title="{{scopeAccount ? scopeAccount.name : scoped ? '账户贷款' : '全部贷款与还款'}}" copy="{{scoped ? '本账户的贷款与分期，每笔单独核对还款。' : '跨账户查看贷款、分期和待关联还款。'}}"><button wx:if="{{!scoped || (scopeAccount && !scopeAccount.archived)}}" disabled="{{loading}}" size="mini" class="head-cta" bindtap="createLoan" aria-label="新增贷款"><view class="head-cta-label"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新增贷款</text></view></button></page-head>

@@ -47,7 +47,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       await page.openReviewEdit(tap({ id: eventId }))
       await page.loadEditorRefunds(tap({ kind: 'event' }))
       await page.loadEditorRefunds(tap({ kind: 'transaction' }))
-      assert.equal(page.data.reviewEditSheet.refundCanPending, false)
+      assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled, false)
       const refund = page.data.reviewEditSheet.draft.refund, calls = ui.calls.length
       page.selectEditorRefund(tap({ mode: 'pending' }))
       assert.equal(ui.calls.length, calls)
@@ -85,7 +85,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       await page.openReviewEdit(tap({ id: eventId }))
       await page.loadEditorRefunds(tap({ kind: 'event' }))
       await page.loadEditorRefunds(tap({ kind: 'transaction' }))
-      assert.equal(page.data.reviewEditSheet.refundCanPending, true)
+      assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled, true)
       page.selectEditorRefund(tap({ mode: 'pending' }))
       await page.saveReviewEdit(); await page._draftSession.flush(); await post(update.updateId)
       const pending = (await amounts()).find(row => row.type === 'refund' && String(row.amount) === '300')

@@ -5,6 +5,9 @@ const { FIELD_MASK } = require('../manual-field-mask')
 const { has, MOVEMENTS, overrides } = require('../editor-fields')
 const composition = require('./editor-composition')
 const NATURES = new Set(['unknown', 'income', 'expense', 'fee', 'internal_transfer', 'borrow', 'repayment', 'refund'])
+// 信用卡分期本金行可改判的经济性质。还款只登记来源；支出、费用、收入形成实际流水；
+// 暂不确定保留来源但不入账。退款、内部转账和借款需要原消费关系或第二个账户，不在本金行开放。
+const PRINCIPAL_NATURES = new Set(['repayment', 'expense', 'fee', 'income', 'unknown'])
 const BASIC = ['economicNature', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId', 'amountMinor',
   'occurredLocalAt', 'timezoneOffsetMinutes', 'counterparty', 'note']
 const kind = nature => nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
@@ -18,7 +21,7 @@ function capability(event) {
   const readonly = !['ready', 'needs_action'].includes(event.status) || event.economicNature === 'balance_adjustment'
   const protectedReasons = new Set(['row_status_unknown','transaction_status_unknown','source_profile_unknown','identity_conflict','identity_review_required','account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','bank_channel_same_event_candidate','same_event_candidate','refund_source_conflict','blocking_issue_open'])
   return { version: 1, readonly, blockingReasons: [...new Set((event.reasonCodes || []).concat(source.semanticBlockers || []).filter(code => protectedReasons.has(code)))], recordRole: principal ? 'installment_source' : 'transaction',
-    natures: principal || source.repaymentChannelResolution ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
+    natures: principal ? [...PRINCIPAL_NATURES] : source.repaymentChannelResolution ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
     ...(source.repaymentChannelResolution ? { repaymentChannel: require('../repayment-channel').publicResolution(event) } : {}),
     ownership: source.repaymentOwnership || null, composition: principal ? 'single' : composition.sourceKind(event),
     incompleteComposition: editor.incompleteComposition || null, evidenceNote: editor.evidenceNote || '',
@@ -77,7 +80,7 @@ function prepare(event, data) {
   if (clearTime) { next.localAt = next.localDate = next.utcAt = null; next.manualFieldMask |= FIELD_MASK.occurredLocalAt }
   for (const key of ['counterparty', 'note']) if (has(fields, key)) next.manualFieldMask |= FIELD_MASK[key]
   const principal = capability(event).recordRole === 'installment_source'
-  if (principal && (nature !== 'repayment' || next.counterpartyLedgerAccountId || data.composition || Object.keys(decisions).length)) fail()
+  if (principal && (!PRINCIPAL_NATURES.has(nature) || next.counterpartyLedgerAccountId || data.composition || Object.keys(decisions).length)) fail()
   if (has(data, 'sourceCorrection')) {
     if (!before.installment || before.installment.creditStatement !== true) fail()
     object(data.sourceCorrection, ['periodNumber', 'totalTerms', 'planLabel'])
@@ -116,22 +119,31 @@ function prepare(event, data) {
   if (has(decisions, 'repayment')) {
     if (before.loanRepayment && decisions.repayment === null && !acknowledgements.includes('repayment')) fail()
     if (decisions.repayment !== null && !['repayment','internal_transfer'].includes(next.economicNature)) fail()
-    delete next.fieldSources.editorOverrides.incompleteRepayment
-    if (decisions.repayment && decisions.repayment.mode === 'review' && decisions.repayment.draft) {
-      const draft = decisions.repayment.draft
-      object(draft, ['mode','principalMinor','interestMinor','feeMinor','interestTreatment','feeTreatment','interestCategoryId','feeCategoryId','loanId','loanVersion','chargeAllocations'])
-      if (!['defer','associate'].includes(draft.mode)) fail()
-      let sum = 0n
-      for (const field of ['principal','interest','fee']) {
-        const value = draft[field + 'Minor']
-        if (value != null && (typeof value !== 'string' || !/^(0|[1-9]\d{0,18})$/.test(value) || BigInt(value) > 9223372036854775807n)) fail()
-        if (value != null) sum += BigInt(value)
+    if (decisions.repayment && decisions.repayment.mode === 'review') {
+      object(decisions.repayment, ['mode', 'draft'])
+      if (decisions.repayment.draft) {
+        const draft = decisions.repayment.draft
+        object(draft, ['mode','principalMinor','interestMinor','feeMinor','interestTreatment','feeTreatment','interestCategoryId','feeCategoryId','loanId','loanVersion','chargeAllocations'])
+        if (!['defer','associate'].includes(draft.mode)) fail()
+        let sum = 0n
+        for (const field of ['principal','interest','fee']) {
+          const value = draft[field + 'Minor']
+          if (value != null && (typeof value !== 'string' || !/^(0|[1-9]\d{0,18})$/.test(value) || BigInt(value) > 9223372036854775807n)) fail()
+          if (value != null) sum += BigInt(value)
+        }
+        if (next.amountMinor != null && sum > BigInt(next.amountMinor)) fail()
+        // 明细可以只填一部分：未知的分项和处理方式保持空，正式入账前再补。
+        for (const field of ['interest','fee']) {
+          const treatment = draft[field + 'Treatment']
+          if (treatment != null && treatment !== '' && !['expense','accrued'].includes(treatment)) fail()
+        }
+        for (const key of ['loanId','interestCategoryId','feeCategoryId']) if (draft[key] != null) require('../value-validation').validateUuid(draft[key])
+        if (draft.loanVersion != null && (!Number.isSafeInteger(draft.loanVersion) || draft.loanVersion < 1)) fail()
+        next.fieldSources.editorOverrides.incompleteRepayment = { ...draft, chargeAllocations: require('../loan-charge-coverage').normalizeCoverage(draft.chargeAllocations) }
       }
-      if (next.amountMinor != null && sum > BigInt(next.amountMinor)) fail()
-      for (const field of ['interest','fee']) if (!['expense','accrued'].includes(draft[field + 'Treatment'])) fail()
-      for (const key of ['loanId','interestCategoryId','feeCategoryId']) if (draft[key] != null) require('../value-validation').validateUuid(draft[key])
-      if (draft.loanVersion != null && (!Number.isSafeInteger(draft.loanVersion) || draft.loanVersion < 1)) fail()
-      next.fieldSources.editorOverrides.incompleteRepayment = { ...draft, chargeAllocations: require('../loan-charge-coverage').normalizeCoverage(draft.chargeAllocations) }
+      // 没有 draft 只表示“仍是待核对”：保留已经填好的明细，不能借一次无关字段保存把它清空。
+    } else {
+      delete next.fieldSources.editorOverrides.incompleteRepayment
     }
     next.fieldSources.loanRepayment = decisions.repayment === null ? null : decisions.repayment.mode === 'review'
       ? { mode: 'review' } : require('../repayment-policy').createRepaymentPolicy(importError).normalize(decisions.repayment, next.amountMinor)
@@ -150,6 +162,13 @@ function prepare(event, data) {
     'repayment_ownership_required','repayment_other_treatment_required','repayment_ownership_invalid','loan_repayment_required','editor_composition_incomplete',
     'installment_attribution_required'])
   next.reasonCodes = (next.reasonCodes || []).filter(reason => !derived.has(reason) && !reason.startsWith('repayment_allocation_'))
+  // 本金行的字段冲突正是这次改建的性质、对端和分配。改到合法组合、来源也没有其他硬阻断时，
+  // 这条冲突已经由用户的选择解决，不能继续把整批卡在“交易信息冲突待核对”。
+  if (principal && PRINCIPAL_NATURES.has(next.economicNature) && !next.counterpartyLedgerAccountId &&
+      !next.fieldSources.loanRepayment && !next.fieldSources.paymentResolution && !next.fieldSources.repaymentChannelResolution &&
+      !(next.fieldSources.repaymentAllocations || []).length && !(next.fieldSources.semanticBlockers || []).length) {
+    next.reasonCodes = next.reasonCodes.filter(reason => reason !== 'core_fields_conflict')
+  }
   return next
 }
 module.exports = { capability, prepare, validateTime, kind }

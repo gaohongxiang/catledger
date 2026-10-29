@@ -237,7 +237,7 @@ test('必填列标清自动识别/已修改/未选，未选时禁止确认并说
   assert.match(mapping.payload(missing).error, /交易日期和金额/)
 })
 
-test('默认展示读取预览：表头用账单原文列名，点表头即换列', () => {
+test('默认展示读取预览：表头用账单原文列名，点列名即换列', () => {
   const sheet = mapping.view('file', '合成.xls', preview)
   assert.equal(sheet.previewRows.length, 1)
   assert.deepEqual(sheet.previewColumns.map(column => column.header), ['交易日期', '交易金额', '摘要'])
@@ -255,16 +255,85 @@ test('默认展示读取预览：表头用账单原文列名，点表头即换�
   assert.match(missing.readyLabel, /交易金额/)
 })
 
+test('更多列带完整选项，已识别的排在前面', () => {
+  const sheet = mapping.view('file', '合成.xls', preview)
+  assert.ok(sheet.optionalFields.every(field => Array.isArray(field.options) && field.options.length === 5))
+  assert.equal(sheet.optionalFields[0].key, 'item')
+  assert.equal(sheet.optionalFields[0].status, 'auto')
+  const counterparty = sheet.optionalFields.find(field => field.key === 'counterparty')
+  assert.equal(counterparty.value, '不使用这一列')
+})
+
+test('换列选项直接标出占用关系，不让人选到重复列才报错', () => {
+  const sheet = mapping.view('file', '合成.xls', preview)
+  const dateColumn = sheet.previewColumns.find(column => column.key === 'transactionTime')
+  assert.equal(dateColumn.options[0].name, '不使用这一列')
+  assert.match(dateColumn.options.find(option => option.index === 1).name, /已用于交易金额，选后互换/)
+  assert.doesNotMatch(dateColumn.options.find(option => option.index === 0).name, /已用于/)
+})
+
+test('预览把日期和金额排成可扫读格式，金额列按数字列展示', () => {
+  const compact = { ...preview, samples: [['20260831 18:22', '¥-1737.39', 'DR', '财付通还款']] }
+  const sheet = mapping.view('file', '合成.xls', compact, { ...compact.suggested, debitDirection: 'expense' })
+  assert.equal(sheet.previewRows[0].cells[0].value, '08-31 18:22')
+  assert.equal(sheet.previewRows[0].cells[1].value, '−1,737.39')
+  assert.equal(sheet.previewRows[0].cells[1].numeric, true)
+  assert.equal(sheet.previewRows[0].cells[2].numeric, false)
+  assert.equal(sheet.previewColumns[1].numeric, true)
+  // 不是可识别的金额格式时保持原文，不做猜测。
+  const odd = { ...preview, samples: [['20260831 18:22', '1,737.39 CR', 'DR', '财付通还款']] }
+  assert.equal(mapping.view('file', '合成.xls', odd, { ...odd.suggested, debitDirection: 'expense' })
+    .previewRows[0].cells[1].value, '1,737.39 CR')
+})
+
 test('金额方向必选：借贷含义未定时整页不可确认', () => {
   const sheet = mapping.view('file', '合成.xls', preview)
   assert.equal(sheet.directionMissing, true, '样例里有 DR，必须确认借方含义')
   assert.equal(sheet.ready, false)
   assert.equal(sheet.tokens[3].warning, true)
   assert.equal(sheet.tokens[3].value, '借贷含义待选', '未选的标签要写清楚缺什么')
+  assert.equal(sheet.ask.key, 'debitDirection')
+  assert.match(sheet.ask.copy, /借方/)
+  assert.match(sheet.summaryText, /金额列 \+ 收支标记/)
   const chosen = mapping.view('file', '合成.xls', preview, { ...sheet.draft, debitDirection: 'expense' })
   assert.equal(chosen.directionMissing, false)
   assert.equal(chosen.ready, true)
   assert.equal(chosen.tokens[3].value, '借方 = 流出')
+  assert.match(chosen.summaryText, /借方 = 流出/)
+})
+
+test('改到已被占用的列时互换，不会留下两个字段抢同一列', () => {
+  const h = editableBank(), page = h.page
+  page.changeBankMapping({ currentTarget: { dataset: { key: 'transactionTime' } }, detail: { value: 2 } })
+  assert.equal(page.data.bankMappingSheet.draft.columns.transactionTime, 1)
+  assert.equal(page.data.bankMappingSheet.draft.columns.amount, 0)
+  assert.equal(mapping.payload(page.data.bankMappingSheet).error, undefined)
+  page.onUnload()
+})
+
+test('“更多列”可展开并改列，选到占用列时移过来', () => {
+  const h = editableBank(), page = h.page
+  page.toggleBankMoreColumns()
+  assert.equal(page.data.bankMoreColumnsOpen, true)
+  page.changeBankMapping({ currentTarget: { dataset: { key: 'counterparty' } }, detail: { value: 4 } })
+  assert.equal(page.data.bankMappingSheet.draft.columns.counterparty, 3)
+  assert.equal(page.data.bankMappingSheet.draft.columns.item, undefined)
+  page.onUnload()
+})
+
+test('点“流入/流出”直接确认方向，保留表头输入和设置展开状态', () => {
+  const h = editableBank(), page = h.page
+  page.toggleBankSettings()
+  assert.equal(page.data.bankMappingSheet.settingsOpen, true)
+  page.inputBankHeader(headerInput('12'))
+  page.chooseBankDirection({ currentTarget: { dataset: { key: 'debitDirection', value: 'income' } } })
+  assert.equal(page.data.bankMappingSheet.draft.debitDirection, 'income')
+  assert.equal(page.data.bankMappingSheet.headerRowInput, '12')
+  assert.equal(page.data.bankMappingSheet.settingsOpen, true)
+  assert.match(page.data.bankMappingSheet.summaryText, /借方 = 流入/)
+  page.toggleBankSettings()
+  assert.equal(page.data.bankMappingSheet.settingsOpen, false)
+  page.onUnload()
 })
 
 test('表头行浮层：可步进也可输入，确定后重读预览，取消不请求', async () => {
@@ -297,7 +366,9 @@ test('必填未选时“确认并解析”不可点击，文案仍说明缺什�
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/bank-mapping.wxml'), 'utf8')
   const confirm = markup.slice(markup.indexOf('bindtap="confirmBankMapping"') - 120, markup.indexOf('bindtap="confirmBankMapping"') + 120)
   assert.match(confirm, /disabled="\{\{busy \|\| !bankMappingSheet\.ready\}\}"/, '未就绪时按钮必须禁用')
-  assert.match(markup, /bankMappingSheet\.ready \? '表头用的是账单原文列名/)
+  assert.match(markup, /bankMappingSheet\.copyText/)
+  assert.match(markup, /bindtap="chooseBankDirection"/, '方向要能直接点选，不用先展开设置')
   const sheet = mapping.view('file', '合成.xls', preview)
   assert.equal(sheet.ready, false)
+  assert.match(sheet.copyText, /点列名换列/, '预览表头要保留换列提示')
 })

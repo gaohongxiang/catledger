@@ -19,15 +19,6 @@
 .unified-editor-sheet .evidence-scroll { flex: 1; height: 0; min-height: 0; }
 .unified-editor-sheet .sheet-actions,
 .unified-editor-sheet .pairing-footer { flex-shrink: 0; }
-.unified-editor-sheet .editor-summary-card { margin-bottom: var(--layout-space-5); padding: 28rpx 28rpx 20rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); }
-.unified-editor-sheet .issue-summary-nature { display: inline-flex; align-items: center; gap: var(--layout-space-1); padding: 6rpx 16rpx; border-radius: var(--theme-radius-small, 12rpx); }
-.unified-editor-sheet .editor-nature-chevron { font-size: 26rpx; font-weight: 400; line-height: 1; }
-.unified-editor-sheet .editor-amount { display: flex; align-items: baseline; justify-content: flex-end; min-width: 0; max-width: 75%; margin-left: auto; color: var(--ui-ink); font-size: var(--font-title, 40rpx); font-weight: 500; line-height: 1.4; }
-.unified-editor-sheet .editor-amount-input { position: relative; min-width: 0; }
-.unified-editor-sheet .editor-amount-measure { visibility: hidden; display: block; min-width: 100rpx; white-space: nowrap; }
-.unified-editor-sheet .editor-amount input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; min-width: 0; text-align: right; font-size: inherit; font-weight: inherit; line-height: inherit; }
-.unified-editor-sheet .editor-summary-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6rpx 18rpx; margin-top: var(--layout-space-2); overflow-wrap: anywhere; }
-.unified-editor-sheet .editor-summary-edit { width: 100%; min-height: 0; margin-right: 0; margin-left: 0; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; line-height: inherit; }
 .unified-editor-sheet .repayment-ownership { margin: 12rpx 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .unified-editor-sheet .bank-suggestion { margin: 24rpx 0; }
 .unified-editor-sheet .bank-suggestion-summary { flex-wrap: nowrap; gap: var(--layout-space-1); }
@@ -47,7 +38,6 @@
 }
 .unified-editor-sheet .mapping-field textarea { max-height: 240rpx; }
 .unified-editor-sheet .mapping-value { min-width: 0; overflow-wrap: anywhere; }
-.unified-editor-sheet .editor-details .review-text-action { text-align: left; }
 .unified-editor-sheet .editor-cancel { min-height: 64rpx; margin-top: 4rpx; padding: 12rpx 0; background: transparent; line-height: 1.5; }
 .unified-editor-sheet .editor-actions-row { display: flex; align-items: stretch; gap: var(--layout-space-3); }
 .unified-editor-sheet .editor-actions-row .sheet-confirm { flex: 1; min-width: 0; margin: 0; }
@@ -99,6 +89,13 @@
 .unified-editor-sheet .channel-confirm { margin-top: 14rpx; padding-bottom: 0; border-top: 1rpx solid var(--ui-line); }
 .unified-editor-sheet .channel-confirm .ownership-option { margin-top: 0; }
 .editor-mode-choices { display: flex; flex-wrap: wrap; gap: var(--layout-space-2); margin: 20rpx 0; }
+/* 利息／费用的“怎么记”跟在各自输入框下面，三个选项一起摆出来，选中的一档高亮。 */
+.unified-editor-sheet .decision-card .treatment-block { padding: var(--layout-space-1) 0 var(--layout-space-2); }
+.unified-editor-sheet .decision-card .treatment-block .sheet-copy { margin: 0 0 var(--layout-space-1); }
+/* 还款构成的主信息是“本金／利息／手续费”，展开／收起只是状态；明细行比通用字段更紧凑。 */
+.review-editor-sheet .repayment-composition-title { color: var(--ui-ink); font-size: 30rpx; font-weight: 600; line-height: 1.4; }
+.review-editor-sheet .repayment-composition-state { display: inline-flex; flex: 0 0 auto; align-items: center; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); font-weight: 400; }
+.review-editor-sheet .repayment-composition .mapping-field { min-height: 72rpx; }
 
 /* 退款原消费候选：商家→商品→时间渠道→原消费/已退/可退→匹配依据，
    每行只说一件事，用户不必再翻原文判断这是哪一次消费。 */
@@ -152,7 +149,8 @@
 .unified-editor-sheet .refund-linked-match { display: block; margin-top: 4rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
 
 /* 范围切换：两个等宽按钮并排，选中态用主题色描边；始终可见，不藏在空态里。 */
-.unified-editor-sheet .refund-scope { display: flex; gap: var(--layout-space-2); }
+.unified-editor-sheet .refund-scope-label { display: block; margin-top: var(--layout-space-2); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-scope { display: flex; gap: var(--layout-space-2); margin-top: 6rpx; }
 .unified-editor-sheet .refund-scope-btn {
   flex: 1 1 0;
   min-width: 0;
@@ -176,6 +174,7 @@
 .unified-editor-sheet .refund-candidates-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
 .unified-editor-sheet .refund-candidates-title { color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-candidates-count { color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .refund-candidates-hint { margin-left: auto; color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-empty {
   padding: 22rpx 20rpx;
   border: 1rpx dashed var(--ui-border);
@@ -231,6 +230,7 @@
 .unified-editor-sheet .decision-group:last-child { margin-bottom: 0; }
 .unified-editor-sheet .decision-group-title { display: block; margin-bottom: var(--layout-space-2); color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 1.5; }
 .unified-editor-sheet .decision-card { box-sizing: border-box; padding: 20rpx 24rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
+.unified-editor-sheet .decision-card textarea { box-sizing: border-box; width: 100%; min-height: 64rpx; padding: 6rpx 0; font-size: var(--font-body, 28rpx); line-height: 1.5; color: var(--ui-ink); }
 .unified-editor-sheet .decision-card .repayment-mode-row { min-height: 80rpx; padding: 12rpx 0; border-top: 0; }
 .unified-editor-sheet .decision-card .repayment-mode-row + .repayment-mode-row { border-top: 1rpx solid var(--ui-line); }
 .unified-editor-sheet .decision-card .review-text-action { margin-top: var(--layout-space-2); }
@@ -242,12 +242,9 @@
 /* 值与箭头之间的间距挂在箭头自身的 margin-left 上，不依赖父容器的 gap：
    这些容器都是被压缩的 flex item，gap 在窄屏上会被内容挤到肉眼分辨不出。
    箭头 flex: 0 0 auto，长账户名换行也不会把箭头压扁或贴住。 */
-.unified-editor-sheet .repayment-mode-value,
-.unified-editor-sheet .editor-summary-card .issue-summary-nature { gap: 0; }
-.unified-editor-sheet .repayment-mode-value { min-width: 0; }
+.unified-editor-sheet .repayment-mode-value { min-width: 0; gap: 0; }
 .unified-editor-sheet .repayment-mode-value > text:first-child { min-width: 0; overflow-wrap: anywhere; }
-.unified-editor-sheet .repayment-mode-chevron,
-.unified-editor-sheet .editor-nature-chevron { flex: 0 0 auto; margin-left: var(--layout-space-4); }
+.unified-editor-sheet .repayment-mode-chevron { flex: 0 0 auto; margin-left: var(--layout-space-4); }
 /* 文案内联箭头（非 flex 容器）统一走同一间距，避免各处空格宽度不一。 */
 .unified-editor-sheet .app-chevron { flex: 0 0 auto; margin-left: var(--layout-space-4); font-weight: 400; }
 
@@ -268,30 +265,96 @@
 .unified-editor-sheet .editor-amount.row-income .money-number,
 .unified-editor-sheet .editor-amount.row-income input { color: var(--sem-income, #477153); }
 
-/* 分期费用归属：同一期次有多个计划时，用户在这里指定这笔费用属于哪一个。 */
+/* 分期来源：期次行直接编辑；费用行选计划，本金行列出本期未归属利息。 */
+.unified-editor-sheet .period-field { flex: 1 1 0; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 6rpx; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); }
+.unified-editor-sheet .period-unit { color: var(--ui-ink); }
+.unified-editor-sheet .period-sep { margin: 0 4rpx; color: var(--ui-subtle); }
+.unified-editor-sheet .period-input {
+  box-sizing: border-box;
+  width: 88rpx;
+  min-width: 0;
+  height: 46rpx;
+  min-height: 0;
+  padding: 0 4rpx;
+  color: var(--ui-ink);
+  font-size: 30rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .unified-editor-sheet .attribution-block { margin-top: var(--layout-space-3); }
-.unified-editor-sheet .attribution-hint { display: block; font-size: 24rpx; line-height: 1.5; color: var(--ui-muted); }
-.unified-editor-sheet .attribution-plan { display: flex; align-items: center; justify-content: space-between;
-  margin-top: var(--layout-space-2); padding: var(--layout-space-2) var(--layout-space-3);
-  border: 2rpx solid var(--ui-border); border-radius: var(--theme-radius-small); background: var(--ui-surface); }
+.unified-editor-sheet .attribution-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
+.unified-editor-sheet .attribution-head-title { flex-shrink: 0; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .attribution-head-count { flex-shrink: 0; color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .attribution-head-plan { min-width: 0; overflow: hidden; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.unified-editor-sheet .attribution-head-hint { flex-shrink: 0; margin-left: auto; color: var(--ui-subtle); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .attribution-plan {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  margin: var(--layout-space-2) 0 0;
+  padding: var(--layout-space-2) 72rpx var(--layout-space-2) var(--layout-space-3);
+  border: 2rpx solid var(--ui-border);
+  border-radius: var(--theme-radius-small);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+}
 .unified-editor-sheet .attribution-plan.is-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .unified-editor-sheet .attribution-plan-copy { display: flex; flex-direction: column; min-width: 0; }
 .unified-editor-sheet .attribution-plan-name { font-size: 28rpx; color: var(--ui-ink); }
 .unified-editor-sheet .attribution-plan-amount { margin-top: 4rpx; font-size: 24rpx; color: var(--ui-muted); }
-.unified-editor-sheet .attribution-plan-flag { flex-shrink: 0; margin-left: var(--layout-space-3); font-size: 24rpx; color: var(--ui-accent-strong); }
+.unified-editor-sheet .attribution-plan-radio { position: absolute; top: 50%; right: 22rpx; width: 32rpx; height: 32rpx; margin-top: -16rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
+.unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+/* 本金行里的未归属利息：一个容器＋分隔线，不再每张卡各套一层边框。
+   第一行说明“这是什么 + 多少钱”，第二行补账单时间与账户；整卡只负责勾选。 */
+.unified-editor-sheet .attribution-candidates { margin-top: var(--layout-space-2); border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small); background: var(--ui-surface); overflow: hidden; }
+.unified-editor-sheet .attribution-candidate { position: relative; box-sizing: border-box; display: block; width: 100%; min-height: 0; margin: 0; padding: var(--layout-space-2) 72rpx var(--layout-space-2) var(--layout-space-3); background: var(--ui-surface); color: var(--ui-ink); line-height: 1.5; text-align: left; }
+.unified-editor-sheet .attribution-candidate + .attribution-candidate { border-top: 1rpx solid var(--ui-line); }
+.unified-editor-sheet .attribution-candidate.is-selected { background: var(--ui-accent-soft); }
+.unified-editor-sheet .attribution-candidate.is-selected::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 4rpx; background: var(--ui-accent); }
+.unified-editor-sheet .attribution-candidate-head { display: flex; align-items: baseline; gap: var(--layout-space-2); }
+.unified-editor-sheet .attribution-candidate-title { flex: 1; min-width: 0; overflow: hidden; color: var(--ui-ink); font-size: 28rpx; text-overflow: ellipsis; white-space: nowrap; }
+.unified-editor-sheet .attribution-candidate-amount { flex: 0 0 auto; color: var(--sem-expense, #b54738); font-size: 28rpx; font-weight: 500; }
+.unified-editor-sheet .attribution-candidate-meta,
+.unified-editor-sheet .attribution-plan-hint { display: block; margin-top: 4rpx; overflow: hidden; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.unified-editor-sheet .attribution-plan-hint { margin-top: 2rpx; color: var(--ui-accent-strong); }
+.unified-editor-sheet .attribution-candidate .attribution-check { position: absolute; top: 50%; right: 22rpx; margin: -16rpx 0 0; }
+.unified-editor-sheet .attribution-candidate.is-selected .attribution-check { border-color: var(--ui-accent); background: var(--ui-accent); }
+.unified-editor-sheet .attribution-candidate.is-selected .attribution-check::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+.unified-editor-sheet .attribution-candidate.is-disabled .attribution-candidate-title,
+.unified-editor-sheet .attribution-candidate.is-disabled .attribution-candidate-amount { color: var(--ui-muted); }
+/* 已归到别的本金：只读说明占第二行，勾选圈留空表示不可点。 */
+.unified-editor-sheet .attribution-candidate.is-disabled .attribution-check { border-style: dashed; border-color: var(--ui-line); background: transparent; }
+.unified-editor-sheet .attribution-assigned-note { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .attribution-check { flex-shrink: 0; width: 32rpx; height: 32rpx; margin-left: var(--layout-space-3); border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .unified-editor-sheet .attribution-required { display: block; margin-top: var(--layout-space-2); font-size: 24rpx; color: var(--sem-expense, #b54738); }
+.unified-editor-sheet .source-note { display: block; margin-top: var(--layout-space-3); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .evidence-section { margin-top: var(--layout-space-4); }
+.unified-editor-sheet .review-relation-callout { display: flex; align-items: center; gap: var(--layout-space-2); margin: 0 0 var(--layout-space-2); padding: var(--layout-space-2) var(--layout-space-3); border-radius: var(--theme-radius-small); background: var(--ui-accent-soft); }
+.unified-editor-sheet .review-relation-callout.is-disabled { opacity: .55; }
+.unified-editor-sheet .review-relation-copy { flex: 1; min-width: 0; }
+.unified-editor-sheet .review-relation-title { display: block; color: var(--ui-ink); font-size: 26rpx; font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .review-relation-hint { display: block; margin-top: 2rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .review-relation-chevron { flex-shrink: 0; color: var(--ui-subtle); font-size: 30rpx; line-height: 1; }
 
 /* 资金路径：端点组 + 账户清单。
    圆点只标记“这一端是钱的起点或终点”，组内账户是缩进清单行——账户不各自带点，
    层级靠缩进、字号和颜色区分；加账户只增加清单行，端点与卡片骨架不动。 */
 .unified-editor-sheet .funds-card {
-  padding: 4rpx 20rpx 8rpx;
+  padding: 2rpx 20rpx 4rpx;
   border: 1rpx solid var(--ui-line);
   border-radius: var(--theme-radius-medium, 18rpx);
   background: var(--ui-surface);
 }
 /* 标题行与账户行共用同一条右基准线：右侧留 8rpx，符号不会压到行的底色边缘。 */
-.unified-editor-sheet .funds-endpoint { display: flex; align-items: center; gap: var(--layout-space-2); min-height: 72rpx; padding-right: 8rpx; }
+.unified-editor-sheet .funds-endpoint { display: flex; align-items: center; gap: var(--layout-space-2); min-height: 56rpx; padding-right: 8rpx; }
 /* 多账户的补充说明贴在卡片尾部，只在多账户时出现。放在卡片外会让资金卡片整体上下移动。 */
 .unified-editor-sheet .funds-note { margin: 0 0 4rpx 34rpx; }
 .unified-editor-sheet .funds-dot { flex: 0 0 auto; width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--ui-border); }
@@ -299,20 +362,28 @@
 .unified-editor-sheet .funds-endpoint-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .unified-editor-sheet .funds-endpoint-required { color: var(--ui-accent-strong); }
 .unified-editor-sheet .funds-add {
-  flex: 0 0 auto; width: 132rpx; min-height: 0; margin: 0 0 0 auto; padding: 12rpx 0;
+  flex: 0 0 auto; width: 132rpx; min-height: 0; margin: 0 0 0 auto; padding: 6rpx 0;
   border: 0; border-radius: 0; background: transparent;
   color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; text-align: right;
 }
 .unified-editor-sheet .funds-add::after { border: 0; }
 .unified-editor-sheet .funds-add[disabled] { background: transparent; color: var(--ui-subtle); opacity: .55; }
 /* 两个端点之间的短连线：只连接端点，不穿过组内的账户行。 */
-.unified-editor-sheet .funds-link { height: 16rpx; margin-left: 6rpx; border-left: 1rpx solid var(--ui-line); }
-.unified-editor-sheet .funds-account-row { display: flex; align-items: center; gap: var(--layout-space-2); box-sizing: border-box; min-height: 76rpx; padding: 0 8rpx 0 34rpx; border-radius: var(--theme-radius-small, 12rpx); }
+.unified-editor-sheet .funds-link { height: 12rpx; margin-left: 6rpx; border-left: 1rpx solid var(--ui-line); }
+.unified-editor-sheet .funds-account-row { display: flex; align-items: center; gap: var(--layout-space-2); box-sizing: border-box; min-height: 60rpx; padding: 0 8rpx 0 34rpx; border-radius: var(--theme-radius-small, 12rpx); }
 /* 未选账户的强调只换底色、不加边框：边框会改变行高，选中瞬间整块会跳。 */
 .unified-editor-sheet .funds-account-row.is-required { background: var(--ui-accent-soft); }
+/* 单账户把整行做成按钮：去掉按钮默认外观，保留行的留白和强调底色。 */
+.unified-editor-sheet .funds-account-row.is-action {
+  width: 100%; margin: 0; border: 0; background: transparent;
+  color: inherit; font-weight: 400; line-height: 1.4; text-align: left;
+}
+.unified-editor-sheet .funds-account-row.is-action::after { border: 0; }
+.unified-editor-sheet .funds-account-row.is-action.is-required { background: var(--ui-accent-soft); }
+.unified-editor-sheet .funds-account-row.is-action[disabled] { opacity: .55; }
 .unified-editor-sheet .funds-account {
   display: flex; flex: 1; align-items: center; gap: 0;
-  box-sizing: border-box; min-width: 0; min-height: 0; margin: 0; padding: 10rpx 0;
+  box-sizing: border-box; min-width: 0; min-height: 0; margin: 0; padding: 6rpx 0;
   border: 0; border-radius: 0; background: transparent; text-align: left; line-height: 1.4;
 }
 .unified-editor-sheet .funds-account::after { border: 0; }
@@ -334,3 +405,164 @@
   font-size: 30rpx; line-height: 1.5; text-align: right;
 }
 .unified-editor-sheet .funds-account-remove::after { border: 0; }
+
+/* 性质切换列表：底部弹层，只列当前行可切换的经济性质。
+   分期出账/利息/手续费由来源确定，还款渠道也只读，都不进入这个列表。
+   行用 view 而不是 button：整行要铺满列表，按钮默认宽度会把内容挤到中间。 */
+.nature-layer { z-index: 170; }
+/* 两个类提高优先级：.workflow-sheet 的通用内边距在后面，单类会把它覆盖掉。 */
+.workflow-sheet.nature-sheet { padding: 22rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); }
+.nature-sheet .sheet-handle { margin-bottom: var(--layout-space-2); }
+/* 表头两端对齐：标题靠左，关闭键贴住整行的右端。关闭键自带 28rpx 内边距，
+   再向右让出同宽，图标右缘才和下方列表卡片的右边线落在同一条竖线上。 */
+.nature-sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--layout-space-3);
+  min-height: 88rpx; margin-bottom: var(--layout-space-4);
+}
+.nature-sheet-title { min-width: 0; color: var(--ui-ink); font-size: var(--font-section, 32rpx); font-weight: 500; line-height: 1.4; }
+.nature-sheet .nature-sheet-close {
+  box-sizing: border-box; flex: 0 0 88rpx;
+  width: 88rpx; height: 88rpx; min-height: 88rpx;
+  margin: 0 -28rpx 0 0; padding: 28rpx;
+  background: transparent;
+}
+.nature-sheet .nature-sheet-close::after { border: 0; }
+.nature-sheet .nature-sheet-close-icon { width: 32rpx; height: 32rpx; }
+.nature-options { overflow: hidden; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
+.nature-option { position: relative; box-sizing: border-box; display: flex; align-items: center; gap: var(--layout-space-3); width: 100%; min-height: 96rpx; margin: 0; padding: 18rpx 24rpx; background: var(--ui-surface); }
+.nature-option + .nature-option { border-top: 1rpx solid var(--ui-line); }
+.nature-option.is-selected { background: var(--ui-accent-soft); }
+.nature-option.is-selected::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 4rpx; background: var(--ui-accent); }
+.nature-option-copy { flex: 1; min-width: 0; }
+.nature-option-label { display: block; color: var(--ui-ink); font-size: 28rpx; font-weight: 500; line-height: 1.4; }
+.nature-option-hint { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; }
+.nature-option-check { display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 32rpx; width: 32rpx; height: 32rpx; border: 1rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.nature-option.is-selected .nature-option-check { border-color: var(--ui-accent); background: var(--ui-accent); }
+.nature-option-check-icon { width: 24rpx; height: 24rpx; }
+.nature-sheet-hint { display: block; margin-top: var(--layout-space-3); padding: 16rpx 20rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--theme-warning-soft, #fdf6e6); color: var(--theme-warning, #a76416); font-size: 22rpx; line-height: 1.5; }
+
+/* 摘要卡：性质是这张表单的模式，单独一行；下面是账单事实（标题、金额、时间）。
+   性质切换会重建下方资金区，因此与账单事实同卡但不同行；账户不并进来。 */
+.unified-editor-sheet .editor-summary-block {
+  box-sizing: border-box;
+  margin: 0 0 var(--layout-space-4, 24rpx);
+  padding: 0 28rpx 20rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface);
+}
+/* 性质行常驻一层主题浅底色，表示它是这张表的模式入口；未确定时换成待核对提醒底色。 */
+.unified-editor-sheet .editor-nature-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-3);
+  min-height: 84rpx;
+  margin: 0 -28rpx;
+  padding: 0 28rpx;
+  border-bottom: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-medium, 18rpx) var(--theme-radius-medium, 18rpx) 0 0;
+  background: var(--ui-accent-soft);
+}
+.unified-editor-sheet .editor-nature-bar.is-pending { background: var(--theme-warning-soft, #fdf6e6); }
+.unified-editor-sheet .editor-nature-label { flex: 0 0 auto; color: var(--ui-muted); font-size: 26rpx; line-height: 1.5; }
+.unified-editor-sheet .editor-nature-line {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8rpx;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 12rpx 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ui-ink);
+  font-size: 28rpx;
+  line-height: 1.5;
+  text-align: right;
+}
+.unified-editor-sheet .editor-nature-line::after { border: 0; }
+.unified-editor-sheet .editor-nature-dot { flex: 0 0 auto; width: 12rpx; height: 12rpx; border-radius: 50%; background: var(--ui-subtle); }
+.unified-editor-sheet .editor-nature-dot.row-expense { background: var(--sem-expense, #B54738); }
+.unified-editor-sheet .editor-nature-dot.row-income { background: var(--sem-income, #477153); }
+.unified-editor-sheet .editor-nature-value { min-width: 0; overflow-wrap: anywhere; }
+.unified-editor-sheet .editor-nature-chevron { flex: 0 0 auto; margin-left: 4rpx; color: var(--ui-subtle); font-size: 26rpx; font-weight: 400; line-height: 1; }
+.unified-editor-sheet .editor-nature-hint { flex: 0 1 auto; margin-left: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+
+.unified-editor-sheet .editor-summary-facts { padding-top: 22rpx; }
+.unified-editor-sheet .editor-summary-main { display: flex; align-items: baseline; gap: var(--layout-space-3); }
+.unified-editor-sheet .editor-summary-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-ink); font-size: 28rpx; font-weight: 500; line-height: 1.5; }
+.unified-editor-sheet .editor-summary-title.is-empty { color: var(--ui-subtle); font-weight: 400; }
+.unified-editor-sheet .editor-amount { flex: 0 0 auto; display: flex; align-items: baseline; gap: 2rpx; margin-left: auto; color: var(--ui-ink); font-size: 44rpx; font-weight: 500; line-height: 1.2; }
+.unified-editor-sheet .editor-summary-time { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+
+/* 期次、分类和备注共用一套名目行：左名目、右值。 */
+.unified-editor-sheet .editor-rows { margin: 0 0 var(--layout-space-4, 24rpx); border-top: 1rpx solid var(--ui-line); }
+.unified-editor-sheet .editor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-3);
+  min-height: 92rpx;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid var(--ui-line);
+}
+.unified-editor-sheet .editor-row-label { flex: 0 0 96rpx; color: var(--ui-muted); font-size: 26rpx; line-height: 1.5; }
+.unified-editor-sheet .editor-row-value {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8rpx;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+}
+.unified-editor-sheet .editor-row-text { min-width: 0; color: var(--ui-ink); font-size: 28rpx; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
+.unified-editor-sheet .editor-row-text.is-empty { color: var(--ui-subtle); }
+.unified-editor-sheet .editor-row-choice { flex: 1 1 0; }
+.unified-editor-sheet .editor-row-choice::after { border: 0; }
+.unified-editor-sheet .editor-row-textarea {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 42rpx;
+  max-height: 240rpx;
+  padding: 0;
+  font-size: 28rpx;
+  line-height: 1.5;
+  text-align: right;
+}
+
+/* 本金行的利息归属：勾选在左、金额在右，像设计图那样是一张清单。 */
+.unified-editor-sheet .attribution-block-pinned { margin: 0 0 var(--layout-space-4, 24rpx); }
+.unified-editor-sheet .attribution-block-pinned .attribution-head { align-items: center; }
+.unified-editor-sheet .attribution-block-pinned .attribution-head-main { flex: 1 1 0; display: flex; align-items: baseline; gap: 6rpx; min-width: 0; overflow: hidden; }
+.unified-editor-sheet .attribution-block-pinned .attribution-head-title { flex: 0 0 auto; color: var(--ui-ink); font-size: 26rpx; }
+.unified-editor-sheet .attribution-block-pinned .attribution-head-count { flex: 0 0 auto; margin-left: auto; color: var(--ui-muted); font-size: 24rpx; }
+.unified-editor-sheet .attribution-block-pinned .attribution-head-plan { flex: 0 1 auto; margin: 0; color: var(--ui-muted); font-size: 24rpx; }
+.unified-editor-sheet .attribution-block-pinned .attribution-candidates { margin-top: var(--layout-space-2); }
+.unified-editor-sheet .attribution-block-pinned .attribution-candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--layout-space-3);
+  padding: 20rpx 22rpx;
+}
+.unified-editor-sheet .attribution-block-pinned .attribution-candidate .attribution-check { position: static; flex: 0 0 auto; margin: 0; }
+.unified-editor-sheet .attribution-block-pinned .attribution-candidate-copy { flex: 1; min-width: 0; }
+.unified-editor-sheet .attribution-block-pinned .attribution-candidate-title { display: block; }
+.unified-editor-sheet .attribution-block-pinned .attribution-candidate-amount { flex: 0 0 auto; margin-left: auto; }
+.unified-editor-sheet .attribution-note { display: block; margin-top: var(--layout-space-2); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+
+/* 原始交易在核对页是只读清单，不是一张张卡片。 */
+.review-editor-sheet .evidence-card { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.review-editor-sheet .evidence-card + .evidence-card { margin-top: var(--layout-space-2); padding-top: var(--layout-space-2); border-top: 1rpx solid var(--ui-line); }
+.review-editor-sheet .evidence-card-head { margin: 0 0 4rpx; }
+.review-editor-sheet .evidence-field { display: flex; align-items: baseline; gap: var(--layout-space-3); padding: 10rpx 0; border: 0; }
+.review-editor-sheet .evidence-key { flex: 0 0 auto; color: var(--ui-muted); font-size: 24rpx; }
+.review-editor-sheet .evidence-value { flex: 1; min-width: 0; color: var(--ui-ink); font-size: 26rpx; text-align: right; overflow-wrap: anywhere; }

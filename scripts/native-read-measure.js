@@ -1,10 +1,36 @@
 // automation_evaluate fnSource；仅在 native-read-sandbox.js 建立的独立工程运行。
 async function measureNativeReads(state) {
-  var transport = require('native-read-transport.js'), api = require('services/catledger-api.js'), observer = require('services/read-observer.js')
+  var transport = require('native-read-transport.js'), api = require('services/catledger-api.js'), observer = require('services/read-observer.js'), tabs = require('shell/tabs.js')
   var app = getApp(), samples = []
   transport.measurements = samples; transport.phase = 'starting'; transport.failReads = false
-  function page() { return getCurrentPages().slice(-1)[0] }
+  function hostPage() { return getCurrentPages().slice(-1)[0] }
+  function page() {
+    var host = hostPage()
+    return host && host.route === 'shell/index' ? host.activePanel() : host
+  }
   function navigation(method, url) { return new Promise(function(resolve, reject) { wx[method]({ url: url, success: resolve, fail: reject }) }) }
+  async function selectTab(tabId) {
+    var pages = getCurrentPages(), host = hostPage()
+    if (!host || host.route !== 'shell/index') {
+      var shellIndex = pages.findIndex(function(entry) { return entry.route === 'shell/index' })
+      if (shellIndex >= 0) {
+        var shell = pages[shellIndex]
+        shell.pendingTab = tabId
+        await new Promise(function(resolve, reject) {
+          wx.navigateBack({ delta: pages.length - shellIndex - 1, success: resolve, fail: function(error) { shell.pendingTab = null; reject(error) } })
+        })
+      } else {
+        await navigation('reLaunch', '/shell/index?tab=' + encodeURIComponent(tabId))
+      }
+      await ready(function() { var current=hostPage();return current && current.route === 'shell/index' })
+      host = hostPage()
+    }
+    host.selectTab(tabId)
+    await ready(function() {
+      var current = host.activePanel()
+      return hostPage() === host && current && current.route === tabs.resolveTab(tabId).route
+    })
+  }
   function ready(check) { return new Promise(function(resolve, reject) { var began=Date.now(); var timer=setInterval(function(){ if(check()){clearInterval(timer);resolve()}else if(Date.now()-began>15000){clearInterval(timer);reject(new Error('Synthetic page timeout'))}},10) }) }
   async function measure(scenario, operation) {
     // 相邻导航先稳定350ms，避免上个路由动画混入本场景；该等待不计入测量。
@@ -24,8 +50,8 @@ async function measureNativeReads(state) {
   }
   app.logoutWechatAccount(); app.globalData.loginStartupPending = true
   await measure('cold-home', async function() {
-    await navigation('reLaunch','/pages/index/index')
-    await ready(function(){return app.hasLoginApproval() && page().data.hasDashboard && !page().data.loading})
+    await navigation('reLaunch','/shell/index')
+    await ready(function(){var current=page();return app.hasLoginApproval() && current && current.data.hasDashboard && !current.data.loading})
   })
   await measure('same-session-home', function(){return page().loadDashboard()})
   await measure('background-home', function(){app.onHide();app.onShow();return page().loadDashboard()})
@@ -37,14 +63,14 @@ async function measureNativeReads(state) {
     transport.writePhases = []; var writeBegan = Date.now()
     await api.callApi('transactions.create',{requestId:api.createRequestId(),type:'expense',sourceAccountId:state.accountId,categoryId:state.categoryId,amountMinor:'100',occurredLocalAt:'2026-09-04T12:00:00',timezoneOffsetMinutes:-480,note:'合成写后返回'})
     transport.writePhases.push({phase:'confirmed',ms:Date.now()-writeBegan})
-    await navigation('switchTab','/pages/index/index');transport.writePhases.push({phase:'navigation',ms:Date.now()-writeBegan});await ready(function(){return page().data.hasDashboard&&!page().data.loading});transport.writePhases.push({phase:'latest',ms:Date.now()-writeBegan})
+    await selectTab('home');transport.writePhases.push({phase:'navigation',ms:Date.now()-writeBegan});await ready(function(){return page().data.hasDashboard&&!page().data.loading});transport.writePhases.push({phase:'latest',ms:Date.now()-writeBegan})
   })
-  await navigation('switchTab','/pages/transactions/index');await page().prepareAndLoad()
+  await selectTab('transactions');await page().prepareAndLoad()
   for(var i=2;i<=10;i++)await measure('transactions-page-'+i,function(){return page().loadTransactions(true)})
   var loadedRows=page().data.transactions.length
   await measure('selection',async function(){page().toggleSelection();await page().selectAll();page().resetSelection()})
   if(loadedRows!==300 || page().data.selectedCount!==0)throw new Error('Synthetic native pagination/selection failed')
-  await navigation('switchTab','/pages/index/index');await page().loadDashboard()
+  await selectTab('home');await page().loadDashboard()
   await measure('weak-network-home',async function(){transport.failReads=true;app.onHide();app.onShow();await page().loadDashboard()})
   transport.failReads=false
   if(!page().data.hasDashboard || !page().data.errorMessage)throw new Error('Weak network lost snapshot')

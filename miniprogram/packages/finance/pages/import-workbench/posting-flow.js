@@ -5,19 +5,20 @@ const api = require('../../../../services/catledger-import')
 const drafts = require('../../../../services/import-draft-session')
 const readCache = require('../../../../services/read-cache')
 const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
+const tabRouter = require('../../../../shell/router')
 
 module.exports = {
   viewTransactions: function () {
-    wx.switchTab({ url: '/pages/transactions/index' })
+    tabRouter.openTab('transactions')
   },
 
   viewStatistics: function () {
-    wx.switchTab({ url: '/pages/statistics/index' })
+    tabRouter.openTab('statistics')
   },
 
   completeCategories: function () {
     getApp().globalData.openStatisticsCompletion = true
-    wx.switchTab({ url: '/pages/statistics/index', fail: function () { getApp().globalData.openStatisticsCompletion = false } })
+    tabRouter.openTab('statistics', { fail: function () { getApp().globalData.openStatisticsCompletion = false } })
   },
 
   correctBalances: function () {
@@ -25,7 +26,9 @@ module.exports = {
   },
 
   openInstallmentSources: function () {
-    wx.navigateTo({ url: '/packages/finance/pages/installment-sources/index' })
+    // 已入账页直接带本批 updateId：列表只列这一批待补来源，计划名也取本批账单里的计划名。
+    const updateId = this.data.update && this.data.update.updateId
+    wx.navigateTo({ url: '/packages/finance/pages/installment-sources/index' + (updateId ? '?updateId=' + encodeURIComponent(updateId) : '') })
   },
 
   backFinalDetail: function () {

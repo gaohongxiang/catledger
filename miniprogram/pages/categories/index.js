@@ -5,7 +5,7 @@ const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const categoryModel = require('./model')
 
-Page({
+Page(themeService.page({
   data: {
     loading: false,
     hasLoaded: false, saving: false, errorMessage: '', selectedKind: 'expense',
@@ -18,11 +18,9 @@ Page({
   },
 
   onLoad: function () {
-    themeService.bindPage(this)
     loginGuard.run(this, this.loadCategories.bind(this))
   },
   onShow: function () {
-    themeService.bindPage(this)
     if (this.data.hasLoaded && (!pageReadSession.isCurrent(this) || !api.isFresh('categories.list'))) {
       loginGuard.run(this, this.loadCategories.bind(this))
     }
@@ -240,4 +238,4 @@ Page({
       .catch(function (error) { return self.recoverMutation(error, '排序失败', isCurrent) })
       .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
   }
-})
+}))

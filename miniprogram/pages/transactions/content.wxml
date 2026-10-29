@@ -1,0 +1,113 @@
+<view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
+  <view wx:if="{{loggedIn && returnAccountId && !importFilter}}" class="account-return" bindtap="returnToAccountDetail" hover-class="account-return-active" role="button" aria-label="返回账户详情">
+    <chevron-icon direction="left" size="{{24}}" /><text>返回账户详情</text>
+  </view>
+  <view wx:if="{{!importFilter}}" class="month-switcher">
+    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
+    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
+      <view class="date-picker-content">
+        <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
+      </view>
+    </picker>
+    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><chevron-icon size="{{30}}" /></view>
+  </view>
+
+  <view wx:if="{{importFilter}}" class="import-filter content-inset"><text class="detail-meta">本次导入 · 全部日期</text><text class="import-filter-title">{{importFilter.title}}</text><button class="detail-manage-link" bindtap="clearImportFilter" disabled="{{deleting}}">返回全部明细</button></view>
+
+  <view wx:if="{{selectedDate && !importFilter}}" class="date-filter-note content-inset">
+    <text>只看当天账目</text>
+    <text class="date-clear" bindtap="clearDate">查看整月</text>
+  </view>
+
+  <view class="summary-strip {{incomeText.length > 12 || expenseText.length > 12 || netText.length > 12 ? 'summary-strip-stacked' : ''}}">
+    <view class="inline-sync summary-sync {{loading || loadingMore ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading || loadingMore ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
+    <view class="summary-cell">
+      <text class="summary-label">收入</text>
+      <text class="money-number summary-value summary-income">{{loggedIn && hasLoaded ? incomeText : '—'}}</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-label">支出</text>
+      <text class="money-number summary-value summary-expense">{{loggedIn && hasLoaded ? expenseText : '—'}}</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-label">结余</text>
+      <text class="money-number summary-value {{netClass}}">{{loggedIn && hasLoaded ? netText : '—'}}</text>
+    </view>
+  </view>
+
+  <view class="filter-toolbar">
+    <view class="filter-search-toggle {{searchOpen || search ? 'filter-search-toggle-active' : ''}}" role="button" aria-label="{{searchOpen ? '收起搜索' : '搜索备注'}}" bindtap="toggleSearch"><image src="/assets/icons/search.svg" mode="aspectFit" /></view>
+    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
+      <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
+    </picker>
+    <category-picker class="category-picker-control filter-picker" range="{{categoryFilters}}" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
+      <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
+    </category-picker>
+    <picker wx:if="{{!importFilter}}" class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
+      <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
+    </picker>
+    <view wx:if="{{loggedIn}}" id="batch-delete-toggle" class="filter-select-toggle {{selectionMode ? 'filter-select-toggle-active' : ''}}" role="button" aria-label="{{selectionMode ? '退出批量删除' : '批量删除'}}" bindtap="toggleSelection"><image src="/assets/icons/select.svg" mode="aspectFit" /></view>
+  </view>
+
+  <view wx:if="{{searchOpen || search}}" class="search-field">
+    <view class="search-submit" role="button" aria-label="搜索备注" bindtap="applySearch"><image class="search-icon-img" src="/assets/icons/search.svg" mode="aspectFit" /></view>
+    <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" aria-label="搜索账目备注" cursor-spacing="32" bindinput="bindSearch" bindconfirm="applySearch" />
+    <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><image class="clear-icon-img" src="/assets/icons/close.svg" mode="aspectFit" /></view>
+  </view>
+
+  <view wx:if="{{transactions.length > 0}}" class="detail-timeline">
+    <block
+      wx:for="{{transactions}}"
+      wx:key="transactionId"
+    >
+    <text wx:if="{{item.dayLabel}}" class="detail-group content-inset">{{item.dayLabel}}</text>
+    <view
+      id="transaction-row-{{index}}"
+      class="detail-item content-inset {{staggerOn ? 'row-enter' : ''}}"
+      style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
+      data-index="{{index}}"
+      bindtap="editTransaction"
+    >
+      <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}"><image wx:if="{{item.selected}}" class="detail-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
+      <category-tile class="detail-tile" size="small" hide-name name="{{item.label}}" system-key="{{item.category.systemKey}}" icon-kind="{{item.iconKind}}" />
+      <view class="detail-main">
+        <view class="detail-copy">
+          <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">
+            <text class="detail-label">{{item.label}}</text>
+            <text class="detail-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
+          </view>
+          <text class="detail-meta">{{item.timeText}} · {{item.typeLabel}} · {{item.accountLine}}</text>
+          <text wx:if="{{item.note}}" class="detail-note">{{item.note}}</text>
+        </view>
+      </view>
+    </view>
+    </block>
+  </view>
+
+  <empty-cat wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />
+
+  <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看账目" description="你的账户与账单只对你可见。"><button class="guest-login-button" size="mini" bindtap="promptWechatLogin"><text class="guest-login-label">登录</text></button></ui-state>
+  <skeleton-rows wx:elif="{{loading && !hasLoaded}}" rows="{{4}}" />
+  <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
+  <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
+  <ui-state wx:if="{{catalogError}}" description="{{catalogError}}" />
+  <view wx:if="{{errorMessage && !selectionMode && !deleteRetryCount}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{selectionMode || deleteRetryCount}}" class="selection-bar-spacer {{errorMessage ? 'selection-bar-spacer-tall' : ''}}"></view>
+  <view wx:if="{{selectionMode || deleteRetryCount}}" class="selection-bar">
+    <text wx:if="{{errorMessage}}" class="selection-bar-error">{{errorMessage}}</text>
+    <view class="selection-bar-main">
+    <block wx:if="{{selectionMode}}">
+      <text class="selection-bar-count">已选 {{selectedCount}} 笔</text>
+      <button class="selection-bar-link" id="batch-select-all" bindtap="selectAll" disabled="{{deleting || selectingAll || loading || deleteRetryCount}}">{{selectingAll ? '正在选择…' : allSelected ? '取消全选' : '全选'}}</button>
+      <view class="selection-bar-space"></view>
+      <button class="selection-bar-link" bindtap="toggleSelection" disabled="{{deleting || selectingAll || loading}}">取消</button>
+      <button class="danger-button selection-bar-delete" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || selectingAll || loading || (!selectedCount && !deleteRetryCount)}}">删除 {{selectedCount}} 笔</button>
+    </block>
+    <button wx:else class="danger-button selection-bar-delete selection-bar-delete-block" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || selectingAll || loading}}">继续删除 {{deleteRetryCount}} 笔</button>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,4 @@
+.main-shell { position: fixed; inset: 0; background: var(--theme-page); }
+home-panel, transactions-panel, statistics-panel, profile-panel { display: block; height: 100%; }
+
+.shell-panel { height: 100%; }

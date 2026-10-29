@@ -286,8 +286,11 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
         bucket.subjects.push({ event: member, memberRole })
       }
       if (currentClassification.primaryReason === 'installment_attribution_required') {
-        // 整组进同一个事项：本金在前（事项门面＝本金行），其余费用依次列出。
-        (installmentGroups.get(signature) || [event]).forEach((member) => pushSubject(member, descriptor.memberRole))
+        // 事项只装还没归属的费用：本金和已经归好的费用已经确定，不再被绑在待核对里陪着等。
+        // 那些行各自回到已核对，按计划合成本息一张卡；剩下这几笔仍由用户选归属。
+        const pending = (installmentGroups.get(signature) || [event])
+          .filter((member) => (member.reasonCodes || []).includes(INSTALLMENT_ATTRIBUTION_REASON))
+        ;(pending.length ? pending : [event]).forEach((member) => pushSubject(member, descriptor.memberRole))
       } else pushSubject(event, descriptor.memberRole)
       ;(relationsByEvent.get(event.eventId) || []).filter((relation) => (
         currentClassification.primaryReason === 'bank_channel_same_event_candidate' ? false :
@@ -307,14 +310,15 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
 
   // 整组分期事项不能挂在 classification 上：分期行只要还缺账户，organizer-model 就会先把它判成
   // account_mapping（primaryReason=ledger_account_required），上面那条 installment 分支因此永远不进，
-  // 事项就建不出来——本金随之失去唯一的待核对凭据，账户一确认就掉进已核对，本息分居两个页签。
-  // 这里改按「本期次确实有判不出归属的费用行」独立判定，与 applyInstallmentAttribution 写原因码同源。
+  // 事项就建不出来。这里改按「本期次确实有判不出归属的费用行」独立判定，与 applyInstallmentAttribution 同源。
+  // 成员只收这些待归属的费用：本金不需要人核对，已归好的费用也已经定了，它们照常进已核对。
   installmentGroups.forEach((groupMembers, groupKey) => {
-    if (!groupMembers.some((member) => (member.reasonCodes || []).includes(INSTALLMENT_ATTRIBUTION_REASON))) return
+    const pending = groupMembers.filter((member) => (member.reasonCodes || []).includes(INSTALLMENT_ATTRIBUTION_REASON))
+    if (!pending.length) return
     const classification = { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: INSTALLMENT_ATTRIBUTION_REASON }
     const key = digestParts(REVIEW_ISSUE_VERSION, updateId, classification.issueType, groupKey)
     const bucket = buckets.get(key) || { key, classification, subjects: [], relations: [], subjectKeys: new Set(), relationIds: new Set() }
-    groupMembers.forEach((member) => {
+    pending.forEach((member) => {
       const subjectKey = member.eventId + ':subject'
       if (bucket.subjectKeys.has(subjectKey)) return
       bucket.subjectKeys.add(subjectKey)

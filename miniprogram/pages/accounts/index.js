@@ -16,7 +16,7 @@ const TYPE_OPTIONS = [
   { value: 'other_liability', label: '其他负债' }
 ]
 
-Page({
+Page(themeService.page({
   data: {
     loading: false,
     hasLoaded: false,
@@ -41,10 +41,8 @@ Page({
     billingDraft: billing.draft()
   },
 
-  onLoad: function () { themeService.bindPage(this) },
 
   onShow: function () {
-    themeService.bindPage(this)
     loginGuard.run(this, this.loadAccounts.bind(this))
   },
 
@@ -148,4 +146,4 @@ Page({
     }).catch(function (error) { return self.recoverMutation(error, '保存失败', isCurrent) })
       .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
   }
-})
+}))

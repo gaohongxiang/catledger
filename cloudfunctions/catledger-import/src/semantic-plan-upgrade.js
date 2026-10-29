@@ -8,7 +8,7 @@ const { sameEventCandidateGroups, refundRelation } = require('./relation-resolve
 const { findRefundSourceConflicts, withRefundSourceEvidence, applyRefundSourceConflict } = require('./refund-source-conflict')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
-const { economicNatureForRow } = require('./organizer-model')
+const { economicNatureForRow, INSTALLMENT_PRINCIPAL_NATURES } = require('./organizer-model')
 const { unique } = require('./organizer-values')
 const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates } = require('./source-funds')
 const { paymentEvidenceFields } = require('./payment-resolution')
@@ -74,9 +74,9 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
     if (installment && installment.component === 'principal' && next.economicNature === 'repayment' && !next.counterpartyLedgerAccountId) {
       next.reasonCodes = next.reasonCodes.filter(reason => !['transfer_account_required', 'repayment_account_required', 'borrow_account_required'].includes(reason))
     }
+    // 本金行允许改判为支出、费用、收入或待确认；方向由 organizer-model 按性质复核。
     if (installment && installment.component === 'principal' &&
-        (next.economicNature !== 'repayment' || next.counterpartyLedgerAccountId ||
-          next.flowDirection !== 'neutral')) next.reasonCodes.push('core_fields_conflict')
+        (!INSTALLMENT_PRINCIPAL_NATURES.has(next.economicNature) || next.counterpartyLedgerAccountId)) next.reasonCodes.push('core_fields_conflict')
     Object.assign(next.fieldSources, paymentEvidenceFields(rows))
     const references = referencesForRows(rows)
     if (!repaymentRelation && references.length) next.fieldSources.paymentAccountReferences = references

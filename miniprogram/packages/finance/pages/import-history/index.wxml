@@ -1,3 +1,14 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
 <view class="page-canvas page-secondary history-page {{themeClass}}" style="{{themeStyle}}">
   <page-head has-actions class="content-inset" title="导入记录" copy="查看某次导入的账目，可在明细中选择删除。"><button size="mini" class="page-head-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></page-head>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />

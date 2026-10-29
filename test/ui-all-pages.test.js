@@ -3,15 +3,15 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
-const { createRequire } = require('node:module')
 const root = path.join(__dirname, '..')
 const read = name => fs.readFileSync(path.join(root, name), 'utf8')
 const { routes } = require('./helpers/page-routes')
+const { createLoader } = require('./helpers/vm-loader')
+const { factories, pageDefinition } = require('./helpers/page-definitions')
+const { readMarkup } = require('./helpers/source-files')
 
 function runtime(route, callApi) {
   if (route === 'packages/finance/pages/import-workbench/index') return require('./helpers/paged-workbench').runtime()
-  const filename = path.join(root, 'miniprogram', route + '.js')
-  const req = createRequire(filename)
   let definition
   const calls = [], storage = new Map()
   const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0, uid: '1234567890' } }
@@ -22,37 +22,23 @@ function runtime(route, callApi) {
     return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
   }, callImport: () => { throw new Error('预览测试禁止真实导入写入') } }
   const chrome = { getWindowInfo: () => ({ windowWidth: 375 }), showModal() {}, showToast() {}, navigateTo() {}, redirectTo() {}, navigateBack() {}, nextTick: cb => cb(), stopPullDownRefresh() {} }
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-    Page: p => { definition = p }, getApp: () => app, wx: chrome,
-    getCurrentPages: () => [], console,
-    require: name => {
-      if (name.includes('/services/catledger-api') || name.includes('/services/catledger-import')) return api
-      if (name.includes('/services/pending-ledger-write')) return req(name).createPendingWrite({ scope: () => app.globalData.uid,
-        read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key),
-        requestId: api.createRequestId, call: (_, action, data) => api.callApi(action, data) })
-      if(name.includes('/services/loan-charge-sync')){
-        const module={exports:{}},file=req.resolve(name),local=createRequire(file)
-        vm.runInNewContext(fs.readFileSync(file,'utf8'),{module,getApp:()=>app,require:dep=>dep==='./catledger-api'?api:dep==='./pending-ledger-write'?{pending:()=>null}:local(dep)})
-        return module.exports
-      }
-      if (name.includes('/services/login-guard')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
-      if (name.includes('/theme/service')) return { bindPage() {}, currentTokens: () => ({ accent: '#BE5B24' }) }
-      if (name === './source' && route === 'packages/finance/pages/loan-payment/index') {
-        const source = { exports: {} }
-        vm.runInNewContext(req('node:fs').readFileSync(req.resolve('./source'), 'utf8'), { module: source,
-          require: dep => dep.includes('/services/catledger-api') ? api : req(dep) })
-        return source.exports
-      }
-      return req(name)
-    }
-  }, { filename })
-  const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), getTabBar: () => null,
+  const themeService = { page: definition => definition, component: definition => definition, currentTokens: () => ({ accent: '#BE5B24' }) }
+  const load = createLoader({ getApp: () => app, wx: chrome, getCurrentPages: () => [] }, (file, local) => {
+    if (/\/services\/catledger-(?:api|import)\.js$/.test(file)) return api
+    if (file.endsWith('/services/pending-ledger-write.js')) return local(file).createPendingWrite({ scope: () => app.globalData.uid,
+      read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key),
+      requestId: api.createRequestId, call: (_, action, data) => api.callApi(action, data) })
+    if (file.endsWith('/services/login-guard.js')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
+    if (file.endsWith('/theme/service.js')) return themeService
+  })
+  definition = pageDefinition(path.join(root, 'miniprogram'), route, load, { app, api, themeService, wx: chrome })
+  const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data || {})), getTabBar: () => null,
     setData(patch) { for (const [key, value] of Object.entries(patch)) {
       const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data
       for (const k of keys.slice(0, -1)) target = target[k] || (target[k] = {})
       target[keys.at(-1)] = value
     } } }
-  return { page, app, calls, api, chrome }
+  return { page, app, calls, api, chrome, load }
 }
 
 test('分期资料与计划响应丢失后修改表单仍恢复原请求，保存后进入权威资料', async () => {
@@ -195,13 +181,17 @@ test('实际借还表单必须明确零和构成，整数守恒支持大额而�
 for (const route of routes) {
   test(route + '：页面、主题和全部声明事件完整，WXML 标签配对', () => {
     const accountTransactions = route === 'pages/account-transactions/index'
-    const markup = read('miniprogram/' + (accountTransactions ? 'pages/transactions/index' : route) + '.wxml')
+    const markup = readMarkup(path.join(root, 'miniprogram', route + '.wxml'))
     const style = read('miniprogram/' + (accountTransactions ? 'pages/transactions/index' : route) + '.wxss')
     if (accountTransactions) {
-      assert.match(read('miniprogram/' + route + '.wxml'), /include src="\.\.\/transactions\/index\.wxml"/)
+      assert.match(read('miniprogram/' + route + '.wxml'), /include src="\.\.\/transactions\/content\.wxml"/)
       assert.match(read('miniprogram/' + route + '.wxss'), /@import "\.\.\/transactions\/index\.wxss"/)
     }
     const { page } = runtime(route)
+    if (factories[route]) {
+      assert.match(read('miniprogram/' + route + '.js'), /shell\/router/, '旧主Tab路由只能跳转统一宿主')
+      return
+    }
     assert.ok(style.trim().length > 100)
     assert.match(markup, /themeClass/)
     assert.match(markup, /themeStyle/)
@@ -220,12 +210,35 @@ for (const route of routes) {
   })
 }
 
+for (const route of Object.keys(factories)) {
+  test(route + '：panel 使用真实业务事件且模板完整', () => {
+    const base = route.replace(/index$/, 'panel')
+    const { load } = runtime(route)
+    const component = load(path.join(root, 'miniprogram', base + '.js'))
+    const markup = readMarkup(path.join(root, 'miniprogram', base + '.wxml'))
+    assert.match(markup, /themeClass/)
+    assert.match(markup, /themeStyle/)
+    assert.doesNotMatch(markup, /<page-meta\b/, '系统外壳由唯一宿主维护')
+    for (const event of markup.matchAll(/(?:bind|catch)(?:\:)?[\w-]+="([A-Za-z][\w]*)"/g)) {
+      assert.equal(typeof component.methods[event[1]], 'function', base + ' 丢失事件 ' + event[1])
+    }
+    const stack = []
+    for (const tag of markup.replace(/<!--[\s\S]*?-->/g, '').match(/<\/?[\w-]+\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>/g) || []) {
+      const name = tag.match(/^<\/?([\w-]+)/)[1]
+      if (tag.startsWith('</')) assert.equal(stack.pop(), name, base + ' 标签不配对')
+      else if (!tag.endsWith('/>')) stack.push(name)
+    }
+    assert.equal(stack.length, 0)
+  })
+}
+
 test('现有路由有交付记录，单笔编辑不再注册整批维护页', () => {
   assert.equal(routes.includes('pages/import-maintenance/index'), false)
   const inventory = read('specs/mini-1906ui-all-pages/README.md')
   const accountDetail = read('specs/mini-1910-liability-settings/README.md')
   const installment = read('specs/mini-1914-installment-flow/design.md')
-  for (const route of routes) assert.ok((route === 'packages/finance/pages/installment-sources/index' ? installment : route === 'pages/account-transactions/index' ? accountDetail : inventory).includes(route.split('/').at(-2)), route)
+  const architecture = read('docs/招财猫记账本架构设计.md')
+  for (const route of routes) assert.ok((route === 'shell/index' ? architecture : route === 'packages/finance/pages/installment-sources/index' ? installment : route === 'pages/account-transactions/index' ? accountDetail : inventory).includes(route === 'shell/index' ? route : route.split('/').at(-2)), route)
 })
 
 test('账本与个人页：初次读取失败不冒充成功零值，成功后更新，刷新失败保留原数量', async () => {
@@ -247,7 +260,7 @@ test('账本与个人页：初次读取失败不冒充成功零值，成功后�
     const countPresentation = name === 'ledger'
       ? /loggedIn && hasLoaded \? accountCount : '—'/
       : /loggedIn && hasLoaded \? accountCount \+ ' 个活动账户' : '管理资产与负债账户'/
-    assert.match(read('miniprogram/pages/' + name + '/index.wxml'), countPresentation)
+    assert.match(readMarkup(path.join(root, 'miniprogram/pages', name, name === 'profile' ? 'panel.wxml' : 'index.wxml')), countPresentation)
   }
 })
 
@@ -345,7 +358,7 @@ test('记账目录失败仍能编辑本地草稿，重试成功后允许选择�
 
 test('各编辑弹层错误可见，金额/名称拥有标签，保存继续保留禁用门禁', () => {
   for (const route of ['accounts', 'categories', 'statistics']) {
-    const markup = read('miniprogram/pages/' + route + '/index.wxml')
+    const markup = readMarkup(path.join(root, 'miniprogram/pages', route, route === 'statistics' ? 'panel.wxml' : 'index.wxml'))
     assert.match(markup, /class="sheet-error"/)
   }
   for (const route of ['accounts', 'transaction-editor']) {
@@ -396,6 +409,25 @@ test('编辑已停用账户的账目可见原值，但提交保持阻断', async
   page.editTransaction({ currentTarget: { dataset: { index: 0 } } })
   assert.equal(app.globalData.editingTransaction.transactionId, 'manual-a')
   assert.equal(paths[1], '/pages/transaction-editor/index?mode=edit')
+})
+
+ test('待关联退款的只读详情可进入关联页，并允许先补记未被导入的原消费', () => {
+  const { page, app, chrome } = runtime('pages/transaction-editor/index')
+  const paths = []
+  chrome.redirectTo = options => paths.push(options.url)
+  chrome.navigateTo = options => paths.push(options.url)
+  const refund = { transactionId: 'import-refund', version: 2, origin: 'import', type: 'refund',
+    amountMinor: '1000', occurredLocalAt: '2026-09-01T12:00:00', canLinkRefund: true }
+  app.globalData.editingTransaction = refund
+  page._detailTransaction = refund
+  page.setData({ mode: 'import', readonlyDetail: true, canLinkRefund: true, transactionId: refund.transactionId, version: 2 })
+  page.openLinkRefund()
+  assert.equal(app.globalData.editingTransaction.transactionId, 'import-refund')
+  assert.equal(paths[0], '/pages/transaction-editor/index?mode=link-refund', '替换只读详情，关联后回到账目列表')
+  page.setData({ mode: 'link-refund', readonlyDetail: false })
+  page.addOriginalExpense()
+  assert.equal(paths[1], '/pages/transaction-editor/index?mode=create')
+  assert.equal(page._refundRefreshPending, true, '返回关联页后重新读取候选，刚记的支出才能被选中')
 })
 
  test('导入账目不依赖可用账户读取，只提交所选交易的分类并保持失败重试请求号', async () => {

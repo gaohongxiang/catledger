@@ -75,6 +75,18 @@ async function candidates(connection, uid, refund, kind, options = {}) {
   return { total: Number(count.count), items: rows.map(row => ({ ...row, kind, version: Number(row.version),
     amountMinor: String(row.amountMinor), remainingMinor: String(row.remainingMinor) })) }
 }
+// “暂记待关联”是用户的决定：这笔退款先入账，暂不冲减任何消费，之后仍可补关联。
+// 它不是系统断言“已经确认没有原消费”，所以候选多少、是否读过另一个范围、其他字段是否
+// 还有待核对项，都不能替用户拒绝这个决定；强制用户先挑一笔错误的原消费反而更糟。
+// 唯一例外是来源冲突（原单已关闭/失败却退款成功）：正确结果是按已退回处理、净额 0，
+// 不存在“以后补关联”的原消费，因此不能把矛盾留成暂记。
+function pendingState(event) {
+  if (!event || event.economicNature !== 'refund') return { allowed: false, reason: 'not_refund' }
+  const reasons = event.reasonCodes || []
+  const sourceConflict = Boolean(event.fieldSources && event.fieldSources.refundSourceConflict) ||
+    reasons.includes('refund_source_conflict')
+  return sourceConflict ? { allowed: false, reason: 'source_conflict' } : { allowed: true, reason: '' }
+}
 async function currentOriginals(connection, uid, event) {
   const [batch] = await connection.execute(`SELECT r.relation_id AS relationId,r.version AS relationVersion,r.target_event_id AS id,e.version
     FROM catledger_economic_event_relations r JOIN catledger_economic_events e ON e.uid=r.uid AND e.event_id=r.target_event_id
@@ -171,10 +183,7 @@ async function apply(connection, uid, current, next, data) {
     }
     delete next.fieldSources.refundRelation
   } else if (choice.mode === 'pending') {
-    if (next.fieldSources.refundSourceConflict || ['row_status_unknown','transaction_status_unknown','refund_source_conflict',
-      'source_profile_unknown','identity_conflict','identity_review_required','core_fields_conflict','row_semantic_conflict','same_event_candidate','bank_channel_same_event_candidate'].some(reason =>
-      (next.reasonCodes || []).concat(next.fieldSources.semanticBlockers || []).includes(reason))) fail()
-    for (const kind of ['event', 'transaction']) if ((await candidates(connection, uid, next, kind, { limit: 1 })).total) fail()
+    if (!pendingState(next).allowed) fail()
     await detach(connection, uid, current)
     next.fieldSources.refundRelation = { version: REFUND_RELATION_STATE_VERSION, status: 'pending', confirmedBy: 'user' }
   } else if (choice.mode === 'unlinked') {
@@ -187,4 +196,4 @@ async function apply(connection, uid, current, next, data) {
   next.reasonCodes = next.reasonCodes.filter(reason => !['refund_relation_required','refund_relation_invalid','refund_relation_ambiguous',
     'refund_amount_exceeded'].includes(reason))
 }
-module.exports = { candidates, candidateQuery, apply, currentOriginals, expectations, validateExpectations }
+module.exports = { candidates, candidateQuery, apply, currentOriginals, expectations, validateExpectations, pendingState }

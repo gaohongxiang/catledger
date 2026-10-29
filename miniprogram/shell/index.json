@@ -1,0 +1,11 @@
+{
+  "navigationBarTitleText": "招财猫记账本",
+  "disableScroll": true,
+  "usingComponents": {
+    "home-panel": "/pages/index/panel",
+    "transactions-panel": "/pages/transactions/panel",
+    "statistics-panel": "/pages/statistics/panel",
+    "profile-panel": "/pages/profile/panel",
+    "main-tabs": "/custom-tab-bar/index"
+  }
+}

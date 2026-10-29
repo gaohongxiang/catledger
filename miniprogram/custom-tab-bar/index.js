@@ -1,14 +1,11 @@
 const app = getApp()
 const themeService = require('../theme/service')
+const { tabs: mainTabs } = require('../shell/tabs')
 
-Component({
+Component(themeService.component({
   data: {
     hidden: false,
     entryOpen: false,
-    themeId: '',
-    themeName: '',
-    themeClass: '',
-    themeStyle: '',
     selected: 0,
     tabs: [
       {
@@ -40,32 +37,44 @@ Component({
 
   lifetimes: {
     attached: function () {
-      themeService.bindTabBar(this)
+      this.syncSelected()
     }
   },
 
   pageLifetimes: {
+    show: function () { this.syncSelected() },
     hide: function () { this.closeEntry() }
   },
 
   methods: {
-    syncTheme: function () {
-      themeService.bindTabBar(this)
+    syncSelected: function () {
+      const pages = getCurrentPages()
+      const currentPage = pages[pages.length - 1]
+      const selected = currentPage && currentPage.route === 'shell/index'
+        ? mainTabs.findIndex(tab => tab.id === currentPage.data.activeTab) : -1
+      if (selected >= 0 && selected !== this.data.selected) this.setData({ selected })
     },
     isLoggedIn: function () {
       return app.hasLoginApproval()
     },
 
     requestLogin: function (options) {
-      if (this.isLoggedIn()) {
-        if (options && typeof options.afterLogin === 'function') {
-          options.afterLogin()
+      const pages = getCurrentPages()
+      const host = pages[pages.length - 1]
+      const panel = host && host.activePanel && host.activePanel()
+      const afterLogin = options && options.afterLogin
+      const complete = () => {
+        if (host && host._shellVisible && panel === host.activePanel()) {
+          if (typeof afterLogin === 'function') afterLogin()
         }
+      }
+      if (this.isLoggedIn()) {
+        complete()
         return
       }
       this.closeEntry()
       const sheet = this.selectComponent('#loginSheet')
-      if (sheet && typeof sheet.show === 'function') sheet.show(options || {})
+      if (sheet && typeof sheet.show === 'function') sheet.show(Object.assign({}, options, { afterLogin: complete }))
     },
 
     switchTab: function (event) {
@@ -74,7 +83,8 @@ Component({
       if (!tab || index === this.data.selected) {
         return
       }
-      wx.switchTab({ url: tab.pagePath })
+      this.closeEntry()
+      this.triggerEvent('tabchange', { id: mainTabs[index].id })
     },
 
     openEntry: function () {
@@ -110,4 +120,4 @@ Component({
       })
     }
   }
-})
+}))

@@ -1,26 +1,18 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const vm = require('node:vm')
 const path = require('node:path')
-const { createRequire } = require('node:module')
+const { createLoader } = require('./helpers/vm-loader')
+const { pageDefinition } = require('./helpers/page-definitions')
 
 function profilePage() {
-  const filename = path.join(__dirname, '../miniprogram/pages/profile/index.js')
-  const localRequire = createRequire(filename)
-  let definition
+  const root = path.join(__dirname, '../miniprogram')
   let resolveCatalog
   const catalog = new Promise(function (resolve) { resolveCatalog = resolve })
   const app = { globalData: { profile: { nickname: '测试用户' }, categories: [] }, hasLoginApproval: function () { return true } }
   const api = { isFresh: () => false, cacheToken: () => null, callApi: function () { return catalog } }
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-    getApp: function () { return app }, Page: function (page) { definition = page },
-    require: function (name) {
-      if (name === '../../services/catledger-api') return api
-      if (name === '../../theme/service') return { bindPage: function () {} }
-      return localRequire(name)
-    }
-  }, { filename: filename })
+  const wx = {}, themeService = { page: definition => definition, component: definition => definition }
+  const load = createLoader({ getApp: () => app, wx }, filename => filename.endsWith('/services/catledger-api.js') ? api : undefined)
+  const definition = pageDefinition(root, 'pages/profile/index', load, { app, api, themeService, wx })
   const page = Object.assign({}, definition, {
     data: Object.assign({}, definition.data),
     setData: function (patch) { Object.assign(this.data, patch) },

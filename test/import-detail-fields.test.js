@@ -183,18 +183,80 @@ test('待核对与已核对使用同一字段模板，性质及输入置于原�
     assert.ok(source.indexOf('is="review-editor-fields"') < source.indexOf('class="evidence-card"'))
   }
   const fields = fs.readFileSync(path.join(dir, 'review-editor-fields.wxml'), 'utf8')
-  assert.ok(fields.indexOf('changeReviewedNature') < fields.indexOf('editor.fundsEndpoints'))
+  // 性质是模式行：和账单摘要同一张卡，但先于摘要出现，并且必须先于被它重建的资金账户区。
+  assert.ok(fields.indexOf('class="editor-nature-bar') > 0)
+  assert.ok(fields.includes('class="editor-nature-label">性质'))
+  assert.ok(fields.indexOf('openNatureSheet') > 0)
+  assert.ok(fields.indexOf('class="editor-summary-block"') < fields.indexOf('class="editor-nature-bar'))
+  assert.ok(fields.indexOf('class="editor-nature-bar') < fields.indexOf('class="editor-summary-facts"'))
+  assert.ok(fields.indexOf('class="editor-nature-bar') < fields.indexOf('editor.fundsEndpoints'))
+  assert.equal(fields.includes('issue-summary-nature'), false)
+  // 账单事实全部只读：金额、日期、时间和对方都不能在核对页改写。
+  assert.equal(fields.includes('data-field="amountInput"'), false)
+  assert.equal(fields.includes('data-field="date"'), false)
+  assert.equal(fields.includes('data-field="time"'), false)
+  assert.equal(fields.includes('data-field="counterparty"'), false)
+  assert.equal(fields.includes('toggleEditorDetails'), false)
+  // 顺序固定：摘要 → 账户 → 该性质适用的业务判断 → 期次 → 分类 → 备注；
+  // 具体出现哪些区域仍由性质决定，不强行给每种性质凑满。
+  const summary = fields.indexOf('class="editor-summary-block"')
+  const account = fields.indexOf('editor.fundsEndpoints')
+  const channel = fields.indexOf('wx:if="{{editor.repaymentChannel}}"')
+  const principalAttribution = fields.indexOf('attribution-block-pinned')
+  const feeAttribution = fields.indexOf('wx:if="{{editor.source && !editor.principal && editor.attribution}}"')
+  const period = fields.indexOf('class="editor-row-label">期次')
+  const category = fields.indexOf('class="editor-row-label">分类')
+  const note = fields.indexOf('class="editor-row-label">备注')
+  assert.ok(summary >= 0 && summary < account)
+  assert.ok(account < channel && account < principalAttribution && account < feeAttribution)
+  assert.ok(channel < period && principalAttribution < period && feeAttribution < period)
+  assert.ok(period < category && category < note)
+  // 期次和备注始终直接编辑，不再先点“修改／添加备注”。
+  assert.equal(fields.includes('editEditorPeriod'), false)
+  assert.equal(fields.includes('openEditorNote'), false)
+  assert.equal(fields.includes('添加备注'), false)
+  assert.ok(fields.includes('data-field="periodInput"'))
+  assert.ok(fields.includes('data-field="totalTermsInput"'))
+  assert.ok(fields.includes('data-field="note"'))
+  // 账户任何性质都单独成组，不并进摘要行，也不提供卡片尾部的清除选择动作。
+  assert.ok(fields.includes('wx:if="{{editor.fundsEndpoints.length}}"'))
+  assert.equal(fields.includes('editor.fundsEndpoints.length &&'), false)
+  assert.equal(fields.includes('editor-summary-account'), false)
+  assert.equal(fields.includes('清除{{endpoint.label}}选择'), false)
+  // 分类只对有独立分类的性质出现；分期本金的“随原消费”不再渲染成不可选的死行。
+  assert.ok(fields.indexOf('wx:if="{{editor.categoryKind}}"') > 0)
+  assert.equal(fields.includes('!editor.categoryKind'), false)
+  assert.equal(fields.includes('分期本金不重复入账'), false)
+  // 选了分类后不再提供行尾清除按钮；改选直接点分类行。
+  assert.equal(fields.includes('data-field="categoryId"'), false)
+  // 性质行常驻主题浅底色；未确定时换成待核对提醒底色。
+  assert.ok(fields.includes("editor.naturePending ? 'is-pending'"))
+  const editorStyle = fs.readFileSync(path.join(dir, 'review-editor.wxss'), 'utf8')
+  assert.match(editorStyle, /\.editor-nature-bar \{[^}]*background: var\(--ui-accent-soft\)/)
+  // 期次、分类、备注共用一个收尾组：组首只有一条分隔线，行间只画行底边。
+  assert.equal((fields.match(/class="editor-rows"/g) || []).length, 1)
+  assert.equal(fields.includes('editor-rows-tail'), false)
+  assert.match(editorStyle,
+    /\.editor-nature-bar\.is-pending \{[^}]*background: var\(--theme-warning-soft/)
+  // 备注行不单独顶对齐：名目和输入框随行高居中。
+  assert.doesNotMatch(editorStyle, /\.editor-row-note \{[^}]*align-items: flex-start/)
+  assert.doesNotMatch(editorStyle, /\.editor-row-note \.editor-row-label \{[^}]*padding-top/)
+  assert.match(editorStyle, /\.editor-row-textarea \{[^}]*padding: 0;/)
+  // 单账户整行做成按钮：点击名称、箭头或左侧留白都打开账户目录。
+  assert.match(editorStyle, /\.funds-account-row\.is-action \{[^}]*width: 100%/)
 })
 
-test('真实 Page 保留空与明确零的区别，原始凭据不被空文本编辑修改', async t => {
+test('真实 Page 保留空与明确零的区别，原始凭据不被空备注编辑修改', async t => {
   for (const amount of ['0', null]) {
     const { page, row: original } = await editor.open(t, { economicNature: 'unknown', amountMinor: amount, localAt: amount == null ? null : '2026-09-01 12:00:00',
       primaryEvidence: { sourceType: 'wechat', note: '原始备注', counterparty: '原始对方' } })
     assert.equal(editor.draft(page).amountInput, amount == null ? '' : '0.00')
     assert.equal(editor.view(page).missing.includes('记账金额'), amount == null)
-    editor.edit(page, 'note', ''); editor.edit(page, 'counterparty', '')
+    editor.edit(page, 'note', '')
     assert.equal(editor.view(page).payload.fields.note, '')
-    assert.equal(editor.view(page).payload.fields.counterparty, '')
+    // 账单事实不随备注变化：对方仍取原值，原凭据文本也不被空备注覆盖。
+    assert.equal(editor.view(page).payload.fields.counterparty, undefined)
+    assert.equal(editor.view(page).summaryTitle, '原始对方')
     assert.equal(original.primaryEvidence.note, '原始备注')
     assert.equal(editor.view(page).complete, false)
   }

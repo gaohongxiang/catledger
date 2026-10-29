@@ -262,6 +262,7 @@ module.exports = {
             debitDirection: previous.draft.debitDirection
           }) : undefined
           const next = bankMapping.view(clientId, namePatch.name || file.name, result.bankPreview, draft)
+          next.settingsOpen = previous.settingsOpen
           this.setData({ bankMappingSheet: next })
         }
       } else if (result.duplicateImportId) {
@@ -324,7 +325,8 @@ module.exports = {
     }
     if (preview) {
       this.cancelBankPreview()
-      this.setData({ fileAttentionSheet: null, bankMappingSheet: bankMapping.view(id, file.name, preview, file.bankMapping) })
+      this.setData({ fileAttentionSheet: null, bankMoreColumnsOpen: false,
+        bankMappingSheet: bankMapping.view(id, file.name, preview, file.bankMapping) })
     }
     else this.showFileFailure(file)
   },
@@ -367,7 +369,7 @@ module.exports = {
   closeBankMapping: function () {
     if (this.data.busy) return
     this.cancelBankPreview()
-    this.setData({ bankMappingSheet: null })
+    this.setData({ bankMappingSheet: null, bankMoreColumnsOpen: false })
   },
 
   cancelBankPreview: function () {
@@ -390,12 +392,46 @@ module.exports = {
     else if (key === 'statementKind') draft.statementKind = sheet.statementOptions[value].value
     else if (key === 'positiveDirection' || key === 'debitDirection') draft[key] = sheet.directionOptions[value].value
     else if (value === 0) delete draft.columns[key]
-    else draft.columns[key] = value - 1
+    else {
+      // 选到别人占用的列时直接互换，避免到确认时才报“一列不能同时用于两个字段”。
+      const column = value - 1, previous = draft.columns[key]
+      const conflict = Object.keys(draft.columns).find(field => field !== key && draft.columns[field] === column)
+      if (conflict) {
+        if (previous == null) delete draft.columns[conflict]
+        else draft.columns[conflict] = previous
+      }
+      draft.columns[key] = column
+    }
     const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
     next.headerRowInput = sheet.headerRowInput
     next.previewPending = sheet.previewPending
     next.previewError = sheet.previewError
+    next.settingsOpen = sheet.settingsOpen
     this.setData({ bankMappingSheet: next })
+  },
+
+  chooseBankDirection: function (event) {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    const sheet = this.data.bankMappingSheet, key = event.currentTarget.dataset.key, value = event.currentTarget.dataset.value
+    if ((key !== 'positiveDirection' && key !== 'debitDirection') || (value !== 'income' && value !== 'expense')) return
+    const draft = Object.assign({}, sheet.draft, { columns: Object.assign({}, sheet.draft.columns) })
+    draft[key] = value
+    const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
+    next.headerRowInput = sheet.headerRowInput
+    next.previewPending = sheet.previewPending
+    next.previewError = sheet.previewError
+    next.settingsOpen = sheet.settingsOpen
+    this.setData({ bankMappingSheet: next })
+  },
+
+  toggleBankSettings: function () {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    this.setData({ 'bankMappingSheet.settingsOpen': !this.data.bankMappingSheet.settingsOpen })
+  },
+
+  toggleBankMoreColumns: function () {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    this.setData({ bankMoreColumnsOpen: !this.data.bankMoreColumnsOpen })
   },
 
   openBankHeader: function () {

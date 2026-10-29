@@ -1,3 +1,14 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
 <view class="page-canvas plan-page {{themeClass}}" style="{{themeStyle}}">
   <page-head class="content-inset" badge="{{loanName || '贷款管理'}}" title="{{paymentId ? '调整对应期次' : '还款计划'}}" copy="{{paymentId ? '选择这次还款对应的期次，核对金额后保存。' : '按实际约定维护每期应还金额和日期。'}}" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />

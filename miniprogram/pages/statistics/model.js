@@ -51,7 +51,7 @@ function distribution(rows, colors) {
   return { src: svg(body, 200, 200), legend, totalMinor: total, totalText: money.formatMinor(total), hasNegative: (rows || []).some(row => amount(row.amountMinor) < 0) }
 }
 function buildStatisticsView(result, tokens) {
-  const colors = { income: tokens.income || '#477153', expense: tokens.expense || '#b54738', accent: tokens.accent || '#d97732', line: '#ddd6cc', muted: '#958b82' }
+  const colors = { income: tokens.income || '#477153', expense: tokens.expense || '#b54738', accent: tokens.accent || '#d97732', line: tokens.line || '#ddd6cc', muted: tokens.textMuted || '#958b82' }
   let cumulative = '0'
   const daily = (result.daily || []).map(row => {
     cumulative = addMinor(cumulative, addMinor(row.incomeMinor || '0', negate(row.expenseMinor)))

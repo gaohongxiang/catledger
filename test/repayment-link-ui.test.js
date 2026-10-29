@@ -2,9 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
-const { createRequire } = require('node:module')
 const { pageRoute } = require('./helpers/page-routes')
+const { createLoader } = require('./helpers/vm-loader')
 const model = require('../miniprogram/packages/finance/pages/loan-link/model')
 const paymentModel = require('../miniprogram/packages/finance/pages/loan-payment/model')
 const { createLoanContext } = require('../miniprogram/pages/transaction-editor/loan-context')
@@ -21,29 +20,23 @@ const sourceResult = { source: { transactionIds: [transaction.transactionId], fi
 const copy = value => JSON.parse(JSON.stringify(value))
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function runtime(route, responder) {
-  const filename = path.join(__dirname, '../miniprogram', pageRoute(route) + '.js'), req = createRequire(filename)
+  const filename = path.join(__dirname, '../miniprogram', pageRoute(route) + '.js')
   const calls = [], routes = [], storage = new Map()
   let definition, request = 0
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
   const api = { isFresh: () => true, peek: () => null, cacheToken: () => '', createRequestId: () => 'synthetic-request-' + ++request,
     callApi(name, data, options) { calls.push({ name, data, options }); return Promise.resolve().then(() => responder(name, data)) } }
-  const chrome = { redirectTo:options=>routes.push(options.url),switchTab:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
-  function deps(name) {
-    if (name.includes('/services/catledger-api')) return api
-    if (name.includes('/services/catledger-import')) return { readPage:(name,data)=>api.callApi(name,data) }
-    if (name.includes('/services/login-guard')) return { run: (_, fn) => app.hasLoginApproval() ? fn() : undefined }
-    if (name.includes('/theme/service')) return { bindPage() {} }
-    if (name.includes('/services/pending-ledger-write')) return req(name).createPendingWrite({ scope: () => app.globalData.uid,
+  const chrome = { redirectTo:options=>routes.push(options.url),switchTab:options=>routes.push(options.url),reLaunch:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
+  const load = createLoader({ getApp: () => app, getCurrentPages: () => [], wx: chrome }, (file, local) => {
+    if (file.endsWith('/services/catledger-api.js')) return api
+    if (file.endsWith('/services/catledger-import.js')) return { readPage:(name,data)=>api.callApi(name,data) }
+    if (file.endsWith('/services/login-guard.js')) return { run: (_, fn) => app.hasLoginApproval() ? fn() : undefined }
+    if (file.endsWith('/theme/service.js')) return { page: definition => definition, component: definition => definition }
+    if (file.endsWith('/services/pending-ledger-write.js')) return local(file).createPendingWrite({ scope: () => app.globalData.uid,
       read: key => storage.get(key), write: (key, v) => storage.set(key, v), remove: key => storage.delete(key), requestId: api.createRequestId,
       call: (_, action, data) => api.callApi(action, data) })
-    if (name === './source' && route === 'loan-payment') {
-      const module = { exports: {} }
-      vm.runInNewContext(fs.readFileSync(req.resolve(name), 'utf8'), { module, require: deps, wx: chrome })
-      return module.exports
-    }
-    return req(name)
-  }
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { require: deps, Page: p => { definition = p }, getApp: () => app, wx: chrome, console }, { filename })
+  })
+  definition = load(filename)
   const page = { ...definition, data: copy(definition.data), setData(patch) {
     for (const [key, value] of Object.entries(patch)) {
       const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let dst = this.data
@@ -251,7 +244,7 @@ test('手动借款还款显式确认全部分项；成功离开旧记账表单�
   h.page.setData({ interestYuan:'0',confirmed:true });await h.page.save()
   const write=h.calls.find(c=>c.name==='loans.bookRepayment')
   assert.equal(write.data.repayment.mode,'defer');assert.equal(write.data.repayment.principalMinor,'1000')
-  assert.equal(h.routes[0],'/pages/transactions/index')
+  assert.equal(h.routes[0],'/shell/index?tab=transactions')
 })
 
 test('导入普通转账默认不关联；未知借款构成保存待核对而非全本金',async()=>{

@@ -627,6 +627,8 @@ test('目录失败时交易列表仍成功，个人页已确认的连接及数�
 test('中央记账先选择方式，游客登录后继续原选择，菜单不读取目录', async () => {
   for (const [method, route] of [['openEditor', '/pages/transaction-editor/index'], ['chooseBill', '/packages/finance/pages/import-workbench/index']]) {
     const h = runtime(), component = h.component()
+    const activePanel = {}
+    h.currentPages = [{ route: 'shell/index', _shellVisible: true, activePanel: () => activePanel }]
     h.app.approved = false
     component.openEntry()
     assert.equal(component.data.entryOpen, true)
@@ -648,6 +650,22 @@ test('中央记账先选择方式，游客登录后继续原选择，菜单不�
       await h.page('transaction-editor').prepareForm()
       assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
     }
+  }
+})
+
+test('登录成功的迟到回调不从隐藏宿主或已切换的面板继续导航', () => {
+  for (const change of ['hide', 'switch']) {
+    const h = runtime(), component = h.component()
+    let activePanel = {}
+    const host = { route: 'shell/index', _shellVisible: true, activePanel: () => activePanel }
+    h.currentPages = [host]
+    h.app.approved = false
+    component.openEditor()
+    if (change === 'hide') host._shellVisible = false
+    else activePanel = {}
+    h.app.approved = true
+    h.loginOptions.afterLogin()
+    assert.deepEqual(h.navigation, [])
   }
 })
 
@@ -975,7 +993,7 @@ test('导入历史只读查看账目，跳转统一明细跨月筛选；手动�
     if (action === 'transactions.list') return { ok: true, data: { importUpdateId: data.importUpdateId, transactions: [], nextCursor: null, summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' } } }
   }
   await page.load(); page.viewTransactions({ currentTarget: { dataset: { id: item.updateId } } })
-  assert.equal(h.navigation.at(-1), '/pages/transactions/index')
+  assert.equal(h.navigation.at(-1), '/shell/index?tab=transactions')
   const detail = await visit(h, 'transactions')
   assert.equal(detail.requestData().importUpdateId, item.updateId)
   assert.equal(detail.requestData().month, undefined)

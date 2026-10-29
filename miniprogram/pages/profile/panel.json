@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "list-row": "/components/list-row/index",
+    "ui-state": "/components/ui-state/index"
+  }
+}

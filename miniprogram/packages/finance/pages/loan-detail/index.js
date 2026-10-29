@@ -17,7 +17,9 @@ function fieldErrorFor(message) {
   return ''
 }
 
-Page({
+const businessInitialData = require('./initial-data')
+
+Page(theme.page({
   ...detailReader,
   ...installmentActions,
   ...require('../../services/historical-charge-coverage').methods,
@@ -25,14 +27,9 @@ Page({
   ...require('./retained-charge'),
   ...require('./charge-actions').methods,
   ...require('./upfront-fee').methods,
-  data: { ...require('../../services/historical-charge-coverage').initial,deletedPlan:false,deletingPreview:false,deleteBlockers:[],retainedChargeMode:false,retainedCharge:null, ...require('./upfront-fee').initial,...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
-    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
-    repaymentRows: [], repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, costOpen: false,
-    accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
-    principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
-    scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
-  onLoad(query) { this._retainedChargeId=query&&query.chargeId||null;this.setData({retainedChargeMode:!!this._retainedChargeId});this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId&&!this._retainedChargeId){this._redirecting=true;wx.redirectTo({url:'/packages/finance/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
-  onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
+  data: businessInitialData,
+  onLoad(query) { this._retainedChargeId=query&&query.chargeId||null;this.setData({retainedChargeMode:!!this._retainedChargeId});this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId&&!this._retainedChargeId){this._redirecting=true;wx.redirectTo({url:'/packages/finance/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
+  onShow() { if(this._redirecting)return;return loginGuard.run(this, () => this.load()) },
   onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this); if (this._repaymentAlert && typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload(); this._repaymentAlert = false },
   load() {
@@ -168,4 +165,4 @@ Page({
     finally { if (current()) this.setData({ saving: false }) }
     if (current() && this.data.savedMessage) return this.load()
   }
-})
+}))

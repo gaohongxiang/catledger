@@ -1,8 +1,9 @@
 const api=require('../../../../services/catledger-api'),session=require('../../../../services/page-read-session'),pending=require('../../../../services/pending-ledger-write')
 const {rowView}=require('./charge-actions')
+const businessInitialData=require('./initial-data')
 module.exports={
   async loadRetainedCharge(){
-    const current=session.begin(this,Object.keys(this.data),['_chargeChange','_chargeView','_retainedView'])
+    const current=session.begin(this,Object.keys(businessInitialData),['_chargeChange','_chargeView','_retainedView'])
     this.setData({loading:true,errorMessage:'',hasPending:!!pending.pending()})
     try{
       const [catalog,result]=await Promise.all([api.callApi('catalog.get'),api.callApi('loans.retainedCharge',{chargeId:this._retainedChargeId},{force:true})])

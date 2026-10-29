@@ -7,6 +7,9 @@ const { getRowSemantic } = require('./row-semantic-resolver')
 const { economicNatureForSemantic } = require('./economic-nature')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
 const { REASON_CODE: INSTALLMENT_ATTRIBUTION_REASON, needsAttribution } = require('./installment-plan')
+// 信用卡分期本金行可改判的经济性质；与 review/editor-policy 和客户端模型保持同一口径。
+const INSTALLMENT_PRINCIPAL_NATURES = new Set([ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.EXPENSE,
+  ECONOMIC_NATURE.FEE, ECONOMIC_NATURE.INCOME, ECONOMIC_NATURE.UNKNOWN])
 
 const UPDATE_STATUS = Object.freeze({
   DRAFT: 'draft',
@@ -135,9 +138,10 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   }
   if (!event.ledgerAccountId) reasons.push('ledger_account_required')
   const installment = event.fieldSources && event.fieldSources.installment
-  // 本金出账只登记分期来源；人工选择的实际转账不能沿用到此类记录。
+  // 本金出账默认只登记分期来源；用户改判成支出、费用、收入或待确认后按所选性质入账。
+  // 人工选择的实际转账、贷款付款或多账户分配仍不能沿用到此类记录。
   if (installment && installment.creditStatement === true && installment.component === 'principal' &&
-      (event.economicNature !== ECONOMIC_NATURE.REPAYMENT || event.counterpartyLedgerAccountId ||
+      (!INSTALLMENT_PRINCIPAL_NATURES.has(event.economicNature) || event.counterpartyLedgerAccountId ||
         event.fieldSources.loanRepayment || event.fieldSources.paymentResolution ||
         (event.fieldSources.repaymentAllocations || []).length)) reasons.push('core_fields_conflict')
   reasons.push(...repaymentOwnership.reasonsFor(event))
@@ -316,6 +320,7 @@ module.exports = {
   UPDATE_STATUS,
   classifyReviewIssue,
   economicNatureForRow,
+  INSTALLMENT_PRINCIPAL_NATURES,
   evaluatePostability,
   flowDirectionForRow,
   hasPendingRefundRelation,

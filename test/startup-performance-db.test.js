@@ -185,9 +185,16 @@ test('同机同库合成1000笔启动链路计量，可选基线检出与当前�
         for (const sample of [initial.first, restored.first, restored.warm]) samples.push({ source: source.label, run, ...sample })
       }
     }
-    const sourceHash = directory => createHash('sha256').update(fs.readFileSync(path.join(directory, 'cloudfunctions/catledger-api/src/user-repository.js'))).update(fs.readFileSync(path.join(directory, 'miniprogram/pages/index/index.js'))).update(fs.readFileSync(path.join(directory, 'miniprogram/services/loan-charge-sync.js'))).digest('hex')
+    const sourceHash = directory => {
+      const hash = createHash('sha256')
+      for (const name of ['cloudfunctions/catledger-api/src/user-repository.js', 'miniprogram/pages/index/index.js', 'miniprogram/pages/index/page.js', 'miniprogram/shell/panel.js', 'miniprogram/services/loan-charge-sync.js']) {
+        const filename = path.join(directory, name)
+        if (fs.existsSync(filename)) hash.update(name).update(fs.readFileSync(filename))
+      }
+      return hash.digest('hex')
+    }
     const report = { environment: { node: process.version, mysql: (await lab.owner.query('SELECT VERSION() AS version'))[0][0].version, cpu: os.cpus()[0].model,
-      runs: 3, transactions: 1000, timing: 'local handler/real Page VM setData callback proxy; excludes phone rendering, cloud cold-start and network',
+      runs: 3, transactions: 1000, timing: 'local handler/client business definition VM setData callback proxy; excludes native host lifecycle, phone rendering, cloud cold-start and network',
       sources: sources.map(source => ({ label: source.label, head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source.directory, encoding: 'utf8' }).trim(), measuredSourcesSha256: sourceHash(source.directory) })) }, samples }
     if (process.env.CATLEDGER_STARTUP_PERF_OUTPUT) fs.writeFileSync(process.env.CATLEDGER_STARTUP_PERF_OUTPUT, JSON.stringify(report, null, 2) + '\n')
     t.diagnostic(JSON.stringify(report))

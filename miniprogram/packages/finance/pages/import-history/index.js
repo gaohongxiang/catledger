@@ -4,6 +4,7 @@ const readCache = require('../../../../services/read-cache')
 const pageReadSession = require('../../../../services/page-read-session')
 const loginGuard = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
+const tabRouter = require('../../../../shell/router')
 const sessionFields = ['items', 'nextCursor', 'busy', 'loaded', 'errorMessage']
 function beginSession(page) { return pageReadSession.begin(page, sessionFields, []) }
 
@@ -13,11 +14,10 @@ function historyView(row) {
   return Object.assign({}, row, { title: row.files[0] || '账单导入',
     timeText: Number.isNaN(date.getTime()) ? '' : date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) })
 }
-Page({
-  data: { items: [], nextCursor: null, busy: false, loaded: false, errorMessage: '' },
-  onLoad: function () { theme.bindPage(this); loginGuard.run(this, this.load.bind(this)) },
+Page(theme.page({
+  data: {items: [], nextCursor: null, busy: false, loaded: false, errorMessage: '' },
+  onLoad: function () { loginGuard.run(this, this.load.bind(this)) },
   onShow: function () {
-    theme.bindPage(this)
     if (this._readSession !== undefined) {
       if (!pageReadSession.isCurrent(this)) beginSession(this)
       loginGuard.run(this, this.refresh.bind(this))
@@ -45,7 +45,7 @@ Page({
     const selected = this.data.items.find(row => row.updateId === event.currentTarget.dataset.id)
     if (!selected) return
     getApp().globalData.transactionsImportFilter = { updateId: selected.updateId, title: selected.title, session: readCache.getSession() }
-    wx.switchTab({ url: '/pages/transactions/index' })
+    tabRouter.openTab('transactions')
   },
   importAgain: function () { if (!this.data.busy) wx.redirectTo({ url: '/packages/finance/pages/import-workbench/index?fresh=1' }) }
-})
+}))

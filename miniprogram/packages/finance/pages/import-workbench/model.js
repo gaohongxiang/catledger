@@ -414,7 +414,11 @@ function issueView(issue) {
   const evidenceReviewOnly = refundSourceConflict || statusUnknown
   if (refundSourceConflict) label = '退款与原订单状态冲突'
   else if (statusUnknown) label = '账单状态尚待核对'
-  const issueHelp = installmentPrincipal
+  // 利息待归属卡只装没归属的费用：它要回答的是“这笔利息属于哪个计划”，不是“本金从哪来”。
+  const attributionHelp = issue.primaryReasonCode === 'installment_attribution_required'
+    ? '本期次有多笔本金时，账单上的利息看不出属于哪个计划。选择它归到哪笔本金，保存后这笔利息就跟着那笔本金一起核对。'
+    : ''
+  const issueHelp = attributionHelp || (installmentPrincipal
     ? '这是账单列出的本期分期本金，不代表实际还款。请确认所属信用卡并选择“' + natureLabel(subject) + '”；入账后可关联或新建分期计划。'
     : refundSourceConflict
     ? '同一来源订单显示原消费已关闭或失败，却另有退款到账。请对照下方两条原始记录，核实实际扣款及退款；证据补齐前可不计入本次账本，不能暂记待关联退款。'
@@ -425,7 +429,7 @@ function issueView(issue) {
           ? '同一账户、同金额、同一分钟且银行渠道吻合，但存在多笔候选，需逐笔核对，不能整组合并。'
           : '同一账户、同金额、同一分钟且银行渠道吻合，请核对原始记录后确认是否同一笔。'
       : historicalDuplicate ? '发现账户、金额和时间接近的已入账记录，请核对是否同一笔。'
-    : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择'
+    : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择')
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
   const paymentNeedsReview = Boolean(!evidenceReviewOnly && !groupedAccount && subject && reasons.includes('payment_components_ambiguous') && !subject.paymentResolution)
   if (paymentNeedsReview) label = '组合支付待核对'
@@ -883,11 +887,13 @@ function eventView(event) {
   const installmentMeta = installmentLabel && [installmentLabel, '第' + installment.periodNumber + '期' + (installment.totalTerms ? '／共' + installment.totalTerms + '期' : '')].join(' · ')
   const displayMeta = [dateText, installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
   const displayDetailMeta = [installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
+  const displayTime = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/u.test(localAt) ? localAt.slice(11, 16) : ''
   return Object.assign({}, event, {
     amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
     displayTitle: event.summaryExpenseMinor == null ? displayTitle : event.repaymentChannel ? '还款手续费' : '还款利息及费用',
     displayMeta: displayMeta,
     displayDate: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(5, 10) : '',
+    displayTime,
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',
     displayDetailMeta: displayDetailMeta,

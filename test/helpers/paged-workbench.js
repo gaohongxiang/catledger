@@ -54,7 +54,9 @@ function runtime(data = fixture(), options = {}) {
     } else if (action === 'financeUpdates.options') rows = input.kind === 'accounts' ? h.accounts || [{ accountId: 'synthetic-account', name: '合成钱包', type: 'wallet' }]
       : input.kind === 'categories' ? h.categories || [{ categoryId: 'synthetic-category', name: '合成分类', kind: 'expense' }]
       : input.kind === 'loans' ? h.loans || [] : input.kind === 'accountDrafts' ? h.accountDrafts || [] : []
-    else if (action === 'economicEvents.refundCandidates') rows = h.refundCandidates?.[input.kind] || []
+    else if (action === 'economicEvents.refundCandidates') {
+      rows = h.refundCandidates?.[input.kind] || []
+    }
     else if (action === 'economicEvents.evidence') rows = Array.from({ length: 17 }, (_, index) => ({ evidenceId: 'synthetic-evidence-' + index, detailRequired: true, fileName: '合成账单.csv', rowNumber: index + 1 }))
     else if (action === 'economicEvents.detail') {
       if (!input.evidenceId) {
@@ -92,7 +94,16 @@ function runtime(data = fixture(), options = {}) {
       }
     } return session } }
   const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key),
-    getStorageInfoSync: () => ({ keys: [...storage.keys()] }), showToast() {}, showModal(options) { h.modal = options; options.success({ confirm: true }) }, pageScrollTo() {}, nextTick: setImmediate, ...options.wx }
+    getStorageInfoSync: () => ({ keys: [...storage.keys()] }), showToast() {},
+    // 和微信一致：confirmText / cancelText 最多 4 个字符，超长直接走 fail，
+    // 否则代码里写超长按钮时测试照样通过，真机上弹窗根本不出现。
+    showModal(options) {
+      h.modal = options
+      wx.modal = options
+      const tooLong = [options.confirmText, options.cancelText].some(value => value != null && Array.from(String(value)).length > 4)
+      if (tooLong) { if (options.fail) options.fail({ errMsg: 'showModal:fail text length should not larger than 4 Chinese characters' }); return }
+      options.success({ confirm: true })
+    }, pageScrollTo() {}, nextTick: setImmediate, ...options.wx }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
@@ -103,7 +114,8 @@ function runtime(data = fixture(), options = {}) {
     if (filename.endsWith('/services/catledger-import.js') && !options.realImportApi) return api
     if (filename.endsWith('/services/import-draft-session.js') && !options.realDraftManager) return draftService
     if (filename.endsWith('/services/read-cache.js')) return cache
-    if (filename.endsWith('/theme/service.js')) return { bindPage() {} }
+    // 页面 data 初值会同步向主题服务要一份当前主题；桩给空对象即可，页面结构不变。
+    if (filename.endsWith('/theme/service.js') && !options.realTheme) return { page: definition => definition, initialData: () => ({}) }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports, Page: value => { definition = value },

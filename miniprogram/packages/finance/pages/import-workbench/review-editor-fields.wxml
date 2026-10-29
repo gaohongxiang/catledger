@@ -1,23 +1,39 @@
 <template name="review-editor-fields">
-  <view class="detail-nature-first editor-summary-card">
-    <view class="issue-summary-main">
-      <picker wx:if="{{canEdit && editor.supported && !editor.principal && !editor.repaymentChannel}}" mode="selector" range="{{editor.natureOptions}}" range-key="label" value="{{editor.natureIndex}}" bindchange="changeReviewedNature" disabled="{{disabled}}" aria-label="选择交易性质"><view class="issue-summary-nature"><text>{{editor.natureLabel}}</text><text class="editor-nature-chevron" aria-hidden="true">›</text></view></picker>
-      <text wx:else class="issue-summary-nature">{{editor.natureLabel}}</text>
-      <view class="editor-amount money-number {{editor.directionClass}}"><text>¥</text><view wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" class="editor-amount-input"><text class="editor-amount-measure" aria-hidden="true">{{draft.amountInput || '0.00'}}</text><input type="digit" class="money-number" value="{{draft.amountInput}}" placeholder="0.00" data-field="amountInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" aria-label="记账金额（元）" /></view><text wx:else>{{draft.amountInput || '金额待补充'}}</text></view>
+  <!-- 摘要卡只放账单事实：性质、标题、金额、时间。账户属于资金区域，任何性质都单独一张卡，
+       不并进摘要，也不因性质不同换一套位置。 -->
+  <view class="editor-summary-block">
+    <view class="editor-nature-bar {{editor.naturePending ? 'is-pending' : ''}}">
+      <text class="editor-nature-label">性质</text>
+      <button wx:if="{{canEdit && editor.natureEditable}}" class="editor-nature-line" bindtap="openNatureSheet" disabled="{{disabled}}" aria-label="修改交易性质，当前{{editor.natureLabel}}">
+        <view class="editor-nature-dot {{editor.directionClass}}" aria-hidden="true" />
+        <text class="editor-nature-value">{{editor.natureLabel}}</text>
+        <text class="editor-nature-chevron" aria-hidden="true">›</text>
+      </button>
+      <view wx:else class="editor-nature-line is-fixed">
+        <view class="editor-nature-dot {{editor.directionClass}}" aria-hidden="true" />
+        <text class="editor-nature-value">{{editor.natureLabel}}</text>
+        <text wx:if="{{editor.natureFixedHint}}" class="editor-nature-hint">{{editor.natureFixedHint}}</text>
+      </view>
     </view>
-    <button wx:if="{{canEdit}}" class="issue-summary-meta editor-summary-meta editor-summary-edit" bindtap="toggleEditorDetails" disabled="{{sheet.saving}}" aria-label="{{editor.repaymentChannel ? '修改交易对方与备注' : '修改日期、交易对方与备注'}}" aria-expanded="{{sheet.detailsExpanded}}"><text wx:if="{{editor.summaryParty}}" class="issue-summary-party">{{editor.summaryParty}}</text><text class="issue-summary-time">{{editor.summaryTime || '时间待补充'}}</text></button>
-    <view wx:else class="issue-summary-meta editor-summary-meta"><text wx:if="{{editor.summaryParty}}" class="issue-summary-party">{{editor.summaryParty}}</text><text class="issue-summary-time">{{editor.summaryTime || '时间待补充'}}</text></view>
-    <text wx:if="{{editor.fieldErrors.amountInput}}" class="editor-field-error">{{editor.fieldErrors.amountInput}}</text>
-    <view wx:if="{{editor.showOwnership}}" class="repayment-ownership">
-      <button wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" class="repayment-mode-row" data-field="owner" data-value="{{draft.owner === 'other' ? 'self' : 'other'}}" bindtap="changeEditorMode" disabled="{{disabled || draft.composition === 'repayment'}}"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text></button>
-      <view wx:else class="repayment-mode-row"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}</text></view>
-      <view wx:if="{{editor.other}}" class="ownership-treatment">
-        <text class="mapping-label">这笔钱是否需要收回？</text>
-        <button class="ownership-option {{draft.otherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="expense" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
-        <button class="ownership-option {{draft.otherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="pending" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+    <view class="editor-summary-facts">
+      <view class="editor-summary-main">
+        <text class="editor-summary-title {{editor.summaryTitlePlaceholder ? 'is-empty' : ''}}">{{editor.summaryTitle}}</text>
+        <view class="editor-amount money-number {{editor.directionClass}}"><text>¥</text><text>{{draft.amountInput || '金额待补充'}}</text></view>
+      </view>
+      <text class="editor-summary-time">{{editor.summaryTime || '时间待补充'}}</text>
+      <text wx:if="{{editor.fieldErrors.amountInput}}" class="editor-field-error">{{editor.fieldErrors.amountInput}}</text>
+      <view wx:if="{{editor.showOwnership}}" class="repayment-ownership">
+        <button wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" class="repayment-mode-row" data-field="owner" data-value="{{draft.owner === 'other' ? 'self' : 'other'}}" bindtap="changeEditorMode" disabled="{{disabled || draft.composition === 'repayment'}}"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text></button>
+        <view wx:else class="repayment-mode-row"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}</text></view>
+        <view wx:if="{{editor.other}}" class="ownership-treatment">
+          <text class="mapping-label">这笔钱是否需要收回？</text>
+          <button class="ownership-option {{draft.otherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="expense" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+          <button class="ownership-option {{draft.otherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="pending" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+        </view>
       </view>
     </view>
   </view>
+  <!-- 账户紧随摘要单独成组：不同性质对应不同数量和类型的账户，任何性质都不并进摘要行。 -->
   <view wx:if="{{editor.fundsEndpoints.length}}" class="decision-group">
     <text class="decision-group-title">{{editor.routeTitle}}</text>
     <view class="funds-card">
@@ -28,20 +44,52 @@
           <text class="funds-endpoint-label">{{endpoint.label}}<text wx:if="{{endpoint.required}}" class="funds-endpoint-required"> · 必选</text></text>
           <button wx:if="{{endpoint.open && canEdit}}" class="funds-add" data-endpoint="{{endpoint.key}}" bindtap="addFundsAccount" disabled="{{disabled || !endpoint.addable}}" aria-label="添加{{endpoint.label}}">＋ 添加</button>
         </view>
-        <view wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex" class="funds-account-row {{endpoint.required ? 'is-required' : ''}}">
-          <button wx:if="{{canEdit && editor.supported && !account.readonly}}" class="funds-account" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
+        <block wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex">
+          <!-- 单账户整行是一个按钮：名称、行尾箭头和左侧留白都能点开目录。 -->
+          <button wx:if="{{!endpoint.split && canEdit && editor.supported && !account.readonly}}" class="funds-account-row is-action {{endpoint.required ? 'is-required' : ''}}" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
             <text class="funds-account-name {{account.accountId ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
+            <text class="funds-account-chevron" aria-hidden="true">›</text>
           </button>
-          <view wx:else class="funds-account"><text class="funds-account-name">{{account.name || '待补充'}}</text></view>
-          <input wx:if="{{endpoint.split && canEdit}}" type="digit" class="funds-account-amount" value="{{account.amountInput}}" data-endpoint="{{endpoint.key}}" data-index="{{account.index}}" bindinput="changeFundsAmount" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" placeholder="0.00" placeholder-class="funds-amount-placeholder" disabled="{{disabled}}" aria-label="本账户金额（元）" />
-          <text wx:elif="{{endpoint.split}}" class="funds-account-amount">¥{{account.amountInput || '0.00'}}</text>
-          <button wx:if="{{endpoint.split && canEdit}}" class="funds-account-remove" data-endpoint="{{endpoint.key}}" data-index="{{account.index}}" bindtap="removeFundsAccount" disabled="{{disabled}}" aria-label="移除此账户">×</button>
-          <text wx:elif="{{!endpoint.split && canEdit && editor.supported && !account.readonly}}" class="funds-account-chevron" aria-hidden="true">›</text>
-        </view>
+          <view wx:else class="funds-account-row {{endpoint.required ? 'is-required' : ''}}">
+            <button wx:if="{{canEdit && editor.supported && !account.readonly}}" class="funds-account" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
+              <text class="funds-account-name {{account.accountId ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
+            </button>
+            <view wx:else class="funds-account"><text class="funds-account-name">{{account.name || '待补充'}}</text></view>
+            <input wx:if="{{endpoint.split && canEdit}}" type="digit" class="funds-account-amount" value="{{account.amountInput}}" data-endpoint="{{endpoint.key}}" data-index="{{account.index}}" bindinput="changeFundsAmount" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" placeholder="0.00" placeholder-class="funds-amount-placeholder" disabled="{{disabled}}" aria-label="本账户金额（元）" />
+            <text wx:elif="{{endpoint.split}}" class="funds-account-amount">¥{{account.amountInput || '0.00'}}</text>
+            <button wx:if="{{endpoint.split && canEdit}}" class="funds-account-remove" data-endpoint="{{endpoint.key}}" data-index="{{account.index}}" bindtap="removeFundsAccount" disabled="{{disabled}}" aria-label="移除此账户">×</button>
+          </view>
+        </block>
       </block>
       <text wx:if="{{editor.splitRepayment}}" class="sheet-copy funds-note">多个还入账户只用于本人负债；替他人还款请只留一个还入账户。</text>
     </view>
   </view>
+  <!-- 本金行的本期利息：全部列出来，已归到别的本金的置灰只读，已归到本卡的可点掉取消。 -->
+  <view wx:if="{{editor.attribution && editor.attribution.role === 'principal' && canEdit}}" class="attribution-block attribution-block-pinned">
+    <view class="attribution-head">
+      <view class="attribution-head-main">
+        <text class="attribution-head-title">本期利息归属</text>
+        <text wx:if="{{editor.attribution.planLabel}}" class="attribution-head-plan">· 归到 {{editor.attribution.planLabel}}</text>
+      </view>
+    </view>
+    <view class="attribution-candidates">
+      <view wx:for="{{editor.attribution.pending}}" wx:key="eventId" class="attribution-candidate {{item.selected ? 'is-selected' : ''}} {{disabled || !canEdit || editor.changed || item.disabled ? 'is-disabled' : ''}}"
+        data-id="{{item.eventId}}" bindtap="toggleEditorPendingInterest"
+        aria-role="checkbox" aria-checked="{{item.selected}}" aria-disabled="{{disabled || !canEdit || editor.changed || item.disabled}}"
+        aria-label="{{item.disabled ? '已归到 ' + item.assignedPlan + '，不可选' : '把' + item.title + '归到本计划'}}">
+        <view class="attribution-check" aria-hidden="true" />
+        <view class="attribution-candidate-copy">
+          <text class="attribution-candidate-title">{{item.title}}</text>
+          <text wx:if="{{item.meta}}" class="attribution-candidate-meta">{{item.meta}}</text>
+          <text wx:if="{{item.disabled && item.assignedPlan}}" class="attribution-assigned-note">已归到 {{item.assignedPlan}} · 不可选</text>
+          <text wx:if="{{item.planHint}}" class="attribution-plan-hint">账单计划：{{item.planHint}}</text>
+        </view>
+        <text class="attribution-candidate-amount money-number">{{item.amountText}}</text>
+      </view>
+    </view>
+    <text class="attribution-note">{{editor.attribution.selectedCount ? '已选 ' + editor.attribution.selectedCount + ' 笔，随本笔保存。' : editor.changed ? '先保存本笔修改，再勾选利息归属。' : '勾选后保存，不影响正式余额；已归到本卡的再点一下可取消。'}}</text>
+  </view>
+  <text wx:if="{{editor.fieldErrors.sourceCorrection}}" class="editor-field-error">{{editor.fieldErrors.sourceCorrection}}</text>
   <view wx:if="{{editor.repaymentChannel}}" class="decision-group">
     <text class="decision-group-title">还款金额构成</text>
     <view class="channel-breakdown">
@@ -67,52 +115,48 @@
     <button wx:if="{{sheet.suggestionMore}}" class="review-text-action" data-target="{{editor.bankSuggestion.target}}" bindtap="openDirectory" disabled="{{disabled}}">查看全部账户<text class="app-chevron">›</text></button>
   </view>
   <text wx:if="{{editor.fieldErrors.funds}}" class="editor-field-error">{{editor.fieldErrors.funds}}</text>
-  <text wx:if="{{canEdit && !sheet.detailsExpanded && (editor.fieldErrors.time || editor.fieldErrors.counterparty || editor.fieldErrors.note)}}" class="editor-field-error">{{editor.fieldErrors.time || editor.fieldErrors.counterparty || editor.fieldErrors.note}}</text>
-  <view wx:if="{{sheet.detailsExpanded}}" class="mapping-fields editor-details">
-    <view class="mapping-field"><text class="mapping-label">日期</text><picker wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" mode="date" value="{{draft.date}}" data-field="date" bindchange="changeEditorText" disabled="{{disabled}}"><text class="mapping-value">{{draft.date || '请选择日期'}}<text class="app-chevron">›</text></text></picker><text wx:else>{{draft.date || '待补充'}}</text></view>
-    <view class="mapping-field"><text class="mapping-label">时间</text><input wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" value="{{draft.time}}" maxlength="8" placeholder="时:分:秒" data-field="time" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" aria-label="交易时间，时分秒" /><text wx:else>{{draft.time || '待补充'}}</text></view>
-    <text wx:if="{{editor.fieldErrors.time}}" class="editor-field-error">{{editor.fieldErrors.time}}</text>
-    <view class="mapping-field"><text class="mapping-label">交易对方</text><input wx:if="{{canEdit && editor.supported}}" value="{{draft.counterparty}}" maxlength="200" placeholder="选填" data-field="counterparty" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" aria-label="记账交易对方" /><text wx:else class="mapping-value">{{draft.counterparty || '未填写'}}</text></view>
-    <text wx:if="{{editor.fieldErrors.counterparty}}" class="editor-field-error">{{editor.fieldErrors.counterparty}}</text>
-    <view class="mapping-field"><text class="mapping-label">备注</text><textarea wx:if="{{canEdit && editor.supported}}" auto-height value="{{draft.note}}" maxlength="200" placeholder="选填；不改变原始账单" data-field="note" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" aria-label="记账备注" /><text wx:else class="mapping-value">{{draft.note || '未填写'}}</text></view>
-    <text wx:if="{{editor.fieldErrors.note}}" class="editor-field-error">{{editor.fieldErrors.note}}</text>
-    <block wx:for="{{editor.fundsEndpoints}}" wx:key="key" wx:for-item="endpoint"><block wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account"><button wx:if="{{canEdit && account.accountId && !account.readonly && !account.removable}}" class="review-text-action" data-field="{{account.target === 'reviewAccount' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'}}" bindtap="clearEditorChoice" disabled="{{disabled}}">清除{{endpoint.label}}选择</button></block></block>
-    <button wx:if="{{canEdit && draft.categoryId}}" class="review-text-action" data-field="categoryId" bindtap="clearEditorChoice" disabled="{{disabled}}">清除分类</button>
-  </view>
-  <view wx:if="{{!canEdit && draft.note}}" class="mapping-fields">
-    <view class="mapping-field"><text class="mapping-label">备注</text><text class="mapping-value">{{draft.note}}</text></view>
-  </view>
   <text wx:if="{{editor.fieldErrors.composition}}" class="editor-field-error">{{editor.fieldErrors.composition}}</text>
   <view wx:if="{{editor.needsCompositionNote}}" class="decision-group">
     <text class="decision-group-title">核对说明</text>
     <view class="decision-card"><textarea wx:if="{{canEdit}}" auto-height value="{{draft.evidenceNote}}" maxlength="300" data-field="evidenceNote" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" /><text wx:else>{{draft.evidenceNote || '未填写'}}</text></view>
   </view>
   <text wx:if="{{editor.fieldErrors.evidenceNote}}" class="editor-field-error">{{editor.fieldErrors.evidenceNote}}</text>
-  <view wx:if="{{editor.categoryKind}}" class="decision-group">
-    <text class="decision-group-title">分类</text>
-    <view class="decision-card">
-      <button wx:if="{{canEdit && editor.supported}}" class="repayment-mode-row" data-target="editorCategory" bindtap="openDirectory" disabled="{{disabled}}"><text class="repayment-mode-label">分类 · 选填</text><text class="repayment-mode-value">{{editor.categoryName || '待分类（可稍后补）'}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text></button>
-      <view wx:else class="repayment-mode-row"><text class="repayment-mode-label">分类</text><text class="repayment-mode-value">{{editor.categoryName || '待分类'}}</text></view>
-    </view>
-  </view>
-  <text wx:if="{{editor.fieldErrors.categoryId}}" class="editor-field-error">{{editor.fieldErrors.categoryId}}</text>
-  <view wx:if="{{editor.showLoan}}" class="decision-group">
+  <view wx:if="{{editor.showLoan && (canEdit || draft.repaymentDetails)}}" class="decision-group">
     <text class="decision-group-title">还款构成</text>
     <view class="decision-card">
-      <view wx:if="{{canEdit}}" class="editor-mode-choices" aria-label="还款方式"><button data-field="repaymentMode" data-value="ordinary" bindtap="changeEditorMode" disabled="{{disabled}}" class="{{draft.repaymentMode === 'ordinary' ? 'editor-mode-selected' : ''}}">普通清偿</button><button data-field="repaymentMode" data-value="loan" bindtap="changeEditorMode" disabled="{{disabled}}" class="{{draft.repaymentMode === 'loan' ? 'editor-mode-selected' : ''}}">贷款本息费</button></view>
-      <view wx:if="{{draft.repaymentMode === 'loan'}}" class="mapping-fields">
+      <button wx:if="{{canEdit}}" class="repayment-mode-row repayment-composition-row" bindtap="toggleRepaymentDetails" disabled="{{disabled}}"><text class="repayment-composition-title">本金／利息／手续费</text><text class="repayment-composition-state">{{draft.repaymentDetails ? '收起' : '展开'}}<text class="app-chevron">{{draft.repaymentDetails ? '⌄' : '›'}}</text></text></button>
+      <text wx:if="{{canEdit}}" class="sheet-copy">账单把本金、利息拆成两笔时不用填；合成一笔时在这里拆。</text>
+      <view wx:if="{{draft.repaymentDetails}}" class="mapping-fields repayment-composition">
         <text wx:if="{{editor.fieldErrors.repayment}}" class="editor-field-error">{{editor.fieldErrors.repayment}}</text>
-        <text class="sheet-copy">信用卡整单还款选普通清偿。贷款本息费没有的填 0，未知的保留待核对。</text>
-        <view wx:for="{{editor.loanFields}}" wx:key="key" class="mapping-field"><text>{{item.label}}</text><input wx:if="{{canEdit}}" type="digit" value="{{item.value}}" data-field="{{item.key}}" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="待确认；没有填 0" aria-label="{{item.label + '（元）'}}" /><text wx:else>{{item.value === '' ? '待确认' : '¥' + item.value}}</text></view>
-        <button class="repayment-mode-row" data-field="interestTreatment" data-value="{{draft.interestTreatment === 'expense' ? 'accrued' : 'expense'}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><text>利息处理</text><text>{{draft.interestTreatment === 'expense' ? '补记本次费用' : '清偿已记费用'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
-        <button wx:if="{{draft.interestTreatment === 'expense'}}" class="repayment-mode-row" data-target="editorInterest" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text>利息分类</text><text>{{editor.interestCategoryName || '无费用可不填'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
-        <button class="repayment-mode-row" data-field="feeTreatment" data-value="{{draft.feeTreatment === 'expense' ? 'accrued' : 'expense'}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><text>费用处理</text><text>{{draft.feeTreatment === 'expense' ? '补记本次费用' : '清偿已记费用'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
-        <button wx:if="{{draft.feeTreatment === 'expense'}}" class="repayment-mode-row" data-target="editorFee" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text>费用分类</text><text>{{editor.feeCategoryName || '无费用可不填'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
-        <button class="repayment-mode-row" data-field="loanMode" data-value="{{draft.loanMode === 'defer' ? 'associate' : 'defer'}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><text>贷款关联</text><text>{{draft.loanMode === 'associate' ? '关联已有贷款' : '入账后补充'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
-        <block wx:if="{{draft.loanMode === 'associate'}}">
-          <button class="repayment-mode-row" data-target="editorLoan" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text>{{sheet.loanName || '选择贷款计划'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
+        <view class="mapping-field"><text>本金</text><input wx:if="{{canEdit}}" type="digit" value="{{editor.loanFields[0].value}}" data-field="principalInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="不知道留空；没有填 0" aria-label="本金（元）" /><text wx:else>{{editor.loanFields[0].value === '' ? '待确认' : '¥' + editor.loanFields[0].value}}</text></view>
+        <view class="mapping-field"><text>利息</text><input wx:if="{{canEdit}}" type="digit" value="{{editor.loanFields[1].value}}" data-field="interestInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="不知道留空；没有填 0" aria-label="利息（元）" /><text wx:else>{{editor.loanFields[1].value === '' ? '待确认' : '¥' + editor.loanFields[1].value}}</text></view>
+        <!-- 有金额才问怎么记：三个选项一眼看全，选中即定，不用点一下换一档。 -->
+        <view wx:if="{{editor.interestPositive}}" class="treatment-block">
+          <text class="sheet-copy">利息怎么记？</text>
+          <view wx:if="{{canEdit}}" class="editor-mode-choices">
+            <button class="{{draft.interestTreatment === 'expense' ? 'editor-mode-selected' : ''}}" data-field="interestTreatment" data-value="expense" bindtap="setEditorTreatment" disabled="{{disabled}}">没记过，记一笔</button>
+            <button class="{{draft.interestTreatment === 'accrued' ? 'editor-mode-selected' : ''}}" data-field="interestTreatment" data-value="accrued" bindtap="setEditorTreatment" disabled="{{disabled}}">记过，只冲抵</button>
+            <button class="{{draft.interestTreatment === '' ? 'editor-mode-selected' : ''}}" data-field="interestTreatment" data-value="" bindtap="setEditorTreatment" disabled="{{disabled}}">待核对</button>
+          </view>
+          <text wx:else class="sheet-copy">{{editor.interestTreatmentLabel}}</text>
+          <button wx:if="{{draft.interestTreatment === 'expense'}}" class="repayment-mode-row" data-target="editorInterest" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text class="repayment-mode-label">利息分类</text><text class="repayment-mode-value">{{editor.interestCategoryName || '请选择'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
+        </view>
+        <view class="mapping-field"><text>费用</text><input wx:if="{{canEdit}}" type="digit" value="{{editor.loanFields[2].value}}" data-field="feeInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="不知道留空；没有填 0" aria-label="费用（元）" /><text wx:else>{{editor.loanFields[2].value === '' ? '待确认' : '¥' + editor.loanFields[2].value}}</text></view>
+        <view wx:if="{{editor.feePositive}}" class="treatment-block">
+          <text class="sheet-copy">费用怎么记？</text>
+          <view wx:if="{{canEdit}}" class="editor-mode-choices">
+            <button class="{{draft.feeTreatment === 'expense' ? 'editor-mode-selected' : ''}}" data-field="feeTreatment" data-value="expense" bindtap="setEditorTreatment" disabled="{{disabled}}">没记过，记一笔</button>
+            <button class="{{draft.feeTreatment === 'accrued' ? 'editor-mode-selected' : ''}}" data-field="feeTreatment" data-value="accrued" bindtap="setEditorTreatment" disabled="{{disabled}}">记过，只冲抵</button>
+            <button class="{{draft.feeTreatment === '' ? 'editor-mode-selected' : ''}}" data-field="feeTreatment" data-value="" bindtap="setEditorTreatment" disabled="{{disabled}}">待核对</button>
+          </view>
+          <text wx:else class="sheet-copy">{{editor.feeTreatmentLabel}}</text>
+          <button wx:if="{{draft.feeTreatment === 'expense'}}" class="repayment-mode-row" data-target="editorFee" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text class="repayment-mode-label">费用分类</text><text class="repayment-mode-value">{{editor.feeCategoryName || '请选择'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
+        </view>
+        <text wx:if="{{editor.creditPayee}}" class="sheet-copy">信用卡也能关联分期计划；不关联时只冲减账单余额，已记利息计入转账。</text>
+        <text wx:if="{{editor.loanPayee && draft.loanMode === 'associate' && !draft.loanId}}" class="sheet-copy">先在下方「贷款计划」选择计划，才能冲抵已记的利息和手续费。</text>
+        <block wx:if="{{editor.loanPayee && draft.loanMode === 'associate' && draft.loanId}}">
           <text class="sheet-copy">选择本次清偿的已有收费项；已计入负债的费用不会再次计支出。</text>
-          <button wx:if="{{canEdit && draft.loanId}}" class="review-text-action" bindtap="loadEditorCharges" disabled="{{disabled || sheet.chargeLoading}}">{{sheet.chargeLoading ? '正在读取收费项…' : '核验可清偿收费项'}}</button>
+          <button wx:if="{{canEdit}}" class="review-text-action" bindtap="loadEditorCharges" disabled="{{disabled || sheet.chargeLoading}}">{{sheet.chargeLoading ? '正在读取收费项…' : '核验可清偿收费项'}}</button>
           <text wx:if="{{sheet.chargeError}}" class="inline-error">{{sheet.chargeError}}</text>
           <button wx:for="{{sheet.chargeChoices}}" wx:key="chargeId" class="relation-row" data-id="{{item.chargeId}}" bindtap="selectEditorCharge" disabled="{{disabled || !canEdit || sheet.chargeLoading}}"><text>{{item.label}} · {{item.treatment}} · ¥{{item.amount}}</text><text>{{item.selected ? '已选择' : '选择'}}</text></button>
           <button wx:if="{{canEdit && sheet.chargeMore}}" class="review-text-action" data-more="true" bindtap="loadEditorCharges" disabled="{{disabled || sheet.chargeLoading}}">下一页收费项</button>
@@ -121,11 +165,25 @@
       </view>
     </view>
   </view>
+  <view wx:if="{{editor.showLoan}}" class="decision-group">
+    <text class="decision-group-title">贷款计划</text>
+    <view class="decision-card">
+      <block wx:if="{{editor.loanPayee}}">
+        <button class="repayment-mode-row" data-field="loanMode" data-value="{{draft.loanMode === 'defer' ? 'associate' : 'defer'}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><text class="repayment-mode-label">贷款关联</text><text class="repayment-mode-value">{{draft.loanMode === 'associate' ? '关联已有贷款' : '入账后补充'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
+        <block wx:if="{{draft.loanMode === 'associate'}}">
+          <button class="repayment-mode-row" data-target="editorLoan" bindtap="openDirectory" disabled="{{disabled || !canEdit}}"><text class="repayment-mode-label">贷款计划</text><text class="repayment-mode-value">{{sheet.loanName || '选择贷款计划'}}<text wx:if="{{canEdit}}" class="app-chevron">›</text></text></button>
+          <text class="sheet-copy">整笔先记为本金，并占用该计划的待还本金；要拆利息／手续费时，在上方展开「本金／利息／手续费」。</text>
+        </block>
+        <text wx:else class="sheet-copy">先只记账户间转账；之后可在贷款详情里把这笔付款分配到计划。</text>
+      </block>
+      <text wx:else class="sheet-copy">还入账户选到信用卡或其他负债后，可以关联它的分期／贷款计划。</text>
+    </view>
+  </view>
   <view wx:if="{{editor.refund}}" class="decision-group">
     <text class="decision-group-title">原消费关系</text>
     <view class="decision-card refund-block">
       <view class="refund-status">
-        <text class="refund-status-text">{{editor.refundLinked ? (editor.refundLinked.auto ? '系统已自动关联' : '已关联原消费') : (draft.refund ? (draft.refund.mode === 'pending' ? '已设为暂记待关联' : draft.refund.mode === 'unlinked' ? '已清除关联' : '已选择原消费') : (sheet.originalRefund.status === 'pending' ? '已暂记待关联' : '待关联原消费'))}}</text>
+        <text class="refund-status-text">{{editor.refundStatus}}</text>
         <text class="refund-status-category">分类随原消费{{editor.refundCategory ? '：' + editor.refundCategory : '，关联后自动确定'}}</text>
       </view>
       <block wx:if="{{canEdit && editor.supported}}">
@@ -145,6 +203,7 @@
           <text class="refund-conflict-copy">在下面重新选一笔原消费，或调整退款金额后再保存；都不合适可以先暂记待关联。</text>
         </view>
         <!-- 范围切换固定成两个并排按钮：本批 / 已入账，始终可见，不靠空态里再冒出一个入口。 -->
+        <text wx:if="{{!sheet.refundClosed}}" class="refund-scope-label">查找范围</text>
         <view wx:if="{{!sheet.refundClosed}}" class="refund-scope">
           <button class="refund-scope-btn {{sheet.refundKind === 'event' ? 'is-active' : ''}}" data-kind="event" data-scope="matched" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">本批消费</button>
           <button class="refund-scope-btn {{sheet.refundKind === 'transaction' ? 'is-active' : ''}}" data-kind="transaction" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">已入账记录</button>
@@ -154,10 +213,15 @@
             <text class="refund-candidates-title">{{sheet.refundKind === 'transaction' ? '已入账的原消费' : (sheet.refundScope === 'all' ? '本批全部消费' : '本批原消费')}}</text>
             <text wx:if="{{sheet.refundTotal}}" class="refund-candidates-count">{{sheet.refundTotal}} 笔</text>
             <text wx:if="{{sheet.refundLoading}}" class="refund-candidates-count">读取中…</text>
+            <text wx:if="{{draft.refund && draft.refund.mode === 'link'}}" class="refund-candidates-hint">已选中的原消费再点一次可取消</text>
           </view>
           <view wx:if="{{sheet.refundError}}" class="refund-error">
             <text class="inline-error">{{sheet.refundError}}</text>
             <button class="review-text-action" data-kind="{{sheet.refundKind}}" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">重新读取</button>
+          </view>
+          <view wx:if="{{sheet.refundStale && !sheet.refundLoading}}" class="refund-note">
+            <text>金额、时间或账户已变化，原候选需要重新核对。</text>
+            <button class="review-text-action" data-kind="{{sheet.refundKind}}" bindtap="loadEditorRefunds" disabled="{{disabled}}">重新读取候选</button>
           </view>
           <button wx:for="{{sheet.refundChoices}}" wx:key="id" class="refund-candidate {{draft.refund.id === item.id ? 'is-selected' : ''}}" data-id="{{item.id}}" bindtap="selectEditorRefund" disabled="{{disabled || sheet.refundLoading}}" aria-role="radio" aria-checked="{{draft.refund.id === item.id}}">
             <view class="refund-candidate-head"><text class="refund-candidate-title">{{item.title}}</text><text class="refund-candidate-amount money-number">-{{item.amountText}}</text></view>
@@ -167,59 +231,77 @@
             <text wx:if="{{item.matchLabel}}" class="refund-candidate-match">匹配依据：{{item.matchLabel}}</text>
             <view class="refund-candidate-radio" aria-hidden="true" />
           </button>
-          <view wx:if="{{!sheet.refundLoading && !sheet.refundError && !sheet.refundChoices.length}}" class="refund-empty">
+          <view wx:if="{{!sheet.refundLoading && !sheet.refundError && !sheet.refundStale && !sheet.refundChoices.length}}" class="refund-empty">
             <text class="refund-empty-title">{{sheet.refundKind === 'transaction' ? '已入账记录里没有可关联的原消费' : '本批没有能退这笔的消费'}}</text>
             <text class="refund-empty-copy">{{sheet.refundKind === 'transaction' ? '换个月份或关键词再找找，也可以先暂记待关联。' : '本批支出里没有更早、金额够退且同卡同商户的记录。'}}</text>
             <text wx:if="{{sheet.refundKind === 'event' && sheet.refundClosedOriginal}}" class="refund-empty-copy">同订单的消费是「交易关闭／失败」，只有商家单号相同，不能作为冲减依据；这笔按待关联处理即可。</text>
           </view>
           <button wx:if="{{sheet.refundMore}}" class="refund-more" data-kind="{{sheet.refundKind}}" data-more="true" bindtap="loadEditorRefunds" disabled="{{disabled || sheet.refundLoading}}">继续读取更多{{sheet.refundKind === 'transaction' ? '已入账' : '本批'}}记录</button>
           <text wx:if="{{sheet.refundScope === 'all' && sheet.refundChoices.length}}" class="refund-note">没有匹配依据时列本批全部支出；选中即视为人工确认，保存时重新核验额度。</text>
-          <text wx:if="{{sheet.refundHistoryPending}}" class="refund-note">已入账候选未全部下载，整批入账时会再复核；暂记待关联不会替账本下结论。</text>
+          <text wx:if="{{sheet.refundHistoryPending}}" class="refund-note">已入账候选未全部下载，整批入账时会再复核；暂记后仍可在账本里补关联。</text>
         </view>
         <view wx:if="{{sheet.refundClosed}}" class="refund-actions">
           <button class="refund-action" bindtap="excludeRefundAsReversed" disabled="{{disabled}}">按已退回处理</button>
         </view>
         <block wx:else>
-          <text wx:if="{{!sheet.refundCanPending && !sheet.refundLoading && sheet.refundKind === 'event' && !sheet.refundChoices.length}}" class="refund-note">先看「已入账记录」，确认那边也没有可关联的原消费，才能暂记待关联。</text>
           <view class="refund-actions">
-            <button class="refund-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled || !sheet.refundCanPending}}">暂记待关联</button>
-            <button class="refund-action refund-action-muted" data-mode="unlinked" bindtap="selectEditorRefund" disabled="{{disabled}}">清除关联</button>
+            <button wx:if="{{editor.refundActions.pending.visible}}" class="refund-action" data-mode="pending" bindtap="selectEditorRefund" disabled="{{disabled || !editor.refundActions.pending.enabled}}">暂记待关联</button>
+            <button wx:if="{{editor.refundActions.clear.visible}}" class="refund-action refund-action-muted" data-mode="clear" bindtap="selectEditorRefund" disabled="{{disabled}}">{{editor.refundActions.clear.label}}</button>
           </view>
+          <text wx:if="{{editor.refundActions.pending.visible && editor.refundActions.pending.reason}}" class="refund-note">{{editor.refundActions.pending.reason}}</text>
         </block>
       </block>
     </view>
   </view>
-  <view wx:if="{{editor.source}}" class="decision-group">
-    <text class="decision-group-title">分期来源资料</text>
+  <!-- 费用行才是“这笔利息属于哪个计划”的一方；本金行的期次和归属已经在上面的行里。 -->
+  <view wx:if="{{editor.source && !editor.principal && editor.attribution}}" class="decision-group">
+    <text class="decision-group-title">归属计划</text>
     <view class="decision-card">
-      <text wx:if="{{editor.fieldErrors.sourceCorrection}}" class="editor-field-error">{{editor.fieldErrors.sourceCorrection}}</text>
-      <view class="mapping-field"><text>本期期号</text><input wx:if="{{canEdit && editor.supported}}" type="number" value="{{draft.periodInput}}" data-field="periodInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="待确认" /><text wx:else>{{draft.periodInput || '待确认'}}</text></view>
-      <view class="mapping-field"><text>总期数 · 选填</text><input wx:if="{{canEdit && editor.supported}}" type="number" value="{{draft.totalTermsInput}}" data-field="totalTermsInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="未提供" /><text wx:else>{{draft.totalTermsInput || '未提供'}}</text></view>
-      <!-- 本金形态只是入口，只读详情里点不动，直接不显示。 -->
-      <view wx:if="{{editor.attribution && (canEdit || editor.attribution.role !== 'principal')}}" class="attribution-block">
-        <text class="attribution-hint">{{editor.attribution.periodLabel}} {{editor.attribution.hint}}</text>
-        <!-- 本金行是入口：它不选归属，而是把本期次还没指定归属的利息列出来，点一笔把这笔归到本计划。 -->
-        <block wx:if="{{editor.attribution.role === 'principal'}}">
-          <view wx:for="{{editor.attribution.pending}}" wx:key="eventId" class="attribution-plan"
-            data-id="{{item.eventId}}" data-plan="{{editor.attribution.planLabel}}" bindtap="openEditorPendingInterest">
-            <view class="attribution-plan-copy"><text class="attribution-plan-name">{{item.title}}</text><text class="attribution-plan-amount money-number">{{item.amountText}}</text></view>
-            <text class="attribution-plan-flag">归入本计划</text>
-          </view>
-        </block>
-        <!-- 费用行才是真正要选的一方：本期次有多个计划且账单没写明时，把候选摆出来让用户指定。 -->
-        <block wx:else>
-          <view wx:for="{{editor.attribution.plans}}" wx:key="planName" class="attribution-plan {{item.selected ? 'is-selected' : ''}}"
-            data-plan="{{item.planName}}" bindtap="selectEditorInstallmentPlan">
-            <view class="attribution-plan-copy"><text class="attribution-plan-name">{{item.planName}}</text><text class="attribution-plan-amount money-number">{{item.amountText}}</text></view>
-            <text class="attribution-plan-flag">{{item.selected ? '已归属' : '选它'}}</text>
-          </view>
-          <!-- 指定错了能反悔：清除后归属退回待定，整组回到待核对；required=false 即当前已有归属结论。 -->
-          <button wx:if="{{canEdit && editor.attribution.required === false}}" class="review-text-action" bindtap="clearEditorInstallmentPlan" disabled="{{disabled}}">取消指定，回到待核对</button>
-          <text wx:if="{{editor.attribution.required}}" class="attribution-required">还没指定，指定后才能入账。</text>
-        </block>
-      </view>
-      <text class="sheet-copy">来源在入账后可关联或新建分期计划；已有认领关系须先核验，不能凭期号认定已还。</text>
+      <block wx:if="{{editor.attribution.role !== 'principal'}}">
+        <view class="attribution-head"><text class="attribution-head-title">归属计划</text><text class="attribution-head-count">{{editor.attribution.plans.length}} 个计划</text><text wx:if="{{canEdit && editor.attribution.selected}}" class="attribution-head-hint">已选中的计划再点一次可取消</text></view>
+        <button wx:for="{{editor.attribution.plans}}" wx:key="planName" class="attribution-plan {{item.selected ? 'is-selected' : ''}}"
+          data-plan="{{item.planName}}" bindtap="selectEditorInstallmentPlan" disabled="{{disabled}}" aria-role="radio" aria-checked="{{item.selected}}" aria-label="{{item.planName}}">
+          <view class="attribution-plan-copy"><text class="attribution-plan-name">{{item.planName}}</text><text class="attribution-plan-amount money-number">{{item.amountText}}</text></view>
+          <view class="attribution-plan-radio" aria-hidden="true" />
+        </button>
+        <text wx:if="{{editor.attribution.required}}" class="attribution-required">选择一个计划才能入账。</text>
+      </block>
+      <text class="source-note">期号只决定归属，不代表已还。</text>
     </view>
   </view>
-  <text wx:if="{{editor.principal}}" class="sheet-copy">本期本金仅登记分期来源，不代表实际还款，无需选择付款账户。</text>
+  <!-- 期次、分类、备注同属收尾：期次在该性质的业务判断之后，分类和备注固定最后。 -->
+  <view wx:if="{{editor.source || editor.categoryKind || canEdit || draft.note}}" class="editor-rows">
+    <view wx:if="{{editor.source}}" class="editor-row">
+      <text class="editor-row-label">期次</text>
+      <view wx:if="{{canEdit && editor.supported}}" class="editor-row-value period-field">
+        <text class="period-unit">第</text>
+        <input class="period-input money-number" type="number" value="{{draft.periodInput}}" data-field="periodInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="--" aria-label="本期期号" />
+        <text class="period-unit">期</text>
+        <text class="period-sep">·</text>
+        <text class="period-unit">共</text>
+        <input class="period-input money-number" type="number" value="{{draft.totalTermsInput}}" data-field="totalTermsInput" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" placeholder="--" aria-label="总期数，选填" />
+        <text class="period-unit">期</text>
+      </view>
+      <view wx:else class="editor-row-value">
+        <text class="editor-row-text">{{draft.periodInput ? '第' + draft.periodInput + '期' : '待补充'}}{{draft.totalTermsInput ? ' / 共' + draft.totalTermsInput + '期' : ''}}</text>
+      </view>
+    </view>
+    <view wx:if="{{editor.categoryKind}}" class="editor-row">
+      <text class="editor-row-label">分类</text>
+      <button wx:if="{{canEdit && editor.supported}}" class="editor-row-value editor-row-choice" data-target="editorCategory" bindtap="openDirectory" disabled="{{disabled}}">
+        <text class="editor-row-text {{draft.categoryId ? '' : 'is-empty'}}">{{editor.categoryName || '待分类'}}</text>
+        <text class="editor-nature-chevron" aria-hidden="true">›</text>
+      </button>
+      <view wx:else class="editor-row-value"><text class="editor-row-text">{{editor.categoryName || '待分类'}}</text></view>
+    </view>
+    <view wx:if="{{canEdit || draft.note}}" class="editor-row editor-row-note">
+      <text class="editor-row-label">备注</text>
+      <view class="editor-row-value">
+        <textarea wx:if="{{canEdit}}" class="editor-row-textarea" auto-height value="{{draft.note}}" maxlength="200" placeholder="选填" data-field="note" bindinput="changeEditorText" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" disabled="{{disabled}}" aria-label="记账备注" />
+        <text wx:else class="editor-row-text">{{draft.note}}</text>
+      </view>
+    </view>
+  </view>
+  <text wx:if="{{editor.fieldErrors.categoryId}}" class="editor-field-error">{{editor.fieldErrors.categoryId}}</text>
+  <text wx:if="{{editor.fieldErrors.note}}" class="editor-field-error">{{editor.fieldErrors.note}}</text>
 </template>

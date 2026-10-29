@@ -19,6 +19,9 @@
   --home-hero-image: linear-gradient(135deg, rgba(0, 0, 0, .08) 0%, rgba(0, 0, 0, 0) 42%, var(--theme-hero-end, #be5b24) 100%);
 }
 
+/* 除暖橘的渐变外，首页所有表面都走 --home-* → --theme-* 的既有回退链，
+   不为任何单一主题写页面级覆盖：覆盖会让新主题各自长一套私色，也会反向遮蔽基础规则。 */
+
 .home-page .money-number { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
 .home-content-line,

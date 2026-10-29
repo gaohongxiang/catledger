@@ -3,7 +3,7 @@ const api = require('../../services/catledger-api')
 const pageReadSession = require('../../services/page-read-session')
 const themeService = require('../../theme/service')
 
-Page({
+Page(themeService.page({
   data: {
     loggedIn: false,
     loading: false,
@@ -19,10 +19,8 @@ Page({
     categorySummaryText: '登录后管理收支分类'
   },
 
-  onLoad: function () { themeService.bindPage(this) },
 
   onShow: function () {
-    themeService.bindPage(this)
     if (this.getTabBar()) {
       this.getTabBar().setData({ selected: 2, hidden: false })
     }
@@ -118,4 +116,4 @@ Page({
     this.setData({ loggedIn: true })
     this.loadLedger()
   }
-})
+}))

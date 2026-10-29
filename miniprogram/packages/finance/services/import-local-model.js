@@ -8,6 +8,7 @@ const { createMappingIndex } = require('../domain/import-review/source-funds')
 const { paymentReferenceKey } = require('../domain/import-review/payment-account')
 const { publicEvent } = require('../domain/import-review/review-presentation')
 const historyPolicy = require('../domain/import-review/historical-match-policy')
+const attribution = require('../domain/import-review/installment-plan')
 const clone = value => JSON.parse(JSON.stringify(value))
 const fail = message => { throw Object.assign(new Error(message || '这项选择需重新核对'), { code: 'LOCAL_RECHECK_REQUIRED' }) }
 const active = event => event && ['ready','needs_action'].includes(event.status)
@@ -190,7 +191,11 @@ function create(facts) {
     for (const issue of relevant) if (issue.localDerived && issue.primaryReasonCode !== matching.REASON) {
       issue.status = 'superseded'; issue.blocking = false
     }
-    if (active(event) && (event.status === 'needs_action' || rules.needsCategory(event))) {
+    // 已经在一条阻断事项里的记录，服务端 createFollowUpIssues 不会再为它补建事项（occupied 里的 '*'）。
+    // 本机同理：blocking_issue_open 只表示“去那条事项处理”，拿它当分类依据会派生一条 shared_fields，
+    // 卡面于是多出“交易信息待核对”，而真正的待办（利息待归属）就在旁边。
+    if (active(event) && !event.reasonCodes.includes('blocking_issue_open') &&
+      (event.status === 'needs_action' || rules.needsCategory(event))) {
       const classification = rules.classifyReviewIssue(event)
       const existing = relevant.find(issue => issue.status === 'open' && issue.primaryReasonCode === classification.primaryReason)
       if (!existing) addIssue(event, classification.issueType, classification.primaryReason)
@@ -368,6 +373,14 @@ function create(facts) {
       closedOriginal: closedOriginal ? { eventId: closedOriginal.eventId, amountMinor: closedOriginal.amountMinor,
         localAt: closedOriginal.localAt } : null })
   }
+  // 与服务端 review/editor-refund 同口径：暂记是用户决定，候选数量和其他待核对项都不能
+  // 替用户拒绝；只有来源冲突（原单已关闭/失败）必须走“按已退回处理”，不能暂记。
+  function refundPendingState(event) {
+    if (!event || event.economicNature !== 'refund') return { allowed: false, reason: 'not_refund' }
+    const sourceConflict = Boolean(event.fieldSources && event.fieldSources.refundSourceConflict) ||
+      (event.reasonCodes || []).includes('refund_source_conflict')
+    return sourceConflict ? { allowed: false, reason: 'source_conflict' } : { allowed: true, reason: '' }
+  }
   function applyRefund(current, next, data) {
     const choice = data.decisions?.refund
     if (choice || next.economicNature !== 'refund') {
@@ -386,7 +399,8 @@ function create(facts) {
         indexRelation(relations.get(id))
       } else links.push({ eventId: next.eventId, transactionId: choice.id, transactionVersion: choice.version, role: 'refund_original' })
     } else if (choice.mode === 'pending') {
-      if (refundCandidates(next,'event').length || refundCandidates(next,'transaction').length) fail('仍有可关联的原消费，请先核对')
+      const pending = refundPendingState(next)
+      if (!pending.allowed) fail(pending.reason === 'source_conflict' ? '原消费已关闭或失败，请按已退回处理' : '这笔不是退款，不能暂记')
       next.fieldSources.refundRelation = { version: rules.REFUND_RELATION_STATE_VERSION, status: 'pending', confirmedBy: 'user' }
       const coverage = (supplemental || facts).historyCoverage.refunds.find(row => row.eventId === next.eventId)
       if (!coverage || !coverage.complete || ['amountMinor','utcAt','ledgerAccountId'].some(key => coverage[key] !== next[key])) needsCheck.add(next.eventId)
@@ -399,10 +413,60 @@ function create(facts) {
     next.reasonCodes = next.reasonCodes.filter(reason => !['refund_relation_required', 'refund_relation_invalid',
       'refund_relation_ambiguous', 'refund_amount_exceeded'].includes(reason))
   }
+  // 分期归属是整组的事实，不是单笔的字段：本机保存了决定，就要按服务端同一口径收尾
+  // （installment-plan.needsAttribution + releaseInstallmentGroup）。缺了这一步，事项永远开着，
+  // 整组都挂着 blocking_issue_open——用户看到的就是“利息选好了，却还在待核对”。
+  function dropMember(issue, id) {
+    removeSubject(issue, id)
+    const rows = members.get(issue.issueId)
+    if (rows) members.set(issue.issueId, rows.filter(row => !(row.objectType === 'event' && row.objectId === id)))
+  }
+  function releaseInstallmentGroups(ids) {
+    const released = new Set()
+    for (const issueId of new Set([...ids].flatMap(id => [...(issueEvents.get(id) || [])]))) {
+      const issue = issues.get(issueId)
+      if (!issue || issue.status !== 'open' || issue.primaryReasonCode !== attribution.REASON_CODE) continue
+      const rows = (members.get(issue.issueId) || []).filter(row => row.objectType === 'event' && row.memberRole !== 'candidate')
+      // 本期次还有判不出归属的费用就继续留着；全部指定完，这条事项一起收尾。
+      // 本金和已归好的费用本来就不在成员里，不需要“连坐”它们。
+      if (rows.some(row => attribution.needsAttribution(events.get(row.objectId)))) continue
+      for (const row of rows) released.add(row.objectId)
+      // 先指定完的那几笔上一轮就退出了成员，但当时事项还开着，它们仍带着 blocking_issue_open。
+      // 整组收尾时要把同一期次的行一起重新推导，否则只有本笔那几行回到已核对，先指定的停在待核对。
+      const groupKey = attribution.groupKeyOf(events.get(rows[0].objectId))
+      for (const event of events.values()) if (groupKey && attribution.groupKeyOf(event) === groupKey) released.add(event.eventId)
+      issue.subjectEventIds = []
+      issue.status = 'resolved'; issue.blocking = false; issue.version++
+      dirtyIssues.add(issue.issueId)
+    }
+    // 收尾后本金行的组上下文已经过期，跟着撤掉，和整理阶段“没有待指定费用就不再写”保持一致。
+    for (const id of released) {
+      const event = events.get(id), context = sourceOf(event).installmentAttribution
+      if (context && context.role === 'principal') {
+        events.set(id, { ...event, fieldSources: { ...event.fieldSources, installmentAttribution: undefined } })
+      }
+    }
+    return released
+  }
+  function refreshInstallmentMember(id, event) {
+    // 本金行不带原因码、也不是事项成员；这里只处理“这笔费用已经指定完”的退出。
+    const context = sourceOf(event).installmentAttribution
+    if (!context || context.role !== 'charge' || attribution.needsAttribution(event)) return
+    for (const issue of eventIssues(id)) if (issue.status === 'open' && issue.primaryReasonCode === attribution.REASON_CODE) {
+      // 已经指定完的这笔不再需要在“利息待归属”里出现。
+      dropMember(issue, id)
+      if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false; issue.version++ }
+    }
+  }
   function finish(ids) {
     const affected = dependencies([...ids])
     const oldKeys = [...affected].map(id => eventBuckets.get(id)).filter(Boolean)
     for (const id of affected) derive(id)
+    // 归属变更后按整组看一眼：指定完的那笔退出事项，本期次再没有待指定的费用就把整组收尾，
+    // 收尾的行要重新推导一次，否则还挂着收尾前算出的 blocking_issue_open。
+    for (const id of affected) if (events.get(id)) refreshInstallmentMember(id, events.get(id))
+    const released = releaseInstallmentGroups(affected)
+    for (const id of released) { affected.add(id); derive(id) }
     const changed=[...affected].filter(id=>pairSignature(events.get(id))!==pairSignatures.get(id))
     if(changed.length)for (const id of rebuildPairs(changed, oldKeys)) affected.add(id)
     const touchedRelations=new Set([...affected].flatMap(id=>[...(relationIds.get(id)||[])]))
@@ -441,7 +505,9 @@ function create(facts) {
     const remaining = new Set(next.reasonCodes || [])
     const refundCleared = !['refund_relation_required', 'refund_relation_invalid', 'refund_relation_ambiguous',
       'refund_amount_exceeded', 'refund_source_conflict'].some(reason => remaining.has(reason))
-    for (const issue of eventIssues(current.eventId)) if (editableIssues.has(issue.issueType) &&
+    // 字段冲突由这次修改消除时（例如分期本金改判成合法性质），成员和服务端一样立即退出。
+    for (const issue of eventIssues(current.eventId)) if (issue.issueType === 'field_conflict' && !remaining.has('core_fields_conflict') ||
+      editableIssues.has(issue.issueType) &&
       (issue.issueType === 'refund_relation' && refundCleared || !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode))) {
       removeSubject(issue, current.eventId)
       if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false }

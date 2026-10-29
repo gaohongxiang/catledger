@@ -60,10 +60,11 @@ async function createFollowUpIssue(connection, uid, updateId, event) {
 }
 
 // 一个分期计划本期次的说明只有本金行有：费用行要指定给谁，必须看着本金选。
-// 整理期由 buildReviewIssues 一次性把整组建进一条事项；但来源账户还没确认时整批事件会先被
+// 整理期由 buildReviewIssues 一次性把整组待归属的费用建进一条事项；但来源账户还没确认时整批事件会先被
 // account_mapping 拦下，等用户确认账户后才回到这里补建。补建必须复用同一口径，否则费用会
-// 各自成一条，用户面对的又变成“一笔利息一张卡”，拿不到“这笔利息属于哪个计划”的对照。
-// 回库捞本批次全部活跃分期行，按分组键归堆；本金置前——事项的 sort_order=0 就是这张卡的门面。
+// 各自成一条，用户面对的又变成“一笔利息一张卡”。
+// 回库捞本批次全部活跃分期行，按分组键归堆；本金置前只是为了挑出“这笔利息属于哪个计划”的对照，
+// 本金自己不进事项——它已经确定，直接进已核对。
 async function activeInstallmentMembers(connection, uid, updateId) {
   const [rows] = await connection.execute(
     `SELECT event_id AS eventId, version, field_sources_json AS fieldSources, reason_codes_json AS reasonCodes
@@ -106,13 +107,13 @@ function availableInstallmentIssueKey(updateId, groupKey, takenKeys) {
   return key
 }
 
-// 分期整组必须落在同一条事项里（同一期次一条、本金置前），用户才能在一张卡里对照本息。
+// 分期待归属的费用必须落在同一条事项里（同一期次一条），用户才能一次看到本期还有几笔没定。
 // 整理期由 buildReviewIssues 一次性建好；但来源账户没确认时整批会先被 account_mapping 拦下，
-// 等确认后才增量补建——早期版本的增量按单笔 eventKey 建事项，同一期次会被拆成多条，本金甚至
-// 整组都没进过事项（于是留在已核对里，用户看到“本金核对完了、利息还没归属”这种对不上的状态）。
-// 这里按分组键做两件事：缺的补建，散的收拢回一条（保留一条、其余收尾、成员补齐为整组）。
+// 等确认后才增量补建——早期版本的增量按单笔 eventKey 建事项，同一期次会被拆成多条。
+// 这里按分组键做两件事：缺的补建，散的收拢回一条（保留一条、其余收尾、成员就是全部待归属费用）。
 // 补建是必须的：分期行只要还缺账户，classifyReviewIssue 就先把它判成 account_mapping，
-// 整理期那条归属分支压根不进，事项根本不会被创建——本金因此失去唯一的待核对凭据。
+// 整理期那条归属分支压根不进，事项根本不会被创建——待归属的费用因此没有落点。
+// 本金和已归好的费用一概不进事项：它们已经确定，绑在待核对里只会让用户以为“还要核对啥”。
 async function collapseInstallmentIssues(connection, uid, updateId, actionId = null, { beforeChange } = {}) {
   const groups = [...(await activeInstallmentMembers(connection, uid, updateId)).entries()]
     .sort((left, right) => left[0].localeCompare(right[0]))
@@ -140,12 +141,13 @@ async function collapseInstallmentIssues(connection, uid, updateId, actionId = n
   const takenKeys = new Set(claims.map(row => row.issueKey))
   let touched = 0
   for (const [groupKey, members] of groups) {
-    // 归属都指定完的组不该留着事项：只有本期次确实还有待指定费用时才需要它。
-    if (!members.some(member => member.pending)) continue
+    // 事项只装还没归属的费用：本金和已归好的费用已经确定，不该被绑在待核对里陪着等。
+    const pending = members.filter(member => member.pending)
+    if (!pending.length) continue
     const issueIds = new Set()
-    members.forEach(member => (issuesByEvent.get(member.eventId) || new Set()).forEach(id => issueIds.add(id)))
+    pending.forEach(member => (issuesByEvent.get(member.eventId) || new Set()).forEach(id => issueIds.add(id)))
     if (!issueIds.size) {
-      // 补建与增量补建同键同口径：一笔费用都没进过事项时，整组（本金置前）现建一条。
+      // 补建与增量补建同键同口径：待归属的费用还没进过事项时现建一条。
       const issueKey = availableInstallmentIssueKey(updateId, groupKey, takenKeys)
       if (!touched && beforeChange) actionId = await beforeChange()
       const issueId = randomUUID()
@@ -153,20 +155,20 @@ async function collapseInstallmentIssues(connection, uid, updateId, actionId = n
           issue_type, status, version, blocking, primary_reason_code, member_count, candidate_count, rule_version, reason_codes_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN,
-        'open', 1, 1, INSTALLMENT_ATTRIBUTION_REASON, members.length, 0, REVIEW_ISSUE_VERSION,
+        'open', 1, 1, INSTALLMENT_ATTRIBUTION_REASON, pending.length, 0, REVIEW_ISSUE_VERSION,
         JSON.stringify([INSTALLMENT_ATTRIBUTION_REASON])])
       await insertMany(connection, `INSERT INTO catledger_review_issue_members
         (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order) VALUES`,
-      members.map((member, index) => [uid, randomUUID(), updateId, issueId, 'event', member.eventId, member.version, 'subject', index]))
+      pending.map((member, index) => [uid, randomUUID(), updateId, issueId, 'event', member.eventId, member.version, 'subject', index]))
       takenKeys.add(issueKey)
       touched++
       continue
     }
     const ordered = [...issueIds].sort()
     const keep = ordered[0]
-    const expected = members.map(member => member.eventId)
+    const expected = pending.map(member => member.eventId)
     const kept = rows.filter(row => row.issueId === keep).map(row => row.eventId)
-    // 已经是“一条事项 + 成员就是整组”就不写库：整理每次打开工作台都会跑到这里。
+    // 已经是“一条事项 + 成员就是全部待归属费用”就不写库：整理每次打开工作台都会跑到这里。
     if (ordered.length === 1 && kept.length === expected.length && expected.every(id => kept.includes(id))) continue
     if (!touched && beforeChange) actionId = await beforeChange()
     for (const drop of ordered.slice(1)) {
@@ -183,7 +185,7 @@ async function collapseInstallmentIssues(connection, uid, updateId, actionId = n
     [uid, updateId, keep])
     await insertMany(connection, `INSERT INTO catledger_review_issue_members
       (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order) VALUES`,
-    members.map((member, index) => [uid, randomUUID(), updateId, keep, 'event', member.eventId, member.version, 'subject', index]))
+    pending.map((member, index) => [uid, randomUUID(), updateId, keep, 'event', member.eventId, member.version, 'subject', index]))
     await connection.execute(`UPDATE catledger_review_issues SET version = version + 1, blocking = 1,
       member_count = (SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid = ? AND m.issue_id = ?)
       WHERE uid = ? AND update_id = ? AND issue_id = ? AND status = 'open'`,
@@ -207,7 +209,7 @@ async function createFollowUpIssues(connection, uid, updateId, events) {
   const contexts = candidates.some(event => classifyReviewIssue(event).issueType === REVIEW_ISSUE_TYPE.REFUND_RELATION)
     ? await loadEventContexts(connection, uid, updateId) : null
   const issues = [], members = []
-  // 待指定的费用先整组收进一条事项，本金作为成员一起进去（它自己不带原因码，靠成员身份进待核对）。
+  // 待指定的费用整组收进一条事项；本金不进事项，它已经确定，自己回已核对。
   // 判定用事件自己的原因码，不用分类结论：分期行只要还缺账户，classifyReviewIssue 就会先把它
   // 判成 account_mapping（primaryReason=ledger_account_required），按分类比会把整组漏掉，
   // 费用只能各自成条——正是“一笔利息一张卡”的来源。
@@ -222,14 +224,13 @@ async function createFollowUpIssues(connection, uid, updateId, events) {
       [uid, updateId, INSTALLMENT_ATTRIBUTION_REASON])
     const claimed = new Set(claims.map(row => row.issueKey))
     for (const group of await installmentAttributionGroups(connection, uid, updateId, pendingAttribution)) {
-      // 与整理期 buildReviewIssues 同口径：整组收进同一条事项，本金置前（sort_order=0 就是卡片入口）。
-      // 只吸收待指定的费用和它的本金锚点：组内其他费用若另有自己的问题（如待分类），它走的是
+      // 与整理期 buildReviewIssues 同口径：事项只装还没归属的费用。本金和已归好的费用已经确定，
+      // 不进事项、不陪等——它们各自回已核对。组内其他费用若另有自己的问题（如待分类），走的是
       // 「分类待指定」那条线，塞进「利息待归属」卡里只会被误读成还没归好属，也会同一笔出现两次。
-      const available = group.members.filter(member => pendingAttribution.has(member.eventId) ||
-        (member.principal && !occupied.has(member.eventId)))
+      const available = group.members.filter(member => pendingAttribution.has(member.eventId))
       if (!available.length) continue
       // 待指定的费用一律由本条事项承接：即使它当前已在别的开放事项里，也不能再各自成一条，
-      // 否则用户面对的又回到“一笔利息一张卡”。本金锚点只在没被占用时才新挂进来。
+      // 否则用户面对的又回到“一笔利息一张卡”。
       available.forEach(member => { if (pendingAttribution.has(member.eventId)) grouped.add(member.eventId) })
       const fresh = available.filter(member => !occupied.has(member.eventId))
       // 已在开放事项内的成员不重复创建；历史事项不能阻止新一轮待办恢复。
@@ -269,9 +270,9 @@ async function createFollowUpIssues(connection, uid, updateId, events) {
     object_version, member_role, sort_order) VALUES`, members)
 }
 
-// 分期归属是整组的事实：事项里除了当前这笔，还挂着同组的本金和其余费用。它们身上没有
-// 原因码，只会被这里删掉成员从而退出待核对。所以每次归属变更后都要回头看一眼整组——
-// 本期次已经没有待指定的费用了，剩下的成员一起收尾，让整组回到已核对里按计划合并。
+// 事项只装待归属的费用。保存归属后当前这笔的原因码被清掉、成员随之删除；如果事项里
+// 已经没有待归属的成员，这条事项就应该收尾——否则本轮唯一那笔利息指定完了，卡片还挂在待核对里。
+// 本金与已归好的费用不在事项里，不需要"整组连坐"。
 async function releaseInstallmentGroup(connection, uid, updateId, issueIds, actionId) {
   for (const issueId of issueIds) {
     const [members] = await connection.execute(`SELECT DISTINCT object_id AS eventId FROM catledger_review_issue_members
@@ -304,8 +305,12 @@ async function refreshEditedEventsIssues(connection, uid, updateId, events, acti
         AND m.member_role<>'candidate' AND m.object_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
     rows.push(...found)
   }
-  const removable = rows.filter(issue=>!PROTECTED_EDIT_REASONS.has(issue.reason)&&
-    (ORDINARY_EDIT_ISSUES.has(issue.issueType)||issue.reason==='installment_attribution_required'))
+  // 受保护的原因只由专用决定维护；但字段冲突若已被这次修改消除（事件重新推导后不再带该原因），
+  // 事项成员必须同步退出，否则整批仍被一条已经不存在的冲突挡住。
+  const removable = rows.filter(issue=>issue.issueType==='field_conflict'&&issue.reason==='core_fields_conflict'
+    ? !(byId.get(issue.eventId)?.reasonCodes||[]).includes(issue.reason)
+    : !PROTECTED_EDIT_REASONS.has(issue.reason)&&
+      (ORDINARY_EDIT_ISSUES.has(issue.issueType)||issue.reason==='installment_attribution_required'))
   for (const part of chunks(removable.map(row=>[row.memberId]))) await connection.execute(
     `DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND member_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
   const touched=[...new Set(removable.map(row=>row.issueId))]

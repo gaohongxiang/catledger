@@ -1,14 +1,12 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const vm = require('node:vm')
 const path = require('node:path')
-const { createRequire } = require('node:module')
+const { createLoader } = require('./helpers/vm-loader')
+const { pageDefinition } = require('./helpers/page-definitions')
 
-const filename = path.join(__dirname, '../miniprogram/pages/profile/index.js')
+const root = path.join(__dirname, '../miniprogram')
 
 function runtime(profileResponse, updateResponse) {
-  let definition
   const calls = [], toasts = []
   let active = true
   let requestNumber = 190
@@ -29,20 +27,13 @@ function runtime(profileResponse, updateResponse) {
       throw new Error(action)
     }
   }
-  const req = createRequire(filename)
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-    Page(value) { definition = value },
-    getApp: () => app,
-    wx: { showToast(options) { toasts.push(options.title) } },
-    require(name) {
-      if (name === '../../services/catledger-api') return api
-      if (name === '../../theme/service') return { bindPage() {} }
-      if (name === '../../services/page-read-session') {
-        return { begin: () => () => active, capture: () => () => active, isCurrent: () => active }
-      }
-      return req(name)
-    }
-  }, { filename })
+  const wx = { showToast(options) { toasts.push(options.title) } }
+  const themeService = { page: definition => definition, component: definition => definition }
+  const load = createLoader({ getApp: () => app, wx }, filename => {
+    if (filename.endsWith('/services/catledger-api.js')) return api
+    if (filename.endsWith('/services/page-read-session.js')) return { begin: () => () => active, capture: () => () => active, isCurrent: () => active }
+  })
+  const definition = pageDefinition(root, 'pages/profile/index', load, { app, api, themeService, wx })
   const page = Object.assign({}, definition, {
     data: Object.assign({}, definition.data),
     setData(patch) { Object.assign(this.data, patch) },

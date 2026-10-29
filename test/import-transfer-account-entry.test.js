@@ -107,7 +107,7 @@ test('组合支付还款的付款端限资金账户，还入端限负债，均�
 test('默认本人、归属往返和隐藏字段隔离；普通贷款无强制关联', async t => {
   const { h, page, drafts } = await open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
   assert.equal(draft(page).owner, 'self')
-  assert.equal(draft(page).repaymentMode, 'ordinary')
+  assert.equal(draft(page).repaymentDetails, false)
   select(page, 'reviewCounterparty', drafts[0])
   mode(page, 'owner', 'other')
   assert.equal(view(page).other, true)

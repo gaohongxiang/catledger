@@ -3,15 +3,17 @@ const session = require('../../../../services/page-read-session')
 const loginGuard = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
 const { candidateView, contextView, choiceView } = require('./model')
-Page({
-  data: { accountLocked: false, transactionId: '', context: null, items: [], loans: [], accounts: [], accountIndex: 0, month: '',
-    loading: false, hasLoaded: false, errorMessage: '', nextCursor: null, canPrevious: false },
-  onLoad(query) { this._accountId = query && query.accountId || ''; this.setData({ accountLocked: Boolean(this._accountId) }); this._transactionId = query && query.transactionId || ''; this.setData({ transactionId: this._transactionId }); theme.bindPage(this) },
-  onShow() { theme.bindPage(this); return loginGuard.run(this, () => this.firstPage()) },
+const businessInitialData = { accountLocked: false, transactionId: '', context: null, items: [], loans: [], accounts: [], accountIndex: 0, month: '',
+    loading: false, hasLoaded: false, errorMessage: '', nextCursor: null, canPrevious: false }
+
+Page(theme.page({
+  data: businessInitialData,
+  onLoad(query) { this._accountId = query && query.accountId || ''; this.setData({ accountLocked: Boolean(this._accountId) }); this._transactionId = query && query.transactionId || ''; this.setData({ transactionId: this._transactionId }); },
+  onShow() { return loginGuard.run(this, () => this.firstPage()) },
   onUnload() { session.end(this) },
   onPullDownRefresh() { return this.firstPage().finally(() => wx.stopPullDownRefresh()) },
   async load() {
-    const current = session.begin(this, Object.keys(this.data), ['_cursor','_previous','_query'])
+    const current = session.begin(this, Object.keys(businessInitialData), ['_cursor','_previous','_query'])
     const token = this._query = {}, month = this.data.month
     const selected = this.data.accounts[this.data.accountIndex], accountId = this._accountId || selected && selected.accountId || null
     const cursor = this._cursor || null
@@ -62,4 +64,4 @@ Page({
   },
   managePending() { if (this.data.context && this.data.context.payment) wx.navigateTo({ url:'/packages/finance/pages/repayment-entry/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) },
   openPayment() { if (this.data.context && this.data.context.linked) wx.navigateTo({ url: '/packages/finance/pages/loan-payment/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) }
-})
+}))

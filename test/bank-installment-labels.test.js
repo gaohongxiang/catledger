@@ -68,8 +68,13 @@ test('已有人工转账决定保留并阻断入账，明确选择本金出账�
   const confirmed = applyFields({ ...next, reasonCodes: resolvedReasons('field_conflict', next.reasonCodes) },
     { economicNature: 'repayment', flowDirection: 'neutral', counterpartyLedgerAccountId: null, categoryId: null })
   assert.deepEqual(requiredReasons(confirmed), [])
-  for (const economicNature of ['expense', 'borrow', 'internal_transfer']) {
-    assert.ok(requiredReasons({ ...confirmed, economicNature }).includes('core_fields_conflict'))
+  // 本金行可改判为支出、费用、收入或待确认；不再一律要求“还款 + 中性方向”。
+  for (const [economicNature, flowDirection] of [['expense', 'outflow'], ['fee', 'outflow'], ['income', 'inflow'], ['unknown', 'outflow']]) {
+    const reasons = requiredReasons({ ...confirmed, economicNature, flowDirection })
+    assert.equal(reasons.includes('core_fields_conflict'), false, economicNature)
+  }
+  for (const economicNature of ['refund', 'borrow', 'internal_transfer']) {
+    assert.ok(requiredReasons({ ...confirmed, economicNature }).includes('core_fields_conflict'), economicNature)
   }
 })
 

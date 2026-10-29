@@ -171,30 +171,28 @@ test('显式 null 清除计划归属，整组退回待核对', () => {
   assert.deepEqual(mixed.fieldSources.editorOverrides.sourceCorrection, { periodNumber: 12 })
 })
 
-test('同一期次的整组本息合成一个问题，本金排在最前', () => {
+test('本期次待归属的利息合成一个问题，已确定的本金不进事项', () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
   let seq = 0
   const { issues, members } = buildReviewIssues('update', events, [], [], () => 'id-' + (++seq))
   const attributionIssues = issues.filter(issue => issue.primaryReasonCode === 'installment_attribution_required')
-  // 两笔同文案利息加上对应的两笔本金必须落进同一个问题：用户要在一张卡里把利息配到本金上，
-  // 只看到利息就无从对照，本金留在已核对则本息分离。
+  // 两笔同文案利息落进同一个问题：用户在一张卡里看到本期还剩几笔要定。
+  // 本金已经确定（本期次唯一本金或摘要写明计划名），它不该被绑在这里陪等——那是“还要核对啥”。
   assert.equal(attributionIssues.length, 1)
   assert.equal(attributionIssues[0].issueType, 'installment_origin')
   assert.equal(attributionIssues[0].blocking, true)
-  assert.equal(attributionIssues[0].memberCount, 4)
+  assert.equal(attributionIssues[0].memberCount, 2)
   const ordered = members.filter(member => member.issueId === attributionIssues[0].issueId)
     .sort((left, right) => left.sortOrder - right.sortOrder).map(member => member.objectId)
-  // 事项门面是本金行：卡片头一个入口就该是用户可以点进去的那笔本金。
-  assert.deepEqual(ordered.slice(0, 2), [events[0].eventId, events[1].eventId])
-  assert.deepEqual(ordered.slice(2), [events[2].eventId, events[3].eventId])
+  assert.deepEqual(ordered, [events[2].eventId, events[3].eventId])
 })
 
-test('账户还没确认时归属事项照样建出来，本金仍在整组里', () => {
+test('账户还没确认时归属事项照样建出来，只装待归属的利息', () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   // 真实导入：来源账户还没确认，分期行会先被账户缺口拦下。此时 classifyReviewIssue 给的是
-  // account_mapping/ledger_account_required，归属事项不能因此消失——它是本金留在待核对的唯一凭据，
-  // 一旦缺失，账户确认后本金就掉进已核对，本息分居两个页签。
+  // account_mapping/ledger_account_required，归属事项不能因此消失——它是待归属利息唯一的落点，
+  // 一旦缺失，账户确认后利息就再没有入口可以指定给哪个计划。
   for (const event of events) {
     event.ledgerAccountId = null
     event.reasonCodes = ['ledger_account_required']
@@ -209,11 +207,10 @@ test('账户还没确认时归属事项照样建出来，本金仍在整组里',
   assert.equal(attributionIssues.length, 1)
   assert.equal(attributionIssues[0].issueType, 'installment_origin')
   assert.equal(attributionIssues[0].blocking, true)
-  assert.equal(attributionIssues[0].memberCount, 4)
+  assert.equal(attributionIssues[0].memberCount, 2)
   const ordered = members.filter(member => member.issueId === attributionIssues[0].issueId)
     .sort((left, right) => left.sortOrder - right.sortOrder).map(member => member.objectId)
-  assert.deepEqual(ordered.slice(0, 2), [events[0].eventId, events[1].eventId])
-  assert.deepEqual(ordered.slice(2), [events[2].eventId, events[3].eventId])
+  assert.deepEqual(ordered, [events[2].eventId, events[3].eventId])
 })
 
 // 补建路径只带着"刚被放出来的费用"调用，本金不在入参里：要么回库把整组捞回来，要么就会
@@ -245,23 +242,23 @@ function insertedRows(connection, table, columnsPerRow) {
   return rows
 }
 
-test('账户确认后补建事项，整组本息仍落在同一条事项里且本金置前', async () => {
+test('账户确认后补建事项，只把待归属的利息收进同一条', async () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
   const connection = ledgerConnection(events)
   await createFollowUpIssues(connection, 'uid', 'update', events.slice(2))
   const issues = insertedRows(connection, 'catledger_review_issues', 14)
   const members = insertedRows(connection, 'catledger_review_issue_members', 9)
-  // 两笔利息只对应一条事项；本金不在入参里，靠回库捞回来当成员。
+  // 两笔利息只对应一条事项；本金不在入参里也不该被补挂进来——它已经确定。
   assert.equal(issues.length, 1)
   assert.equal(issues[0][5], 'installment_origin')
   assert.equal(issues[0][8], 1)
   assert.equal(issues[0][9], 'installment_attribution_required')
-  assert.equal(issues[0][10], 4)
+  assert.equal(issues[0][10], 2)
   assert.equal(issues[0][11], 0)
-  assert.equal(members.length, 4)
-  assert.deepEqual(members.map(row => row[5]), [events[0].eventId, events[1].eventId, events[2].eventId, events[3].eventId])
-  assert.deepEqual(members.map(row => row[8]), [0, 1, 2, 3])
+  assert.equal(members.length, 2)
+  assert.deepEqual(members.map(row => row[5]), [events[2].eventId, events[3].eventId])
+  assert.deepEqual(members.map(row => row[8]), [0, 1])
   assert.ok(members.every(row => row[7] === 'subject'))
   // 事项带上的原因码只来自待归属的费用，本金不复制一份自己的"问题"。
   assert.deepEqual(JSON.parse(issues[0][13]), ['installment_attribution_required'])
@@ -277,10 +274,10 @@ test('组内另有自己问题的费用不进归属事项，仍各自成条', as
   const connection = ledgerConnection(events)
   await createFollowUpIssues(connection, 'uid', 'update', events.slice(2))
   const issues = insertedRows(connection, 'catledger_review_issues', 14)
-  // 归属事项只吸收待归属的费用和本金锚点：两笔本金 + 一笔待归属利息。
+  // 归属事项只吸收还没归属的费用：本期次只剩一笔，事项就一个成员。
   const attribution = issues.filter(row => row[9] === 'installment_attribution_required')
   assert.equal(attribution.length, 1)
-  assert.equal(attribution[0][10], 3)
+  assert.equal(attribution[0][10], 1)
   // 另一笔已指定计划的费用只剩分类待办，自己单独成条，不被归属事项顺带吸收。
   const category = issues.filter(row => row[9] === 'category_required')
   assert.equal(category.length, 1)
@@ -321,10 +318,10 @@ function collapsedConnection(events, memberships, jsonStrings = false) {
   } }
 }
 
-test('整理时把被拆开的分期事项收拢成一条，本金补进来置前', async () => {
+test('整理时把被拆开的分期事项收拢成一条，成员只留待归属费用', async () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
-  // 复现线上形态：两笔利息各是一条事项，本金一条都没有。
+  // 复现线上形态：两笔利息各是一条事项。
   const connection = collapsedConnection(events, [
     { eventId: events[2].eventId, issueIds: ['issue-a'] },
     { eventId: events[3].eventId, issueIds: ['issue-b'] }
@@ -334,28 +331,41 @@ test('整理时把被拆开的分期事项收拢成一条，本金补进来置�
   const superseded = connection.executed.filter(entry => entry.sql.includes("status = 'superseded'"))
   assert.equal(superseded.length, 1)
   assert.deepEqual(superseded[0].params.slice(0, 6), ['action-1', 'uid', 'issue-b', 'uid', 'update', 'issue-b'])
-  // 留下的那条重写成整组：本金在前，其余按 eventId 排，sort_order 就是卡片顺序。
+  // 留下的那条重写成全部待归属费用，sort_order 就是卡片顺序。
   const members = insertedRows(connection, 'catledger_review_issue_members', 9)
-  assert.equal(members.length, 4)
-  assert.deepEqual(members.map(row => row[3]), ['issue-a', 'issue-a', 'issue-a', 'issue-a'])
-  const ordered = members.map(row => row[5])
-  assert.deepEqual(ordered.slice(0, 2).sort(), [events[0].eventId, events[1].eventId].sort())
-  assert.deepEqual(ordered.slice(2).sort(), [events[2].eventId, events[3].eventId].sort())
-  assert.deepEqual(members.map(row => row[8]), [0, 1, 2, 3])
+  assert.equal(members.length, 2)
+  assert.deepEqual(members.map(row => row[3]), ['issue-a', 'issue-a'])
+  assert.deepEqual(members.map(row => row[5]), [events[2].eventId, events[3].eventId])
+  assert.deepEqual(members.map(row => row[8]), [0, 1])
   assert.ok(members.every(row => row[7] === 'subject'))
 })
 
-test('整组已落在同一条事项里时不再重写', async () => {
+test('历史事项里混着的本金与已归好的费用，整理时摘掉只留待归属费用', async () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
+  // 旧口径把整组都塞进了同一件事项：本金和两笔利息都是成员。
   const connection = collapsedConnection(events,
     events.map(event => ({ eventId: event.eventId, issueIds: ['issue-a'] })))
+  assert.equal(await collapseInstallmentIssues(connection, 'uid', 'update', 'action-1'), 1)
+  // 摘掉本金：它们已经确定，留在待核对里用户只会问“还要核对啥”。
+  const members = insertedRows(connection, 'catledger_review_issue_members', 9)
+  assert.deepEqual(members.map(row => row[5]), [events[2].eventId, events[3].eventId])
+  assert.deepEqual(members.map(row => row[8]), [0, 1])
+})
+
+test('事项成员就是全部待归属费用时不再重写', async () => {
+  const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
+  applyInstallmentAttribution(events)
+  const connection = collapsedConnection(events, [
+    { eventId: events[2].eventId, issueIds: ['issue-a'] },
+    { eventId: events[3].eventId, issueIds: ['issue-a'] }
+  ])
   assert.equal(await collapseInstallmentIssues(connection, 'uid', 'update', 'action-1'), 0)
   // 整理每次打开工作台都会跑到这里，已经对了就不能反复写库。
   assert.equal(connection.executed.filter(entry => /DELETE FROM|UPDATE catledger_review_issues/.test(entry.sql)).length, 0)
 })
 
-test('整理期没建出归属事项时，收敛入口按整组补建一条', async () => {
+test('整理期没建出归属事项时，收敛入口按待归属费用补建一条', async () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
   // 线上形态：分期行还缺账户，分类先判成 account_mapping，归属事项一条都没建（memberships 为空）。
@@ -366,14 +376,12 @@ test('整理期没建出归属事项时，收敛入口按整组补建一条', as
   assert.equal(issues[0][5], 'installment_origin')
   assert.equal(issues[0][8], 1)
   assert.equal(issues[0][9], 'installment_attribution_required')
-  assert.equal(issues[0][10], 4)
+  assert.equal(issues[0][10], 2)
   assert.equal(issues[0][11], 0)
-  // 补建也必须把本金纳进来：没有本金锚点，这张卡点进去就只剩利息，用户无处对照。
+  // 补建只装待归属的费用；本金已经确定，不该被拉进待核对。
   const members = insertedRows(connection, 'catledger_review_issue_members', 9)
-  assert.equal(members.length, 4)
-  const ordered = members.map(row => row[5])
-  assert.deepEqual(ordered.slice(0, 2).sort(), [events[0].eventId, events[1].eventId].sort())
-  assert.deepEqual(ordered.slice(2).sort(), [events[2].eventId, events[3].eventId].sort())
+  assert.equal(members.length, 2)
+  assert.deepEqual(members.map(row => row[5]), [events[2].eventId, events[3].eventId])
 })
 
 test('归属问题解决后原因码由通用结算通道清除', () => {
@@ -384,7 +392,7 @@ test('归属问题解决后原因码由通用结算通道清除', () => {
     ['category_required'])
 })
 
-test('JSON 字符串返回与 mysql2 默认对象返回保持相同的整组成员', async () => {
+test('JSON 字符串返回与 mysql2 默认对象返回保持相同的待归属成员', async () => {
   const events = twoPlans().concat([eventOf(PERIOD_INTEREST, 'interest'), eventOf(PERIOD_INTEREST, 'interest')])
   applyInstallmentAttribution(events)
   for (const jsonStrings of [false, true]) {
@@ -396,7 +404,7 @@ test('JSON 字符串返回与 mysql2 默认对象返回保持相同的整组成�
       { eventId: events[3].eventId, issueIds: ['issue-b'] }
     ], jsonStrings)
     assert.equal(await collapseInstallmentIssues(collapsed, 'uid', 'update'), 1)
-    const expected = events.map(event => event.eventId).sort()
+    const expected = [events[2].eventId, events[3].eventId].sort()
     for (const connection of [followUp, collapsed]) {
       assert.deepEqual(insertedRows(connection, 'catledger_review_issue_members', 9).map(row => row[5]).sort(), expected)
     }

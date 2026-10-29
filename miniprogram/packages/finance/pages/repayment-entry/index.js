@@ -6,15 +6,17 @@ const login = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
 const money = require('../../../../utils/money')
 const model = require('./model')
-Page({
-  data: { chargeChoices:[],chargeAllocations:[],chargeNext:null,loading:false,saving:false,errorMessage:'',savedMessage:'',mode:'new',payment:null,event:null,assets:[],debts:[],categories:[],
+const tabRouter = require('../../../../shell/router')
+const businessInitialData = { chargeChoices:[],chargeAllocations:[],chargeNext:null,loading:false,saving:false,errorMessage:'',savedMessage:'',mode:'new',payment:null,event:null,assets:[],debts:[],categories:[],
     assetIndex:-1,debtIndex:-1,totalYuan:'',date:'',time:'12:00',note:'',principalYuan:'',interestYuan:'',feeYuan:'',
     interestIndex:0,feeIndex:0,interestCategoryIndex:-1,feeCategoryIndex:-1,confirmed:false,
     classification:1,classificationOptions:['普通转账','借款还款'],linkIndex:0,linkOptions:['暂不关联，入账后再处理','关联已有贷款'],
-    treatments:['本次计入支出','已计入负债，本次只清偿'],loans:[],loanIndex:-1,nextLoanCursor:null },
+    treatments:['本次计入支出','已计入负债，本次只清偿'],loans:[],loanIndex:-1,nextLoanCursor:null }
+
+Page(theme.page({
+  data: businessInitialData,
   onLoad(query) {
-    query = query || {}; this._query = query; theme.bindPage(this)
-    this.setData({ mode:query.updateId ? 'import' : query.paymentId ? 'pending' : 'new' })
+    query = query || {}; this._query = query; this.setData({ mode:query.updateId ? 'import' : query.paymentId ? 'pending' : 'new' })
     if (getApp().globalData.repaymentDraft) {
       this._draft = getApp().globalData.repaymentDraft
       delete getApp().globalData.repaymentDraft
@@ -24,7 +26,7 @@ Page({
   onHide() { session.end(this) },
   onUnload() { session.end(this) },
   async load() {
-    const current = session.begin(this,Object.keys(this.data),['_loading'])
+    const current = session.begin(this,Object.keys(businessInitialData),['_loading'])
     if (this._loading) return
     this._loading = true; this.setData({ loading:true,errorMessage:'' })
     try {
@@ -121,7 +123,7 @@ Page({
       const outcome = await pending.send(service || 'api',action,data)
       if (!current()) return
       this.setData({ savedMessage:outcome.result.pending ? '已入账，可在贷款管理继续关联' : this.data.mode === 'import' ? '已保存，确认整批入账后生效' : '已完成' })
-      if (this.data.mode === 'new') wx.switchTab({ url:'/pages/transactions/index' })
+      if (this.data.mode === 'new') tabRouter.openTab('transactions')
       else wx.navigateBack({ delta:1 })
     } catch(error) { if (current()) this.setData({ errorMessage:error.message || '结果待确认，再次保存将恢复原请求' }) }
     finally { if (current()) this.setData({ saving:false }) }
@@ -150,4 +152,4 @@ Page({
       if (result.confirm && session.isCurrent(this)) this.submit('loans.releaseRepayment',{ paymentId:this.data.payment.paymentId,version:this.data.payment.version,confirmed:true })
     } })
   }
-})
+}))

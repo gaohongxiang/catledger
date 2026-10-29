@@ -146,7 +146,7 @@ test('还款渠道模型固定金额、时间、归属和目标，两种方向�
     const payer = direction === 'income' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
     const original = model.create(row)
     for (const [key, value] of Object.entries({ amountInput: '999.00', economicNature: 'expense', date: '2026-09-02', time: '10:00:00',
-      owner: 'other', composition: 'payment', repaymentMode: 'loan', [target]: 'synthetic-other-card', parts: [{ accountId: bank.accountId, amountInput: '999.00' }] })) {
+      owner: 'other', composition: 'payment', repaymentDetails: true, [target]: 'synthetic-other-card', parts: [{ accountId: bank.accountId, amountInput: '999.00' }] })) {
       assert.equal(model.change(row, original, key, value), original, key)
       const forged = model.derive(row, { ...original, [key]: value }, { accounts: [credit, bank] })
       assert.equal(forged.canSave, false, '旧输入不能改写固定事实：' + key)
@@ -268,7 +268,7 @@ test('真实 Page 隐藏固定编辑入口，旧控件事件不改渠道事实�
   edit(page, 'date', '2026-10-01')
   mode(page, 'owner', 'other')
   page.addFundsAccount(tap({ endpoint: 'payer' }))
-  mode(page, 'repaymentMode', 'loan')
+  page.toggleRepaymentDetails()
   assert.equal(select(page, 'reviewCounterparty', { ...credit, accountId: 'synthetic-other-credit' }), false)
   assert.equal(page.reviewEditorDirectory('editorLoan'), null)
   assert.deepEqual(plain(draft(page)), prior)

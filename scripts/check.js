@@ -24,7 +24,13 @@ assert.equal(new Set(routes).size, routes.length, '小程序存在重复页面�
 for (const route of routes) for (const extension of ['js', 'json', 'wxml', 'wxss']) {
   assert.ok(fs.existsSync(path.join(miniRoot, route + '.' + extension)), `页面文件不存在: ${route}.${extension}`)
 }
-for (const item of app.tabBar.list) assert.ok(app.pages.includes(item.pagePath), 'Tab 页必须位于主包')
+// 主导航只有一个常驻窗口（shell/index），没有原生 tabBar：wx.switchTab 必定 fail，
+// 表现是"点了没反应"。跳主 Tab 一律走 shell/router.openTab，它负责 navigateBack 后补激活。
+assert.ok(!app.tabBar, '主 Tab 已改为 shell 内切换，app.json 不应再有 tabBar 配置')
+const switchTabCallers = files
+  .filter(file => file.startsWith('miniprogram/') && file.endsWith('.js'))
+  .filter(file => /wx\.switchTab\s*\(/.test(fs.readFileSync(path.join(root, file), 'utf8')))
+assert.deepEqual(switchTabCallers, [], '主 Tab 跳转必须走 shell/router.openTab，不能再调 wx.switchTab')
 const packageOf = filename => {
   const relative = path.relative(miniRoot, filename).split(path.sep).join('/')
   const pack = packages.find(item => relative.startsWith(item.root + '/'))
@@ -50,8 +56,8 @@ for (const name of ['catledger-api', 'catledger-import']) {
 // 工作台只允许显式注册，重复处理者不能靠对象合并顺序决定。
 const workbench = path.join(root, 'miniprogram/packages/finance/pages/import-workbench')
 const pageSource = fs.readFileSync(path.join(workbench, 'index.js'), 'utf8')
-const registration = pageSource.slice(pageSource.indexOf('Page({'))
-assert.ok(registration.startsWith('Page({'), '导入工作台必须显式注册 Page')
+const registration = pageSource.slice(pageSource.indexOf('Page('))
+assert.ok(registration.startsWith('Page(theme.page({'), '导入工作台必须显式注册 Page，仅由统一主题适配器接管主题生命周期')
 assert.ok(!/enhance|Object\.assign|\.\.\./.test(registration), '页面入口禁止隐式覆盖')
 const handlers = [...registration.matchAll(/^  (\w+)(?::|\()/gm)].map(match => match[1])
 assert.equal(new Set(handlers).size, handlers.length, '导入工作台存在重复处理者')
@@ -119,10 +125,14 @@ for (const name of ['economic-nature', 'economic-event-builder', 'organizer-plan
 }
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/repayment-booking.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-booking.js'), 'utf8'), '实际还款领域契约必须一致')
+assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/repayment-policy.js'), 'utf8'),
+  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-policy.js'), 'utf8'), '还款组成与路径契约必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/category-memory.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/category-memory.js'), 'utf8'), '分类记忆契约必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-items.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-items.js'), 'utf8'), '分期来源与费用防重复规则必须一致')
+assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-plan.js'), 'utf8'),
+  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-plan.js'), 'utf8'), '分期计划名规则必须一致')
 for (const name of ['loan-charge-domain', 'loan-charge-store', 'loan-charge-import', 'loan-charge-payments']) assert.equal(
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src', name + '.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src', name + '.js'), 'utf8'), name + ' 费用关系必须一致')

@@ -1,7 +1,6 @@
 .bank-mapping-sheet { overflow: hidden; }
 .bank-mapping-scroll { max-height: 62vh; margin-bottom: var(--layout-space-5); }
 .bank-mapping-name { display: block; margin: 4rpx 0 8rpx; color: var(--ui-muted); font-size: 24rpx; word-break: break-all; }
-.bank-mapping-copy { display: block; color: var(--ui-muted); font-size: 24rpx; line-height: 1.6; margin: 12rpx 0 18rpx; }
 .bank-mapping-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); min-height: 80rpx; color: var(--ui-ink); font-size: 26rpx; }
 .bank-mapping-row > text:first-child { flex-shrink: 0; }
 .bank-mapping-row > text:last-child { flex: 1; min-width: 0; max-width: 62%; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
@@ -39,14 +38,25 @@
 .bank-status-missing { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
 .bank-field-required.is-missing { border-radius: var(--theme-radius-small, 12rpx); outline: 1rpx solid var(--theme-warning, #a76416); outline-offset: -1rpx; }
 
-/* 摘要条：一句话回答“识别成什么”。 */
-.bank-summary { display: flex; align-items: center; gap: 10rpx; margin-top: var(--layout-space-3); padding: 16rpx 20rpx; border-radius: var(--theme-radius-large, 999rpx); background: var(--ui-accent-soft); }
-.bank-summary.is-warning { background: var(--theme-warning-soft, #fbf3e4); }
+/* 识别摘要：一句话回答“识别成什么”，结构设置收进“调整”。 */
+.bank-summary-line { display: flex; align-items: center; gap: var(--layout-space-3); margin-top: 14rpx; padding: 14rpx 18rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface-muted); }
 .bank-summary-dot { flex: 0 0 auto; width: 10rpx; height: 10rpx; border-radius: 50%; background: var(--ui-accent); }
-.bank-summary.is-warning .bank-summary-dot { background: var(--theme-warning, #a76416); }
-.bank-summary-text { flex: 1; min-width: 0; color: var(--ui-accent-strong); font-size: 24rpx; line-height: 1.5; }
-.bank-summary.is-warning .bank-summary-text { color: var(--theme-warning, #a76416); }
-.bank-summary-tag { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: 22rpx; opacity: 0.8; }
+.bank-summary-line.is-pending .bank-summary-dot { background: var(--theme-warning, #a76416); }
+.bank-summary-text { flex: 1; min-width: 0; color: var(--ui-ink); font-size: 23rpx; line-height: 1.6; }
+.bank-summary-action { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: 23rpx; }
+.bank-pressed { background: var(--ui-accent-soft); }
+.bank-settings { margin-top: 6rpx; }
+.bank-setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); min-height: 78rpx; border-bottom: 1rpx solid var(--ui-line); color: var(--ui-ink); font-size: 25rpx; }
+.bank-setting-value { display: flex; align-items: center; gap: 10rpx; min-width: 0; max-width: 66%; color: var(--ui-muted); }
+.bank-setting-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bank-more-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 76rpx; margin-top: 8rpx; border-top: 1rpx solid var(--ui-line); color: var(--ui-ink); font-size: 24rpx; }
+.bank-more-action { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: 23rpx; }
+.bank-more-list { margin-top: 2rpx; }
+.bank-ask { margin-top: 16rpx; padding: 16rpx 18rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--theme-warning-soft, #fbf3e4); }
+.bank-ask-copy { display: block; color: var(--theme-warning, #a76416); font-size: 23rpx; line-height: 1.5; }
+.bank-ask-options { display: flex; gap: 12rpx; margin-top: 12rpx; }
+.bank-ask-option { flex: 1 1 0; padding: 14rpx 0; border-radius: 999rpx; background: var(--ui-surface); color: var(--ui-ink); font-size: 24rpx; text-align: center; }
+.bank-ask-option:active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 
 /* 预览表：读出来的东西直接摆出来，比列号更好判断。 */
 .bank-preview-head { margin-top: var(--layout-space-4); }
@@ -56,8 +66,13 @@
 .bank-preview-header { background: var(--ui-surface-muted); }
 .bank-preview-header .bank-preview-cell { color: var(--ui-muted); font-size: 22rpx; }
 .bank-preview-cell { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--ui-ink); font-size: 24rpx; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
-.bank-preview-cell:first-child { flex: 1.4 1 0; }
+/* 表头 picker 和数据 text 都取同一组列宽，避免表头与数据错位。 */
+.bank-preview-row .col-date { flex: 1.1 1 0; }
+.bank-preview-row .col-amount { flex: 1 1 0; }
+.bank-preview-row .col-text { flex: 1.3 1 0; }
 .bank-preview-cell.is-missing { color: var(--theme-warning, #a76416); }
+.bank-preview-cell.is-numeric { text-align: center; font-variant-numeric: tabular-nums; }
+.bank-preview-note { display: block; margin-top: 10rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; }
 .bank-preview-empty { display: block; padding: 18rpx 16rpx; color: var(--theme-warning, #a76416); font-size: 22rpx; }
 
 /* 列对应：一行一项，缺项标黄。 */
@@ -68,22 +83,17 @@
 .bank-map-line { display: block; color: var(--ui-ink); font-size: 24rpx; line-height: 1.7; }
 .bank-map-line.is-missing { color: var(--theme-warning, #a76416); }
 
-/* 无模式：每个值就是一个可点控件，点开原生选择器。 */
-/* 固定两行：文件/表头一行，金额读取方式一行。不靠自动换行，避免挤成 3+1。 */
-.bank-token-row { display: flex; flex-wrap: nowrap; gap: 10rpx; margin-top: 12rpx; }
-.bank-token-row picker { min-width: 0; }
-.bank-token-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bank-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.6; }
-.bank-header-token { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 14rpx; border: 1rpx solid var(--ui-line); border-radius: 999rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; }
-.bank-token.is-warning { background: var(--theme-warning-soft, #fbf3e4); color: var(--theme-warning, #a76416); }
+/* 可点控件的小三角。 */
 .bank-caret { width: 0; height: 0; border-left: 8rpx solid transparent; border-right: 8rpx solid transparent; border-top: 8rpx solid currentColor; opacity: 0.6; }
 .bank-preview-head-cell { flex: 1 1 0; min-width: 0; }
 .bank-preview-head-cell .bank-preview-cell { display: flex; align-items: center; gap: 6rpx; color: var(--ui-muted); }
+.bank-preview-head-cell.is-numeric .bank-preview-cell { justify-content: center; }
 .bank-preview-head-cell.is-missing .bank-preview-cell { color: var(--theme-warning, #a76416); }
 
 /* 表头行号：小浮层里同时支持步进和直接输入。 */
 /* 页面级浮层：固定定位，避开弹层内边距与裁切。 */
-.bank-header-layer { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 40; display: flex; align-items: flex-end; }
+/* 必须高于弹层 .sheet-layer（z-index: 50），否则浮层开在弹层后面，看起来像点不动。 */
+.bank-header-layer { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 60; display: flex; align-items: flex-end; }
 .bank-header-scrim { position: absolute; inset: 0; background: rgba(20, 18, 15, 0.32); }
 .bank-header-panel { position: relative; box-sizing: border-box; width: 100%; max-width: 100%; padding: 24rpx 30rpx calc(24rpx + env(safe-area-inset-bottom)); border-radius: 24rpx 24rpx 0 0; background: var(--ui-surface); }
 .bank-header-head { display: flex; align-items: center; justify-content: space-between; }

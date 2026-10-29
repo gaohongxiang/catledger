@@ -146,8 +146,32 @@ test('问题面板的退款候选也换成同一套卡片：点选后由底部�
   assert.equal(card.matchLabel, '同一商户')
   assert.ok(card.amountText, '卡片带金额')
   assert.equal(page.data.issueDraft.targetEventId, 'synthetic-original', '唯一候选默认选中')
+  assert.match(page.data.issueRefundPending.reason, /选中的原消费不会生效/, '选了一笔后说明暂记会覆盖这次选择')
+  page.selectIssueRefund({ currentTarget: { dataset: { id: 'synthetic-original' } } })
+  assert.equal(page.data.issueDraft.targetEventId, '', '再点已选项取消选择')
+  assert.match(page.data.issueRefundPending.reason, /补关联/, '取消后回到“先入账、暂不冲减”的说明')
   page.selectIssueRefund({ currentTarget: { dataset: { id: 'synthetic-original' } } })
   assert.equal(page.data.issueDraft.targetEventId, 'synthetic-original')
+})
+
+test('问题面板有候选时也能暂记，直接写入“这些都不是”', async t => {
+  const data = fixture(1, true)
+  Object.assign(data.events[0], { economicNature: 'refund', flowDirection: 'inflow', amountMinor: '11' })
+  data.issues[0].issueType = 'refund_relation'
+  data.issues[0].primaryReasonCode = 'refund_relation_required'
+  const h = runtime(data), page = h.page
+  t.after(() => page.onUnload())
+  h.intercept = action => action === 'reviewIssues.members'
+    ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [], total: 0, nextCursor: null } : undefined
+  await page.openIssue({ currentTarget: { dataset: { id: data.issues[0].issueId } } })
+  const pending = page.data.issueRefundPending
+  assert.equal(pending.visible, true)
+  assert.equal(pending.enabled, true)
+  assert.match(pending.reason, /补关联/)
+  page.markIssueRefundPending()
+  // 入队即代表已接受这次决定；不要求候选范围为空，也不先写一条“为什么不能点”。
+  const queued = page._draftSession.state.entries.find(entry => entry.issueId === data.issues[0].issueId)
+  assert.equal(queued.decision.decision, 'mark_refund_pending')
 })
 
 test('多来源合成的退款也能改同笔判断：按钮与保存同一行', async t => {

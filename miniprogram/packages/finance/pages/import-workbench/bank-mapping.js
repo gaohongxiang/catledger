@@ -12,6 +12,24 @@ const MODES = [
 ]
 const DIRECTIONS = [{ value: '', label: '请选择' }, { value: 'income', label: '流入账户' }, { value: 'expense', label: '流出账户' }]
 const STATEMENTS = [{value:'standard',label:'储蓄卡 / 普通银行流水'},{value:'credit',label:'信用卡账单'}]
+// 预览只做展示格式化，不改原始值，也不改变入账语义。
+function displayDate(value) {
+  const raw = String(value == null ? '' : value).trim()
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}:\d{2})/)
+  if (compact) return compact[2] + '-' + compact[3] + ' ' + compact[4]
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/)
+  if (iso) return iso[2] + '-' + iso[3] + ' ' + iso[4]
+  return raw
+}
+function displayAmount(value) {
+  const raw = String(value == null ? '' : value).trim()
+  const match = raw.match(/^([¥￥$])?\s*([+-]?)\s*([\d,]+(?:\.\d+)?)$/)
+  if (!match) return raw
+  const sign = match[2] === '-' ? '−' : match[2] === '+' ? '+' : ''
+  const parts = match[3].replace(/,/g, '').split('.')
+  const grouped = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return sign + grouped + (parts[1] ? '.' + parts[1] : '')
+}
 
 function view(clientId, name, preview, draft) {
   const current = Object.assign({}, preview.suggested, draft, {
@@ -22,6 +40,18 @@ function view(clientId, name, preview, draft) {
   const options = [{ index: -1, name: '不使用这一列' }].concat(preview.headers.map(function (header) {
     return { index: header.index, name: '第 ' + (header.index + 1) + ' 列 · ' + header.name }
   }))
+  // 哪个物理列已经被哪个字段占用，直接在选项里说清；选中时会和原字段互换。
+  const usedBy = {}
+  Object.keys(current.columns).forEach(function (field) {
+    if (current.columns[field] != null) usedBy[current.columns[field]] = field
+  })
+  // 选项里标清“这列已经被谁用了”；已有列时互换，没有列时移过来。
+  const annotate = function (option, field) {
+    const owner = option.index < 0 ? null : usedBy[option.index]
+    if (!owner || owner === field) return option
+    return { index: option.index, name: option.name + '（已用于' + FIELD_LABELS[owner] +
+      (current.columns[field] == null ? '，选后移过来' : '，选后互换') + '）' }
+  }
   const suggested = preview.suggested.columns || {}
   const fields = Object.keys(FIELD_LABELS).filter(function (field) {
     return !['amount', 'direction', 'income', 'expense'].includes(field) || amountFields.includes(field)
@@ -32,6 +62,7 @@ function view(clientId, name, preview, draft) {
     const status = column == null ? 'missing' : suggested[field] === column ? 'auto' : 'manual'
     return { key: field, label: FIELD_LABELS[field], required: required.includes(field), status,
       selected: selected, value: options[selected] ? options[selected].name : options[0].name,
+      options: options.map(option => annotate(option, field)),
       example: column == null ? '' : preview.samples.map(row => row[column] || '空').join(' / ') }
   })
   // 预览表直接用账单原文列名；我们起的语义名只出现在选择器里。
@@ -46,14 +77,19 @@ function view(clientId, name, preview, draft) {
   const previewColumns = previewSpec.filter(column => column.required || current.columns[column.key] != null).slice(0, 3)
     .map(column => {
       const index = current.columns[column.key]
-      return { key: column.key, label: column.label, required: column.required, missing: column.required && index == null,
+      const numeric = ['amount', 'income', 'expense'].includes(column.key)
+      return { key: column.key, label: column.label, required: column.required, numeric,
+        slot: column.key === 'transactionTime' ? 'date' : numeric ? 'amount' : 'text',
+        missing: column.required && index == null,
         header: index == null ? '选择列' : headerName(index) || '第 ' + (index + 1) + ' 列',
-        selected: index == null ? 0 : index + 1 }
+        selected: index == null ? 0 : index + 1, options: options.map(option => annotate(option, column.key)) }
     })
   const previewRows = (preview.samples || []).slice(0, 3).map((row, rowIndex) => ({ key: String(rowIndex),
     cells: previewColumns.map((column, cellIndex) => {
       const index = current.columns[column.key]
-      return { key: column.key + '-' + cellIndex, value: index == null ? '' : String(row[index] == null ? '' : row[index]),
+      const raw = index == null ? '' : String(row[index] == null ? '' : row[index])
+      const value = !raw ? raw : column.key === 'transactionTime' ? displayDate(raw) : column.numeric ? displayAmount(raw) : raw
+      return { key: column.key + '-' + cellIndex, value, numeric: column.numeric, slot: column.slot,
         missing: column.missing, required: column.required }
     }) }))
   const samplesHaveDebit = (preview.samples || []).some(row => /^(借|贷|借方|贷方|debit|credit|dr|cr|d|c)$/i
@@ -73,7 +109,25 @@ function view(clientId, name, preview, draft) {
   ]
   const requiredFields = fields.filter(field => field.required)
   const optionalFields = fields.filter(field => !field.required)
+    .sort((a, b) => (a.status === 'missing' ? 1 : 0) - (b.status === 'missing' ? 1 : 0))
   const missingLabels = requiredFields.filter(field => field.status === 'missing').map(field => field.label)
+  // 结构设置收成一句摘要；用户先看到“识别成什么”，要看细节再点“调整”。
+  const summaryParts = [
+    (STATEMENTS.find(item => item.value === (current.statementKind || 'standard')) || STATEMENTS[0]).label,
+    '表头 ' + preview.headerRow + ' 行',
+    (MODES.find(item => item.value === current.amountMode) || MODES[0]).label
+  ]
+  if (current.amountMode === 'signed' && current.positiveDirection) {
+    summaryParts.push(current.positiveDirection === 'income' ? '正数 = 流入' : '正数 = 流出')
+  }
+  if (current.amountMode === 'direction' && current.debitDirection) {
+    summaryParts.push(current.debitDirection === 'income' ? '借方 = 流入' : '借方 = 流出')
+  }
+  // 只把挡住确认的那一项提出来直接选，不再让用户去猜哪个标签该点。
+  const ask = current.amountMode === 'signed' ? { key: 'positiveDirection', copy: '正数表示流入还是流出？' }
+    : current.amountMode === 'direction' ? { key: 'debitDirection', copy: '借方 / DR / D 表示流入还是流出？' } : null
+  const copyText = missingLabels.length ? '还差 ' + missingLabels.join('、') + '：点列名选列'
+    : '点列名换列'
   // 结构类设置也标来源：自动识别 / 已修改 / 未选（借贷含义这类必答项）。
   const statementAuto = (preview.suggested.statementKind || 'standard') === (current.statementKind || 'standard')
   const amountModeAuto = preview.suggested.amountMode === current.amountMode
@@ -81,10 +135,11 @@ function view(clientId, name, preview, draft) {
   const debitStatus = current.debitDirection ? (preview.suggested.debitDirection === current.debitDirection ? 'auto' : 'manual') : 'missing'
   const ready = (missingLabels.length === 0) && !directionMissing
   return { clientId, name, preview, draft: current, fields, requiredFields, optionalFields,
-    previewColumns, previewRows, tokens, directionMissing, ready,
+    previewColumns, previewRows, tokens, directionMissing, ready, summaryText: summaryParts.join(' · '),
+    ask, copyText, settingsOpen: false,
     readyLabel: missingLabels.length ? '还差 ' + missingLabels.join('、') : directionMissing ? '还差' + directionLabel : requiredFields.length + ' 项已就绪',
     statementAuto, amountModeAuto, positiveStatus, debitStatus,
-    missingLabels, columnOptions: options,
+    missingLabels,
     amountModes: MODES, modeIndex: MODES.findIndex(mode => mode.value === current.amountMode),
     directionOptions: DIRECTIONS, positiveIndex: DIRECTIONS.findIndex(option => option.value === current.positiveDirection),
     debitIndex: DIRECTIONS.findIndex(option => option.value === current.debitDirection), headerRowInput: String(preview.headerRow),

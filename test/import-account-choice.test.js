@@ -281,6 +281,13 @@ test('普通资金区域只渲染统一编辑字段并使用同一保存门禁',
   assert.match(markup, /editor\.fundsEndpoints/)
   assert.match(markup, /changeFundsAmount/)
   assert.match(markup, /funds-account-row/)
+  // 单账户整行是一个按钮：名称和箭头同在按钮内，箭头不再落在可点区域之外。
+  const action = markup.slice(markup.indexOf('funds-account-row is-action'))
+  const actionButton = action.slice(0, action.indexOf('</button>'))
+  assert.match(action, /bindtap="openDirectory"/)
+  assert.match(action, /data-target="\{\{account\.target\}\}"/)
+  assert.match(actionButton, /funds-account-name/)
+  assert.match(actionButton, /funds-account-chevron/)
   assert.doesNotMatch(markup, /editor\.routeFields|editor\.partFields/)
   const sheet = fs.readFileSync(path.join(root, 'review-edit.wxml'), 'utf8')
   assert.match(sheet, /reviewEditSheet.canSave/)

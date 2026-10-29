@@ -123,7 +123,7 @@ function loadLoginSheet(app, api, currentPage) {
       if (name === '../../services/catledger-api') return api
       if (name === '../../services/read-cache') return cache
       if (name === '../../utils/profile-presentation') return profilePresentation
-      if (name === '../../theme/service') return { currentPresentation: () => ({}) }
+      if (name === '../../theme/service') return { currentPresentation: () => ({}), initialData: () => ({}), page: definition => definition, component: definition => definition }
       throw new Error(name)
     },
     wx: { showToast: () => {} }

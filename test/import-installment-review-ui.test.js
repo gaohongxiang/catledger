@@ -32,7 +32,7 @@ test('本金出账合并为分期卡，原文说明期次，不提供实际还�
   assert.match(page.data.evidenceSheet.installmentNote, /关联或新建分期计划/)
 })
 
-test('分期本金与人工性质冲突经来源编辑纠正，但不解除来源冲突', async t => {
+test('分期本金与人工性质冲突经来源编辑纠正，并可改判为实际支出', async t => {
   const editor = require('./helpers/editor-workbench')
   const { page } = await editor.open(t, { economicNature: 'internal_transfer', installment,
     ledgerAccountId: 'synthetic-credit', counterpartyLedgerAccountId: 'synthetic-target',
@@ -42,13 +42,21 @@ test('分期本金与人工性质冲突经来源编辑纠正，但不解除来�
   assert.equal(editor.view(page).showLoan, false)
   assert.equal(editor.view(page).natureLabel, '分期出账')
   editor.edit(page, 'periodInput', '4')
-  const fields = editor.view(page).payload.fields
+  let fields = editor.view(page).payload.fields
   assert.equal(fields.economicNature, 'repayment')
   assert.equal(fields.counterpartyLedgerAccountId, null)
   assert.equal(editor.view(page).payload.sourceCorrection.periodNumber, 4)
   assert.equal(editor.view(page).complete, false)
   editor.nature(page, 'expense')
-  assert.equal(editor.draft(page).economicNature, 'repayment')
+  assert.equal(editor.draft(page).economicNature, 'expense')
+  assert.equal(editor.view(page).natureLabel, '支出')
+  fields = editor.view(page).payload.fields
+  assert.equal(fields.economicNature, 'expense')
+  assert.equal(fields.counterpartyLedgerAccountId, null)
+  assert.equal(editor.view(page).canSave, true)
+  // 本金行仍不开放需要第二端或原消费关系的性质。
+  editor.nature(page, 'internal_transfer')
+  assert.equal(editor.draft(page).economicNature, 'expense')
 })
 
 const presentation = require('../miniprogram/packages/finance/pages/import-workbench/presentation')
@@ -87,8 +95,14 @@ test('分期性质在真实 Page 的各页签、卡头与详情一致，不被�
       await page.openReviewDetails(tap({ id: row.eventId }))
       assert.equal(page.data.reviewDetailSheet.fields.find(field => field.key === 'nature').value, label)
       assert.equal(page.data.reviewDetailSheet.editor.natureLabel, label)
+      // 分期角色只用于界面性质，不混进可切换的经济性质选项；本金可改判实际性质，利息和手续费仍只读。
       const choices = page.data.reviewDetailSheet.editor.natureOptions
-      assert.equal(choices.find(item => item.value === event.economicNature).label, label)
+      assert.equal(choices.find(item => item.value === event.economicNature).label,
+        { principal: '分期出账', interest: '利息／手续费', fee: '利息／手续费' }[component])
+      // 重复和已排除本身不可编辑；其余页签里只有本金行开放性质改判。
+      assert.equal(page.data.reviewDetailSheet.editor.natureEditable,
+        component === 'principal' && !['重复', '已排除'].includes(kind))
+      assert.equal(page.data.reviewDetailSheet.editor.natureFixedHint, component === 'principal' ? '' : '由分期来源确定')
       assert.equal(h.calls.some(call => /setReview|resolve|\.post$/.test(call.action)), false)
     })
   }
@@ -107,6 +121,67 @@ test('普通和分期共用同一卡头与交易行，不再按卡片类型分�
   assert.doesNotMatch(completed, /item\.installmentPlan/)
   assert.match(shared, /pending \? card\.label : card\.natureLabel/)
   assert.doesNotMatch(shared, /installmentPlan|分期出账/)
+})
+
+test('分期来源区：期次一行，计划单选复用退款候选，本金卡候选列表直接勾选', () => {
+  const fs = require('node:fs'), path = require('node:path')
+  const root = path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench')
+  const fields = fs.readFileSync(path.join(root, 'review-editor-fields.wxml'), 'utf8')
+  assert.match(fields, /class="editor-row-value period-field"/)
+  assert.match(fields, /class="period-input money-number"/)
+  assert.match(fields, /class="attribution-plan-radio"/)
+  assert.match(fields, /class="attribution-check"/)
+  assert.match(fields, /bindtap="toggleEditorPendingInterest"/)
+  assert.match(fields, /勾选后保存/)
+  assert.match(fields, /选择一个计划才能入账/)
+  // 本金行里的未归属利息收成一个候选列表：第一行标题与金额，第二行时间与账户，整行勾选。
+  assert.match(fields, /class="attribution-candidates"/)
+  assert.match(fields, /class="attribution-candidate/)
+  assert.doesNotMatch(fields, /attribution-role/)
+  assert.match(fields, /class="attribution-candidate-meta"/)
+  assert.match(fields, /class="attribution-head-main"/)
+  assert.match(fields, /· 归到 \{\{editor\.attribution\.planLabel\}\}/)
+  assert.doesNotMatch(fields, /attribution\.pending\.length\}\} 笔|pendingTotalText/)
+  assert.doesNotMatch(fields, /openEditorInterestDetail|openEditorPendingInterest/)
+  // 不再每行重复动作词，也不再另设“详情”或“取消指定”；再点已选计划即可取消。
+  assert.doesNotMatch(fields, /归入本计划|选它|已归属|取消指定|attribution-plan-flag|attribution-planline|>详情</)
+  assert.doesNotMatch(fields, /<text>本期期号<\/text>|总期数 · 选填/)
+  assert.equal((fields.match(/class="mapping-field"/g) || []).length > 0, true, '其他字段仍沿用原有行样式')
+  const wxss = fs.readFileSync(path.join(root, 'review-editor.wxss'), 'utf8')
+  assert.match(wxss, /\.period-field \{[^}]*justify-content: center/)
+  assert.doesNotMatch(wxss, /\.period-input \{[^}]*border-bottom/)
+  assert.match(wxss, /\.attribution-head-plan \{[^}]*text-overflow: ellipsis/)
+  assert.match(wxss, /\.attribution-candidates \{[^}]*border-radius/)
+  assert.match(wxss, /\.attribution-candidate\.is-selected::before/)
+  assert.match(wxss, /\.attribution-candidate \.attribution-check \{[^}]*position: absolute/)
+  assert.match(wxss, /\.attribution-candidate\.is-selected \.attribution-check/)
+
+  const sheet = fs.readFileSync(path.join(root, 'review-edit.wxml'), 'utf8')
+  assert.match(sheet, /class="evidence-section"/)
+  assert.doesNotMatch(sheet, /evidence-section-title|>原始交易</)
+  assert.match(sheet, /class="review-relation-callout/)
+  assert.match(sheet, /reviewEditSheet\.groupAction/)
+  assert.match(sheet, /保存利息归属/)
+  assert.doesNotMatch(sheet, /来源与同笔|显示完整范围/)
+
+  const list = fs.readFileSync(path.join(root, 'index.wxml'), 'utf8')
+  // 计划卡只保留状态和“处理”；同一个共享候选池不在每张卡里重复渲染。
+  assert.doesNotMatch(list, /installmentPendingCount|review-attribution-pending|review-pending-action|assignPendingInterest|归入本计划/)
+})
+
+test('整组关系入口只服务同笔、来源和字段冲突，分期归属不走这个入口', () => {
+  assert.deepEqual(presentation.groupReviewAction({ issueType: 'same_event' }, false),
+    { label: '核对同笔关系', hint: '这笔可能和另一笔是同一笔交易，避免重复记账' })
+  // 底部已有“修改同笔判断”，不再重复一个同笔入口。
+  assert.equal(presentation.groupReviewAction({ issueType: 'same_event' }, true), null)
+  assert.match(presentation.groupReviewAction({ issueType: 'identity_conflict' }, false).label, /来源冲突/)
+  assert.match(presentation.groupReviewAction({ issueType: 'field_conflict' }, false).label, /字段冲突/)
+  // 利息待归属、退款和账户都有自己的处理区域，不能被“整组关系”截走。
+  assert.equal(presentation.groupReviewAction({ issueType: 'installment_origin',
+    primaryReasonCode: 'installment_attribution_required' }, false), null)
+  assert.equal(presentation.groupReviewAction({ issueType: 'refund_relation', primaryReasonCode: 'refund_source_conflict' }, false), null)
+  assert.equal(presentation.groupReviewAction({ issueType: 'account_mapping', primaryReasonCode: 'account_mapping_conflict' }, false), null)
+  assert.equal(presentation.groupReviewAction(null, false), null)
 })
 
 function installmentEvent(component, minor, ledgerAccountId, periodNumber, totalTerms, localAt, item, planLabel) {
@@ -359,24 +434,40 @@ function pendingInstallmentEvent(component, minor, item, planName) {
   return event
 }
 
-test('待核对按计划一卡：两笔本金各自一张卡，未归属的利息挂在每张卡里', () => {
+test('待核对按计划一卡：两笔本金各自一张卡，未归属利息单独一张', () => {
   const bill = pendingInstallmentEvent('principal', 221743, BILL_PLAN, '电销总账分月12期')
   const cash = pendingInstallmentEvent('principal', 183333, CASH_PLAN, '电销现分按月收12期')
   const interest = pendingInstallmentEvent('interest', 7983, PERIOD_INTEREST)
   // 刻意让利息先出现：拆分后本金必须各归各卡，而不是被并到同一张卡里。
   const split = presentation.splitInstallmentCards([interest, bill, cash].map(event => presentation.pendingCard(event, false)))
-  assert.equal(split.length, 2)
-  assert.deepEqual(split.map(card => card.installmentPlan).sort(), ['电销总账分月12期', '电销现分按月收12期'])
-  split.forEach(card => {
-    // 一计划一卡：卡里只有本计划的本金行，利息待指定作为卡内动作行，不占 subject。
+  // 未归属利息不属于任何计划，保持原卡单独出现，用户点它就能选归到哪笔本金。
+  assert.equal(split.length, 3)
+  const planCards = split.filter(card => card.installmentPlan !== undefined)
+  assert.deepEqual(planCards.map(card => card.installmentPlan).sort(), ['电销总账分月12期', '电销现分按月收12期'])
+  planCards.forEach(card => {
+    // 一计划一卡：卡面只有本卡的本金（和本卡已归属的费用）；归属未定的利息不上卡面，
+    // 它在打开本金编辑器后按本期次列成候选，勾哪笔哪笔归到本卡计划。
     assert.deepEqual(card.subjects.map(row => row.rowRoleKey), ['principal'])
-    assert.deepEqual(card.installmentPendingRows.map(row => row.eventId), [interest.eventId])
-    assert.deepEqual(card.installmentPendingRows.map(row => row.plan), [card.installmentPlan])
+    assert.equal(card.installmentPendingCount, undefined)
+    assert.equal(card.installmentPendingTotalText, undefined)
+    assert.equal(card.installmentPendingEntryId, undefined)
     assert.match(card.label, /利息待归属/)
     // 卡面只保留可操作的行：候选计划与期次说明都不再下发（说明位全局 display:none，属死数据）。
     assert.equal(card.installmentCandidates, undefined)
     assert.equal(card.installmentPeriodLabel, undefined)
   })
+  const chargeCard = split.find(card => card.installmentPlan === undefined)
+  assert.equal(chargeCard.subjects.length, 1)
+  assert.equal(chargeCard.subjects[0].rowRoleKey, 'interest')
+  assert.equal(chargeCard.subjects[0].installmentPending, true)
+  // 卡头只写状态：每张卡都是同一件事，不重复“还有 N 笔”。笔数是组级事实，放组标题上。
+  assert.equal(chargeCard.label, '分期利息｜利息待归属')
+  // 只有一笔时不写——那是废话，卡片自己就在。
+  assert.equal(presentation.installmentPendingNote([chargeCard]), '')
+  const another = presentation.pendingCard(pendingInstallmentEvent('interest', 17600, PERIOD_INTEREST), false)
+  assert.equal(presentation.installmentPendingNote([chargeCard, another]), '本期利息待归属 2 笔')
+  // 本金卡不算进笔数：它是已确定的行，不是待归属的利息。
+  assert.equal(presentation.installmentPendingNote([chargeCard, another].concat(planCards)), '本期利息待归属 2 笔')
 })
 
 test('已指定归属的利息进对应计划卡，不再出现在待指定里', () => {
@@ -388,7 +479,7 @@ test('已指定归属的利息进对应计划卡，不再出现在待指定里',
   assert.equal(split.length, 2)
   const billCard = split.find(card => card.installmentPlan === '电销总账分月12期')
   assert.deepEqual(billCard.subjects.map(row => row.rowRoleKey), ['principal', 'interest'])
-  assert.equal(billCard.installmentPendingRows, undefined)
+  assert.equal(billCard.installmentPendingCount, undefined)
   assert.equal(billCard.label, '分期出账｜利息待归属')
   const cashCard = split.find(card => card.installmentPlan === '电销现分按月收12期')
   assert.deepEqual(cashCard.subjects.map(row => row.rowRoleKey), ['principal'])
@@ -422,7 +513,8 @@ function editorRow(component, eventId, planName) {
 
 function sibling(eventId, rowRoleKey, rowRole, installmentKey, planLabel, amountText) {
   return { eventId, rowRoleKey, rowRole, installmentKey, rowTitle: '分期付款利息',
-    installmentPlanLabel: planLabel || '', amountText, displayDate: '09-02' }
+    displayTitle: '分期付款利息', displayDate: '09-02', displayTime: '10:00', accountText: '招商银行信用卡',
+    installmentPlanLabel: planLabel || '', amountText }
 }
 
 test('本金编辑器只列本期次待指定的利息，别的期次不串进来', () => {
@@ -440,16 +532,77 @@ test('本金编辑器只列本期次待指定的利息，别的期次不串进�
   assert.equal(view.attribution.required, false)
   assert.deepEqual(view.attribution.pending.map(item => item.eventId), ['i-1'])
   assert.equal(view.attribution.pending[0].amountText, '¥79.83')
-  assert.match(view.attribution.hint, /还有 1 笔利息没指定归属/)
+  assert.equal('pendingTotalText' in view.attribution, false)
+  assert.equal(view.attribution.pending[0].roleLabel, undefined)
+  assert.equal(view.attribution.pending[0].title, '分期付款利息')
+  assert.equal(view.attribution.pending[0].meta, '09-02 · 10:00 · 招商银行信用卡')
+  // 账单计划与标题相同，不重复提示。
+  assert.equal(view.attribution.pending[0].planHint, '')
+  assert.equal(view.attribution.pending[0].selected, false)
+  assert.equal(view.attribution.selectedCount, 0)
+  // 账单自己写了另一个计划名时才提醒，方便判断这笔利息是否真属于本卡。
+  const other = sibling('i-3', 'interest', '利息', GROUP_KEY, '', '¥1.00')
+  other.rowTitle = '另一个分期计划'
+  const hinted = editorModel.derive(principal, editorModel.create(principal), { siblings: [sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43'), other] })
+  assert.equal(hinted.attribution.pending[0].planHint, '另一个分期计划')
+  // 勾选只存在本次草稿：同一份记录带上选择集，候选项直接变成选中态。
+  const picked = editorModel.derive(principal, editorModel.create(principal), { siblings: [
+    sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43'),
+    sibling('i-1', 'interest', '利息', GROUP_KEY, '', '¥79.83')
+  ], pendingSelections: new Set(['i-1']) })
+  assert.equal(picked.attribution.pending[0].selected, true)
+  assert.equal(picked.attribution.selectedCount, 1)
+  // 利息只逐笔展示，不再汇总合计；金额缺失也不伪造 0。
+  const both = editorModel.derive(principal, editorModel.create(principal), { siblings: [
+    sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43'),
+    sibling('i-1', 'interest', '利息', GROUP_KEY, '', '¥79.83'),
+    sibling('i-4', 'interest', '利息', GROUP_KEY, '', '¥20.00')
+  ] })
+  assert.deepEqual(both.attribution.pending.map(item => item.amountText), ['¥79.83', '¥20.00'])
+  const missing = editorModel.derive(principal, editorModel.create(principal), { siblings: [
+    sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43'),
+    sibling('i-5', 'interest', '利息', GROUP_KEY, '', '')
+  ] })
+  assert.equal(missing.attribution.pending[0].amountText, '')
 })
 
-test('本金行已经没有待指定利息时不显示归属区', () => {
+test('本期次没有费用行时不显示归属区', () => {
   const principal = editorRow('principal', 'p-bill', '电销总账分月12期')
   principal.installmentAttribution = { version: 'installment-attribution-v1', role: 'principal', groupKey: GROUP_KEY,
     periodNumber: 12, totalTerms: 12, planLabel: '电销总账分月12期', plans: PLAN_CANDIDATES }
   const view = editorModel.derive(principal, editorModel.create(principal),
     { siblings: [sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43')] })
   assert.equal(view.attribution, null)
+})
+
+// 本期有两笔本金、两笔利息时，候选必须两笔都列：已归属的那笔从候选里消失，
+// 用户会以为账单只有一笔利息，也就无从判断剩下那笔该给谁。
+test('本期两笔利息全部列在候选里，已归到别的本金只读、归到本卡的可取消', () => {
+  const siblings = [
+    sibling('p-bill', 'principal', '本金', GROUP_KEY, '', '¥2217.43'),
+    sibling('p-cash', 'principal', '本金', GROUP_KEY, '', '¥1833.33'),
+    sibling('i-176', 'interest', '利息', GROUP_KEY, '电销现分按月收12期', '¥176.00'),
+    sibling('i-79', 'interest', '利息', GROUP_KEY, '', '¥79.83')
+  ]
+  const bill = editorRow('principal', 'p-bill', '电销总账分月12期')
+  bill.installmentAttribution = { version: 'installment-attribution-v1', role: 'principal', groupKey: GROUP_KEY,
+    periodNumber: 12, totalTerms: 12, planLabel: '电销总账分月12期', plans: PLAN_CANDIDATES }
+  const billView = editorModel.derive(bill, editorModel.create(bill), { siblings })
+  assert.deepEqual(billView.attribution.pending.map(item => [item.eventId, item.amountText, item.selected, item.disabled, item.assignedPlan]),
+    [['i-176', '¥176.00', false, true, '电销现分按月收12期'], ['i-79', '¥79.83', false, false, '']])
+  assert.equal(billView.attribution.selectedCount, 0)
+
+  const cash = editorRow('principal', 'p-cash', '电销现分按月收12期')
+  cash.installmentAttribution = { version: 'installment-attribution-v1', role: 'principal', groupKey: GROUP_KEY,
+    periodNumber: 12, totalTerms: 12, planLabel: '电销现分按月收12期', plans: PLAN_CANDIDATES }
+  const cashView = editorModel.derive(cash, editorModel.create(cash), { siblings })
+  // 归到本卡的默认勾选，且可点掉；点掉只进草稿，保存时才清空归属。
+  assert.deepEqual(cashView.attribution.pending.map(item => [item.eventId, item.selected, item.disabled, item.mine]),
+    [['i-176', true, false, true], ['i-79', false, false, false]])
+  // 已归到本卡的已经在账上，不计入“随本笔保存”的笔数。
+  assert.equal(cashView.attribution.selectedCount, 0)
+  const cleared = editorModel.derive(cash, editorModel.create(cash), { siblings, pendingClears: new Set(['i-176']) })
+  assert.equal(cleared.attribution.pending.find(item => item.eventId === 'i-176').selected, false)
 })
 
 test('利息编辑器给出候选计划单选，未指定时标为必填', () => {
@@ -459,13 +612,19 @@ test('利息编辑器给出候选计划单选，未指定时标为必填', () =>
   const view = editorModel.derive(interest, editorModel.create(interest), { siblings: [] })
   assert.equal(view.attribution.role, 'charge')
   assert.equal(view.attribution.required, true)
+  assert.equal(view.attribution.selected, false)
   assert.deepEqual(view.attribution.plans.map(item => [item.planName, item.selected, item.amountText]),
     [['电销总账分月12期', false, '¥2217.43'], ['电销现分按月收12期', false, '¥1833.33']])
-  // 选中态跟着草稿走：用户点了哪个计划，哪个就高亮。
+  // 选中态跟着草稿走：用户点了哪个计划，哪个就高亮；再点同一张卡即取消。
   const chosen = editorModel.change(interest, editorModel.create(interest), 'planLabel', '电销现分按月收12期')
   const after = editorModel.derive(interest, chosen, { siblings: [] })
   assert.equal(after.attribution.required, false)
+  assert.equal(after.attribution.selected, true)
   assert.deepEqual(after.attribution.plans.map(item => item.selected), [false, true])
+  const cleared = editorModel.change(interest, chosen, 'planLabel', '')
+  const back = editorModel.derive(interest, cleared, { siblings: [] })
+  assert.equal(back.attribution.required, true)
+  assert.equal(back.attribution.selected, false)
 })
 
 test('归属模板按钮经真实 Page 可选计划与清除，未保存不写入', async t => {
@@ -483,7 +642,8 @@ test('归属模板按钮经真实 Page 可选计划与清除，未保存不写�
   assert.deepEqual(Array.from(editor.view(page).attribution.plans, plan => plan.selected), [false, true])
   page.selectEditorInstallmentPlan(tap({ plan: '不在候选中的计划' }))
   assert.equal(editor.view(page).payload.sourceCorrection.planLabel, '合成计划 B')
-  page.clearEditorInstallmentPlan()
+  // 再点已选中的同一张卡即取消，不需要单独的“取消指定”按钮。
+  page.selectEditorInstallmentPlan(tap({ plan: '合成计划 B' }))
   assert.equal(editor.view(page).payload.sourceCorrection.planLabel, null)
   assert.equal(editor.view(page).attribution.required, true)
   assert.equal(editor.writes(h).length, writes)
@@ -493,4 +653,48 @@ test('没有归属上下文的分期行不显示归属区', () => {
   const interest = editorRow('interest', 'i-1')
   const view = editorModel.derive(interest, editorModel.create(interest), { siblings: [] })
   assert.equal(view.attribution, null)
+})
+
+// 卡内顺序是账本口径，不是入库顺序：利息行经常比本金行先落库，直接按原序渲染会让
+// 用户看到「利息在上、本金在下」，读起来像两笔不相干的账。
+test('本息同卡时本金固定在上，与入库先后无关', () => {
+  const interest = installmentEvent('interest', 9133, 'acct-1', 8, 12, '2026-08-13T09:00:00')
+  const principal = installmentEvent('principal', 190275, 'acct-1', 8, 12, '2026-08-13T18:00:00')
+  const cards = presentation.buildReviewedCards([interest, principal], { fullEvents: [interest, principal] })
+  assert.equal(cards.length, 1)
+  assert.deepEqual(cards[0].rows.map(row => row.rowRoleKey), ['principal', 'interest'])
+  // 卡头也说本金的计划，而不是先入库的利息摘要。
+  assert.equal(cards[0].installmentPlan, '招财猫商城')
+})
+
+// 分页按条切，不按分期组切：同组的本金和利息可能被分到两页。本页只剩费用行时，
+// 服务端的归属候选证明本期次有本金，那就不能断言“没有本金行”，也不能拿半期的利息算合计。
+// 样本放在页面中间：贴页首／页尾的组本来就会被边界规则判为不完整，测不到这条判断。
+function plainEvent(id, localAt) {
+  return { eventId: id, status: 'ready', economicNature: 'expense', flowDirection: 'outflow',
+    ledgerAccountId: 'acct-1', amountMinor: '1000', localAt, reasonCodes: [],
+    primaryEvidence: { sourceType: 'wechat', item: '合成消费', counterparty: '' } }
+}
+
+test('本页只剩费用行而归属候选里还有本金时，判为跨页并保留提示', () => {
+  const interest = installmentEvent('interest', 13511, 'acct-1', 28, 36)
+  interest.installmentAttribution = { version: 'installment-attribution-v1', role: 'charge',
+    groupKey: 'acct-1|28|36', periodNumber: 28, totalTerms: 36, planLabel: '',
+    plans: [{ planName: '电销现分按月收36期', eventId: 'evt-principal-28', amountMinor: '300000' }] }
+  const events = [plainEvent('p-1', '2026-08-13T08:00:00'), interest, plainEvent('p-2', '2026-08-13T20:00:00')]
+  const cards = presentation.buildReviewedCards(events, { pageEdges: { hasPrevious: true, hasNext: true } })
+  const card = cards.find(item => item.isInstallmentCard)
+  assert.equal(card.periodComplete, false)
+  assert.equal(card.amountText, '')
+  assert.match(card.planNote, /本期本金在另一页/)
+})
+
+test('确实没有本金候选时仍按“未识别到本金行”说明，不冒充跨页', () => {
+  const interest = installmentEvent('interest', 13511, 'acct-1', 28, 36)
+  const events = [plainEvent('p-1', '2026-08-13T08:00:00'), interest, plainEvent('p-2', '2026-08-13T20:00:00')]
+  const cards = presentation.buildReviewedCards(events, { pageEdges: { hasPrevious: true, hasNext: true } })
+  const card = cards.find(item => item.isInstallmentCard)
+  assert.equal(card.periodComplete, true)
+  assert.equal(card.amountText, '')
+  assert.match(card.planNote, /没有识别到分期本金行/)
 })

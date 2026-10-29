@@ -135,7 +135,7 @@ test('目录局部失败只重试目录，不重取详情、成员或原文', as
   page.onUnload()
 })
 
-test('退款候选失败不冒充无候选，局部重试后只修改当前决定', async t => {
+test('退款候选失败不冒充无候选，也不阻止暂记，局部重试后只修改当前决定', async t => {
   const editor = require('./helpers/editor-workbench')
   let fail = true
   // 打开编辑器会自动读取本批候选，所以拦截要在打开之前装好，才能复现“读取失败”。
@@ -144,9 +144,10 @@ test('退款候选失败不冒充无候选，局部重试后只修改当前决�
   h.refundCandidates = { event: [{ kind: 'event', id: 'original', version: 1, amountMinor: '100', remainingMinor: '100' }], transaction: [] }
   await page._reviewEditToken.refundRead
   assert.match(page.data.reviewEditSheet.refundError, /合成关系失败/)
-  assert.notEqual(page.data.reviewEditSheet.refundCanPending, true)
+  // 候选读不出来只影响“选哪一笔”，不构成暂记的门禁。
+  assert.equal(page.data.reviewEditSheet.editor.refundActions.pending.enabled, true)
   page.selectEditorRefund(editor.tap({ mode: 'pending' }))
-  assert.equal(editor.draft(page).refund, null)
+  assert.equal(editor.draft(page).refund.mode, 'pending')
   fail = false
   await page.loadEditorRefunds(editor.tap({ kind: 'event' }))
   page.selectEditorRefund(editor.tap({ id: 'original' }))

@@ -73,7 +73,6 @@ return Object.assign({
   },
 
   onLoad: function (query) {
-    themeService.bindPage(this)
     this.setData({ monthLabel: time.monthLabel(this.data.month) })
     if (accountMode) {
       const accountId = String(query && query.accountId || '').trim()
@@ -101,7 +100,6 @@ return Object.assign({
     this.resetSelection()
     this.setData({ selectionMode: false, deleteRetryCount: 0 })
     this._batchRequest = null
-    themeService.bindPage(this)
     if (!accountMode && this.getTabBar()) {
       this.getTabBar().setData({ selected: 1 })
     }
@@ -122,14 +120,16 @@ return Object.assign({
     })
   },
 
+  stopPullDownRefresh: function () { wx.stopPullDownRefresh() },
+
   onPullDownRefresh: function () {
-    if (this.data.deleting || this.data.selectingAll) { wx.stopPullDownRefresh(); return }
+    if (this.data.deleting || this.data.selectingAll) { this.stopPullDownRefresh(); return }
     if (!app.hasLoginApproval()) {
-      wx.stopPullDownRefresh()
+      this.stopPullDownRefresh()
       return
     }
-    this.prepareAndLoad({ force: true }).finally(function () {
-      wx.stopPullDownRefresh()
+    this.prepareAndLoad({ force: true }).finally(() => {
+      this.stopPullDownRefresh()
     })
   },
 
@@ -176,7 +176,7 @@ return Object.assign({
     this.setData({ catalogError: '' })
     this._prepareLoad = sync.then(()=>Promise.all([catalog,this.loadTransactions(false,{force,reuse:true})]))
       .catch(function(error){if(isCurrent()&&error.code!=='READ_CANCELLED')self.setData({errorMessage:error.message})})
-      .finally(function () { if (isCurrent()) self._prepareLoad = null })
+      .finally(() => { if (isCurrent()) self._prepareLoad = null })
     return this._prepareLoad
   },
 
@@ -273,7 +273,7 @@ return Object.assign({
         }
         self.setData({ errorMessage: deleteFeedback.needsRefresh(self, app) ? deleteFeedback.refreshMessage : self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '明细加载失败' })
       })
-      .finally(function () {
+      .finally(() => {
         if (!isLatest()) return
         self.setData({ loading: false, loadingMore: false })
         self._transactionsLoad = null

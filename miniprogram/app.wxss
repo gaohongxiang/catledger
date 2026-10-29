@@ -18,13 +18,16 @@ page {
   --layout-shadow-soft: 0 8rpx 28rpx rgba(0, 0, 0, .06);
   --layout-shadow-lifted: 0 8rpx 22rpx rgba(0, 0, 0, .10);
 
-  /* 财务语义色：固定值，绝不随主题变化；与主题强调色 --theme-accent 必须隔离。
-     真值在 theme/registry.js 的 SEMANTIC_TOKENS，改色需两处同步。 */
+  /* 财务语义色：只表达收/支方向，与品牌强调色 --theme-accent 必须隔离。
+     运行时真值由 theme/registry.js 按主题的 semanticTone 生成，随 themeStyle 注入到
+     页面根节点（深色主题用同色相的提亮版）；这里只是注入前的兜底，改色以 registry 为准。 */
   --sem-income: #477153;
   --sem-expense: #B54738;
   min-height: 100%;
   color: #2c2823;
-  background: #faf8f4;
+  /* 页面根节点由 page-meta 使用当前主题着色；初始化期间透出已同步的原生底色，
+     不再在原生窗口与主题内容之间插入一层固定浅色背景。 */
+  background: transparent;
   font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
   font-size: var(--font-body, 28rpx);
   line-height: 1.5;

@@ -1,6 +1,10 @@
 const app = getApp()
 
 function run(page, afterLogin) {
+  if (page && typeof page.requestLogin === 'function') {
+    page.requestLogin(afterLogin)
+    return app.hasLoginApproval()
+  }
   if (app.hasLoginApproval()) {
     if (typeof afterLogin === 'function') afterLogin()
     return true

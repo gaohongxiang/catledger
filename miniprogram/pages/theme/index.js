@@ -7,13 +7,9 @@ function markCurrent(themes, currentId) {
   })
 }
 
-Page({
+Page(themeService.page({
   data: {
-    themes: [],
-    themeId: registry.DEFAULT_THEME_ID,
-    themeName: '',
-    themeClass: '',
-    themeStyle: ''
+    themes: []
   },
 
   onLoad: function () {
@@ -25,7 +21,6 @@ Page({
   },
 
   refreshTheme: function () {
-    themeService.bindPage(this)
     const current = themeService.currentPresentation()
     if (this.data.themes.some(function (theme) { return theme.selected && theme.id === current.themeId })) return
     this.setData({ themes: markCurrent(registry.listThemes(), current.themeId) })
@@ -36,10 +31,16 @@ Page({
     if (!themeId || themeId === this.data.themeId) {
       return
     }
-    const presentation = themeService.selectTheme(themeId)
+    let presentation
+    try {
+      presentation = themeService.selectTheme(themeId)
+    } catch (_) {
+      wx.showToast({ title: '主题暂未保存，请重试', icon: 'none' })
+      return
+    }
     this.setData(Object.assign({}, presentation, {
       themes: markCurrent(registry.listThemes(), presentation.themeId)
     }))
     wx.showToast({ title: '已切换为' + presentation.themeName, icon: 'none' })
   }
-})
+}))

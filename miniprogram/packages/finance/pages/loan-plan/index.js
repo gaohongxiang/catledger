@@ -5,17 +5,19 @@ const loginGuard=require('../../../../services/login-guard')
 const theme=require('../../../../theme/service')
 const money=require('../../../../utils/money')
 const model=require('./model')
-Page({
- data:{expandedPeriodId:'',showPlanDetails:false,selectedPeriods:{},loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,loanId:'',loanName:'',loanVersion:0,items:[],nextCursor:null,summary:null,
+const businessInitialData = {expandedPeriodId:'',showPlanDetails:false,selectedPeriods:{},loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,loanId:'',loanName:'',loanVersion:0,items:[],nextCursor:null,summary:null,
   formOpen:false,form:model.blank(),paymentId:null,paymentVersion:0,paymentActive:false,paymentShare:null,allocationItems:[],allocationReview:'',confirmed:false,
   history:[],historyKind:'',historyPeriodId:null,historyNext:null,
-  canGeneratePlan:false,previewOpen:false,preview:null,previewLoading:false,previewError:'',generateConfirmed:false},
- onLoad(query){theme.bindPage(this);this.setData({loanId:query.loanId,paymentId:query.paymentId||null});if(wx.setNavigationBarTitle)wx.setNavigationBarTitle({title:query.paymentId?'调整对应期次':'还款计划'})},
+  canGeneratePlan:false,previewOpen:false,preview:null,previewLoading:false,previewError:'',generateConfirmed:false}
+
+Page(theme.page({
+ data:businessInitialData,
+ onLoad(query){this.setData({loanId:query.loanId,paymentId:query.paymentId||null});if(wx.setNavigationBarTitle)wx.setNavigationBarTitle({title:query.paymentId?'调整对应期次':'还款计划'})},
  onShow(){return loginGuard.run(this,()=>this.load())},
  onUnload(){session.end(this)},
  async load(event){
   if(this.data.saving)return
-  const current=session.begin(this,Object.keys(this.data),[])
+  const current=session.begin(this,Object.keys(businessInitialData),[])
   const cursor=event&&event.currentTarget&&event.currentTarget.dataset.next?this.data.nextCursor:null
   this.setData({loading:true,errorMessage:'',hasPending:Boolean(pending.pending())})
   try{
@@ -100,4 +102,4 @@ Page({
      (item.active?'当前分配':'已撤销或替换')+' · 本金 '+money.formatMinor(item.principalMinor)+' / 利息 '+money.formatMinor(item.interestMinor)+' / 费用 '+money.formatMinor(item.feeMinor)}))})
   }catch(error){if(current())this.setData({errorMessage:error.message})}finally{if(current())this.setData({loading:false})}
  }
-})
+}))

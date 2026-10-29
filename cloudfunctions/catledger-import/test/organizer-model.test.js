@@ -68,6 +68,24 @@ test('人工性质只解除类型未知，填账户或分类不代替确认，�
   assert.ok(evaluatePostability({ ...confirmed, economicNature: 'refund', flowDirection: 'inflow' }).reasonCodes.includes('refund_relation_required'))
 })
 
+test('信用卡分期本金可改判实际性质，但仍是单账户来源', function () {
+  const installment = { creditStatement: true, component: 'principal', periodNumber: 3, totalTerms: 6 }
+  const principal = event({ economicNature: 'repayment', flowDirection: 'neutral', fieldSources: { installment } })
+  assert.deepEqual(evaluatePostability(principal), { status: 'ready', reasonCodes: [] })
+  for (const [economicNature, flowDirection] of [['expense', 'outflow'], ['fee', 'outflow'], ['income', 'inflow']]) {
+    assert.deepEqual(evaluatePostability({ ...principal, economicNature, flowDirection }), { status: 'ready', reasonCodes: [] }, economicNature)
+  }
+  const unknown = evaluatePostability({ ...principal, economicNature: 'unknown' })
+  assert.equal(unknown.status, 'needs_action')
+  assert.ok(unknown.reasonCodes.includes('economic_nature_required'))
+  for (const economicNature of ['refund', 'internal_transfer', 'borrow']) {
+    const blocked = evaluatePostability({ ...principal, economicNature,
+      flowDirection: economicNature === 'refund' ? 'inflow' : 'neutral' })
+    assert.ok(blocked.reasonCodes.includes('core_fields_conflict'), economicNature)
+  }
+  assert.ok(evaluatePostability({ ...principal, counterpartyLedgerAccountId: 'account-2' }).reasonCodes.includes('core_fields_conflict'))
+})
+
 test('退款必须确认原交易关系，转账必须有两个不同账户', function () {
   const refund = event({ economicNature: ECONOMIC_NATURE.REFUND, flowDirection: FLOW_DIRECTION.INFLOW })
   assert.ok(evaluatePostability(refund).reasonCodes.includes('refund_relation_required'))
