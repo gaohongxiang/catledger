@@ -73,7 +73,7 @@ const THEMES = [
       secondary: '#C9A55C', secondarySoft: '#262016', line: '#332C22', border: '#4A3E2C',
       heroStart: '#171410', heroEnd: '#2A2114', heroInk: '#F4EBDC', heroValueInk: '#E7C77E', heroMuted: '#A99672',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#E0A65C', warningSoft: '#2E2416', danger: '#E08A6F', dangerSoft: '#3A2118',
+      warning: '#F0B45E', warningSoft: '#2E2416', danger: '#E08A6F', dangerSoft: '#3A2118',
       shadowSoft: '0 10rpx 30rpx rgba(0,0,0,.45)', shadowLifted: '0 10rpx 24rpx rgba(0,0,0,.55)', shimmer: 'rgba(216,178,94,.16)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#100F0D', navFront: '#ffffff'
     }
@@ -90,7 +90,7 @@ const THEMES = [
       secondary: '#4A6E92', secondarySoft: '#E4ECF6', line: '#DDE7F2', border: '#C2D2E4',
       heroStart: '#2F5A87', heroEnd: '#3E6E9F', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#DCE8F5',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#96701A', warningSoft: '#FAF2DA', danger: '#A94739', dangerSoft: '#F6E3DE',
+      warning: '#B45309', warningSoft: '#FFF3E6', danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(47,90,135,.07)', shadowLifted: '0 8rpx 22rpx rgba(36,72,110,.10)', shimmer: 'rgba(255,255,255,.7)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#EFF4FA', navFront: '#000000'
     }
@@ -107,7 +107,7 @@ const THEMES = [
       secondary: '#7A6B85', secondarySoft: '#F0E8F7', line: '#EAE0F0', border: '#D5C6DF',
       heroStart: '#826795', heroEnd: '#9E83B0', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#F0E8F7',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
-      warning: '#96701A', warningSoft: '#FAF2DA', danger: '#A94739', dangerSoft: '#F6E3DE',
+      warning: '#B45309', warningSoft: '#FFF3E6', danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(142,111,159,.08)', shadowLifted: '0 8rpx 22rpx rgba(122,92,139,.10)', shimmer: 'rgba(255,255,255,.7)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F6F1FA', navFront: '#000000'
     }

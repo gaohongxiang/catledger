@@ -192,11 +192,12 @@ test('首页提醒行只在有事时出现在净值卡下面，两条各自去�
   assert.match(rule('.home-alert-text'), /flex:\s*1 1 auto/, '文字吃掉剩余宽度，动作词贴右')
   assert.match(rule('.home-alert'), /width:\s*100%/)
   assert.match(rule('.home-alert-text'), /text-overflow:\s*ellipsis/)
-  assert.match(rule('.home-alert-dot-review'), /var\(--theme-accent/)
-  // 待还是常规义务，用警示色；红色留给逾期与读取失败。
-  assert.match(rule('.home-alert-dot-due'), /var\(--theme-warning/)
-  assert.match(rule('.home-alert-figure'), /var\(--theme-accent-strong/)
-  assert.match(rule('.home-alert-due .home-alert-figure'), /var\(--theme-warning/)
+  // 两条提醒共用一个警示色，圆点、数字、动作词同色，底色取警示浅底。
+  assert.match(rule('.home-alert-dot'), /var\(--theme-warning/)
+  assert.match(rule('.home-alert'), /background:\s*var\(--theme-warning-soft/)
+  assert.match(rule('.home-alert-figure'), /var\(--theme-warning/)
+  assert.match(rule('.home-alert-action'), /var\(--theme-warning/)
+  assert.doesNotMatch(markup, /home-alert-dot-review|home-alert-dot-due/)
   assert.match(markup, /wx:for="\{\{alertImportParts\}\}"/)
   assert.match(markup, /wx:for="\{\{alertDueParts\}\}"/)
   assert.match(markup, /home-alert-action">去核对 ›/, '动作词带箭头，读得出可点')

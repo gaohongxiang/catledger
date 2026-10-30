@@ -499,15 +499,14 @@
   box-sizing: border-box;
   width: 100%;
   padding: 12rpx 20rpx;
-  background: var(--theme-surface, #fffefd);
-  border: 1rpx solid var(--theme-line, #eae4dc);
+  background: var(--theme-warning-soft, #fff3e6);
+  border: 1rpx solid var(--theme-warning-soft, #fff3e6);
   border-radius: var(--theme-radius-medium, 16rpx);
 }
 .home-alert-pressed { opacity: 0.72; }
-.home-alert-dot { flex: 0 0 12rpx; width: 12rpx; height: 12rpx; border-radius: 50%; }
-.home-alert-dot-review { background: var(--theme-accent, #be5b24); }
-/* 待还是常规义务，不是出错：用警示色，红色留给逾期与读取失败。 */
-.home-alert-dot-due { background: var(--theme-warning, #96701a); }
+/* 两条提醒共用一个警示色：用户只需记住「这个颜色＝有件事要做」，
+   再按自己的活／外部到期分成两种黄，反而互相稀释。 */
+.home-alert-dot { flex: 0 0 12rpx; width: 12rpx; height: 12rpx; border-radius: 50%; background: var(--theme-warning, #b45309); }
 .home-alert-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -519,11 +518,9 @@
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
-/* 只给数字上色：整句染色在浅色主题只有 4.06:1，小字读不清。 */
-.home-alert-figure { color: var(--theme-accent-strong, #a34d20); font-weight: 500; }
-.home-alert-action { flex: 0 0 auto; color: var(--theme-accent-strong, #a34d20); font-size: 22rpx; line-height: 1.4; }
-.home-alert-due .home-alert-figure { color: var(--theme-warning, #96701a); }
-.home-alert-due .home-alert-action { color: var(--theme-warning, #96701a); }
+/* 只给数字上色：整句都染成提醒色就读起来像报错，数字才是要看的那一段。 */
+.home-alert-figure { color: var(--theme-warning, #b45309); font-weight: 500; }
+.home-alert-action { flex: 0 0 auto; color: var(--theme-warning, #b45309); font-size: 22rpx; line-height: 1.4; }
 .dashboard-refresh {
   display: flex;
   box-sizing: border-box;
