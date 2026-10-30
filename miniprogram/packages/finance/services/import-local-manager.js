@@ -102,7 +102,7 @@ function cleanupIdle(scope, now = Date.now(), limit = 20, excludeId = null) {
   return cleaned
 }
 // 门禁只读一次本机草稿来给出进度摘要：步数、待核对、待分类。全程不联网。
-function resumeProgress(restored, deps) {
+function resumeProgress(restored, deps, updateId) {
   try {
     const probe = sessionFactory.create({ ...deps, restored })
     const view = probe.view || {}, workbench = view.workbench || {}
@@ -115,6 +115,8 @@ function resumeProgress(restored, deps) {
       total: Number((view.update && view.update.counts && view.update.counts.finalEventCount) || 0)
     }
     probe.close?.()
+    // 首页提醒与这张卡同源：只看卡不继续，也要留下同一组数字。
+    try { require('../../../services/import-draft-session').rememberProgress(updateId, progress) } catch (_) {}
     return progress
   } catch (_) { return null }
 }
@@ -171,7 +173,7 @@ function restore(updateId, options = {}){
   }
   if (activityState.state === 'idle' && !options.force) {
     // 本机读一次草稿，只为显示“做到哪一步、还剩多少”；不联网、不改变任何状态。
-    const progress = resumeProgress(restored, deps)
+    const progress = resumeProgress(restored, deps, updateId)
     const keepUntil = activity && activity.lastActiveAt
       ? Number(activity.lastActiveAt) + resume.SNAPSHOT_RETENTION_MS : null
     return localGate(updateId, 'idle', { lastActiveAt, activity: 'idle', canContinue: true, progress, keepUntil,

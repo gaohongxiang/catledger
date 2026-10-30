@@ -37,6 +37,9 @@ test('入账或放弃后草稿进度随草稿一起清掉', () => {
 
 test('工作台每次应用视图都把两个页签的待办数写给首页', () => {
   const source = readSource(path.join(__dirname, '../miniprogram/packages/finance/pages/import-workbench/runtime.js'))
+  // 只看续接卡、不点继续时也要留下同一组数字。
+  const gate = readSource(path.join(__dirname, '../miniprogram/packages/finance/services/import-local-manager.js'))
+  assert.match(gate, /rememberProgress\(updateId, progress\)/)
   assert.match(source, /draftSessions\.rememberProgress\(view\.update\.updateId, \{/)
   assert.match(source, /pending: countOf\(patch\.reviewStatusTabs, 'pending'\)/)
   assert.match(source, /categories: countOf\(patch\.categoryStatusTabs, 'pending'\)/)
