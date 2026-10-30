@@ -15,13 +15,11 @@ function rule(selector) {
   return match[1]
 }
 
-test('首页样板保留净值口径、分栏金额绑定和用户头像', () => {
+test('首页样板保留净值口径、资产与负债两侧总额和用户头像', () => {
   assert.match(markup, /净资产/)
-  assert.match(markup, /总资产/)
-  assert.match(markup, /总负债/)
-  for (const key of ['netWorthText', 'assetsText', 'liabilitiesText', 'monthExpenseText', 'monthIncomeText']) {
-    assert.ok(markup.includes("{{loggedIn && hasDashboard ? " + key + " : '—'}}"), key)
-  }
+  assert.match(markup, /\{\{loggedIn && hasDashboard \? netWorthText : '—'\}\}/)
+  assert.equal((markup.match(/<template is="net-worth-mix"/g) || []).length, 1, '两行共用一次网格渲染')
+  assert.match(markup, /data="\{\{assets: assetShares, assetsText: assetsText, liabilities: liabilityShares, liabilitiesText: liabilitiesText\}\}"/)
   assert.match(markup, /\{\{displayAvatarUrl\}\}/)
   assert.match(markup, /item\.balanceText/)
   assert.match(markup, /item\.amountText/)
@@ -35,7 +33,7 @@ test('标题使用中等字重和自然字距，不缩小正文来伪造清秀',
 })
 
 test('金额不省略、不裁掉负号，极长数值允许换行', () => {
-  for (const selector of ['.net-worth-number', '.net-worth-part-value', '.net-worth-part-value', '.account-balance', '.timeline-amount']) {
+  for (const selector of ['.net-worth-number', '.mix-total', '.account-balance', '.timeline-amount']) {
     const declarations = rule(selector)
     assert.doesNotMatch(declarations, /text-overflow:\s*ellipsis|overflow:\s*hidden/)
     assert.match(declarations, /overflow-wrap:\s*anywhere/)
@@ -57,10 +55,11 @@ test('净值卡渐变只从主题 hero token 取色，不写主题私有覆盖',
   assert.doesNotMatch(style, /@font-face|https?:\/\//)
 })
 
-test('净值卡内统计为纯文字分栏，不再用卡片片', () => {
-  assert.doesNotMatch(markup, /month-stat|month-strip/)
-  assert.doesNotMatch(rule('.net-worth-part'), /background|border/)
-  assert.doesNotMatch(rule('.net-worth-side'), /background|border/)
+test('净值卡内只有构成条，本月收支搬离首屏', () => {
+  assert.doesNotMatch(markup, /month-stat|month-strip|net-worth-columns|本月收支/)
+  assert.doesNotMatch(markup, /monthExpenseText|monthIncomeText|monthNetText/)
+  // 构成段只是条上的一小块，不再各自长成卡片。
+  assert.doesNotMatch(rule('.mix-seg'), /border:\s|box-shadow/)
 })
 
 test('首页三个模块共用同一种卡片容器', () => {
@@ -69,6 +68,10 @@ test('首页三个模块共用同一种卡片容器', () => {
   assert.match(card, /border:\s*1rpx solid var\(--home-line/)
   assert.match(card, /border-radius:\s*var\(--theme-radius-large/)
   assert.equal((markup.match(/class="home-card"/g) || []).length, 3, '统计、账户、账目各一张卡')
+  // 净值卡不在 .home-flow 里，靠自己的左右外边距补上同一条内缩，四张卡左右边缘对齐。
+  assert.match(rule('.net-worth-card'), /margin-left:\s*var\(--layout-space-4\)/)
+  assert.match(rule('.net-worth-card'), /margin-right:\s*var\(--layout-space-4\)/)
+  assert.match(rule('.home-flow'), /padding-left:\s*var\(--layout-space-4\)/)
   // 行不再自带容器，也没有负边距出血：左边缘只有一条内容线。
   assert.doesNotMatch(rule('.account-list'), /background|border|box-shadow/)
   assert.doesNotMatch(rule('.timeline'), /background|border|box-shadow/)
@@ -140,17 +143,42 @@ test('净值卡文字颜色全部走主题 hero 令牌，不再保留页面级�
   assert.doesNotMatch(markup, /net-worth-month|monthLabel/)
 })
 
-test('净值卡左右分栏：左侧资产结构，右侧本月收支，长金额换行不截断', () => {
-  assert.match(markup, /net-worth-columns/)
-  assert.match(markup, /net-worth-split/)
-  assert.match(markup, />总资产<\/text>/)
-  assert.match(markup, />总负债<\/text>/)
-  assert.match(markup, />本月收支<\/text>/)
-  assert.match(markup, /monthExpenseText/)
-  assert.match(markup, /monthIncomeText/)
-  assert.match(rule('.net-worth-part-value'), /overflow-wrap:\s*anywhere/)
-  assert.match(rule('.net-worth-part-value'), /overflow-wrap:\s*anywhere/)
+test('净值卡按资产／负债各一行构成：标签、构成条、该侧总额、横滑图例', () => {
+  assert.match(markup, /<template name="net-worth-mix">/)
+  // 两行共用一套网格：标签、条、该侧总额各占一列，图例跨三列。
+  assert.match(markup, /class="mix-label">资产</)
+  assert.match(markup, /class="mix-label">负债</)
+  assert.match(markup, /class="mix-track">/)
+  assert.match(markup, /class="mix-total money-number[^"]*">\{\{assetsText\}\}/)
+  assert.match(markup, /class="mix-total money-number[^"]*">\{\{liabilitiesText\}\}/)
+  assert.match(rule('.mix-grid'), /display:\s*grid/)
+  assert.match(rule('.mix-grid'), /grid-template-columns:\s*auto minmax\(120rpx, 1fr\) auto/)
+  // 图例横滑：账目变多时条封顶 6 段，图例靠滑动看全。
+  assert.match(markup, /class="mix-legend-scroll" scroll-x="\{\{true\}\}"/)
+  assert.match(markup, /wx:for="\{\{assets\.items\}\}" wx:key="accountId"/)
+  assert.match(markup, /wx:for="\{\{liabilities\.bar\}\}"/)
+  assert.match(rule('.mix-legend-scroll'), /grid-column:\s*1 \/ -1/)
+  assert.match(rule('.mix-seg'), /background:\s*var\(--theme-hero-value-ink/)
+  assert.match(rule('.mix-total'), /color:\s*var\(--theme-hero-value-ink/)
+  // 金额列不再写死宽度：由两条金额里更长的那条撑开，右对齐；空侧居中。
+  assert.doesNotMatch(rule('.mix-total'), /(?:^|;)\s*width:\s*\d/)
+  assert.match(rule('.mix-total'), /text-align:\s*right/)
+  assert.match(rule('.mix-total-empty'), /text-align:\s*center/)
+  assert.match(markup, /\{\{assets\.empty \? 'mix-total-empty' : ''\}\}/)
+  assert.match(markup, /\{\{liabilities\.empty \? 'mix-total-empty' : ''\}\}/)
+  // 图例只是条的注释，比标签和金额低一档。
+  assert.match(rule('.mix-label'), /font-size:\s*var\(--font-caption/)
+  assert.match(rule('.mix-legend-text'), /font-size:\s*22rpx/)
   assert.doesNotMatch(markup, /累计收入|累计支出|month-strip/)
+})
+
+test('账面日期写成「最后一笔」，空数据时不出现这一行', () => {
+  const source = read('miniprogram/pages/index/page.js')
+  assert.match(markup, /wx:if="\{\{loggedIn && hasDashboard && asOfText\}\}"[^>]*>最后一笔 \{\{asOfText\}\}/)
+  assert.doesNotMatch(markup, /数据截至/, '别把账面日期写成导入日期')
+  assert.match(source, /function asOfLabel\(transactions\)/)
+  assert.match(source, /first && first\.occurredLocalAt/)
+  assert.match(source, /\^\\d\{4\}-\(\\d\{2\}\)-\(\\d\{2\}\)/)
 })
 
 test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
@@ -160,7 +188,7 @@ test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
   assert.doesNotMatch(markup, /net-worth-watermark|hero-trend/)
 })
 
-test('时段问候移到页头标题之上，分栏统计留在 hero 卡内', () => {
+test('时段问候移到页头标题之上，构成条留在 hero 卡内', () => {
   const source = read('miniprogram/pages/index/page.js')
   assert.match(markup, /class="home-greeting">\{\{todayLabel\}\}/)
   assert.doesNotMatch(markup, /net-worth-greeting/)
@@ -170,8 +198,10 @@ test('时段问候移到页头标题之上，分栏统计留在 hero 卡内', ()
   assert.match(source, /hour >= 6 && hour < 11 \? '早上好'/)
   assert.match(source, /hour >= 11 && hour < 18 \? '下午好'/)
   assert.match(source, /'晚上好'/)
-  assert.ok(markup.indexOf('class="net-worth-card"') < markup.indexOf('net-worth-columns'), '分栏统计应位于 hero 卡内')
-  assert.ok(markup.indexOf('net-worth-columns') < markup.indexOf('class="home-flow"'), '分栏统计应在 home-flow 之前')
-  assert.match(rule('.net-worth-part-label'), /color:\s*var\(--theme-hero-muted/)
-  assert.match(rule('.net-worth-part-value'), /color:\s*var\(--theme-hero-value-ink/)
+  const hero = markup.slice(markup.indexOf('class="net-worth-card"'), markup.indexOf('class="home-flow"'))
+  assert.match(hero, /<template is="net-worth-mix"/, '构成条应位于 hero 卡内')
+  assert.match(hero, /asOfText/, '最后一笔应位于 hero 卡内')
+  assert.ok(hero.indexOf('net-worth-number') < hero.indexOf('<template is="net-worth-mix"'), '净资产在构成条之上')
+  assert.match(rule('.mix-label'), /color:\s*var\(--theme-hero-muted/)
+  assert.match(rule('.mix-legend-text'), /color:\s*var\(--theme-hero-muted/)
 })

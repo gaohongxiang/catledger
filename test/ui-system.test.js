@@ -350,11 +350,13 @@ test('首页卡片外沿与文字使用内收的双基线', function () {
   assert.match(read('miniprogram/app.wxss'), /--layout-space-4:\s*20rpx;/)
 })
 
-test('首页月度摘要直接展示在净值卡右栏，无数据显示 —', function () {
+test('本月收支搬离首屏，净值卡只留资产与负债两侧构成', function () {
   const template = read('miniprogram/pages/index/panel.wxml')
 
-  assert.match(template, /monthIncomeText : '—'/)
-  assert.match(template, /monthExpenseText : '—'/)
+  // 账单滞后一个月导入，本月数字结构性为 0，不再占据首屏；本月口径归统计页。
+  assert.doesNotMatch(template, /monthIncomeText|monthExpenseText|monthNetText/)
+  assert.doesNotMatch(template, /本月收支/)
+  assert.match(template, /assets: assetShares, assetsText: assetsText, liabilities: liabilityShares, liabilitiesText: liabilitiesText/)
   assert.doesNotMatch(template, /amount-income|amount-expense/)
 })
 

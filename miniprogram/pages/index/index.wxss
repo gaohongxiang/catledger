@@ -53,6 +53,9 @@
 .net-worth-card {
   position: relative;
   box-sizing: border-box;
+  /* 与 .home-flow 里的模块卡同一条内容线：卡边一律落在 52rpx 内缩处，不再比下面的卡宽一圈。 */
+  margin-right: var(--layout-space-4);
+  margin-left: var(--layout-space-4);
   min-height: 224rpx;
   padding: 30rpx 32rpx;
   overflow: hidden;
@@ -82,23 +85,77 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* 净值卡左右分栏：左侧净资产与资产负债结构，右侧本月收支。 */
-.net-worth-columns { display: flex; align-items: stretch; }
-.net-worth-main { flex: 1.2; min-width: 0; display: flex; flex-direction: column; }
-.net-worth-split { flex: 0 0 1rpx; margin: 8rpx 28rpx 0; background: var(--home-line, var(--theme-line, #e5dfd7)); }
-.net-worth-side { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.net-worth-parts { display: flex; gap: 28rpx; margin-top: auto; padding-top: var(--layout-space-4); }
-.net-worth-part { min-width: 0; flex: 1; }
-.net-worth-part-label { display: block; color: var(--theme-hero-muted, #FFFFFF); font-size: var(--font-caption, 24rpx); line-height: 1.4; }
-.net-worth-part-value {
-  display: block;
-  margin-top: 6rpx;
+/* 净值卡：净资产一行，下面资产／负债各一行构成——标签 + 构成条 + 该侧总额，图例再一行横滑。
+   本月收支不上首屏：账单滞后一个月导入，本月数字结构性为 0，摆在净资产旁边会被读成没花钱。 */
+.net-worth-asof {
+  color: var(--theme-hero-muted, #FFFFFF);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.4;
+  opacity: .78;
+}
+/* 两行共用一套网格：第三列（金额）由两条金额里更宽的那条定宽，条取剩余宽度，
+   所以金额短的那行条自动变长，两行的条仍然起点、终点对齐；超长金额时条保底 120rpx。 */
+.mix-grid {
+  display: grid;
+  grid-template-columns: auto minmax(120rpx, 1fr) auto;
+  column-gap: 12rpx;
+  align-items: center;
+  margin-top: 16rpx;
+}
+.mix-label {
+  color: var(--theme-hero-muted, #FFFFFF);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.4;
+}
+.mix-track {
+  display: flex;
+  min-width: 0;
+  height: 12rpx;
+  overflow: hidden;
+  gap: 2rpx;
+  border-radius: 6rpx;
+  background: rgba(255, 255, 255, .08);
+}
+.mix-seg {
+  min-width: 2rpx;
+  height: 100%;
+  border-radius: 2rpx;
+  background: var(--theme-hero-value-ink, #FFFFFF);
+}
+/* 构成条与图例圆点共用同一组色阶：只从 hero 令牌派生明暗，不给任何主题写私有颜色。 */
+.mix-tone-1 { opacity: 1; }
+.mix-tone-2 { opacity: .74; }
+.mix-tone-3 { opacity: .54; }
+.mix-tone-4 { opacity: .38; }
+.mix-tone-5 { opacity: .26; }
+.mix-tone-other { background: var(--theme-hero-ink, #FFFFFF); opacity: .15; }
+/* 金额列不再写死宽度：网格按两条金额里更长的那条给整列定宽，两行共用同一列，
+   数字右端自然对齐，条也能吃掉原来白留的那段。没有这一侧时「—」在列内居中，不顶到最右。 */
+.mix-total {
   color: var(--theme-hero-value-ink, #FFFFFF);
   font-size: var(--font-caption, 26rpx);
   line-height: 1.4;
-  white-space: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+.mix-total-empty { text-align: center; }
+.mix-legend-scroll { grid-column: 1 / -1; min-width: 0; margin: 8rpx 0; white-space: nowrap; }
+.mix-legend { display: inline-flex; align-items: center; gap: 20rpx; min-height: 40rpx; }
+.mix-legend-item { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 8rpx; }
+.mix-dot {
+  flex: 0 0 10rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: var(--theme-hero-value-ink, #FFFFFF);
+}
+/* 图例是构成条的注释，比正文再低一档：账户名和占比不跟标签、金额抢同一层大小。 */
+.mix-legend-text {
+  color: var(--theme-hero-muted, #FFFFFF);
+  font-size: 22rpx;
+  line-height: 1.4;
 }
 
 .home-page .home-header .home-login-button {
@@ -458,7 +515,7 @@
   .dashboard-refresh-spinning { animation: none; }
 }
 
-.net-worth-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); }
+.net-worth-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--layout-space-4); }
 
 .home-login-label {
   display: flex;

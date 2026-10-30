@@ -72,6 +72,16 @@
     }
   },
   "actions": {
+    "financeUpdates.pendingCount": {
+      "kind": "read",
+      "data": [],
+      "returns": [
+        "count"
+      ],
+      "rules": [
+        "Current user only; counts the workbench 待核对 rows across every in-flight update (draft/failed/review/posting) with the same predicate as the workbench view; posted, undone and abandoned updates never count; never reads raw bill rows."
+      ]
+    },
     "financeUpdates.list": {
       "kind": "read",
       "data": [

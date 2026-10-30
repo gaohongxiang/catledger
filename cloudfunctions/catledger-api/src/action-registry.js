@@ -50,6 +50,7 @@ const PUBLIC_ACTIONS = Object.freeze([
   'loans.periodHistory',
   'loans.previewPlan',
   'loans.generatePlan',
+  'loans.dueThisMonth',
   'accounts.archive',
   'accounts.correctBalance',
   'accounts.create',
@@ -78,7 +79,7 @@ const PUBLIC_ACTIONS = Object.freeze([
   'transactions.update'
 ])
 
-function createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService }) {
+function createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService, homeAlertsService }) {
   return {
     'reads.validate': catalogService.validate,
     'profile.get': profileService.get,
@@ -130,6 +131,7 @@ function createActionHandlers({ accountService, categoryService, catalogService,
     'loans.periodHistory': loanService.periodHistory,
     'loans.previewPlan': loanService.previewPlan,
     'loans.generatePlan': loanService.generatePlan,
+    'loans.dueThisMonth': homeAlertsService.dueThisMonth,
     'accounts.archive': accountService.archive,
     'accounts.correctBalance': accountService.correctBalance,
     'accounts.create': accountService.create,

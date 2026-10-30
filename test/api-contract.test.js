@@ -34,6 +34,7 @@ test('shared contract and server action registry stay in exact sync', () => {
     catalogService: serviceStub(['get', 'validate']),
     profileService: serviceStub(['get', 'update']),
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'restore', 'update']),
+    homeAlertsService: serviceStub(['dueThisMonth']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),
     transactionService: serviceStub(['commandResult', 'create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'removeMany', 'setCategory', 'statistics', 'update'])
   })

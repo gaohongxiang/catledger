@@ -1,3 +1,39 @@
+<!-- 资产／负债构成：两行共用一套网格（标签 / 构成条 / 该侧合计），金额列按较长的那条金额定宽，
+     条自动吃掉剩下的宽度；图例跨三列、在各自条下一行横滑。 -->
+<template name="net-worth-mix">
+  <view class="mix-grid">
+    <text class="mix-label">资产</text>
+    <view class="mix-track">
+      <view wx:for="{{assets.bar}}" wx:key="accountId" class="mix-seg {{item.tone}}" style="flex: {{item.permille}};"></view>
+    </view>
+    <text class="mix-total money-number {{assets.empty ? 'mix-total-empty' : ''}}">{{assetsText}}</text>
+    <scroll-view class="mix-legend-scroll" scroll-x="{{true}}" show-scrollbar="{{false}}">
+      <view class="mix-legend">
+        <view wx:for="{{assets.items}}" wx:key="accountId" class="mix-legend-item">
+          <view class="mix-dot {{item.tone}}"></view>
+          <text class="mix-legend-text">{{item.name}} {{item.percentText}}</text>
+        </view>
+        <text wx:if="{{assets.empty}}" class="mix-legend-text mix-legend-empty">暂无余额</text>
+      </view>
+    </scroll-view>
+
+    <text class="mix-label">负债</text>
+    <view class="mix-track">
+      <view wx:for="{{liabilities.bar}}" wx:key="accountId" class="mix-seg {{item.tone}}" style="flex: {{item.permille}};"></view>
+    </view>
+    <text class="mix-total money-number {{liabilities.empty ? 'mix-total-empty' : ''}}">{{liabilitiesText}}</text>
+    <scroll-view class="mix-legend-scroll" scroll-x="{{true}}" show-scrollbar="{{false}}">
+      <view class="mix-legend">
+        <view wx:for="{{liabilities.items}}" wx:key="accountId" class="mix-legend-item">
+          <view class="mix-dot {{item.tone}}"></view>
+          <text class="mix-legend-text">{{item.name}} {{item.percentText}}</text>
+        </view>
+        <text wx:if="{{liabilities.empty}}" class="mix-legend-text mix-legend-empty">暂无负债</text>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
   <view class="home-header home-content-line">
     <view class="home-intro">
@@ -12,27 +48,14 @@
 
   <block wx:else>
     <view class="net-worth-card">
-      <view class="net-worth-columns">
-        <view class="net-worth-main">
-          <view class="net-worth-heading">
-            <text class="net-worth-label">当前净资产</text>
-          </view>
-          <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
-          <view class="net-worth-parts">
-            <view class="net-worth-part"><text class="net-worth-part-label">总资产</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? assetsText : '—'}}</text></view>
-            <view class="net-worth-part"><text class="net-worth-part-label">总负债</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? liabilitiesText : '—'}}</text></view>
-          </view>
-        </view>
-        <view class="net-worth-split" aria-hidden="true"></view>
-        <view class="net-worth-side">
-          <text class="net-worth-label">本月收支</text>
-          <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? monthNetText : '—'}}" />
-          <view class="net-worth-parts">
-            <view class="net-worth-part"><text class="net-worth-part-label">支出</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? monthExpenseText : '—'}}</text></view>
-            <view class="net-worth-part"><text class="net-worth-part-label">收入</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? monthIncomeText : '—'}}</text></view>
-          </view>
-        </view>
+      <view class="net-worth-heading">
+        <text class="net-worth-label">当前净资产</text>
+        <text wx:if="{{loggedIn && hasDashboard && asOfText}}" class="net-worth-asof">最后一笔 {{asOfText}}</text>
       </view>
+      <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
+      <block wx:if="{{loggedIn && hasDashboard}}">
+        <template is="net-worth-mix" data="{{assets: assetShares, assetsText: assetsText, liabilities: liabilityShares, liabilitiesText: liabilitiesText}}" />
+      </block>
     </view>
 
     <view wx:if="{{loggedIn && !loading && (errorMessage || dashboardStatus || chargeSyncMessage)}}" class="home-read-status {{(errorMessage || chargeSyncMessage) ? 'home-read-status-error' : ''}}" aria-role="{{errorMessage ? 'alert' : 'status'}}">

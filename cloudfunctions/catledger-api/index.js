@@ -1,6 +1,7 @@
 const cloud = require('wx-server-sdk')
 
 const { createLoanService } = require('./src/loan-service')
+const { createHomeAlertsService } = require('./src/home-alerts')
 const { createDataExportService } = require('./src/data-export-service')
 
 const { createAccountService } = require('./src/account-service')
@@ -27,11 +28,12 @@ const categoryService = createCategoryService({ getPool })
 const catalogService = createCatalogService({ getPool })
 const profileService = createProfileService({ getPool })
 const transactionService = createTransactionService({ getPool })
+const homeAlertsService = createHomeAlertsService({ getPool })
 
 const handler = createHandler({
   getWxContext: () => cloud.getWXContext(),
   repository,
-  services: createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService }),
+  services: createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService, homeAlertsService }),
   logger: console
 })
 

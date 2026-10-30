@@ -5,10 +5,21 @@ const viewModel = require('../../utils/view-model')
 const profilePresentation = require('../../utils/profile-presentation')
 const observer = require('../../services/read-observer')
 const { addMinor } = require('../../utils/minor-arithmetic')
+const composition = require('./net-worth-composition')
 const tabRouter = require('../../shell/router')
 
 const HOME_RECENT_LIMIT = 3
 const dashboardQuery = month => ({ month, summaryScope: 'all' })
+const emptyShares = () => ({ items: [], bar: [], empty: true, totalMinor: '0' })
+
+// 净资产是账面最后一笔交易之后的结果；卡片上写「最后一笔 M月D日」，说清这个数字停在哪天，
+// 不写「数据截至」——那句话读起来像导入时间，账单滞后一个月时会被当成没同步。
+function asOfLabel(transactions) {
+  const first = Array.isArray(transactions) && transactions.length > 0 ? transactions[0] : null
+  const value = String((first && first.occurredLocalAt) || '')
+  const matched = /^\d{4}-(\d{2})-(\d{2})/.exec(value)
+  return matched ? Number(matched[1]) + '月' + Number(matched[2]) + '日' : ''
+}
 
 function greetingText(loggedIn, profile) {
   if (!loggedIn) return '你好'
@@ -50,9 +61,9 @@ function createHomePage(dependencies) {
       expenseText: '—',
       assetsText: '—',
       liabilitiesText: '—',
-      monthExpenseText: '—',
-      monthIncomeText: '—',
-      monthNetText: '—',
+      assetShares: emptyShares(),
+      liabilityShares: emptyShares(),
+      asOfText: '',
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -106,9 +117,9 @@ function createHomePage(dependencies) {
         expenseText: '—',
         assetsText: '—',
         liabilitiesText: '—',
-        monthExpenseText: '—',
-        monthIncomeText: '—',
-        monthNetText: '—',
+        assetShares: emptyShares(),
+        liabilityShares: emptyShares(),
+        asOfText: '',
         trendReady: false,
         trendSparse: false,
         cashFlowTrend: [],
@@ -155,7 +166,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'monthExpenseText', 'monthIncomeText', 'monthNetText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }
@@ -175,16 +186,17 @@ function createHomePage(dependencies) {
             if (account.nature === 'liability') liabilitiesMinor = addMinor(liabilitiesMinor, account.bookBalanceMinor || '0')
             else assetsMinor = addMinor(assetsMinor, account.bookBalanceMinor || '0')
           })
-          const monthRow = cashFlowTrend.filter(function (row) { return row.month === dashboard.month })[0] || {}
+          // 本月收支不再上首屏：导入滞后一个月，本月结构性为 0，摆在净资产旁边会读成「这个月没花钱」。
+          const shares = composition.composition(dashboard.accounts)
           self.setData({
             netWorthText: money.formatMinor(dashboard.netWorthMinor),
             incomeText: money.formatMinor(dashboard.summary.incomeMinor),
             expenseText: money.formatMinor(dashboard.summary.expenseMinor),
             assetsText: money.formatMinor(assetsMinor),
             liabilitiesText: liabilitiesMinor === '0' ? '—' : money.formatMinor(liabilitiesMinor.charAt(0) === '-' ? liabilitiesMinor.slice(1) : liabilitiesMinor),
-            monthExpenseText: monthRow.expenseMinor && monthRow.expenseMinor !== '0' ? money.formatMinor(monthRow.expenseMinor) : '—',
-            monthIncomeText: monthRow.incomeMinor && monthRow.incomeMinor !== '0' ? money.formatMinor(monthRow.incomeMinor) : '—',
-            monthNetText: monthRow.expenseMinor || monthRow.incomeMinor ? money.formatMinor(addMinor(monthRow.incomeMinor || '0', monthRow.expenseMinor === '0' || !monthRow.expenseMinor ? '0' : '-' + monthRow.expenseMinor)) : '—',
+            assetShares: shares.assets,
+            liabilityShares: shares.liabilities,
+            asOfText: asOfLabel(dashboard.recentTransactions),
             hasDashboard: true,
             dashboardFresh: Boolean(state && state.complete),
             dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',
