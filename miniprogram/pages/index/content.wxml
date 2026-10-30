@@ -44,11 +44,12 @@
     <view class="home-flow">
 
 
-    <section-header class="section-heading statistics-heading" compact title="统计分析">
-        <text class="section-link" bindtap="openStatistics">全部</text>
-    </section-header>
+    <view class="home-card">
+      <section-header class="home-card-head" compact title="统计分析">
+          <text class="section-link" bindtap="openStatistics">全部</text>
+      </section-header>
 
-    <view class="statistics-card" role="button" aria-label="查看全部统计" bindtap="openStatistics">
+      <view class="statistics-body" role="button" aria-label="查看全部统计" bindtap="openStatistics">
         <view class="statistics-card-heading">
           <view class="statistics-card-title">
             <view class="statistics-icon"><image src="{{themeIconRoot}}/statistics.svg" mode="aspectFit" /></view>
@@ -84,13 +85,15 @@
         <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总收支趋势…</view>
         <view wx:elif="{{trendReady}}" class="statistics-card-empty">近半年还没有收支</view>
         <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
+      </view>
     </view>
 
-    <section-header class="section-heading" compact title="账户余额">
-        <text class="section-link" bindtap="openAccounts">全部</text>
-    </section-header>
+    <view class="home-card">
+      <section-header class="home-card-head" compact title="账户余额">
+          <text class="section-link" bindtap="openAccounts">全部</text>
+      </section-header>
 
-    <view wx:if="{{accounts.length > 0}}" class="account-list">
+      <view wx:if="{{accounts.length > 0}}" class="account-list">
         <view wx:for="{{accounts}}" wx:key="accountId" class="account-row" bindtap="openAccounts">
           <view class="account-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
           <text class="account-name">{{item.name}}</text>
@@ -99,39 +102,42 @@
             <text class="account-balance money-number">{{item.balanceText}}</text>
           </view>
         </view>
-    </view>
-    <skeleton-rows wx:elif="{{loading && !hasDashboard}}" rows="{{2}}" />
-    <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{2}}" />
-    <view wx:elif="{{loggedIn && !hasDashboard}}" class="account-empty">账户暂未读取</view>
-    <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
-
-    <section-header class="section-heading recent-heading" compact title="最近账目">
-        <text wx:if="{{hasDashboard}}" class="section-link" bindtap="openTransactions">全部</text>
-    </section-header>
-
-    <block wx:if="{{hasDashboard}}">
-      <view wx:if="{{recentTransactions.length > 0}}" class="timeline">
-        <view
-          wx:for="{{recentTransactions}}"
-          wx:key="transactionId"
-          class="timeline-item row-enter"
-          style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
-          data-index="{{index}}"
-          bindtap="editTransaction"
-        >
-          <view class="timeline-dot {{item.amountClass}}"></view>
-          <view class="timeline-copy">
-            <text class="timeline-label">{{item.label}}</text>
-            <text class="timeline-meta">{{item.accountLine}} · {{item.timeText}}</text>
-          </view>
-          <text class="timeline-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
-        </view>
       </view>
-      <empty-cat wx:else title="还没有账目" description="导入或手动记录后，最新账目会出现在这里。" />
-    </block>
-    <skeleton-rows wx:elif="{{loading}}" rows="{{3}}" />
-    <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{3}}" />
-    <empty-cat wx:else title="{{errorMessage ? '账目暂未读取' : '登录后查看最近账目'}}" description="导入或手动记录后，最新账目会出现在这里。" />
+      <skeleton-rows wx:elif="{{loading && !hasDashboard}}" rows="{{2}}" />
+      <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{2}}" />
+      <view wx:elif="{{loggedIn && !hasDashboard}}" class="account-empty">账户暂未读取</view>
+      <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
+    </view>
+
+    <view class="home-card">
+      <section-header class="home-card-head" compact title="最近账目">
+          <text wx:if="{{hasDashboard}}" class="section-link" bindtap="openTransactions">全部</text>
+      </section-header>
+
+      <block wx:if="{{hasDashboard}}">
+        <view wx:if="{{recentTransactions.length > 0}}" class="timeline">
+          <view
+            wx:for="{{recentTransactions}}"
+            wx:key="transactionId"
+            class="timeline-item row-enter"
+            style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
+            data-index="{{index}}"
+            bindtap="editTransaction"
+          >
+            <view class="timeline-dot {{item.amountClass}}"></view>
+            <view class="timeline-copy">
+              <text class="timeline-label">{{item.label}}</text>
+              <text class="timeline-meta">{{item.accountLine}} · {{item.timeText}}</text>
+            </view>
+            <text class="timeline-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
+          </view>
+        </view>
+        <empty-cat wx:else title="还没有账目" description="导入或手动记录后，最新账目会出现在这里。" />
+      </block>
+      <skeleton-rows wx:elif="{{loading}}" rows="{{3}}" />
+      <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{3}}" />
+      <empty-cat wx:else title="{{errorMessage ? '账目暂未读取' : '登录后查看最近账目'}}" description="导入或手动记录后，最新账目会出现在这里。" />
+    </view>
     </view>
   </block>
 </view>

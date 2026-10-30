@@ -63,13 +63,16 @@ test('净值卡内统计为纯文字分栏，不再用卡片片', () => {
   assert.doesNotMatch(rule('.net-worth-side'), /background|border/)
 })
 
-test('首页卡片节奏：账户卡浅驼底无边框，最近账目为发丝线列表', () => {
-  assert.match(rule('.account-list'), /background:\s*var\(--home-surface-muted/)
-  assert.match(rule('.account-list'), /border:\s*0/)
-  assert.match(rule('.timeline'), /background:\s*transparent/)
-  assert.match(rule('.timeline'), /border-top:\s*1rpx solid var\(--home-line/)
-  assert.match(rule('.timeline'), /border-bottom:\s*1rpx solid var\(--home-line/)
-  assert.match(rule('.timeline'), /box-shadow:\s*none/)
+test('首页三个模块共用同一种卡片容器', () => {
+  const card = rule('.home-card')
+  assert.match(card, /background:\s*var\(--home-surface, var\(--theme-surface/)
+  assert.match(card, /border:\s*1rpx solid var\(--home-line/)
+  assert.match(card, /border-radius:\s*var\(--theme-radius-large/)
+  assert.equal((markup.match(/class="home-card"/g) || []).length, 3, '统计、账户、账目各一张卡')
+  // 行不再自带容器，也没有负边距出血：左边缘只有一条内容线。
+  assert.doesNotMatch(rule('.account-list'), /background|border|box-shadow/)
+  assert.doesNotMatch(rule('.timeline'), /background|border|box-shadow/)
+  assert.doesNotMatch(style, /margin:\s*0\s+-20rpx/)
 })
 
 test('入口保留原事件，查看统计/账户/明细与原交易编辑可达', () => {

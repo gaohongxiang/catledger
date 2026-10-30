@@ -123,9 +123,22 @@
 .home-login-button::after { border: 0; }
 .home-login-button:active { opacity: .78; }
 
-.section-heading {
+/* 首页只有一种容器：模块卡。hero 是它唯一的放大版例外，
+   其余三个模块共用同一圆角、同一内边距、同一条 1rpx 分隔线，
+   不再各自长一套底色或负边距出血。 */
+.home-card {
+  margin-top: 24rpx;
+  padding: 0 26rpx;
+  overflow: hidden;
+  background: var(--home-surface, var(--theme-surface, #fffefd));
+  border: 1rpx solid var(--home-line, var(--theme-line, #eae4dc));
+  border-radius: var(--theme-radius-large, 24rpx);
+  /* 不用投影：深色主题上黑投影只会把卡压进底色，卡与页面的分界由 1rpx 线和明度差承担。 */
+  box-shadow: none;
+}
+.home-card-head {
   display: block;
-  margin-top: 28rpx;
+  border-bottom: 1rpx solid var(--home-line, var(--theme-line, #eae4dc));
 }
 .section-link {
   display: flex;
@@ -139,8 +152,7 @@
   line-height: 1.4;
   flex-shrink: 0;
 }
-.statistics-heading { margin-top: var(--layout-space-5); }
-.statistics-card { padding: 8rpx 0 4rpx; }
+.statistics-body { padding: 12rpx 0 4rpx; }
 .statistics-card-heading {
   display: flex;
   align-items: center;
@@ -288,15 +300,8 @@
   background: var(--theme-accent-soft, #f0e2ce);
 }
 
-.account-list {
-  min-height: 208rpx;
-  padding: 0 20rpx;
-  margin: 0 -20rpx;
-  background: var(--home-surface-muted, var(--theme-surface-muted, #f4eee3));
-  border: 0;
-  border-radius: var(--theme-radius-large, 24rpx);
-  box-shadow: var(--home-shadow, var(--theme-shadow-soft));
-}
+/* 账户与账目都不再自带容器：它们只是模块卡里的行。 */
+.account-list { min-height: 208rpx; }
 .account-row {
   display: flex;
   min-height: 96rpx;
@@ -363,17 +368,7 @@
   line-height: 1.6;
 }
 
-.recent-heading { margin-top: 28rpx; }
-.timeline {
-  margin: 0 -20rpx;
-  padding: 0 20rpx;
-  background: transparent;
-  border: 0;
-  border-top: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
-  border-bottom: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
-  border-radius: 0;
-  box-shadow: none;
-}
+.timeline { display: block; }
 .timeline-item {
   display: flex;
   min-height: 104rpx;
