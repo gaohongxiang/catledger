@@ -193,7 +193,13 @@ test('首页提醒行只在有事时出现在净值卡下面，两条各自去�
   assert.match(rule('.home-alert'), /width:\s*100%/)
   assert.match(rule('.home-alert-text'), /text-overflow:\s*ellipsis/)
   assert.match(rule('.home-alert-dot-review'), /var\(--theme-accent/)
-  assert.match(rule('.home-alert-dot-due'), /var\(--theme-danger/)
+  // 待还是常规义务，用警示色；红色留给逾期与读取失败。
+  assert.match(rule('.home-alert-dot-due'), /var\(--theme-warning/)
+  assert.match(rule('.home-alert-figure'), /var\(--theme-accent-strong/)
+  assert.match(rule('.home-alert-due .home-alert-figure'), /var\(--theme-warning/)
+  assert.match(markup, /wx:for="\{\{alertImportParts\}\}"/)
+  assert.match(markup, /wx:for="\{\{alertDueParts\}\}"/)
+  assert.match(markup, /home-alert-action">去核对 ›/, '动作词带箭头，读得出可点')
 })
 
 test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {

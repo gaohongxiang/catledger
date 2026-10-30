@@ -506,7 +506,8 @@
 .home-alert-pressed { opacity: 0.72; }
 .home-alert-dot { flex: 0 0 12rpx; width: 12rpx; height: 12rpx; border-radius: 50%; }
 .home-alert-dot-review { background: var(--theme-accent, #be5b24); }
-.home-alert-dot-due { background: var(--theme-danger, #a95132); }
+/* 待还是常规义务，不是出错：用警示色，红色留给逾期与读取失败。 */
+.home-alert-dot-due { background: var(--theme-warning, #96701a); }
 .home-alert-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -518,7 +519,11 @@
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
-.home-alert-action { flex: 0 0 auto; color: var(--theme-text-muted, #726d66); font-size: 22rpx; line-height: 1.4; }
+/* 只给数字上色：整句染色在浅色主题只有 4.06:1，小字读不清。 */
+.home-alert-figure { color: var(--theme-accent-strong, #a34d20); font-weight: 500; }
+.home-alert-action { flex: 0 0 auto; color: var(--theme-accent-strong, #a34d20); font-size: 22rpx; line-height: 1.4; }
+.home-alert-due .home-alert-figure { color: var(--theme-warning, #96701a); }
+.home-alert-due .home-alert-action { color: var(--theme-warning, #96701a); }
 .dashboard-refresh {
   display: flex;
   box-sizing: border-box;

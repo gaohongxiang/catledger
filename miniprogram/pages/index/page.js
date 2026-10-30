@@ -24,20 +24,29 @@ function asOfLabel(transactions) {
 
 // 提醒行只在真有事时出现：本机草稿没有待核对／待分类、本月也没有未结清期次时，整行不占位。
 // 待核对与待分类取工作台自己写下的进度——核对决定在入账前只在本机，服务端数字不是用户看到的那个。
-function draftAlertText(progress) {
-  if (!progress) return ''
+// 只有数字上色：整句上色在藏蓝、香芋两套浅色主题上掉到 4.06:1，低于小字门槛。
+// 文字仍然是同一句话，拆段只为让数字单独取语义色。
+function draftAlertParts(progress) {
+  if (!progress) return []
   const parts = []
-  if (progress.pending > 0) parts.push('待核对 ' + progress.pending + ' 笔')
-  if (progress.categories > 0) parts.push('待分类 ' + progress.categories + ' 笔')
-  return parts.join(' · ')
+  if (progress.pending > 0) parts.push({ text: '待核对 ' }, { text: String(progress.pending), figure: true }, { text: ' 笔' })
+  if (progress.categories > 0) {
+    if (parts.length) parts.push({ text: ' · ' })
+    parts.push({ text: '待分类 ' }, { text: String(progress.categories), figure: true }, { text: ' 笔' })
+  }
+  return parts
 }
 
-function dueAlertText(result) {
+function dueAlertParts(result) {
   const periods = Number(result && result.periodCount)
   const dueMinor = String((result && result.dueMinor) || '0')
-  if (!Number.isFinite(periods) || periods <= 0 || dueMinor === '0') return ''
-  return '本月待还 ' + money.formatMinor(dueMinor) + (periods > 1 ? ' · ' + periods + ' 期' : '')
+  if (!Number.isFinite(periods) || periods <= 0 || dueMinor === '0') return []
+  const parts = [{ text: '本月待还 ' }, { text: money.formatMinor(dueMinor), figure: true }]
+  if (periods > 1) parts.push({ text: ' · ' + periods + ' 期' })
+  return parts
 }
+
+const alertText = parts => (parts || []).map(part => part.text).join('')
 
 function greetingText(loggedIn, profile) {
   if (!loggedIn) return '你好'
@@ -84,6 +93,8 @@ function createHomePage(dependencies) {
       asOfText: '',
       alertImportText: '',
       alertDueText: '',
+      alertImportParts: [],
+      alertDueParts: [],
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -143,6 +154,8 @@ function createHomePage(dependencies) {
         asOfText: '',
         alertImportText: '',
         alertDueText: '',
+        alertImportParts: [],
+        alertDueParts: [],
         trendReady: false,
         trendSparse: false,
         cashFlowTrend: [],
@@ -185,10 +198,15 @@ function createHomePage(dependencies) {
         if (!isCurrent() || self._alertsTicket !== ticket) return
         self.setData({ [key]: value })
       }
-      apply('alertImportText', draftAlertText(draftSessions.savedProgress()))
+      const importParts = draftAlertParts(draftSessions.savedProgress())
+      apply('alertImportParts', importParts)
+      apply('alertImportText', alertText(importParts))
       return api.callApi('loans.dueThisMonth', { month: time.currentMonth() }).then(function (result) {
-        apply('alertDueText', dueAlertText(result))
+        const dueParts = dueAlertParts(result)
+        apply('alertDueParts', dueParts)
+        apply('alertDueText', alertText(dueParts))
       }, function () {
+        apply('alertDueParts', [])
         apply('alertDueText', '')
       })
     },
@@ -210,7 +228,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertImportText', 'alertDueText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertImportText', 'alertDueText', 'alertImportParts', 'alertDueParts', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }

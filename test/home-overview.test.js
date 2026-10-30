@@ -80,6 +80,12 @@ test('首页提醒只报真有的事：待核对与待分类取本机草稿进�
   await page.loadAlerts()
   assert.equal(page.data.alertImportText, '待核对 12 笔 · 待分类 39 笔')
   assert.equal(page.data.alertDueText, '本月待还 ¥1,200.00 · 2 期')
+  // 数字单独成段，首页只给它上色；整句染色在浅色主题读不清。
+  const figures = parts => parts.filter(part => part.figure).map(part => part.text).join(',')
+  assert.equal(figures(page.data.alertImportParts), '12,39')
+  assert.equal(figures(page.data.alertDueParts), '¥1,200.00')
+  assert.equal(page.data.alertImportParts.map(part => part.text).join(''), page.data.alertImportText)
+  assert.equal(page.data.alertDueParts.map(part => part.text).join(''), page.data.alertDueText)
   const due = h.calls.find(call => call.action === 'loans.dueThisMonth')
   assert.match(due.data.month, /^\d{4}-\d{2}$/u, '按月查询，月份由客户端给出')
   assert.equal(due.name, 'catledger-api')
@@ -94,6 +100,8 @@ test('没有草稿进度与待还时两条提醒都不占位；单期不写期�
   await page.loadAlerts()
   assert.equal(page.data.alertImportText, '')
   assert.equal(page.data.alertDueText, '')
+  assert.equal(page.data.alertImportParts.length, 0)
+  assert.equal(page.data.alertDueParts.length, 0)
 
   h.load('services/import-draft-session').rememberProgress('update-1', { pending: 0, categories: 4 })
   h.respond = (action, data) => {
