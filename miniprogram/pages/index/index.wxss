@@ -483,6 +483,41 @@
 .home-read-state { display: flex; align-items: center; gap: 14rpx; flex: 1; min-width: 0; }
 .home-read-message { flex: 1; min-width: 0; }
 .home-read-status-error { color: var(--theme-danger, #a95132); }
+
+/* 首页提醒：只在真有待核对交易或本月未结清期次时出现，做成两条可点的胶囊，
+   不排进模块卡，避免空提醒也要占一行。 */
+.home-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+.home-alert {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 12rpx 20rpx;
+  background: var(--theme-surface, #fffefd);
+  border: 1rpx solid var(--theme-line, #eae4dc);
+  border-radius: var(--theme-radius-medium, 16rpx);
+}
+.home-alert-pressed { opacity: 0.72; }
+.home-alert-dot { flex: 0 0 12rpx; width: 12rpx; height: 12rpx; border-radius: 50%; }
+.home-alert-dot-review { background: var(--theme-accent, #be5b24); }
+.home-alert-dot-due { background: var(--theme-danger, #a95132); }
+.home-alert-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-ink, #2f2a25);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.home-alert-action { flex: 0 0 auto; color: var(--theme-text-muted, #726d66); font-size: 22rpx; line-height: 1.4; }
 .dashboard-refresh {
   display: flex;
   box-sizing: border-box;

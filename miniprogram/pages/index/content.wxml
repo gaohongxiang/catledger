@@ -58,6 +58,19 @@
       </block>
     </view>
 
+    <view wx:if="{{loggedIn && (alertPendingText || alertDueText)}}" class="home-alerts home-content-line">
+      <view wx:if="{{alertPendingText}}" class="home-alert" hover-class="home-alert-pressed" bindtap="openImport" aria-role="button" aria-label="{{alertPendingText}}，去导入工作台核对">
+        <view class="home-alert-dot home-alert-dot-review"></view>
+        <text class="home-alert-text">{{alertPendingText}}</text>
+        <text class="home-alert-action">去核对</text>
+      </view>
+      <view wx:if="{{alertDueText}}" class="home-alert" hover-class="home-alert-pressed" bindtap="openLoans" aria-role="button" aria-label="{{alertDueText}}，查看贷款计划">
+        <view class="home-alert-dot home-alert-dot-due"></view>
+        <text class="home-alert-text">{{alertDueText}}</text>
+        <text class="home-alert-action">查看</text>
+      </view>
+    </view>
+
     <view wx:if="{{loggedIn && !loading && (errorMessage || dashboardStatus || chargeSyncMessage)}}" class="home-read-status {{(errorMessage || chargeSyncMessage) ? 'home-read-status-error' : ''}}" aria-role="{{errorMessage ? 'alert' : 'status'}}">
       <view class="home-read-state">
         <text class="home-read-message">{{errorMessage || chargeSyncMessage || dashboardStatus}}</text>

@@ -6,6 +6,7 @@ const profilePresentation = require('../../utils/profile-presentation')
 const observer = require('../../services/read-observer')
 const { addMinor } = require('../../utils/minor-arithmetic')
 const composition = require('./net-worth-composition')
+const importApi = require('../../services/catledger-import')
 const tabRouter = require('../../shell/router')
 
 const HOME_RECENT_LIMIT = 3
@@ -19,6 +20,19 @@ function asOfLabel(transactions) {
   const value = String((first && first.occurredLocalAt) || '')
   const matched = /^\d{4}-(\d{2})-(\d{2})/.exec(value)
   return matched ? Number(matched[1]) + '月' + Number(matched[2]) + '日' : ''
+}
+
+// 提醒行只在真有事时出现：没有待核对交易、本月没有未结清期次就整行不占位。
+function pendingAlertText(count) {
+  const value = Number(count)
+  return Number.isFinite(value) && value > 0 ? '待核对 ' + value + ' 笔' : ''
+}
+
+function dueAlertText(result) {
+  const periods = Number(result && result.periodCount)
+  const dueMinor = String((result && result.dueMinor) || '0')
+  if (!Number.isFinite(periods) || periods <= 0 || dueMinor === '0') return ''
+  return '本月待还 ' + money.formatMinor(dueMinor) + (periods > 1 ? ' · ' + periods + ' 期' : '')
 }
 
 function greetingText(loggedIn, profile) {
@@ -64,6 +78,8 @@ function createHomePage(dependencies) {
       assetShares: emptyShares(),
       liabilityShares: emptyShares(),
       asOfText: '',
+      alertPendingText: '',
+      alertDueText: '',
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -102,6 +118,7 @@ function createHomePage(dependencies) {
       })
       if (app.globalData.cloudAvailable && loggedIn) {
         this.loadDashboard()
+        this.loadAlerts()
         return
       }
       this.setData({
@@ -120,6 +137,8 @@ function createHomePage(dependencies) {
         assetShares: emptyShares(),
         liabilityShares: emptyShares(),
         asOfText: '',
+        alertPendingText: '',
+        alertDueText: '',
         trendReady: false,
         trendSparse: false,
         cashFlowTrend: [],
@@ -147,6 +166,31 @@ function createHomePage(dependencies) {
         displayAvatarUrl: profilePresentation.displayAvatarUrl(true, app.globalData.profile)
       })
       this.loadDashboard()
+      this.loadAlerts()
+    },
+
+    // 两条提醒各自读取、各自失败：一条读不到不影响另一条，也不影响净值卡。
+    loadAlerts: function () {
+      if (!app.hasLoginApproval()) return Promise.resolve()
+      const self = this
+      const isCurrent = pageReadSession.capture(this)
+      const ticket = {}
+      this._alertsTicket = ticket
+      const apply = function (key, value) {
+        if (!isCurrent() || self._alertsTicket !== ticket) return
+        self.setData({ [key]: value })
+      }
+      const pending = importApi.callImport('financeUpdates.pendingCount', {}).then(function (result) {
+        apply('alertPendingText', pendingAlertText(result && result.count))
+      }, function () {
+        apply('alertPendingText', '')
+      })
+      const due = api.callApi('loans.dueThisMonth', { month: time.currentMonth() }).then(function (result) {
+        apply('alertDueText', dueAlertText(result))
+      }, function () {
+        apply('alertDueText', '')
+      })
+      return Promise.all([pending, due])
     },
 
     fetchDashboard: function (month, options) {
@@ -166,7 +210,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertPendingText', 'alertDueText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }
@@ -292,6 +336,14 @@ function createHomePage(dependencies) {
 
     openImport: function () {
       wx.navigateTo({ url: '/packages/finance/pages/import-workbench/index' })
+    },
+
+    openLoans: function () {
+      if (!app.hasLoginApproval()) {
+        this.promptWechatLogin(this.openLoans.bind(this))
+        return
+      }
+      wx.navigateTo({ url: '/packages/finance/pages/loans/index' })
     },
 
     openStatistics: function () {

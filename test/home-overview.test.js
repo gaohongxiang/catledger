@@ -68,6 +68,65 @@ test('「最后一笔」取账面最后一笔交易的发生日，不用当月�
   assert.equal(page.data.asOfText, '9月30日')
 })
 
+test('首页提醒只报真有的事：待核对笔数取工作台口径，本月待还扣掉已还部分', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = (action, data) => {
+    if (action === 'dashboard.get') return result('all')
+    if (action === 'financeUpdates.pendingCount') return { ok: true, data: { count: 3 } }
+    if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 2, dueMinor: '120000' } }
+    return undefined
+  }
+  await page.loadDashboard()
+  await page.loadAlerts()
+  assert.equal(page.data.alertPendingText, '待核对 3 笔')
+  assert.equal(page.data.alertDueText, '本月待还 ¥1,200.00 · 2 期')
+  const due = h.calls.find(call => call.action === 'loans.dueThisMonth')
+  assert.match(due.data.month, /^\d{4}-\d{2}$/u, '按月查询，月份由客户端给出')
+  assert.equal(h.calls.find(call => call.action === 'financeUpdates.pendingCount').name, 'catledger-import')
+  assert.equal(h.calls.find(call => call.action === 'loans.dueThisMonth').name, 'catledger-api')
+})
+
+test('没有待核对与待还时两条提醒都不占位；单期不写期数', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = action => action === 'dashboard.get' ? result('all') : undefined
+  await page.loadDashboard()
+  await page.loadAlerts()
+  assert.equal(page.data.alertPendingText, '')
+  assert.equal(page.data.alertDueText, '')
+
+  h.respond = (action, data) => {
+    if (action === 'financeUpdates.pendingCount') return { ok: true, data: { count: 1 } }
+    if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 1, dueMinor: '99900' } }
+    return undefined
+  }
+  // 本月待还按 loans 标签缓存，记还款等写入会让它失效。
+  h.cache.invalidate(['loans'])
+  await page.loadAlerts()
+  assert.equal(page.data.alertDueText, '本月待还 ¥999.00')
+})
+
+test('一条提醒读不到只清掉它自己，另一条照常显示', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = (action, data) => {
+    if (action === 'dashboard.get') return result('all')
+    if (action === 'financeUpdates.pendingCount') return { ok: false, error: { code: 'INTERNAL_ERROR', message: '读取失败' } }
+    if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 2, dueMinor: '120000' } }
+    return undefined
+  }
+  await page.loadDashboard()
+  await Promise.allSettled([page.loadAlerts()])
+  assert.equal(page.data.alertPendingText, '')
+  assert.equal(page.data.alertDueText, '本月待还 ¥1,200.00 · 2 期')
+})
+
+test('提醒各自进自己的工作台：待核对去导入工作台，待还去贷款页', async () => {
+  const h = runtime(), page = h.page('index')
+  page.openImport()
+  page.openLoans()
+  assert.equal(h.navigation[0], '/packages/finance/pages/import-workbench/index')
+  assert.equal(h.navigation[1], '/packages/finance/pages/loans/index')
+})
+
 test('旧服务端漏回累计范围时拒绝展示和缓存，重试可取得正确累计', async () => {
   const h = runtime(), page = h.page('index'); page.onLoad()
   h.respond = action => action === 'dashboard.get' ? result('month') : undefined

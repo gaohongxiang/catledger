@@ -12,6 +12,7 @@ const SAFE_READ_ACTIONS = Object.freeze({
   'economicEvents.detail': true,
   'economicEvents.refundCandidates': true,
   'financeUpdates.summary': true,
+  'financeUpdates.pendingCount': true,
   'financeUpdates.rows': true,
   'financeUpdates.options': true,
   'imports.commandResult': true,
@@ -22,6 +23,7 @@ const SAFE_READ_ACTIONS = Object.freeze({
   'reviewIssues.get': true,
   'reviewIssues.list': true,
   'statistics.get': true,
+  'loans.dueThisMonth': true,
   'transactions.list': true,
   'transactions.refundable': true
 })

@@ -198,11 +198,13 @@ test('切换会话后迟到目录结果不回填', async () => {
 test('首页、明细、账本、我的首次四个摘要请求及两次费用检查，后续仅费用检查且无加载闪烁', async () => {
   const h = runtime()
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'loans.dueCharges', 'loans.dueCharges', 'profile.get', 'transactions.list'])
+  assert.deepEqual(h.calls.map(call => call.action).sort(),
+    ['catalog.get', 'dashboard.get', 'financeUpdates.pendingCount', 'loans.dueCharges', 'loans.dueCharges', 'loans.dueThisMonth', 'profile.get', 'transactions.list'])
   h.calls.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) h.page(name).loading.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.deepEqual(h.calls.map(c=>c.action), ['loans.dueCharges','loans.dueCharges'])
+  // 待核对笔数每次进首页都重读：导入云函数没有读版本协议，缓存它就会把已核对的提醒留着。
+  assert.deepEqual(h.calls.map(c => c.action).sort(), ['financeUpdates.pendingCount', 'loans.dueCharges', 'loans.dueCharges'])
   for (const name of ['index', 'transactions', 'ledger', 'profile']) assert.equal(h.page(name).loading.includes(true), false, name)
 })
 

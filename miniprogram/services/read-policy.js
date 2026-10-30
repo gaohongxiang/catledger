@@ -1,6 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
 const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 'accountDirectory', 'categoryDirectory']
 const READ_POLICIES = Object.freeze({
+  'loans.dueThisMonth': { ttl: Infinity, tags: ['loans', 'transactions', 'accounts'] },
   'loans.deleteImpact': { ttl:0,tags:['loans','transactions','accounts'] },
   'loans.retainedCharge': { ttl:0,tags:['loans','transactions'] },
   'loans.retainedCharges': { ttl:0,tags:['loans','transactions','accounts'] },

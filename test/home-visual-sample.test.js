@@ -181,6 +181,19 @@ test('账面日期写成「最后一笔」，空数据时不出现这一行', ()
   assert.match(source, /\^\\d\{4\}-\(\\d\{2\}\)-\(\\d\{2\}\)/)
 })
 
+test('首页提醒行只在有事时出现在净值卡下面，两条各自去自己的工作台', () => {
+  assert.match(markup, /class="home-alerts home-content-line"/)
+  assert.match(markup, /wx:if="\{\{loggedIn && \(alertPendingText \|\| alertDueText\)\}\}"/)
+  assert.match(markup, /bindtap="openImport"[^>]*aria-label="\{\{alertPendingText\}\}，去导入工作台核对"/)
+  assert.match(markup, /bindtap="openLoans"[^>]*aria-label="\{\{alertDueText\}\}，查看贷款计划"/)
+  assert.ok(markup.indexOf('class="home-alerts') > markup.indexOf('class="net-worth-card'), '提醒跟在净值卡之后')
+  assert.ok(markup.indexOf('class="home-alerts') < markup.indexOf('class="home-flow'), '提醒不混进模块卡')
+  assert.match(rule('.home-alerts'), /flex-wrap:\s*wrap/)
+  assert.match(rule('.home-alert-text'), /text-overflow:\s*ellipsis/)
+  assert.match(rule('.home-alert-dot-review'), /var\(--theme-accent/)
+  assert.match(rule('.home-alert-dot-due'), /var\(--theme-danger/)
+})
+
 test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
   assert.match(rule('.net-worth-card'), /border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-lifted\)/)
