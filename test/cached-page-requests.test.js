@@ -199,12 +199,12 @@ test('首页、明细、账本、我的首次四个摘要请求及两次费用�
   const h = runtime()
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
   assert.deepEqual(h.calls.map(call => call.action).sort(),
-    ['catalog.get', 'dashboard.get', 'financeUpdates.pendingCount', 'loans.dueCharges', 'loans.dueCharges', 'loans.dueThisMonth', 'profile.get', 'transactions.list'])
+    ['catalog.get', 'dashboard.get', 'loans.dueCharges', 'loans.dueCharges', 'loans.dueThisMonth', 'profile.get', 'transactions.list'])
   h.calls.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) h.page(name).loading.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  // 待核对笔数每次进首页都重读：导入云函数没有读版本协议，缓存它就会把已核对的提醒留着。
-  assert.deepEqual(h.calls.map(c => c.action).sort(), ['financeUpdates.pendingCount', 'loans.dueCharges', 'loans.dueCharges'])
+  // 待核对取本机草稿进度，不联网；重复进首页只重新做费用检查。
+  assert.deepEqual(h.calls.map(c => c.action).sort(), ['loans.dueCharges', 'loans.dueCharges'])
   for (const name of ['index', 'transactions', 'ledger', 'profile']) assert.equal(h.page(name).loading.includes(true), false, name)
 })
 

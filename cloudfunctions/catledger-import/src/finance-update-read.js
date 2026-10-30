@@ -614,4 +614,4 @@ function createFinanceUpdateRead({ getPool }) {
     rows: read(rowPage), issue: read(issueDetail, 'issue'), summary: read(summary, 'summary'), events: read(eventPage), issues: read(issuePage), members: read(memberPage),
     refundCandidates: read(refundCandidates, 'detail'), evidence: read(evidencePage, 'evidence'), options: read(optionPage), detail: read(detail, 'detail') }
 }
-module.exports = { createFinanceUpdateRead, readVersion, finishPage, summary, activeSql, pendingReviewSql }
+module.exports = { createFinanceUpdateRead, readVersion, finishPage, summary }

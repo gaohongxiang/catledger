@@ -1,6 +1,5 @@
 const { readCommandResult } = require('./import-transaction')
 const { createFinanceUpdateHistory } = require('./finance-update-history')
-const { createFinanceUpdatePending } = require('./finance-update-pending')
 const { selectSources } = require('./finance-update-repository')
 const { createFinanceUpdateRead } = require('./finance-update-read')
 const { randomUUID } = require('node:crypto')
@@ -399,7 +398,6 @@ function createImportService({ getPool, storage }) {
     financeUpdateStageDecisions: localObjects.stage,
     financeUpdateSealDecisions: localObjects.seal,
     financeUpdateList: createFinanceUpdateHistory({ getPool }),
-    financeUpdatePendingCount: createFinanceUpdatePending({ getPool }),
     commandResult: context => readCommandResult({ getPool, ...context }),
     financeUpdateOptions: reads.options,
     economicEventList: reads.events,

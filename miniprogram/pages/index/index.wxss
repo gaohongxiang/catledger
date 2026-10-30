@@ -488,7 +488,7 @@
    不排进模块卡，避免空提醒也要占一行。 */
 .home-alerts {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12rpx;
   margin-top: 16rpx;
 }
@@ -497,7 +497,7 @@
   align-items: center;
   gap: 10rpx;
   box-sizing: border-box;
-  max-width: 100%;
+  width: 100%;
   padding: 12rpx 20rpx;
   background: var(--theme-surface, #fffefd);
   border: 1rpx solid var(--theme-line, #eae4dc);
@@ -508,6 +508,7 @@
 .home-alert-dot-review { background: var(--theme-accent, #be5b24); }
 .home-alert-dot-due { background: var(--theme-danger, #a95132); }
 .home-alert-text {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--theme-ink, #2f2a25);

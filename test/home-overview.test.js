@@ -68,55 +68,54 @@ test('「最后一笔」取账面最后一笔交易的发生日，不用当月�
   assert.equal(page.data.asOfText, '9月30日')
 })
 
-test('首页提醒只报真有的事：待核对笔数取工作台口径，本月待还扣掉已还部分', async () => {
+test('首页提醒只报真有的事：待核对与待分类取本机草稿进度，本月待还扣掉已还部分', async () => {
   const h = runtime(), page = h.page('index')
+  h.load('services/import-draft-session').rememberProgress('update-1', { pending: 12, categories: 39 })
   h.respond = (action, data) => {
     if (action === 'dashboard.get') return result('all')
-    if (action === 'financeUpdates.pendingCount') return { ok: true, data: { count: 3 } }
     if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 2, dueMinor: '120000' } }
     return undefined
   }
   await page.loadDashboard()
   await page.loadAlerts()
-  assert.equal(page.data.alertPendingText, '待核对 3 笔')
+  assert.equal(page.data.alertImportText, '待核对 12 笔 · 待分类 39 笔')
   assert.equal(page.data.alertDueText, '本月待还 ¥1,200.00 · 2 期')
   const due = h.calls.find(call => call.action === 'loans.dueThisMonth')
   assert.match(due.data.month, /^\d{4}-\d{2}$/u, '按月查询，月份由客户端给出')
-  assert.equal(h.calls.find(call => call.action === 'financeUpdates.pendingCount').name, 'catledger-import')
-  assert.equal(h.calls.find(call => call.action === 'loans.dueThisMonth').name, 'catledger-api')
+  assert.equal(due.name, 'catledger-api')
+  // 核对决定入账前只在本地，服务端整批事件仍在等动作，不能拿它当首页数字。
+  assert.equal(h.calls.some(call => call.action === 'financeUpdates.pendingCount'), false)
 })
 
-test('没有待核对与待还时两条提醒都不占位；单期不写期数', async () => {
+test('没有草稿进度与待还时两条提醒都不占位；单期不写期数', async () => {
   const h = runtime(), page = h.page('index')
   h.respond = action => action === 'dashboard.get' ? result('all') : undefined
   await page.loadDashboard()
   await page.loadAlerts()
-  assert.equal(page.data.alertPendingText, '')
+  assert.equal(page.data.alertImportText, '')
   assert.equal(page.data.alertDueText, '')
 
+  h.load('services/import-draft-session').rememberProgress('update-1', { pending: 0, categories: 4 })
   h.respond = (action, data) => {
-    if (action === 'financeUpdates.pendingCount') return { ok: true, data: { count: 1 } }
     if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 1, dueMinor: '99900' } }
     return undefined
   }
   // 本月待还按 loans 标签缓存，记还款等写入会让它失效。
   h.cache.invalidate(['loans'])
   await page.loadAlerts()
+  assert.equal(page.data.alertImportText, '待分类 4 笔')
   assert.equal(page.data.alertDueText, '本月待还 ¥999.00')
 })
 
-test('一条提醒读不到只清掉它自己，另一条照常显示', async () => {
+test('草稿提示和待还互不牵连：一条没有或读不到不影响另一条', async () => {
   const h = runtime(), page = h.page('index')
-  h.respond = (action, data) => {
-    if (action === 'dashboard.get') return result('all')
-    if (action === 'financeUpdates.pendingCount') return { ok: false, error: { code: 'INTERNAL_ERROR', message: '读取失败' } }
-    if (action === 'loans.dueThisMonth') return { ok: true, data: { month: data.month, periodCount: 2, dueMinor: '120000' } }
-    return undefined
-  }
+  h.load('services/import-draft-session').rememberProgress('update-1', { pending: 2, categories: 0 })
+  h.respond = action => action === 'loans.dueThisMonth'
+    ? { ok: false, error: { code: 'INTERNAL_ERROR', message: '读取失败' } } : undefined
   await page.loadDashboard()
   await Promise.allSettled([page.loadAlerts()])
-  assert.equal(page.data.alertPendingText, '')
-  assert.equal(page.data.alertDueText, '本月待还 ¥1,200.00 · 2 期')
+  assert.equal(page.data.alertImportText, '待核对 2 笔')
+  assert.equal(page.data.alertDueText, '')
 })
 
 test('提醒各自进自己的工作台：待核对去导入工作台，待还去贷款页', async () => {

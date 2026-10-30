@@ -84,6 +84,8 @@ function runtime(data = fixture(), options = {}) {
   const api = { callImport: importCall, callNetwork: call, readSummary: updateId => importCall('financeUpdates.summary', { updateId }),
     command: (action, input) => importCall(action, { ...input }), createRequestId: options.requestId || (() => 'synthetic-request-' + calls.length) }
   const draftService = { lastUpdateId: () => '', rememberLast() {}, forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
+    rememberProgress(updateId, progress) { h.draftProgress = { updateId, pending: progress.pending, categories: progress.categories } },
+    savedProgress: () => h.draftProgress || null, forgetProgress() { h.draftProgress = null },
     open(view) { if (options.localSession) return options.localSession
       if (!session) { session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
       read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId });

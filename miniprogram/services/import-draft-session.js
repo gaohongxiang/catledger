@@ -284,6 +284,8 @@ function clearUpdate(updateId) {
   else wx.removeStorageSync(PREFIX + id)
   sessions.delete(id)
   if (lastUpdateId() === updateId) forgetLast()
+  const progress = readProgress(ownerScope())
+  if (progress && progress.updateId === updateId) forgetProgress()
 }
 function ownerScope() {
   const app = getApp(), uid = app.globalData.uid
@@ -299,6 +301,44 @@ function rememberLast(updateId, scope = ownerScope()) {
 }
 function lastUpdateId() { const scope = ownerScope(); return scope ? wx.getStorageSync(PREFIX + scope + ':last') || '' : '' }
 function forgetLast() { const scope = ownerScope(); if (scope) wx.removeStorageSync(PREFIX + scope + ':last') }
+
+// 首页提醒只认本机草稿的进度：核对与分类的决定在入账前只存在本机，
+// 服务端看到的还是整批未决事件，照它算会把「12 笔待核对」说成 232 笔。
+// 工作台每次应用视图时把两个页签的待办数写在这里，首页同步读取，不联网。
+const PROGRESS_TTL_MS = 24 * 60 * 60 * 1000
+function progressKey(scope) { return PREFIX + scope + ':progress' }
+function readProgress(scope) {
+  if (!scope) return null
+  try {
+    const value = wx.getStorageSync(progressKey(scope))
+    return value && typeof value === 'object' ? value : null
+  } catch (_) { return null }
+}
+function rememberProgress(updateId, progress, scope = ownerScope()) {
+  if (!scope || !updateId) return
+  try {
+    wx.setStorageSync(progressKey(scope), {
+      updateId: String(updateId),
+      pending: Math.max(0, Number(progress && progress.pending) || 0),
+      categories: Math.max(0, Number(progress && progress.categories) || 0),
+      at: Date.now()
+    })
+  } catch (_) {}
+}
+function savedProgress() {
+  const value = readProgress(ownerScope())
+  if (!value || !(Number(value.at) > Date.now() - PROGRESS_TTL_MS)) return null
+  return {
+    updateId: String(value.updateId || ''),
+    pending: Math.max(0, Number(value.pending) || 0),
+    categories: Math.max(0, Number(value.categories) || 0),
+    at: Number(value.at) || 0
+  }
+}
+function forgetProgress(scope = ownerScope()) {
+  if (!scope) return
+  try { wx.removeStorageSync(progressKey(scope)) } catch (_) {}
+}
 
 // 只投影用户已作的决定；金额、退款与重复关系仍以服务端结果为准。
 function project(view, entries) {
@@ -316,4 +356,5 @@ function project(view, entries) {
   })
   return Object.assign({}, view, { issues, events })
 }
-module.exports = { create, open, pauseUpdate, clearUpdate, rememberLast, lastUpdateId, forgetLast, project }
+module.exports = { create, open, pauseUpdate, clearUpdate, rememberLast, lastUpdateId, forgetLast, project,
+  rememberProgress, savedProgress, forgetProgress }

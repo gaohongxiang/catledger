@@ -6,7 +6,7 @@ const profilePresentation = require('../../utils/profile-presentation')
 const observer = require('../../services/read-observer')
 const { addMinor } = require('../../utils/minor-arithmetic')
 const composition = require('./net-worth-composition')
-const importApi = require('../../services/catledger-import')
+const draftSessions = require('../../services/import-draft-session')
 const tabRouter = require('../../shell/router')
 
 const HOME_RECENT_LIMIT = 3
@@ -22,10 +22,14 @@ function asOfLabel(transactions) {
   return matched ? Number(matched[1]) + '月' + Number(matched[2]) + '日' : ''
 }
 
-// 提醒行只在真有事时出现：没有待核对交易、本月没有未结清期次就整行不占位。
-function pendingAlertText(count) {
-  const value = Number(count)
-  return Number.isFinite(value) && value > 0 ? '待核对 ' + value + ' 笔' : ''
+// 提醒行只在真有事时出现：本机草稿没有待核对／待分类、本月也没有未结清期次时，整行不占位。
+// 待核对与待分类取工作台自己写下的进度——核对决定在入账前只在本机，服务端数字不是用户看到的那个。
+function draftAlertText(progress) {
+  if (!progress) return ''
+  const parts = []
+  if (progress.pending > 0) parts.push('待核对 ' + progress.pending + ' 笔')
+  if (progress.categories > 0) parts.push('待分类 ' + progress.categories + ' 笔')
+  return parts.join(' · ')
 }
 
 function dueAlertText(result) {
@@ -78,7 +82,7 @@ function createHomePage(dependencies) {
       assetShares: emptyShares(),
       liabilityShares: emptyShares(),
       asOfText: '',
-      alertPendingText: '',
+      alertImportText: '',
       alertDueText: '',
       trendReady: false,
       trendSparse: false,
@@ -137,7 +141,7 @@ function createHomePage(dependencies) {
         assetShares: emptyShares(),
         liabilityShares: emptyShares(),
         asOfText: '',
-        alertPendingText: '',
+        alertImportText: '',
         alertDueText: '',
         trendReady: false,
         trendSparse: false,
@@ -169,7 +173,8 @@ function createHomePage(dependencies) {
       this.loadAlerts()
     },
 
-    // 两条提醒各自读取、各自失败：一条读不到不影响另一条，也不影响净值卡。
+    // 两条提醒互不牵连：待核对读本机草稿（不联网，读不到就是没有），待还独立读取、
+    // 独立失败，任何一条出问题都不影响另一条，也不影响净值卡。
     loadAlerts: function () {
       if (!app.hasLoginApproval()) return Promise.resolve()
       const self = this
@@ -180,17 +185,12 @@ function createHomePage(dependencies) {
         if (!isCurrent() || self._alertsTicket !== ticket) return
         self.setData({ [key]: value })
       }
-      const pending = importApi.callImport('financeUpdates.pendingCount', {}).then(function (result) {
-        apply('alertPendingText', pendingAlertText(result && result.count))
-      }, function () {
-        apply('alertPendingText', '')
-      })
-      const due = api.callApi('loans.dueThisMonth', { month: time.currentMonth() }).then(function (result) {
+      apply('alertImportText', draftAlertText(draftSessions.savedProgress()))
+      return api.callApi('loans.dueThisMonth', { month: time.currentMonth() }).then(function (result) {
         apply('alertDueText', dueAlertText(result))
       }, function () {
         apply('alertDueText', '')
       })
-      return Promise.all([pending, due])
     },
 
     fetchDashboard: function (month, options) {
@@ -210,7 +210,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertPendingText', 'alertDueText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertImportText', 'alertDueText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }

@@ -775,6 +775,14 @@ module.exports = {
         accountMappingsExcluded: excluded })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
+    // 首页「待核对」读这里：与本页签的待办数同源，入账或放弃时随草稿一起清掉。
+    if (view.update.status === 'review') {
+      const countOf = (tabs, value) => Number(((tabs || []).find(tab => tab.value === value) || {}).count || 0)
+      draftSessions.rememberProgress(view.update.updateId, {
+        pending: countOf(patch.reviewStatusTabs, 'pending'),
+        categories: countOf(patch.categoryStatusTabs, 'pending')
+      })
+    }
     // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     // 入账后只按本批来源找待补分期，其他批次的待补记录不在这里冒充本批成果。
