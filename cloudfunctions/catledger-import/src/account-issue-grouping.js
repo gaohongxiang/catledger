@@ -1,6 +1,17 @@
 const { digestParts } = require('./portable-digest')
 const { groupKey, referenceForRole, mappedAccount } = require('./payment-account-groups')
 
+function countMemberObjects(members) {
+  return new Set(members.map(member => member.objectType + ':' + member.objectId)).size
+}
+
+function canUseExternal(events, members) {
+  const items = members.filter(member => member.memberRole !== 'candidate')
+  const byId = Array.isArray(events) ? new Map(events.map(event => [event.eventId, event])) : events
+  return items.length > 0 && items.every(member => member.objectType === 'event' &&
+    byId.has(member.objectId) && require('./account-reference-decision').supported(byId.get(member.objectId), member.memberRole))
+}
+
 function memberReference(event, member) {
   const sources = event.fieldSources || {}, projection = sources.fundsProjection
   if (sources.bankChannelAccountContexts && sources.bankChannelAccountContexts[member.issueId]) {
@@ -13,15 +24,25 @@ function memberReference(event, member) {
 }
 
 function memberAccount(event, member, reference) {
+  if (event.fieldSources?.accountOwnership) {
+    const side = require('./account-reference-decision').sideFor(event, member.memberRole)
+    if (side) return require('./account-ownership').read(event)[side].accountId
+  }
   if (reference && reference.memberRole) return mappedAccount(event, reference)
   return ['mapping_to', 'payment_target'].includes(member.memberRole) ? event.counterpartyLedgerAccountId : event.ledgerAccountId
+}
+function memberDecision(event, member, reference = memberReference(event, member)) {
+  const side = require('./account-reference-decision').sideFor(event, member.memberRole)
+  if (event.fieldSources?.accountOwnership && side) return require('./account-ownership').read(event)[side]
+  const accountId = memberAccount(event, member, reference)
+  return { kind: accountId ? 'ledger' : 'unknown', accountId: accountId || null }
 }
 
 function referenceGroup(event, member, reference = memberReference(event, member)) {
   const identity = reference && groupKey(reference) ||
     (member.memberRole === 'subject' && event.accountGroupingKey) || event.eventId + ':' + member.memberRole
   // 明确排除的范围不能被同账户的计入选择覆盖；币种也不能在归组时混用。
-  const scope = event.status !== 'excluded' ? 'included'
+  const scope = memberDecision(event, member, reference).kind === 'external' ? 'external' : event.status !== 'excluded' ? 'included'
     : (event.reasonCodes || []).includes('source_account_ignored_default') ? 'ignored' : 'excluded'
   return identity + ':' + (event.currency || 'CNY') + ':' + scope
 }
@@ -61,12 +82,13 @@ function coalesceAccountIssues(events, issues, members, idFactory) {
       emitted.add(key)
       const group = groups.get(key), sourceIds = new Set(group.map(item => item.issue.issueId))
       if (sourceIds.size === 1 && keys.size === 1) {
-        nextIssues.push(issue); nextMembers.push(...membersByIssue.get(issue.issueId))
+        const issueMembers = membersByIssue.get(issue.issueId)
+        nextIssues.push({ ...issue, memberCount: countMemberObjects(issueMembers) }); nextMembers.push(...issueMembers)
         continue
       }
       const uniqueMembers = new Map(group.map(item => [item.member.objectId + ':' + item.member.memberRole, item]))
       const items = [...uniqueMembers.values()]
-      const targets = items.map(item => item.event.status === 'excluded' ? 'ignore'
+      const targets = items.map(item => memberDecision(item.event, item.member, item.reference).kind === 'external' ? 'external' : item.event.status === 'excluded' ? 'ignore'
         : memberAccount(item.event, item.member, item.reference) || null)
       const distinct = new Set(targets.filter(Boolean))
       const resolved = targets.every(Boolean) && distinct.size === 1 && group.every(item => item.issue.status === 'resolved')
@@ -77,7 +99,8 @@ function coalesceAccountIssues(events, issues, members, idFactory) {
       const issueId = idFactory()
       nextIssues.push({ ...issue, issueId, issueKey: digestParts('account-issue-grouping-v1', issue.updateId, key),
         status: resolved ? 'resolved' : 'open', blocking: !resolved, primaryReasonCode: reason,
-        memberCount: items.length, reasonCodes: resolved ? distinct.has('ignore')
+        // 同一交易可同时保留目标映射和付款目标角色，展示笔数不随角色数翻倍。
+        memberCount: countMemberObjects(items.map(item => item.member)), reasonCodes: resolved ? distinct.has('ignore')
           ? [...new Set(group.flatMap(item => item.issue.reasonCodes || []))] : ['account_mapping_confirmed'] : [reason] })
       items.forEach(({ member }, sortOrder) => nextMembers.push({ ...member, issueId, sortOrder }))
     }
@@ -85,4 +108,4 @@ function coalesceAccountIssues(events, issues, members, idFactory) {
   return { issues: nextIssues, members: nextMembers }
 }
 
-module.exports = { memberReference, memberAccount, referenceGroup, coalesceAccountIssues }
+module.exports = { memberReference, memberAccount, memberDecision, referenceGroup, coalesceAccountIssues, countMemberObjects, canUseExternal }

@@ -57,6 +57,9 @@ function publicEvent(row) {
       ...(fieldSources.disbursement.partner ? { partner: fieldSources.disbursement.partner } : {})
     } } : {}),
     sourceDirection: row.sourceDirection || null,
+    ...(fieldSources.accountOwnership || fieldSources.repaymentOwnership ? {
+      accountOwnership: require('./account-ownership').read({ ...row, fieldSources })
+    } : {}),
     fundsProjection: fieldSources.fundsProjection || null,
     ...(repaymentOwnership.bankRepayment({ fieldSources }) || repaymentOwnership.decisionFor({ fieldSources }) ? {
       repaymentOwnership: fieldSources.repaymentOwnership || null,
@@ -89,7 +92,7 @@ function safeIssueSummary(value) {
   return String(value || '')
     .normalize('NFKC')
     .replace(/[\u0000-\u001f\u007f-\u009f]/gu, '')
-    .replace(/\d{8,}/gu, function (digits) { return '****' + digits.slice(-4) })
+    .replace(/\d(?:[ -]*\d){7,}/gu, function (digits) { return '****' + digits.replace(/\D/g, '').slice(-4) })
     .trim()
     .slice(0, 96)
 }
@@ -101,6 +104,10 @@ function publicIssue(row) {
     ? paymentAccountDetails(row.subjectSourceType, row.subjectPaymentMethod)
     : null
   const ledgerAccountReference = subjectFieldSources.ledgerAccountReference || null
+  const domainSubject = { economicNature: row.subjectEconomicNature, sourceDirection: row.subjectSourceDirection,
+    ledgerAccountId: row.subjectLedgerAccountId, counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId,
+    fieldSources: subjectFieldSources }
+  const ownership = require('./account-ownership').read(domainSubject)
   const subjectAccount = ledgerAccountReference
     ? {
         ...ledgerAccountReference,
@@ -138,6 +145,13 @@ function publicIssue(row) {
   const mergedAccount = subjectFieldSources.bankChannelAccountContexts && subjectFieldSources.bankChannelAccountContexts[row.issueId]
   const account = mergedAccount ? { ...mergedAccount, accountId: row.subjectLedgerAccountId || null }
     : groupedAccount || mappingAccount || projectedAccount || subjectAccount
+  if (account && row.issueType === 'account_mapping') {
+    const side = require('./account-reference-decision').sideFor(domainSubject, row.subjectMemberRole || 'subject')
+    if (side && subjectFieldSources.accountOwnership) {
+      account.accountId = ownership[side].accountId
+      account.mappingAction = ownership[side].kind === 'external' ? 'external' : account.accountId ? 'account' : null
+    }
+  }
   let reasonCodes = parseJson(row.reasonCodes, [])
   // 旧账户决定只写在操作记录中；按当前事项取出决定，不能用代表事件的
   // excluded 状态推断整个账户组都被用户排除。只投影原因，不公开操作原文。
@@ -168,6 +182,9 @@ function publicIssue(row) {
       economicNature: row.subjectEconomicNature,
       ledgerAccountId: row.subjectLedgerAccountId || null,
       counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId || null,
+      ...(subjectFieldSources.accountOwnership || subjectFieldSources.repaymentOwnership ? { accountOwnership: require('./account-ownership').read({ economicNature: row.subjectEconomicNature,
+        sourceDirection: row.subjectSourceDirection, ledgerAccountId: row.subjectLedgerAccountId,
+        counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId, fieldSources: subjectFieldSources }) } : {}),
       fundsProjection,
       ...(repaymentOwnership.bankRepayment({ fieldSources: subjectFieldSources }) ? {
         repaymentOwnership: subjectFieldSources.repaymentOwnership || null,
@@ -195,6 +212,9 @@ function publicIssue(row) {
       recognized: Boolean(account.paymentMethodKey) && account.recognized !== false,
       sourceType: account.sourceType || '',
       paymentMethodKey: account.paymentMethodKey || null,
+      bindingKey: account.bindingKey || null, binding: account.binding || null,
+      mappingAction: account.mappingAction || (account.accountId ? 'account' : null),
+      canExternal: row.canExternal === true,
       fundsSide: account.fundsSide || '',
       accountId: account.accountId || null,
       unresolvedReason: account.unresolvedReason || '',

@@ -18,8 +18,6 @@ async function confirmedPrimary(connection, uid, updateId, events, requestedId, 
     [uid, updateId, member.issueId, primary.eventId, member.role])
     if (Number(existing.count)) {
       await connection.execute('DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND member_id = ?', [uid, updateId, member.memberId])
-      await connection.execute(`UPDATE catledger_review_issues SET member_count = member_count - 1, version = version + 1
-        WHERE uid = ? AND update_id = ? AND issue_id = ?`, [uid, updateId, member.issueId])
     } else {
       await connection.execute('DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND member_id = ?', [uid, updateId, member.memberId])
       await connection.execute(`INSERT INTO catledger_review_issue_members
@@ -30,6 +28,10 @@ async function confirmedPrimary(connection, uid, updateId, events, requestedId, 
       if (reference) accountContexts[member.issueId] = { ...reference, fundsSide: 'ordinary' }
     }
   }
+  for (const issueId of new Set(accountMembers.map(member => member.issueId))) await connection.execute(`UPDATE catledger_review_issues i
+    SET member_count=(SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m
+      WHERE m.uid=i.uid AND m.issue_id=i.issue_id),version=version+1 WHERE i.uid=? AND i.update_id=? AND i.issue_id=?`,
+  [uid, updateId, issueId])
   return { ...primary, fieldSources: { ...primary.fieldSources, bankChannelAccountContexts: accountContexts } }
 }
 

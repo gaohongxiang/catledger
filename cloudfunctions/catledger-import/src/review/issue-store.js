@@ -176,7 +176,7 @@ async function collapseInstallmentIssues(connection, uid, updateId, actionId = n
         WHERE uid = ? AND update_id = ? AND issue_id = ? AND object_type = 'event' AND member_role <> 'candidate'`,
       [uid, updateId, drop])
       await connection.execute(`UPDATE catledger_review_issues SET status = 'superseded', blocking = 0, version = version + 1,
-        resolved_action_id = ?, member_count = (SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid = ? AND m.issue_id = ?)
+        resolved_action_id = ?, member_count = (SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m WHERE m.uid = ? AND m.issue_id = ?)
         WHERE uid = ? AND update_id = ? AND issue_id = ? AND status = 'open'`,
       [actionId, uid, drop, uid, updateId, drop])
     }
@@ -187,7 +187,7 @@ async function collapseInstallmentIssues(connection, uid, updateId, actionId = n
       (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order) VALUES`,
     pending.map((member, index) => [uid, randomUUID(), updateId, keep, 'event', member.eventId, member.version, 'subject', index]))
     await connection.execute(`UPDATE catledger_review_issues SET version = version + 1, blocking = 1,
-      member_count = (SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid = ? AND m.issue_id = ?)
+      member_count = (SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m WHERE m.uid = ? AND m.issue_id = ?)
       WHERE uid = ? AND update_id = ? AND issue_id = ? AND status = 'open'`,
     [uid, keep, uid, updateId, keep])
     touched++
@@ -284,7 +284,7 @@ async function releaseInstallmentGroup(connection, uid, updateId, issueIds, acti
     await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND issue_id=?
       AND object_type='event' AND member_role<>'candidate'`, [uid, updateId, issueId])
     await connection.execute(`UPDATE catledger_review_issues SET version=version+1, status='resolved', blocking=0,
-      resolved_action_id=?, member_count=(SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid=? AND m.issue_id=?)
+      resolved_action_id=?, member_count=(SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m WHERE m.uid=? AND m.issue_id=?)
       WHERE uid=? AND update_id=? AND issue_id=?`, [actionId, uid, issueId, uid, updateId, issueId])
   }
 }
@@ -315,7 +315,7 @@ async function refreshEditedEventsIssues(connection, uid, updateId, events, acti
     `DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND member_id IN (${part.map(()=>'?').join(',')})`,[uid,updateId,...part.flat()])
   const touched=[...new Set(removable.map(row=>row.issueId))]
   for (const part of chunks(touched.map(id=>[id]))) await connection.execute(`UPDATE catledger_review_issues i SET
-    member_count=(SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid=i.uid AND m.issue_id=i.issue_id),
+    member_count=(SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m WHERE m.uid=i.uid AND m.issue_id=i.issue_id),
     version=version+1,status=IF(NOT EXISTS (SELECT 1 FROM catledger_review_issue_members m WHERE m.uid=i.uid AND m.issue_id=i.issue_id
       AND m.object_type='event' AND m.member_role<>'candidate'),'resolved',status),
     blocking=IF(status='resolved',0,blocking),resolved_action_id=IF(status='resolved',?,resolved_action_id)

@@ -22,15 +22,6 @@
       </view>
       <text class="editor-summary-time">{{editor.summaryTime || '时间待补充'}}</text>
       <text wx:if="{{editor.fieldErrors.amountInput}}" class="editor-field-error">{{editor.fieldErrors.amountInput}}</text>
-      <view wx:if="{{editor.showOwnership}}" class="repayment-ownership">
-        <button wx:if="{{canEdit && editor.supported && !editor.repaymentChannel}}" class="repayment-mode-row" data-field="owner" data-value="{{draft.owner === 'other' ? 'self' : 'other'}}" bindtap="changeEditorMode" disabled="{{disabled || draft.composition === 'repayment'}}"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text></button>
-        <view wx:else class="repayment-mode-row"><text class="repayment-mode-label">还款归属</text><text class="repayment-mode-value">{{draft.owner === 'other' ? '替他人还款' : '为自己还款'}}</text></view>
-        <view wx:if="{{editor.other}}" class="ownership-treatment">
-          <text class="mapping-label">这笔钱是否需要收回？</text>
-          <button class="ownership-option {{draft.otherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="expense" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
-          <button class="ownership-option {{draft.otherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-field="otherTreatment" data-value="pending" bindtap="changeEditorMode" disabled="{{disabled || !canEdit}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
-        </view>
-      </view>
     </view>
   </view>
   <!-- 账户紧随摘要单独成组：不同性质对应不同数量和类型的账户，任何性质都不并进摘要行。 -->
@@ -44,7 +35,11 @@
           <text class="funds-endpoint-label">{{endpoint.label}}<text wx:if="{{endpoint.required}}" class="funds-endpoint-required"> · 必选</text></text>
           <button wx:if="{{endpoint.open && canEdit}}" class="funds-add" data-endpoint="{{endpoint.key}}" bindtap="addFundsAccount" disabled="{{disabled || !endpoint.addable}}" aria-label="添加{{endpoint.label}}">＋ 添加</button>
         </view>
-        <block wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex">
+        <view wx:if="{{endpoint.ownershipField}}" class="editor-mode-choices">
+          <button wx:for="{{endpoint.ownershipOptions}}" wx:key="value" class="{{endpoint.ownershipKind === item.value ? 'editor-mode-selected' : ''}}" data-field="{{endpoint.ownershipField}}" data-value="{{item.value}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit || !editor.supported}}" aria-role="radio" aria-checked="{{endpoint.ownershipKind === item.value}}">{{item.label}}</button>
+        </view>
+        <text wx:if="{{endpoint.ownershipKind === 'external'}}" class="sheet-copy funds-note">不属于本账本，不创建账户。</text>
+        <block wx:if="{{endpoint.ownershipKind !== 'external'}}" wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex">
           <!-- 单账户整行是一个按钮：名称、行尾箭头和左侧留白都能点开目录。 -->
           <button wx:if="{{!endpoint.split && canEdit && editor.supported && !account.readonly}}" class="funds-account-row is-action {{endpoint.required ? 'is-required' : ''}}" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
             <text class="funds-account-name {{account.accountId ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
@@ -61,7 +56,11 @@
           </view>
         </block>
       </block>
-      <text wx:if="{{editor.splitRepayment}}" class="sheet-copy funds-note">多个还入账户只用于本人负债；替他人还款请只留一个还入账户。</text>
+      <text wx:if="{{editor.splitRepayment}}" class="sheet-copy funds-note">多个还入账户只用于账本内的负债账户。</text>
+      <view wx:if="{{editor.bothExternal}}" class="ownership-treatment">
+        <button class="ownership-option {{draft.noLedgerImpact ? 'ownership-option-selected' : ''}}" data-field="noLedgerImpact" data-value="{{!draft.noLedgerImpact}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit || !editor.supported}}" aria-role="checkbox" aria-checked="{{draft.noLedgerImpact}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">确认对本账本无影响</text><text class="ownership-treatment-detail">两端均在账本外，保留来源，不生成账目</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+      </view>
+      <text wx:if="{{editor.ownershipEffect}}" class="sheet-copy funds-note">{{editor.ownershipEffect}}</text>
     </view>
   </view>
   <!-- 借款与分期登记共用计划区；登记没有资金流水，暂不关联时继续待核对。 -->

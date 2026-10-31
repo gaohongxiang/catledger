@@ -64,7 +64,8 @@ test('分期登记只给信用卡与计划，unknown 不提示修改性质，也
   assert.deepEqual(view.missing, ['分期计划'])
   assert.match(view.disbursementPlan.effectText, /不生成资金流水/)
   for (const [key, value] of Object.entries({ economicNature: 'income', counterpartyLedgerAccountId: 'other', categoryId: 'category',
-    amountInput: '1', composition: 'payment', owner: 'other', note: '不应写入' })) {
+    amountInput: '1', composition: 'payment', owner: 'other', sourceKind: 'external', destinationKind: 'external',
+    noLedgerImpact: true, note: '不应写入' })) {
     assert.equal(model.change(item, draft, key, value), draft, key)
   }
 })
@@ -150,11 +151,16 @@ test('真实 Page 的分期登记拦住旧性质、资金两端、分类和备�
   assert.equal(editor.view(page).registration, true)
   page.openNatureSheet()
   assert.equal(page.data.reviewEditSheet.natureOpen, false)
+  const ownershipBefore = [editor.draft(page).sourceKind, editor.draft(page).destinationKind, editor.draft(page).noLedgerImpact]
   editor.nature(page, 'income')
   editor.mode(page, 'owner', 'other')
+  editor.mode(page, 'sourceKind', 'external')
+  editor.mode(page, 'destinationKind', 'external')
+  editor.mode(page, 'noLedgerImpact', true)
   editor.edit(page, 'note', '不应写入')
   assert.equal(editor.draft(page).economicNature, 'unknown')
-  assert.equal(editor.draft(page).owner, 'self')
+  assert.equal(editor.draft(page).owner, undefined)
+  assert.deepEqual([editor.draft(page).sourceKind, editor.draft(page).destinationKind, editor.draft(page).noLedgerImpact], ownershipBefore)
   assert.equal(editor.draft(page).note, '')
   assert.equal(page.reviewEditorDirectory('editorCategory'), null)
   assert.equal(page.reviewEditorDirectory('reviewCounterparty'), null)

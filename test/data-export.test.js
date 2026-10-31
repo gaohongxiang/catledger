@@ -17,7 +17,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const services=localServices({apiPool,importPool,subject:'synthetic-export'}),api=(a,d)=>call(services.api,a,d),imp=(a,d)=>call(services.import,a,d)
   const user=await api('bootstrap'),uid=user.uid,categoryId=user.categories.find(c=>c.kind==='expense').id
   const account=async(type,amount,name,settings={})=>(await api('accounts.create',{requestId:randomUUID(),type,name,openingDisplayBalanceMinor:amount,occurredLocalAt:'2026-09-01T00:00:00',timezoneOffsetMinutes:-480,...settings})).accountId
-  const asset=await account('bank','100000','合成资产'),debt=await account('credit','10000','合成负债',{statementDay:25,repaymentDay:10,creditLimitMinor:'200000'})
+  const asset=await account('wallet','100000','合成微信零钱'),debt=await account('credit','10000','合成负债',{statementDay:25,repaymentDay:10,creditLimitMinor:'200000'})
   const {loanId}=await api('loans.create',{requestId:randomUUID(),accountId:debt,name:'合成贷款',kind:'borrowing',baselinePrincipalMinor:'10000',baselineDate:'2026-09-01'})
   const period=await api('loans.savePeriod',{requestId:randomUUID(),loanId,loanVersion:1,periodNumber:1,dueDate:'2026-09-20',principalMinor:'1000',interestMinor:'100',feeMinor:'0'})
   const payment=await api('loans.record',{requestId:randomUUID(),mode:'new',kind:'repayment',assetAccountId:asset,totalMinor:'1100',occurredLocalAt:'2026-09-02T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,
@@ -98,7 +98,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,35);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,38);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{

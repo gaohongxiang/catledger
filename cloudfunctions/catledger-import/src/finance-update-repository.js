@@ -200,6 +200,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
     `SELECT r.row_id AS rowId, r.batch_id AS batchId, s.import_id AS importId,
             s.source_order AS sourceOrder, s.source_type_snapshot AS sourceType,
             s.source_profile_id AS sourceProfileId,
+            profile.profile_key AS sourceProfileKey,
             s.source_format_snapshot AS sourceFormat,
             r.source_row_number AS rowNumber, r.parse_state AS parseState,
             r.identity_id AS identityId, r.identity_state AS identityState,
@@ -229,6 +230,8 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
        JOIN catledger_import_rows r
          ON r.uid = s.uid AND r.batch_id = s.batch_id
        JOIN catledger_import_batches batch ON batch.uid = r.uid AND batch.batch_id = r.batch_id
+       LEFT JOIN catledger_import_source_profiles profile
+         ON profile.uid = s.uid AND profile.source_profile_id = s.source_profile_id
        LEFT JOIN catledger_import_account_mappings m
          ON m.uid = r.uid AND m.source_type = s.source_type_snapshot
         AND m.payment_method_key = r.payment_method_key AND m.disabled_at IS NULL
@@ -287,7 +290,9 @@ async function selectPaymentMappings(connection, uid, updateId) {
             mapping.payment_method_hint AS paymentMethodHint,
             mapping.mapping_action AS mappingAction,
             mapping.account_id AS accountId,
+            mapping.binding_json AS binding,
             account.type AS accountType,
+            account.currency AS accountCurrency, account.archived_at AS accountArchivedAt,
             'history' AS mappingScope
        FROM catledger_import_account_mappings mapping
        LEFT JOIN catledger_accounts account
@@ -297,13 +302,18 @@ async function selectPaymentMappings(connection, uid, updateId) {
   )
   const [drafts] = await connection.execute(
     `SELECT draft.source_type AS sourceType,
+            draft.event_id AS eventId, JSON_EXTRACT(event.field_sources_json, '$.rowIds') AS rowIds,
             draft.payment_method_key AS paymentMethodKey,
             draft.payment_method_hint AS paymentMethodHint,
             draft.mapping_action AS mappingAction,
             draft.account_id AS accountId,
+            draft.binding_json AS binding,
             COALESCE(account.type, draft_account.type) AS accountType,
+            COALESCE(account.currency, draft_account.currency) AS accountCurrency,
+            account.archived_at AS accountArchivedAt, draft_account.superseded_at AS accountSupersededAt,
             'batch' AS mappingScope
        FROM catledger_finance_update_account_mapping_drafts draft
+       JOIN catledger_economic_events event ON event.uid = draft.uid AND event.event_id = draft.event_id
        LEFT JOIN catledger_accounts account
          ON account.uid = draft.uid AND account.account_id = draft.account_id
        LEFT JOIN catledger_finance_update_account_drafts draft_account
@@ -313,50 +323,51 @@ async function selectPaymentMappings(connection, uid, updateId) {
       ORDER BY draft.created_at, draft.draft_mapping_id`,
     [uid, updateId]
   )
-  // 旧证据引用键不重写。规范别名只作低一档的兼容回退，直接决定仍优先；
-  // 同级别名冲突交给领域索引处理，不能依赖行序选中某个旧账户。
-  const withAliases = mappings => mappings.flatMap(mapping => {
-    const canonicalKey = buildPaymentMethodKey(mapping.sourceType, mapping.paymentMethodHint)
-    if (!canonicalKey || canonicalKey === mapping.paymentMethodKey) return [mapping]
-    return [mapping, { ...mapping, paymentMethodKey: canonicalKey, mappingScope: mapping.mappingScope + '_alias' }]
-  })
-  return withAliases(saved).concat(withAliases(drafts))
+  return saved.concat(drafts).map(mapping => ({ ...mapping,
+    binding: parseJson(mapping.binding, null), rowIds: parseJson(mapping.rowIds, []) }))
 }
 
 async function selectDraftPaymentMappings(connection, uid, updateId) {
   const [rows] = await connection.execute(
-    `SELECT source_type AS sourceType, payment_method_key AS paymentMethodKey,
-            payment_method_hint AS paymentMethodHint,
-            mapping_action AS mappingAction, account_id AS accountId
-       FROM catledger_finance_update_account_mapping_drafts
-      WHERE uid = ? AND update_id = ?
-      ORDER BY updated_at, draft_mapping_id`,
+    `SELECT draft.source_type AS sourceType, draft.payment_method_key AS paymentMethodKey,
+            draft.payment_method_hint AS paymentMethodHint, draft.event_id AS eventId,
+            draft.mapping_action AS mappingAction, draft.account_id AS accountId, draft.binding_json AS binding,
+            JSON_EXTRACT(event.field_sources_json, '$.rowIds') AS rowIds
+       FROM catledger_finance_update_account_mapping_drafts draft
+       JOIN catledger_economic_events event ON event.uid = draft.uid AND event.event_id = draft.event_id
+      WHERE draft.uid = ? AND draft.update_id = ?
+      ORDER BY draft.updated_at, draft.draft_mapping_id`,
     [uid, updateId]
   )
-  const byKey = new Map()
-  rows.forEach((mapping) => {
-    byKey.set(paymentReferenceKey(mapping), mapping)
-  })
-  return [...byKey.values()]
+  return rows.map(mapping => ({ ...mapping, binding: parseJson(mapping.binding, null), rowIds: parseJson(mapping.rowIds, []) }))
 }
 
 async function restoreDraftPaymentMappings(connection, uid, updateId, events, mappings, actionId) {
   if (!mappings.length || !events.length) return
-  const byKey = new Map(mappings.map((mapping) => [
-    paymentReferenceKey(mapping),
-    mapping
-  ]))
+  const drafts = require('./account-draft-binding')
+  const index = drafts.lookup(mappings)
   function* mappingRows() {
     for (const event of events) {
       const projection = event.fieldSources && event.fieldSources.fundsProjection
       // 组合付款没有单一付款方式键，恢复只能按成分引用逐条来，否则重新整理后
       // 每个成分的账户选择都会丢。
       const references = [
-        { sourceType: event.sourceType, paymentMethodKey: event.paymentMethodKey, label: '' },
+        event.fieldSources && event.fieldSources.ledgerAccountReference,
         ...(event.fieldSources && event.fieldSources.paymentAccountReferences || []),
         projection && projection.from,
-        projection && projection.to
+        projection && projection.to,
+        ...Object.values(event.fieldSources?.bankChannelAccountContexts || {}),
+        event.fieldSources?.repaymentChannelResolution?.platformTargetReference
       ].filter(Boolean)
+      const candidates = drafts.forMembers(index, event.fieldSources?.rowIds || [], references, event.eventId)
+      const byKey = new Map()
+      for (const mapping of candidates) {
+        const key = paymentReferenceKey(mapping), previous = byKey.get(key)
+        if (previous && (previous.mappingAction !== mapping.mappingAction || previous.accountId !== mapping.accountId)) {
+          throw importError('CONFLICT')
+        }
+        byKey.set(key, mapping)
+      }
       const restoredKeys = new Set()
       for (const reference of references) {
         if (!reference.sourceType || !reference.paymentMethodKey) continue
@@ -365,16 +376,12 @@ async function restoreDraftPaymentMappings(connection, uid, updateId, events, ma
         const mapping = byKey.get(key)
         if (!mapping) continue
         restoredKeys.add(key)
-        yield [uid, randomUUID(), updateId, event.eventId, mapping.sourceType,
-            mapping.paymentMethodKey,
-            String(mapping.paymentMethodHint || reference.label || '').slice(0, 128),
-            mapping.mappingAction, mapping.accountId || null, actionId]
+        yield require('./review/account-binding-store').mappingRow(uid, updateId, event.eventId, reference,
+          mapping.accountId, actionId, mapping.mappingAction)
       }
     }
   }
-  await insertMany(connection, `INSERT INTO catledger_finance_update_account_mapping_drafts
-    (uid, draft_mapping_id, update_id, event_id, source_type,
-     payment_method_key, payment_method_hint, mapping_action, account_id, action_id) VALUES`, mappingRows())
+  await require('./review/account-binding-store').saveMappings(connection, mappingRows())
 }
 
 async function deleteDraftPlan(connection, uid, updateId) {
@@ -581,6 +588,7 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
             source.source_type_snapshot AS subjectSourceType,
             COALESCE(source_file.display_name, source.file_name_snapshot) AS subjectFileName,
             source_row.payment_method_raw AS subjectPaymentMethod,
+            source_row.normalized_direction AS subjectSourceDirection,
             source_row.status_raw AS subjectRawStatus,
             source_row.item_raw AS subjectItem,
             source_row.counterparty_raw AS subjectCounterparty
@@ -631,6 +639,20 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
     }
     for (const row of rows) row.subjectEventIds=byIssue.get(row.issueId)
   }
+  // 账户选择作用于整组；只看代表记录会误放行含分期、组合或渠道成员的组。
+  const accountRows = rows.filter(row => row.issueType === 'account_mapping')
+  const supported = new Map(accountRows.map(row => [row.issueId, []]))
+  for (const part of require('./sql-batch').chunks(accountRows.map(row => [row.issueId]))) {
+    const [members] = await connection.execute(`SELECT m.issue_id AS issueId,m.member_role AS memberRole,
+      e.economic_nature AS economicNature,e.field_sources_json AS fieldSources
+      FROM catledger_review_issue_members m JOIN catledger_economic_events e
+        ON e.uid=m.uid AND e.update_id=m.update_id AND e.event_id=m.object_id
+      WHERE m.uid=? AND m.update_id=? AND m.object_type='event' AND m.member_role<>'candidate'
+        AND m.issue_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
+    for (const member of members) supported.get(member.issueId).push(require('./account-reference-decision').supported(
+      { economicNature: member.economicNature, fieldSources: parseJson(member.fieldSources, {}) }, member.memberRole))
+  }
+  for (const row of accountRows) row.canExternal = supported.get(row.issueId).length > 0 && supported.get(row.issueId).every(Boolean)
   return rows.map(publicIssue)
 }
 

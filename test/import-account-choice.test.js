@@ -64,6 +64,59 @@ test('刷新未知来源时保留服务端已经确认的人工归属', () => {
   assert.equal(state.summary.invalid, 0)
 })
 
+test('账户步骤账本外归属与整批排除独立，确认后仍在账户列表回显', async t => {
+  const issue = { ...unknownIssue(), version: 1, subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
+  issue.accountContext.fundsSide = 'payment_target'
+  const page = pageFor(issue)
+  t.after(() => page.onUnload())
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+  assert.equal(page.data.accountChoiceSheet.canExternal, true)
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  const mapping = page.refreshAccountMappings().mappings[0]
+  assert.equal(mapping.choiceValue, 'external')
+  assert.equal(mapping.canConfirm, true)
+  assert.deepEqual(editor.plain(page.accountMappingDecision(mapping)), { issueId: issue.issueId, issueVersion: 1,
+    operation: 'resolve', decision: 'apply_fields', paymentRuleAction: 'external', fields: {} })
+  await page.completeAccountMapping({ currentTarget: { dataset: { id: issue.issueId } } })
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+  assert.equal(page.data.accountMappingsIncluded[0].choiceValue, 'external')
+  assert.equal(page.data.accountMappingsIncluded[0].needsConfirmation, false)
+  const resolved = { ...issue, status: 'resolved', accountContext: { ...issue.accountContext, mappingAction: 'external' } }
+  const reopened = pageFor(resolved)
+  t.after(() => reopened.onUnload())
+  const refreshed = reopened.refreshAccountMappings()
+  assert.equal(refreshed.mappings[0].choiceValue, 'external')
+  assert.equal(refreshed.summary.confirmed, 1)
+})
+
+test('组合、借款、分期及已合并渠道不开放账户外部选择，也不接受迟到选择', async t => {
+  const cases = [
+    { side: 'payment_component_0' },
+    { row: { economicNature: 'borrow' } },
+    { row: { economicNature: 'refund' } },
+    { row: { installment: { creditStatement: true, component: 'principal' } } },
+    { row: { disbursement: { role: 'registration' } } },
+    { row: { paymentResolution: { allocations: [] } } },
+    { row: { repaymentAllocations: [{ accountId: 'synthetic-debt' }] } },
+    { row: { repaymentChannel: { targetAccountId: 'synthetic-debt' } } },
+    { row: { fieldSources: { bankChannelResolution: {} } } },
+    { row: { editorFacts: { incompleteComposition: { parts: [] } } } },
+    { context: { canExternal: false } }
+  ]
+  for (const item of cases) {
+    const issue = { ...unknownIssue(), subject: { eventId: 'synthetic-event', economicNature: 'repayment', ...item.row } }
+    issue.accountContext = { ...issue.accountContext, fundsSide: item.side || 'payment_target', ...item.context }
+    const page = pageFor(issue)
+    t.after(() => page.onUnload())
+    page.refreshAccountMappings()
+    await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+    assert.equal(page.data.accountChoiceSheet.canExternal, false)
+    page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+    assert.equal(page._accountUiDrafts.get(issue.issueId).mode, 'pending')
+  }
+})
+
 test('稳定识别的微信零钱仍可推荐唯一已有账户', () => {
   const issue = unknownIssue()
   issue.accountContext = { recognized: true, sourceType: 'wechat', label: '微信零钱', currency: 'CNY' }

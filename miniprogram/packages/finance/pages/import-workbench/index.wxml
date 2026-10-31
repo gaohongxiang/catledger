@@ -575,8 +575,14 @@
       </view>
 
       <view class="account-choice-section account-choice-ignore-section">
-        <text class="account-choice-section-title">不计入</text>
+        <text class="account-choice-section-title">其他处理</text>
         <view class="account-choice-ignore-grid">
+          <button wx:if="{{accountChoiceSheet.canExternal}}" class="account-choice-ignore-card {{accountChoiceSheet.selectedValue === 'external' ? 'account-choice-selected' : ''}}" data-value="external" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === 'external'}}">
+            <view class="account-choice-ignore-content">
+              <text class="account-choice-ignore-title">账本外账户</text>
+              <text class="account-choice-ignore-copy">确认归属，按资金两端判断收支</text>
+            </view>
+          </button>
           <button class="account-choice-ignore-card {{accountChoiceSheet.selectedValue === 'ignore' ? 'account-choice-selected' : ''}}" data-value="ignore" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === 'ignore'}}">
             <view class="account-choice-ignore-icon account-choice-ignore-once"></view>
             <view class="account-choice-ignore-content">

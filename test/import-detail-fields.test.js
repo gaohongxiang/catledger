@@ -134,14 +134,14 @@ test('详情补充 SQL 只有受用户/批次约束的读取，保留真实关�
 })
 
 test('未知改还款只收集两端；空端待核对，同账户与停用端不能当有效资金', async t => {
-  const { page } = await editor.open(t, { ...row('unknown'), categoryId: null }, { accounts: [bank, credit] })
+  const { page, row: original } = await editor.open(t, { ...row('unknown'), categoryId: null }, { accounts: [bank, credit] })
   editor.nature(page, 'repayment')
   assert.ok(editor.view(page).missing.includes('付款账户'))
   assert.equal(editor.select(page, 'reviewCounterparty', credit), false, '资金端不能使用负债')
   assert.equal(editor.select(page, 'reviewCounterparty', { ...bank, archivedAt: '2026-01-01' }), false)
   assert.equal(editor.select(page, 'reviewCounterparty', bank), true)
   assert.equal(editor.view(page).errors.length, 0)
-  const posted = transactionDrafts({ ...row('repayment'), ...editor.view(page).payload.fields })[0]
+  const posted = transactionDrafts(policy.prepare(original, editor.view(page).payload))[0]
   assert.equal(posted.sourceAccountId, bank.accountId); assert.equal(posted.destinationAccountId, credit.accountId)
 })
 
@@ -171,7 +171,7 @@ for (const sourceDirection of ['income', 'expense']) for (const nature of ['repa
       repayment: ['付款账户','还入账户'], borrow: ['借款负债账户','到账账户'], internal_transfer: ['转出账户','转入账户']
     }[nature])
     assert.equal(editor.select(page, 'reviewCounterparty', other), true)
-    const posted = transactionDrafts({ ...original, ...editor.view(page).payload.fields })[0]
+    const posted = transactionDrafts(policy.prepare(original, editor.view(page).payload))[0]
     assert.equal(posted.sourceAccountId, from.accountId); assert.equal(posted.destinationAccountId, to.accountId)
     assert.equal(JSON.stringify(original), before)
     editor.nature(page, 'unknown'); editor.nature(page, nature)
@@ -286,15 +286,14 @@ test('真实 Page 保留空与明确零的区别，原始凭据不被空备注�
   }
 })
 
-test('代还待处理显示同一缺口；返回本人恢复账户并重验类型', async t => {
+test('外部还入端不再询问是否收回；返回账本账户重验类型', async t => {
   const { page } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: bank.accountId }, { accounts: [bank, credit] })
-  assert.equal(editor.draft(page).owner, 'self')
-  editor.mode(page, 'owner', 'other')
-  assert.ok(editor.view(page).missing.includes('代还处理方式'))
-  editor.mode(page, 'otherTreatment', 'pending')
-  assert.equal(editor.view(page).payload.decisions.ownership.treatment, 'pending')
-  assert.equal(editor.view(page).complete, false)
-  editor.mode(page, 'owner', 'self')
+  assert.equal(editor.draft(page).destinationKind, 'unknown')
+  editor.mode(page, 'destinationKind', 'external')
+  assert.equal(editor.view(page).payload.decisions.accountOwnership.destination.kind, 'external')
+  assert.equal(editor.view(page).categoryKind, 'expense')
+  assert.equal(editor.view(page).complete, true)
+  editor.mode(page, 'destinationKind', 'ledger')
   assert.equal(editor.select(page, 'reviewCounterparty', bank), false)
   assert.equal(editor.select(page, 'reviewCounterparty', credit), true)
 })

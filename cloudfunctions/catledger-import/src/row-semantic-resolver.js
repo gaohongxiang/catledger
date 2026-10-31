@@ -1,6 +1,7 @@
 const { paymentAccountDetails, paymentComponents } = require('./payment-account')
 const { ledgerAccountReference } = require('./account-reference')
 const { profileForRow } = require('./profiles/index')
+const { scopeSemantic } = require('./account-binding')
 
 const { RESOLUTION_STATUS, MONEY_EFFECT, SOURCE_ACTION } = require('./semantic-types')
 const { mergeRuleOutputs } = require('./rule-evaluator')
@@ -246,9 +247,9 @@ function getRowSemantic(row = {}) {
   const profile = profileForRow(row)
   if (row.semantic && profile && row.semantic.policyVersion === profile.policyVersion &&
       row.semantic.profileId === profile.profileId && row.semantic.profileVersion === profile.profileVersion) {
-    return row.semantic
+    return scopeSemantic(row.semantic, row)
   }
-  return resolveRowSemantic(row)
+  return scopeSemantic(resolveRowSemantic(row), row)
 }
 
 module.exports = {

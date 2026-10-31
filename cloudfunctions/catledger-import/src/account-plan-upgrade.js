@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto')
 const { digestParts } = require('./digest')
 const { PLAN_VERSION, REVIEW_ISSUE_VERSION } = require('./domain-versions')
-const { memberReference, memberAccount, referenceGroup } = require('./account-issue-grouping')
+const { memberReference, memberAccount, memberDecision, referenceGroup, countMemberObjects } = require('./account-issue-grouping')
 const { chunks } = require('./sql-batch')
 const { FIELD_MASK } = require('./manual-field-mask')
 
@@ -54,6 +54,7 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
   for (const [key, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
     if (!group.some(item => affected.has(item.issue.issueId))) continue
     const targets = group.map(({ event, member, reference }) => {
+      if (memberDecision(event, member, reference).kind === 'external') return 'external'
       if (event.status === 'excluded' && event.reasonCodes.some(reason => ['source_account_ignored_default', 'account_mapping_excluded'].includes(reason))) return 'ignore'
       const accountId = memberAccount(event, member, reference)
       if (accountId) return 'account:' + accountId
@@ -65,6 +66,7 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
     const reason = resolved ? ignored ? 'payment_reference_ignored_by_history' : 'account_mapping_confirmed'
       : distinct.size > 1 ? 'account_mapping_conflict' : 'payment_reference_mapping_required'
     const issueId = idFactory(), uniqueMembers = new Map()
+    const predecessorIds = [...new Set(group.map(item => item.issue.issueId))].sort()
     for (const item of group) uniqueMembers.set(item.event.eventId + ':' + item.member.memberRole, item)
     // 银行与平台确认同笔后，银行引用按旧事项保存；新事项必须继续指向该引用，
     // 不能退回主事件的平台别名。保留旧键供历史与拆分恢复使用。
@@ -75,9 +77,11 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
         { eventId: event.eventId, version: event.version, contexts: { ...contexts } })
       contextUpdates.get(event.eventId).contexts[issueId] = reference
     }
-    nextIssues.push({ issueId, updateId, issueKey: digestParts('account-plan-upgrade-v1', PLAN_VERSION, updateId, key),
+    // 历史事项的唯一键不随 superseded 释放；把本次承接的事项加入身份，反复升级仍保留旧记录。
+    nextIssues.push({ issueId, updateId, issueKey: digestParts('account-plan-upgrade-v2', PLAN_VERSION, updateId, key, ...predecessorIds),
       issueKeyVersion: REVIEW_ISSUE_VERSION, issueType: 'account_mapping', status: resolved ? 'resolved' : 'open',
-      version: 1, blocking: !resolved, primaryReasonCode: reason, memberCount: uniqueMembers.size, candidateCount: 0,
+      version: 1, blocking: !resolved, primaryReasonCode: reason,
+      memberCount: countMemberObjects([...uniqueMembers.values()].map(item => item.member)), candidateCount: 0,
       ruleVersion: REVIEW_ISSUE_VERSION, reasonCodes: ignored ? ['source_account_ignored_default'] : [reason] })
     let sortOrder = 0
     for (const { event, member } of [...uniqueMembers.values()].sort((a, b) =>
@@ -88,7 +92,7 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
     // 迁移关系只承接本批已保存的人工选择，不会把旧快照里的自动排除变成决定。
     // local_v3 的明确选择尚未同步到服务端；即使服务端释放了历史忽略，也要让
     // 本机按完整成员和来源范围保留这次选择，没有本机决定的组则保持待确认。
-    for (const fromIssueId of [...new Set(group.map(item => item.issue.issueId))].sort()) accountIssueMappings.push({ fromIssueId, toIssueId: issueId })
+    for (const fromIssueId of predecessorIds) accountIssueMappings.push({ fromIssueId, toIssueId: issueId })
   }
   for (const member of nextMembers) if (contextUpdates.has(member.objectId)) member.objectVersion++
   return { issues: nextIssues, members: nextMembers, supersededIssueIds: [...affected].sort(), accountIssueMappings,

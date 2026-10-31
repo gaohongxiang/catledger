@@ -23,7 +23,10 @@ async function facts({ count = 3, content, mapped = true, accounts: suppliedAcco
     paymentMethod: row.raw.paymentMethod, rawStatus: row.raw.status, rawTransactionType: row.raw.transactionType, semantic: row.semantic,
     sourceTransactionId: row.identifiers.transactionId, sourceOrderId: row.identifiers.orderId,
     sourceMerchantOrderId: row.identifiers.merchantOrderId })))
-  const plan = buildOrganizePlan({ updateId, rows, accounts: mapped ? accounts : [], paymentMappings })
+  const confirmed = require('./account-bindings')
+  paymentMappings = (mapped ? confirmed.confirmedNamedAccounts(rows, accounts) : [])
+    .concat(confirmed.confirmedBatchMappings(rows, paymentMappings))
+  const plan = buildOrganizePlan({ updateId, rows, accounts, paymentMappings })
   const { publicIssue } = require('../../cloudfunctions/catledger-import/src/review-presentation')
   const eventById = new Map(plan.events.map(event => [event.eventId, event]))
   const rowById = new Map(rows.map(row => [row.rowId, row]))

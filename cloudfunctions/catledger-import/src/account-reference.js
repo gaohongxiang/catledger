@@ -1,4 +1,5 @@
 const { buildPaymentMethodKey } = require('./identity')
+const { fullAccountNumber } = require('./account-binding')
 const {
   ACCOUNT_REFERENCE_KIND,
   accountGroupingKey,
@@ -13,7 +14,7 @@ function clean(value) {
 
 function hasStableCardLocator(value) {
   const text = clean(value)
-  return /(?:尾号|末四位|后四位|[*＊xX]{2,})\s*\(?\d{4}\)?/u.test(text) ||
+  return Boolean(fullAccountNumber('bank', text)) || /(?:尾号|末四位|后四位|[*＊xX]{2,})\s*\(?\d{4}\)?/u.test(text) ||
     /(?:银行|信用卡|贷记卡|储蓄卡|借记卡)\s*\(\d{4}\)/u.test(text)
 }
 
@@ -96,7 +97,7 @@ function repaymentTargetReference(sourceType, value) {
 
 function sameReference(left, right) {
   return Boolean(left && right && left.sourceType === right.sourceType &&
-    left.paymentMethodKey === right.paymentMethodKey)
+    (left.bindingKey || left.paymentMethodKey) === (right.bindingKey || right.paymentMethodKey))
 }
 
 function firstAccountOtherThan(excluded, ...references) {

@@ -1,4 +1,5 @@
 // 展示已知事实和待补项，不猜交易性质、不创建账目或贷款计划。
+const accountOwnership = require('../../domain/import-review/account-ownership')
 const NATURE_LABELS = Object.freeze({ income: '收入', expense: '支出', refund: '退款',
   internal_transfer: '内部转账', borrow: '借款', repayment: '还款', fee: '利息／手续费',
   balance_adjustment: '余额调整', unknown: '性质待确认' })
@@ -23,6 +24,14 @@ function registrationOf(row) {
 function principalOf(row) {
   const item = installmentOf(row)
   return Boolean(item && item.creditStatement === true && item.component === 'principal')
+}
+function ownershipOf(row = {}) {
+  const value = row.accountOwnership || row.editorFacts && row.editorFacts.accountOwnership
+  if (value && value.source && value.destination) return value
+  const legacy = row.repaymentOwnership || row.editorFacts && row.editorFacts.ownership
+  return accountOwnership.read({ ...row, fieldSources: { ...row.fieldSources,
+    ...(legacy && !(row.fieldSources && row.fieldSources.repaymentOwnership)
+      ? { repaymentOwnership: { version: 'repayment-ownership-v2', confirmedBy: 'user', ...legacy } } : {}) } })
 }
 // 交易性质名称的唯一入口：列表各页签、详情和编辑器都按当前事实取名，不能被计划标题或旧展示值覆盖。
 function natureLabel(row) {
@@ -49,10 +58,8 @@ function accountLabels(row) {
   const { from, to } = fundsAccountLabels(nature)
   // 普通双端事件的 ledgerAccountId 是原账单账户；入账时 income 来源会反向。
   // 组合支付/合并还款有自己的规范分配，不套用普通来源方向。
-  // 草稿态（editorComposition 存在）一律不算 allocated：编辑器里把某一端拆成多账户只是同一笔的
-  // 分配方式，不会改变两端谁收谁付。早先按「已分配」关掉 reverse，会让点开加号的那一端标题
-  // 从「还入账户」翻成「付款账户」，原账户也跟着换到另一行。
-  const allocated = row.editorComposition ? false : row.paymentResolution || (row.repaymentAllocations || []).length ||
+  // 与共享 funds 一致：多账户草稿已按实际付款/收款方向存储；收回 single 后才恢复来源方向。
+  const allocated = row.editorComposition ? row.editorComposition !== 'single' : row.paymentResolution || (row.repaymentAllocations || []).length ||
     row.fieldSources && (row.fieldSources.paymentResolution || (row.fieldSources.repaymentAllocations || []).length)
   const reverse = dual && !allocated && row.sourceDirection === 'income'
   return { from: dual ? (reverse ? to : from) : ['income', 'refund'].includes(nature) ? '收款账户'
@@ -61,6 +68,16 @@ function accountLabels(row) {
     to: reverse ? from : to, hasDestination: dual, reverse }
 }
 function accountFields(row) {
+  const ownership = ownershipOf(row)
+  if (ownership.explicit && !row.editorComposition && !principalOf(row) && !registrationOf(row) &&
+      !row.paymentResolution && !(row.repaymentAllocations || []).length && !row.repaymentChannel) {
+    const labels = destinationNatures.includes(ownership.businessNature) ? fundsAccountLabels(ownership.businessNature)
+      : { from: '付款账户', to: '收款账户' }
+    const reverse = ['income', 'refund'].includes(row.economicNature) || accountLabels(row).reverse
+    return [['source', labels.from], ['destination', labels.to]].map(([side, label]) => ({
+      key: side === (reverse ? 'destination' : 'source') ? 'account' : 'counterparty', label, accountId: ownership[side].accountId,
+      ownershipKind: ownership[side].kind }))
+  }
   const labels = accountLabels(row)
   const fields = [{ key: 'account', label: labels.from, accountId: row.ledgerAccountId }]
   if (labels.hasDestination) fields.push({ key: 'counterparty', label: labels.to, accountId: row.counterpartyLedgerAccountId })
@@ -104,7 +121,8 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
     if (labels.hasDestination && !repayments.length) add('counterparty', labels.to,
       accountText(row.counterpartyLedgerAccountId, catalogs.accounts), false)
   } else if (repayments.length) add('account', labels.from, accountText(row.ledgerAccountId, catalogs.accounts), false)
-  else accountFields(row).forEach(field => add(field.key, field.label, accountText(field.accountId, catalogs.accounts), false))
+  else accountFields(row).forEach(field => add(field.key, field.label,
+    field.ownershipKind === 'external' ? '账本外账户' : accountText(field.accountId, catalogs.accounts), false))
   if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还入账户 ' + (index + 1),
     [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
   if (!registration && categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')
@@ -117,9 +135,6 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
     add('category', '退款分类', original && original.categoryName, true, '随原消费，关联后确定')
   }
   if (row.economicNature === 'repayment' && !principal) {
-    const ownership = row.repaymentOwnership || extra.repaymentOwnership
-    if (ownership || row.repaymentOwnershipRequired) add('ownership', '还款归属', ownership &&
-      (ownership.owner === 'self' ? '自己的账户' : ownership.owner === 'other' ? '代他人还款' : ''), false)
     if (loan && ['defer', 'associate'].includes(loan.mode)) {
       add('principal', '偿还本金', money(loan.principalMinor), false)
       add('interest', '本次利息', money(loan.interestMinor), false)
@@ -128,6 +143,7 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
         { expense: '没记过，记一笔', accrued: '记过，只冲抵，不重复支出' }[loan[key + 'Treatment']], false)
     }
   }
+  if (ownershipOf(row).noLedgerImpact) add('ownership-effect', '记账影响', '资金两端均在账本外，对本账本无影响', false)
   if (installment) {
     add('period', '分期期次', installment.periodNumber ? '第 ' + installment.periodNumber + ' 期' +
       (installment.totalTerms ? ' / 共 ' + installment.totalTerms + ' 期' : ' / 总期数待补充') : '', false)
@@ -162,4 +178,4 @@ function referencedIds(row = {}) {
       (row.repaymentAllocations || extra.repaymentAllocations || []).map(item => item.accountId)).filter(Boolean))]
 }
 module.exports = { fieldsFor, natureLabel, accountLabels, accountFields, fundsAccountLabels, principalOf, installmentOf, registrationOf,
-  disbursementOf, money, referencedIds }
+  disbursementOf, ownershipOf, money, referencedIds }

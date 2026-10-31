@@ -275,7 +275,9 @@ function create(facts) {
   }
   function validateReferences(event) {
     const references = require('../domain/import-review/workbench-summary').accountIds(event)
-    for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
+    for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.supersededAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
+    if (event.fieldSources.accountOwnership && require('../domain/import-review/account-ownership').resolve(event, { accounts }).reasons
+      .some(reason => ['account_ownership_invalid','account_ownership_business_required'].includes(reason))) fail('账户归属与资金方向不一致，请重新选择')
     if (!require('../domain/import-review/editor-fields').accountRolesValid(event, accounts)) {
       if (event.economicNature === 'repayment') fail('还款的还入账户需是信用卡或负债账户')
       if (event.economicNature === 'borrow') fail('借款的账户类型与资金方向不匹配')
@@ -562,9 +564,15 @@ function create(facts) {
     return [{ kind: 'events', key: decision.key, value: decision },...historyDiscarded.splice(0)]
   }
   function mapAccount(input) {
-    if(input.paymentRuleAction || input.fields?.paymentRuleAction) fail('本次导入只能排除当前范围，不能设置永久忽略')
+    const external = input.paymentRuleAction === 'external'
+    if (input.fields?.paymentRuleAction || input.paymentRuleAction && !external ||
+        external && (input.decision !== 'apply_fields' || Object.keys(input.fields || {}).length)) fail('账户选择无效')
     const issue = issues.get(input.issueId); if (!issue || issue.issueType !== 'account_mapping') fail()
-    const decision = { ...scope(issue), decision: input.decision, fields: clone(input.fields || {}) }
+    if (external && !require('../domain/import-review/account-issue-grouping').canUseExternal(events, members.get(issue.issueId) || [])) {
+      fail('此账户组包含组合、分期或渠道记录，请逐笔核对')
+    }
+    const decision = { ...scope(issue), decision: input.decision, fields: clone(input.fields || {}),
+      ...(external ? { paymentRuleAction: 'external' } : {}) }
     const value = input.fields?.mappingAccountDraft || input.fields?.ledgerAccountDraft
     let id = input.fields?.mappingAccountId || input.fields?.ledgerAccountId
     if (value) {
@@ -572,14 +580,18 @@ function create(facts) {
       const account = { ...value, accountId: id, nature: ['credit','other_liability'].includes(value.type) ? 'liability' : 'asset', isDraft: true }
       accounts.set(id, account); drafts.set(id, account)
     }
-    const index = createMappingIndex(facts.paymentMappings || []), affected = []
+    const index = createMappingIndex(facts.paymentMappings || [], { accounts: [...accounts.values()] }), affected = []
+    const mappingPolicy = require('../domain/import-review/account-mapping-policy')
     for (const member of members.get(issue.issueId) || []) if (member.objectType === 'event' && member.memberRole !== 'candidate') {
       const current = events.get(member.objectId); if (!current) continue
       const ref = accountPolicy.mappingReferenceForMember(current, member.memberRole)
-      if (ref) index.set(paymentReferenceKey(ref), id)
+      if (!external && input.decision === 'apply_fields' && ref &&
+          !require('../domain/import-review/account-binding').compatibleAccount(ref, accounts.get(id))) fail('账户类型或币种与来源不符')
+      if (ref) mappingPolicy.setMappingDecision(index, ref, external ? 'external' : 'account', id, current.eventId)
       const next = input.decision === 'exclude_events' ? { ...current, status: 'excluded', reasonCodes: distinct([...current.reasonCodes,'manual_exclusion','account_mapping_excluded']) }
         : accountPolicy.applyMappedAccount({ ...current, status: 'needs_action', reasonCodes: policy.resolvedReasons('account_mapping', current.reasonCodes)
-          .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) }, member.memberRole, id, index)
+          .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) },
+          member.memberRole, id, mappingPolicy.indexForEvent(index, current), external ? 'external' : 'account')
       if (input.decision !== 'exclude_events') validateReferences(next)
       next.version = current.version + 1; events.set(current.eventId, next); affected.push(current.eventId)
       invalid.delete(current.eventId)
@@ -587,7 +599,8 @@ function create(facts) {
     issue.status = 'resolved'; issue.blocking = false; issue.version++
     issue.reasonCodes = (issue.reasonCodes || []).filter(code => !['account_mapping_excluded','source_account_ignored_default'].includes(code))
     if (input.decision === 'exclude_events') issue.reasonCodes.push('account_mapping_excluded')
-    if (issue.accountContext) issue.accountContext.accountId = id || null
+    if (issue.accountContext) Object.assign(issue.accountContext, { accountId: id || null,
+      mappingAction: external ? 'external' : id ? 'account' : null })
     choices.accounts.set(decision.key, decision); finish(affected)
     return [{ kind: 'accounts', key: decision.key, value: decision },...historyDiscarded.splice(0)]
   }

@@ -393,13 +393,12 @@ module.exports = {
     const { field, value } = event.currentTarget.dataset
     // 资金结构不再是一个可点的模式：拆开/收起来自账户行的加号与删除，composition 只由 addFundsAccount
     // 和 removeFundsAccount 改写，界面没有直接切换它的入口。
-    const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'], repaymentChannelConfirmed: [true, false] }
+    const choices = { sourceKind: ['ledger', 'external', 'unknown'], destinationKind: ['ledger', 'external', 'unknown'],
+      noLedgerImpact: [true, false], repaymentChannelConfirmed: [true, false] }
     if (!choices[field]?.includes(value)) return
     const token = this._reviewEditToken
-    if (!editable(this, token) || field === 'owner' && value === 'other' && token.draft.composition === 'repayment') return
+    if (!editable(this, token)) return
     this.closeDirectory()
-    // 可选单选（代还处理方式）允许回到“未选”：再点已选项清空。
-    if (field === 'otherTreatment' && token.draft.otherTreatment === value) return update(this, field, '')
     update(this, field, value)
   },
   // 分期费用归属：只能从服务端下发的候选计划里选，避免客户端自造计划名。
@@ -539,8 +538,11 @@ module.exports = {
     const other = token.draft[otherKey] || ''
     update(this, 'composition', 'single')
     if (token.draft.composition !== 'single') return
-    update(this, side === 'payee' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId', keep)
-    if (other) update(this, otherKey, other)
+    // 收回后字段重新遵循原账单方向；按实际端点选目标，不能沿用多账户态的存储键。
+    const fields = token.view.accountFields
+    const selected = fields[side === 'payee' ? 1 : 0], opposite = fields[side === 'payee' ? 0 : 1]
+    if (selected) update(this, selected.target === 'reviewCounterparty' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId', keep)
+    if (other && opposite) update(this, opposite.target === 'reviewCounterparty' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId', other)
   },
   clearEditorChoice(event) {
     const token = this._reviewEditToken, key = event.currentTarget.dataset.field
@@ -551,9 +553,10 @@ module.exports = {
     const token = this._reviewEditToken
     if (!editable(this, token)) return null
     const field = token.view.accountFields.find(field => field.target === target)
-    if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId, allowedTypes: field.allowedTypes }
+    if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId,
+      allowedTypes: field.allowedTypes, currency: token.row.currency || 'CNY' }
     if (token.view.repaymentChannel || token.view.registration) return null
-    if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId,
+    if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId, currency: token.row.currency || 'CNY',
       allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null }
     if (target === 'editorCategory') return { kind: 'categories', title: '选择分类', selectedId: token.draft.categoryId,
       categoryKind: token.view.categoryKind }
@@ -565,7 +568,8 @@ module.exports = {
     const token = this._reviewEditToken, options = this.reviewEditorDirectory(target)
     if (!options || !item) return false
     if (options.kind === 'accounts') {
-      if (!item.accountId || item.archivedAt || item.unavailable || options.allowedTypes && !options.allowedTypes.includes(item.type)) return false
+      if (!item.accountId || item.archivedAt || item.disabledAt || item.unavailable ||
+          item.currency && item.currency !== (token.row.currency || 'CNY') || options.allowedTypes && !options.allowedTypes.includes(item.type)) return false
       token.accounts.set(item.accountId, item)
       if (/^editorPart\d+$/.test(target)) {
         const index = Number(target.slice(10))

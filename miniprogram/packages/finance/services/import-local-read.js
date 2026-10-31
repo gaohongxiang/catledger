@@ -41,7 +41,8 @@ function create(model) {
   function issueView(issue) {
     const ids=issue.subjectEventIds.filter(id=>model.events.has(id)),subject=ids.length?model.publicRow(ids[0]):null
     return {...issue,subject,memberCount:ids.length,localAt:subject?.localAt,sortLocalAt:subject?.localAt,
-      accountContext:issue.accountContext?{...issue.accountContext,accountId:issue.status==='resolved'?issue.accountContext.accountId:issue.accountContext.accountId}:null}
+      accountContext:issue.accountContext?{...issue.accountContext,
+        canExternal: require('../domain/import-review/account-issue-grouping').canUseExternal(model.events, model.members.get(issue.issueId) || [])}:null}
   }
   function obsoletePaymentTarget(issue) {
     if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved' ||

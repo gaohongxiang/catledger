@@ -63,7 +63,8 @@ function validateChoices(state, facts) {
       if (!same(item.sourceIds, [...new Set(item.eventIds.flatMap(id => byId.get(id)))])) fail()
       if (kind === 'accounts' && !['apply_fields','exclude_events'].includes(item.decision)) fail()
       // Ignoring this import is never a permanent mapping rule.
-      if (item.paymentRuleAction != null) fail()
+      if (item.paymentRuleAction != null && !(kind === 'accounts' && item.paymentRuleAction === 'external' &&
+          item.decision === 'apply_fields' && !Object.keys(item.fields || {}).length)) fail()
     }
   }
   const used = new Set()
@@ -108,7 +109,7 @@ async function applyChoices(connection, uid, state, digest, batch) {
       batch.affected = item.eventIds
       const issue = await resolveIssue(connection, uid, updateId, { ...item, issueType: 'account_mapping' })
       items.push({ issueId: issue.issueId, issueVersion: issue.version, operation: issue.status === 'open' ? 'resolve' : 'revise',
-        decision: item.decision, fields: item.fields })
+        decision: item.decision, fields: item.fields, paymentRuleAction: item.paymentRuleAction })
     }
     await require('./review/account-mapping').resolveAccountMappings(connection, uid, {}, digest, { updateId, decisions: items }, { updateVersion })
   }

@@ -2,6 +2,8 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const { buildPaymentMethodKey } = require('../src/identity')
+const { scopeReference, confirmedBinding } = require('../src/account-binding')
+const { accountIdFromIndex, resolutionFromIndex } = require('../src/account-mapping-policy')
 const {
   createMappingIndex,
   ledgerAccountReferenceForRow,
@@ -10,16 +12,22 @@ const {
   resolveSourceFunds
 } = require('../src/source-funds')
 
+function confirmedMapping(reference, accountId, overrides = {}) {
+  return { sourceType: reference.sourceType, paymentMethodKey: reference.bindingKey || reference.paymentMethodKey,
+    paymentMethodHint: reference.label, mappingAction: accountId ? 'account' : 'ignore', accountId,
+    accountType: reference.expectedAccountType || 'wallet', accountCurrency: 'CNY', mappingScope: 'batch',
+    binding: confirmedBinding(reference), ...overrides }
+}
+
 test('余额宝转出到账户余额直接投影为两个明确账户', () => {
   const projection = projectSourceFunds({
-    sourceType: 'alipay', rawTransactionType: '余额宝-转出到余额', item: '余额宝转出', paymentMethod: '账户余额'
+    importId: 'synthetic-savings-file', sourceType: 'alipay', rawTransactionType: '余额宝-转出到余额', item: '余额宝转出', paymentMethod: '账户余额'
   })
   assert.equal(projection.kind, 'platform_savings_out')
   assert.equal(projection.from.label, '支付宝余额宝')
   assert.equal(projection.to.label, '支付宝账户余额')
   const index = createMappingIndex([
-    { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '余额宝'), mappingAction: 'account', accountId: 'yuebao' },
-    { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: 'balance' }
+    confirmedMapping(projection.from, 'yuebao'), confirmedMapping(projection.to, 'balance')
   ])
   assert.deepEqual(resolveSourceFunds(projection, index), { projection, fromAccountId: 'yuebao', toAccountId: 'balance' })
 })
@@ -172,7 +180,7 @@ test('微信收入转账按明确到账状态推导微信零钱账本端', () =>
 
 test('本批新增映射会补齐缺失端，但不覆盖用户手工选择', () => {
   const projection = projectSourceFunds({
-    sourceType: 'alipay', rawTransactionType: '提现-实时提现', item: '提现', paymentMethod: '浙江农商联合银行储蓄卡(5564)'
+    importId: 'synthetic-withdrawal-file', sourceType: 'alipay', rawTransactionType: '提现-实时提现', item: '提现', paymentMethod: '浙江农商联合银行储蓄卡(5564)'
   })
   const event = {
     ledgerAccountId: 'manual-balance',
@@ -180,8 +188,7 @@ test('本批新增映射会补齐缺失端，但不覆盖用户手工选择', ()
     fieldSources: { fundsProjection: projection }
   }
   const index = createMappingIndex([
-    { sourceType: 'alipay', paymentMethodKey: projection.from.paymentMethodKey, mappingAction: 'account', accountId: 'mapped-balance' },
-    { sourceType: 'alipay', paymentMethodKey: projection.to.paymentMethodKey, mappingAction: 'account', accountId: 'mapped-bank' }
+    confirmedMapping(projection.from, 'mapped-balance'), confirmedMapping(projection.to, 'mapped-bank')
   ])
   const result = reconcileProjectedAccounts(event, index, { preserveFrom: true })
   assert.equal(result.changed, true)
@@ -189,9 +196,9 @@ test('本批新增映射会补齐缺失端，但不覆盖用户手工选择', ()
   assert.equal(result.event.counterpartyLedgerAccountId, 'mapped-bank')
 })
 
-test('账户确认后的资金重算不得把支付宝余额历史映射重新套回现金账户', () => {
+test('账户确认后的资金重算拒绝把支付宝余额绑定到现金账户', () => {
   const projection = projectSourceFunds({
-    sourceType: 'alipay', rawTransactionType: '账户存取', item: '提现-实时提现',
+    importId: 'synthetic-wrong-account-file', sourceType: 'alipay', rawTransactionType: '账户存取', item: '提现-实时提现',
     paymentMethod: '余额', counterparty: '浙江农商联合银行'
   })
   const event = {
@@ -199,15 +206,7 @@ test('账户确认后的资金重算不得把支付宝余额历史映射重新�
     counterpartyLedgerAccountId: null,
     fieldSources: { fundsProjection: projection }
   }
-  const index = createMappingIndex([{
-    sourceType: 'alipay',
-    paymentMethodKey: projection.from.paymentMethodKey,
-    paymentMethodHint: '余额',
-    mappingAction: 'account',
-    accountId: 'wrong-cash-account',
-    accountType: 'cash',
-    mappingScope: 'history'
-  }])
+  const index = createMappingIndex([confirmedMapping(projection.from, 'wrong-cash-account', { accountType: 'cash' })])
 
   const result = reconcileProjectedAccounts(event, index)
   assert.equal(result.changed, false)
@@ -216,44 +215,37 @@ test('账户确认后的资金重算不得把支付宝余额历史映射重新�
 })
 
 test('增量重算与首次规划使用相同优先级且不依赖候选顺序', () => {
+  const reference = scopeReference({ sourceType: 'wechat', paymentMethodKey: 'same-reference', label: '微信零钱' },
+    { sourceProfileKey: 'a'.repeat(64), currency: 'CNY' })
   const candidates = [
-    {
-      sourceType: 'wechat', paymentMethodKey: 'same-reference', paymentMethodHint: '光大银行信用卡(2690)',
-      mappingAction: 'account', accountId: 'history-account', accountType: 'credit', mappingScope: 'history'
-    },
-    {
-      sourceType: 'wechat', paymentMethodKey: 'same-reference', paymentMethodHint: '光大银行信用卡(2690)',
-      mappingAction: 'account', accountId: 'batch-account', accountType: 'credit', mappingScope: 'batch'
-    }
+    confirmedMapping(reference, 'history-account', { mappingScope: 'history' }),
+    confirmedMapping(reference, 'batch-account')
   ]
-  assert.equal(createMappingIndex(candidates).get('wechat:same-reference'), 'batch-account')
-  assert.equal(createMappingIndex([...candidates].reverse()).get('wechat:same-reference'), 'batch-account')
+  assert.equal(accountIdFromIndex(createMappingIndex(candidates), reference), 'batch-account')
+  assert.equal(accountIdFromIndex(createMappingIndex([...candidates].reverse()), reference), 'batch-account')
 })
 
 test('增量重算遇到同级不同账户时保持未知而不是最后一条覆盖', () => {
+  const reference = scopeReference({ sourceType: 'wechat', paymentMethodKey: 'same-reference', label: '合成银行信用卡(1234)' },
+    { importId: 'synthetic-conflict-file', currency: 'CNY' })
   const index = createMappingIndex([
-    {
-      sourceType: 'wechat', paymentMethodKey: 'same-reference',
-      mappingAction: 'account', accountId: 'first-account', mappingScope: 'batch'
-    },
-    {
-      sourceType: 'wechat', paymentMethodKey: 'same-reference',
-      mappingAction: 'account', accountId: 'second-account', mappingScope: 'batch'
-    }
+    confirmedMapping(reference, 'first-account'), confirmedMapping(reference, 'second-account')
   ])
-  assert.equal(index.get('wechat:same-reference'), null)
+  assert.equal(accountIdFromIndex(index, reference), null)
+  assert.equal(resolutionFromIndex(index, reference).kind, 'conflict')
 })
 
 
 test('聚合目标只在完整候选全部收敛时自动归属，未知和历史唯一标记不能放行', () => {
-  const reference = key => ({ sourceType: 'alipay', paymentMethodKey: key })
+  const reference = key => scopeReference({ sourceType: 'alipay', paymentMethodKey: key, label: '合成引用' + key },
+    { importId: 'synthetic-aggregate-file', currency: 'CNY' })
   const projection = { from: reference('bank'), to: { referenceKind: 'aggregate', candidates: [], resolvedAccountId: 'stale-account' } }
   const index = createMappingIndex([
-    { ...reference('bank'), mappingAction: 'account', accountId: 'bank-account' },
-    { ...reference('first'), mappingAction: 'account', accountId: 'account-a' },
-    { ...reference('same'), mappingAction: 'account', accountId: 'account-a' },
-    { ...reference('other'), mappingAction: 'account', accountId: 'account-b' },
-    { ...reference('ignored'), mappingAction: 'ignore', accountId: null }
+    confirmedMapping(reference('bank'), 'bank-account'),
+    confirmedMapping(reference('first'), 'account-a'),
+    confirmedMapping(reference('same'), 'account-a'),
+    confirmedMapping(reference('other'), 'account-b'),
+    confirmedMapping(reference('ignored'), null)
   ])
   for (const keys of [[], ['unknown'], ['first','unknown'], ['unknown','first'], ['first','ignored'], ['first','other']]) {
     const value = { ...projection, to: { ...projection.to, candidates: keys.map(reference) } }
@@ -271,10 +263,12 @@ test('聚合目标只在完整候选全部收敛时自动归属，未知和历�
 })
 
 test('旧批次规范别名低于直接决定，冲突别名不能按顺序替用户选择', () => {
-  const mapping = (accountId, mappingScope) => ({ sourceType: 'alipay', paymentMethodKey: 'canonical', mappingAction: 'account', accountId, mappingScope })
+  const reference = scopeReference({ sourceType: 'alipay', paymentMethodKey: 'canonical', label: '支付宝账户余额' },
+    { importId: 'synthetic-alias-file', currency: 'CNY' })
+  const mapping = (accountId, mappingScope) => confirmedMapping(reference, accountId, { mappingScope })
   for (const order of [[mapping('old-a','batch_alias'),mapping('old-b','batch_alias')], [mapping('old-b','batch_alias'),mapping('old-a','batch_alias')]]) {
-    assert.equal(createMappingIndex(order).get('alipay:canonical'), null)
-    assert.equal(createMappingIndex([...order,mapping('chosen','batch')]).get('alipay:canonical'), 'chosen')
-    assert.equal(createMappingIndex([mapping('chosen','batch'),...order]).get('alipay:canonical'), 'chosen')
+    assert.equal(resolutionFromIndex(createMappingIndex(order), reference).kind, 'unknown')
+    assert.equal(accountIdFromIndex(createMappingIndex([...order,mapping('chosen','batch')]), reference), 'chosen')
+    assert.equal(accountIdFromIndex(createMappingIndex([mapping('chosen','batch'),...order]), reference), 'chosen')
   }
 })

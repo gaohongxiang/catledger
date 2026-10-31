@@ -54,9 +54,8 @@ const ACCOUNT_TYPE_LABELS = Object.freeze({
   other_liability: '其他负债'
 })
 
-// 账户归属只有「仅本次不计入」：本地整理不写可复用规则，恢复时也不把历史
-// 忽略当成默认值。第二个参数保留以兼容旧调用，不再产生「以后不计入」选项。
-function accountChoiceOptions(accounts, accountDrafts) {
+// 外部是账户引用的归属；排除是本批记录的处理。两者始终是独立选择。
+function accountChoiceOptions(accounts, accountDrafts, { canExternal = true } = {}) {
   return [{ value: 'pending', name: '请选择账户归属' }, { value: 'create', name: '创建新账户' }]
     .concat((accounts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name }
@@ -64,6 +63,7 @@ function accountChoiceOptions(accounts, accountDrafts) {
     .concat((accountDrafts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name + '（本批新建）' }
     }))
+    .concat(canExternal ? [{ value: 'external', name: '账本外账户' }] : [])
     .concat([{ value: 'ignore', name: '仅本次不计入' }])
 }
 
@@ -433,14 +433,15 @@ function issueView(issue) {
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
   const paymentNeedsReview = Boolean(!evidenceReviewOnly && !groupedAccount && subject && reasons.includes('payment_components_ambiguous') && !subject.paymentResolution)
   if (paymentNeedsReview) label = '组合支付待核对'
-  const repaymentOwnershipRequired = Boolean(issue.issueType === 'transfer_accounts' && !paymentNeedsReview && subject && subject.repaymentOwnershipRequired)
-  if (repaymentOwnershipRequired) label = subject.repaymentOwnership && subject.repaymentOwnership.owner === 'other'
-    ? '代他人还款待核对' : '还款账户归属待确认'
+  const accountOwnershipRequired = Boolean(issue.issueType === 'transfer_accounts' && !paymentNeedsReview && subject &&
+    (subject.accountOwnershipRequired || subject.repaymentOwnershipRequired || reasons.some(reason =>
+      /^account_(?:source|destination)_required$/.test(reason) || /^account_ownership_/.test(reason))))
+  if (accountOwnershipRequired) label = '资金两端归属待确认'
   return Object.assign({}, issue, {
     label: issue.primaryReasonCode === 'repayment_channel_details_required' ? '还款信息待核对'
       : issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
     installmentPrincipal: installmentPrincipal,
-    repaymentOwnershipRequired: repaymentOwnershipRequired,
+    accountOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
     refundSourceConflict: refundSourceConflict,
     statusUnknown: statusUnknown,
@@ -460,8 +461,8 @@ function issueView(issue) {
     subjectMeta: subject ? subject.displayMeta : '',
     subjectAmountText: subject ? subject.amountText : '',
     subjectDirectionClass: subject ? subject.directionClass : '',
-    decisionText: evidenceReviewOnly ? issueHelp : repaymentOwnershipRequired
-      ? '银行名称不能确认账户归属，请核对这笔钱是替谁还的'
+    decisionText: evidenceReviewOnly ? issueHelp : accountOwnershipRequired
+      ? '请选择资金两端的账本账户；不属于本账本的端点选账本外账户'
       : paymentNeedsReview
       ? issue.issueType === 'account_mapping' ? '确认这些付款方式对应的账本账户' : '核对各账户实际支付金额，并确认这笔是支出还是还款'
       : issue.issueType === 'refund_relation'
@@ -948,6 +949,7 @@ function exclusionReasonText(event) {
     ['transaction_failed', '交易失败，自动不计入'],
     ['already_posted', '已经入账，不重复计入'],
     ['linked_existing_transaction', '已关联账本中的交易，不重复计入'],
+    ['external_no_ledger_effect', '资金两端均在账本外，对本账本无影响'],
     ['account_mapping_excluded', '按本次账户选择排除'],
     ['source_account_ignored_default', '按已保存的账户规则自动排除']
   ].filter(([code]) => reasons.has(code)).map(([, label]) => label)
@@ -969,6 +971,8 @@ function exclusionReasonText(event) {
 
 function excludedReason(event) {
   const reasons = new Set(event && event.reasonCodes || [])
+  if (reasons.has('external_no_ledger_effect')) return { key: 'external_no_ledger_effect', label: '账本外资金往来',
+    note: '已确认资金两端均在账本外，保留来源，不生成账目。', order: 15 }
   if (reasons.has('account_mapping_excluded') || reasons.has('source_account_ignored_default')) {
     const evidence = event && event.primaryEvidence || {}, projection = event && event.fundsProjection || {}
     const placeholder = /^(?:未提供|未填写|未注明|未标明|未知|不详|无|暂无|该账户|待确认|未识别|未知账户|未知支付方式|微信支付方式未标明|支付宝支付方式未标明|银行账户未标明|na|null|undefined)$/

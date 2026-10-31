@@ -25,7 +25,9 @@ test('完整目录翻页和搜索后，稳定ID定位两端且选择仅改本笔
   assert.equal(page.data.directorySheet.title, '选择转入账户')
   page.searchDirectory(input('', '合成账户24')); await flush()
   page.selectDirectory(tap({ index: 0 }))
-  assert.deepEqual(plain(view(page).payload.fields), { ledgerAccountId: 'account-18', counterpartyLedgerAccountId: 'account-24' })
+  assert.deepEqual(plain(view(page).payload.fields), {})
+  assert.deepEqual(plain(view(page).payload.decisions.accountOwnership),
+    { source: { kind: 'ledger', accountId: 'account-18' }, destination: { kind: 'ledger', accountId: 'account-24' } })
   await page.openDirectory(tap({ target: 'reviewAccount' }))
   assert.equal(page.data.directorySheet.selectedId, 'account-18')
   page.closeDirectory()
@@ -37,7 +39,9 @@ test('投影两端已有值仍可编辑，改变对端不交换原账单端', as
   const { page, accounts } = await open(t, { ledgerAccountId: 'account-0', counterpartyLedgerAccountId: 'account-1', fundsProjection: { from: { label: '已知转出' }, to: { label: '已知转入' } } })
   assert.equal(view(page).routeFields.length, 2)
   assert.equal(select(page, 'reviewCounterparty', accounts[24]), true)
-  assert.deepEqual(plain(view(page).payload.fields), { ledgerAccountId: 'account-0', counterpartyLedgerAccountId: 'account-24' })
+  assert.deepEqual(plain(view(page).payload.fields), {})
+  assert.deepEqual(plain(view(page).payload.decisions.accountOwnership),
+    { source: { kind: 'ledger', accountId: 'account-0' }, destination: { kind: 'ledger', accountId: 'account-24' } })
   assert.equal(draft(page).ledgerAccountId, 'account-0')
 })
 
@@ -104,43 +108,48 @@ test('组合支付还款的付款端限资金账户，还入端限负债，均�
   assert.equal(draft(page).counterpartyLedgerAccountId, 'draft-1')
 })
 
-test('默认本人、归属往返和隐藏字段隔离；普通贷款无强制关联', async t => {
+test('已有账本端不重复询问，外部归属往返和隐藏字段隔离；普通还款无强制贷款关联', async t => {
   const { h, page, drafts } = await open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
-  assert.equal(draft(page).owner, 'self')
+  assert.equal(draft(page).sourceKind, 'ledger')
+  assert.equal(draft(page).destinationKind, 'unknown')
   assert.equal(draft(page).repaymentDetails, false)
   select(page, 'reviewCounterparty', drafts[0])
-  mode(page, 'owner', 'other')
-  assert.equal(view(page).other, true)
-  assert.ok(view(page).missing.includes('代还处理方式'))
-  mode(page, 'otherTreatment', 'expense')
-  assert.equal(view(page).payload.fields.economicNature, 'expense')
-  assert.equal(view(page).payload.decisions.ownership.owner, 'other')
+  mode(page, 'destinationKind', 'external')
+  assert.equal(draft(page).destinationKind, 'external')
+  assert.equal(view(page).complete, true)
+  assert.equal(view(page).categoryKind, 'expense')
+  assert.equal(view(page).payload.fields.economicNature, undefined, '收支由服务端按端点推导')
+  assert.deepEqual(plain(view(page).payload.decisions.accountOwnership.destination), { kind: 'external' })
   assert.equal(view(page).payload.decisions.repayment, undefined)
+  assert.equal(view(page).payload.decisions.ownership, undefined)
+  assert.equal(view(page).payload.fields.counterpartyLedgerAccountId, undefined)
   assert.equal(draft(page).counterpartyLedgerAccountId, '')
-  mode(page, 'owner', 'self')
+  mode(page, 'destinationKind', 'ledger')
   assert.equal(draft(page).counterpartyLedgerAccountId, 'draft-1')
-  assert.equal(view(page).payload.decisions.ownership.owner, 'self')
+  assert.deepEqual(plain(view(page).payload.decisions.accountOwnership.destination), { kind: 'ledger', accountId: 'draft-1' })
   assert.equal(writes(h).length, 0)
 })
 
-test('明确的他人归属不会被默认本人覆盖，隐藏页面不能改草稿', async t => {
+test('旧明确外部归属不会被账本默认值覆盖，隐藏页面不能改草稿', async t => {
   const { page } = await open(t, { economicNature: 'expense', ledgerAccountId: 'account-0', repaymentOwnership: { owner: 'other', treatment: 'expense' } })
-  assert.equal(draft(page).owner, 'other')
+  assert.equal(draft(page).sourceKind, 'ledger')
+  assert.equal(draft(page).destinationKind, 'external')
   const token = page._reviewEditToken, before = plain(draft(page)); page.onHide()
-  mode(page, 'owner', 'self'); edit(page, 'note', '迟到')
+  mode(page, 'destinationKind', 'ledger'); edit(page, 'note', '迟到')
   assert.equal(page._reviewEditToken, null)
   assert.deepEqual(plain(token.draft), before)
 })
 
-test('本人改代还关闭目录，迟到选择不再次打开或替换当前模式', async t => {
+test('账本端改外部端关闭目录，迟到选择不再次打开或替换当前归属', async t => {
   const { h, page } = await open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
   let release
   h.intercept = (action, query) => action === 'financeUpdates.options' && query.kind === 'accounts' ? new Promise(resolve => { release = resolve }) : undefined
   const loading = page.openDirectory(tap({ target: 'reviewCounterparty' })); await flush()
-  mode(page, 'owner', 'other')
+  mode(page, 'destinationKind', 'external')
   release({ viewVersion: h.summary.viewVersion, items: [], total: 0, nextCursor: null }); await loading
   assert.equal(page.data.directorySheet, null)
-  assert.equal(draft(page).owner, 'other')
+  assert.equal(draft(page).destinationKind, 'external')
+  assert.equal(draft(page).counterpartyLedgerAccountId, '')
 })
 
 test('目录失败可原处重试且选择不丢，失效版本拒绝重新打开', async t => {

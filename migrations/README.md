@@ -4,7 +4,7 @@
 
 执行任何待迁移业务 SQL 前，runner 在迁移锁内预检完整本地清单和已登记历史：重复/缺号、已登记文件缺失、数据库版本超前、历史不是本地前缀及任一校验和变化都会直接停止，不先执行更早的新脚本。失败不改写历史；连接不能可靠释放锁时销毁，保留原始迁移错误。预检不改变 MySQL DDL 的隐式提交性质，脚本仍须可重入。
 
-首版迁移建立用户、微信身份摘要映射和默认分类表。`0004`～`0005` 建立单文件解析证据链与支付工具规则；`0006` 新增 FinanceUpdate、跨来源关系、ReviewIssue、FinanceAction 和整批 posting，并把旧已提交单文件回填为只引用既有交易的历史更新；`0007` 增加 FinanceUpdate 内的账户映射草稿，确保整理阶段只写导入域草稿；`0008` 让同一草稿表以 `mapping_action` 安全表达账户映射或永久忽略，并继续保证正式规则只能随整批 posting 事务一同生效。MySQL DDL 会隐式提交，因此迁移必须使用 `IF NOT EXISTS` 或 `information_schema` 守卫；迁移记录只在全部语句成功后写入，失败后修复环境并重跑，不修改已经登记的迁移文件。
+首版迁移建立用户、微信身份摘要映射和默认分类表。`0004`～`0005` 建立单文件解析证据链与支付工具规则；`0006` 新增 FinanceUpdate、跨来源关系、ReviewIssue、FinanceAction 和整批 posting，并把旧已提交单文件回填为只引用既有交易的历史更新；`0007` 增加 FinanceUpdate 内的账户映射草稿，确保整理阶段只写导入域草稿；`0008` 为当时的账户映射或永久忽略增加 `mapping_action`，正式规则随整批 posting 事务一同生效。该历史结构保留，现行本批排除不再发布永久忽略，绑定与外部端点见[0038](#0038-账户绑定依据与外部端点)。MySQL DDL 会隐式提交，因此迁移必须使用 `IF NOT EXISTS` 或 `information_schema` 守卫；迁移记录只在全部语句成功后写入，失败后修复环境并重跑，不修改已经登记的迁移文件。
 
 本地执行入口是 `cloudfunctions/catledger-api` 下的 `npm run migrate`。连接信息只通过 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 环境变量提供，禁止提交真实值。
 
@@ -19,6 +19,16 @@
 `0035_import_cleanup_retry.sql` 为导入文件和整理批次增加清理重试时间/失败次数及草稿候选索引，默认 `NULL/0`。维护退避显式保留业务 `updated_at`，不改变账本数据修订；已有运行角色表级 UPDATE 可复用。清理调度代码依赖这些列，须先迁移后部署。它们不属于私有账本导出，格式保持不变；恢复后按默认状态重新检查到期条件。原件仍先删对象再标记，外部删除超时可能迟到完成，后续任务按同一文件身份幂等重试。迁移不修改正式账目，不授权在线执行或部署。
 
 `0037_installment_source_plan_label.sql` 为分期来源增加可空 `plan_label`（120 字），保存账单事实中的计划名：本金摘要去掉期次后缀。旧来源保持 `NULL`，读取方沿用原“合同编号标签／待确认所属分期”展示，不按金额或行序回填；利息行自身摘要只有泛称，只有人工或整理阶段确认的归属才写入。信息表守卫支持原 SQL 重跑，不重建索引、不改来源身份和费用关系，运行账号已有表级列权限可复用。完整私有导出升为 schemaVersion 35，`plan_label` 紧跟 `reference_label` 进入 `catledger_installment_items` 清单；部署新版函数前须先完成本迁移，线上执行与发布仍按独立授权处理。
+
+## 0038 账户绑定依据与外部端点
+
+[0038_scoped_account_bindings.sql](0038_scoped_account_bindings.sql)为 `catledger_import_account_mappings` 与 `catledger_finance_update_account_mapping_drafts` 追加可空 `binding_json`，扩展两表的动作 CHECK：`account` 必须带 `account_id`，`external`／`ignore` 必须不带。原用户范围唯一约束、外键和已有数据保留，不回填归属或改写原始行、交易与余额。旧历史映射的 NULL 只作候选；本批明确决定仍按原成员与来源范围恢复，不能据此给其他记录补造确认依据。
+
+完整私有导出升为 schemaVersion 38，两表新增 JSON 与已有事件归属决定一同保全；导出清单按实际列顺序包含非空绑定，隔离恢复保留原 ID 和关系。最小权限不扩大：API 复用两表 `SELECT`；import 复用正式映射的 `SELECT, INSERT, UPDATE` 和草稿映射的 `SELECT, INSERT, UPDATE, DELETE`。部署前按[运行权限清单](../scripts/runtime-role-grants.js)核验实际账号，不授予运行时 DDL 或库级权限。结构与权限反例见[绑定迁移测试](../test/account-bindings-db.test.js)、[运行角色测试](../test/runtime-roles-db.test.js)，导出恢复见[data-export](../test/data-export.test.js)。
+
+发布顺序为取得授权后的安全快照与0001～0037校验和核对 → 执行0038并核对两处列、CHECK、原唯一约束／外键及旧 NULL → 登记原文件校验和并核验最小权限 → 更新兼容的 import／API → 客户端原生及真机验证。依赖新列的导入与导出代码不能先于迁移上线。直连迁移使用同一连接；管理 SQL 仅支持单语句时，先核对原文件的 `information_schema` 守卫，再执行对应 ALTER，全部成功后登记，不跨连接拆用 PREPARE 变量。本轮未执行线上迁移或部署；授权、执行证据与待验收状态只在[实施规划](../docs/招财猫记账本实施规划.md)维护。
+
+DDL 隐式提交，中断后核对已完成结构并按原守卫重跑，不假定整体回滚或删除新增列。应用回退先停止新的账户确认与入账入口，保留绑定依据、外部端点、原回执及草稿；兼容代码继续读取和恢复未知结果。不能退回忽略 `external` 或把旧 NULL 历史当可靠绑定的写入逻辑，修复采用兼容代码或后续 forward-only 迁移。
 
 ## 运行账号最小权限
 迁移账号与云函数运行账号必须分离。`catledger_app` 仍按实际 SQL 授予最小权限，不授予库级管理员权限。除直接写入的表外，下列能力也必须显式纳入运行权限契约：

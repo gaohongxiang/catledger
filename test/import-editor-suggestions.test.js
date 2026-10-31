@@ -33,7 +33,7 @@ for (const direction of ['expense', 'income']) test('建议账户按真实还入
   assert.equal(writes(h).length, 0)
 })
 
-for (const transition of ['close', 'hide', 'nature', 'owner', 'manual']) test('建议读取迟到不能改动新页面或新选择：' + transition, async t => {
+for (const transition of ['close', 'hide', 'nature', 'external', 'manual']) test('建议读取迟到不能改动新页面或新选择：' + transition, async t => {
   let release
   const { h, page } = await open(t, row('expense'), { accounts: [credit], intercept: (action, input) =>
     action === 'financeUpdates.options' && input.query === '中信银行' ? new Promise(resolve => { release = resolve }) : undefined })
@@ -43,7 +43,7 @@ for (const transition of ['close', 'hide', 'nature', 'owner', 'manual']) test('�
   if (transition === 'close') page.closeReviewEdit()
   if (transition === 'hide') page.onHide()
   if (transition === 'nature') nature(page, 'expense')
-  if (transition === 'owner') mode(page, 'owner', 'other')
+  if (transition === 'external') mode(page, 'destinationKind', 'external')
   if (transition === 'manual') page.selectEditorDirectory({ ...credit, accountId: 'manual-choice' }, 'reviewCounterparty')
   const before = JSON.stringify(page.data.reviewEditSheet)
   release({ protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [credit], nextCursor: null, total: 1 })

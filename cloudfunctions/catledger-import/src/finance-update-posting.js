@@ -214,51 +214,48 @@ async function promoteAccountMappings(connection, uid, updateId) {
   const [rows] = await connection.execute(
     `SELECT draft.source_type AS sourceType,
             draft.payment_method_key AS paymentMethodKey,
-            MAX(draft.payment_method_hint) AS paymentMethodHint,
-            MIN(draft.mapping_action) AS mappingAction,
-            COUNT(DISTINCT draft.mapping_action) AS actionCount,
-            MIN(draft.account_id) AS accountId,
-            COUNT(DISTINCT draft.account_id) AS accountCount,
-            MIN(event_row.status) AS minimumEventStatus,
-            MAX(event_row.status) AS maximumEventStatus
+            draft.payment_method_hint AS paymentMethodHint,
+            draft.mapping_action AS mappingAction, draft.account_id AS accountId,
+            draft.binding_json AS binding, event_row.status AS eventStatus,
+            account.type AS accountType, account.currency AS accountCurrency, account.archived_at AS accountArchivedAt
        FROM catledger_finance_update_account_mapping_drafts draft
        JOIN catledger_economic_events event_row
          ON event_row.uid = draft.uid AND event_row.update_id = draft.update_id
         AND event_row.event_id = draft.event_id
+       LEFT JOIN catledger_accounts account ON account.uid=draft.uid AND account.account_id=draft.account_id
       WHERE draft.uid = ? AND draft.update_id = ?
         AND NOT (draft.mapping_action = 'account' AND event_row.status = 'excluded')
-      GROUP BY draft.source_type, draft.payment_method_key
       ORDER BY draft.source_type, draft.payment_method_key`,
     [uid, updateId]
   )
   const audit = []
+  const binding = require('./account-binding'), groups = new Map()
   for (const row of rows) {
-    const before = await readMapping(connection, uid, 'account', row)
-    if (Number(row.actionCount) !== 1) throw importError('UNRESOLVED_IMPORT')
-    if (row.mappingAction === 'account') {
-      if (Number(row.accountCount) !== 1 || row.minimumEventStatus !== 'posted' || row.maximumEventStatus !== 'posted') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      await connection.execute(
-        `INSERT INTO catledger_import_account_mappings
-           (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
-            mapping_action, account_id, disabled_at)
-         VALUES (?, ?, ?, ?, ?, 'account', ?, NULL)
-         ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-           mapping_action = 'account', account_id = VALUES(account_id), disabled_at = NULL,
-           version = version + 1`,
-        [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint, row.accountId]
-      )
-    } else if (row.mappingAction === 'ignore') {
-      if (Number(row.accountCount) !== 0 || row.minimumEventStatus !== 'excluded' || row.maximumEventStatus !== 'excluded') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      // 「仅本次不计入」是本批决定：不写永久映射，也不改动已有映射。
-      // 之前这里会把 ignore 发布成永久规则，导致下一次导入被自动排除，与
-      // “本次排除不自动变成永久忽略”的规则冲突。
-    } else {
+    const proof = binding.bindingFor(row)
+    // 文件内确认与旧弱键只在本批有效；排除永不成为永久规则。
+    if (row.mappingAction === 'ignore' || !proof || !proof.reusable) continue
+    if (!require('./account-mapping-policy').compatibleMapping({ ...row, mappingScope: 'history' }) ||
+        (row.mappingAction === 'account' ? row.eventStatus !== 'posted' : !['posted','excluded'].includes(row.eventStatus))) {
       throw importError('UNRESOLVED_IMPORT')
     }
+    const key = row.sourceType + ':' + row.paymentMethodKey, previous = groups.get(key)
+    if (previous && (previous.mappingAction !== row.mappingAction || previous.accountId !== row.accountId ||
+        JSON.stringify(binding.bindingFor(previous)) !== JSON.stringify(proof))) throw importError('UNRESOLVED_IMPORT')
+    groups.set(key, row)
+  }
+  for (const row of groups.values()) {
+    const before = await readMapping(connection, uid, 'account', row)
+    await connection.execute(
+      `INSERT INTO catledger_import_account_mappings
+         (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
+          mapping_action, account_id, binding_json, disabled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
+         mapping_action = VALUES(mapping_action), account_id = VALUES(account_id),
+         binding_json = VALUES(binding_json), disabled_at = NULL, version = version + 1`,
+      [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint,
+        row.mappingAction, row.accountId, JSON.stringify(binding.bindingFor(row))]
+    )
     audit.push({ before, after: await readMapping(connection, uid, 'account', row) })
   }
   return audit

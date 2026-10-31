@@ -27,7 +27,8 @@ function row(role, { terms = 6, name = label, reference = '' } = {}) {
     sourceOrder: 0, rowNumber: 1, sourceType: 'bank', sourceFormat: 'bank_csv', bankStatementKind: 'credit',
     parseState: result.parseState, semantic: result.semantic, rawStatus: raw.status, installmentFields: raw.installmentFields }
 }
-function plan(rows) { return buildOrganizePlan({ updateId: 'update', rows, accounts }) }
+function plan(rows) { return buildOrganizePlan({ updateId: 'update', rows, accounts,
+  paymentMappings: require('./helpers/account-bindings').confirmedNamedAccounts(rows, accounts) }) }
 const decision = { action: 'link', loanId: 'loan', planLabel: label, totalTerms: 6, principalMinor: '600000', startMonth: '2026-10', accountId: '00000000-0000-4000-8000-000000000001' }
 async function modelFor(rows) {
   const value = await facts({ count: rows.length, accounts }), planned = plan(rows)

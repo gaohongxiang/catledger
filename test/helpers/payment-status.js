@@ -2,6 +2,7 @@
 const { randomUUID } = require('node:crypto')
 const { parseEvidenceFile } = require('../../cloudfunctions/catledger-import/src/parsers')
 const { buildOrganizePlan } = require('../../cloudfunctions/catledger-import/src/organizer-planner')
+const { confirmedNamedAccounts } = require('./account-bindings')
 const header = '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,交易订单号,订单号'
 function bill({ status = '交易关闭', refundAmount = '20.00', refundAccount = '余额', sameOrder = true, refund = true, prefix = 'SYNTH-STATUS' } = {}) {
   return Buffer.from([header,
@@ -19,10 +20,12 @@ async function plan(options = {}, rowChanges = () => ({})) {
     sourceTransactionId: row.identifiers.transactionId, sourceOrderId: row.identifiers.orderId,
     sourceMerchantOrderId: row.identifiers.merchantOrderId, ...rowChanges(index)
   }))
-  return buildOrganizePlan({ updateId: randomUUID(), rows, accounts: [
+  const accounts = [
     { accountId: 'synthetic-wallet', name: '支付宝账户余额', type: 'wallet', currency: 'CNY' },
-    { accountId: 'synthetic-savings', name: '余额宝', type: 'wallet', currency: 'CNY' }
-  ] })
+    { accountId: 'synthetic-savings', name: '支付宝余额宝', type: 'wallet', currency: 'CNY' }
+  ]
+  return buildOrganizePlan({ updateId: randomUUID(), rows, accounts,
+    paymentMappings: confirmedNamedAccounts(rows, accounts) })
 }
 async function prepare(h, content) {
   const { files } = await h.imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成状态反例.csv', size: content.length }] })

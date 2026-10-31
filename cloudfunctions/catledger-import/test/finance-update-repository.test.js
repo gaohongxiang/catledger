@@ -69,24 +69,29 @@ test('映射仓储返回全部候选，不按数据库结果顺序提前覆盖�
       return call === 1
         ? [[{
             sourceType: 'wechat', paymentMethodKey: 'card', paymentMethodHint: '光大银行信用卡(2690)',
-            mappingAction: 'account', accountId: 'history-account', accountType: 'credit', mappingScope: 'history'
+            mappingAction: 'account', accountId: 'history-account', accountType: 'credit', accountCurrency: 'CNY', mappingScope: 'history'
           }]]
         : [[{
             sourceType: 'wechat', paymentMethodKey: 'card', paymentMethodHint: '光大银行信用卡(2690)',
-            mappingAction: 'account', accountId: 'batch-account', accountType: 'credit', mappingScope: 'batch'
+            mappingAction: 'account', accountId: 'batch-account', accountType: 'credit', accountCurrency: 'CNY',
+            eventId: 'event-1', rowIds: '["row-1"]', mappingScope: 'batch'
           }]]
     }
   }
 
   const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
-  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'history_alias', 'batch', 'batch_alias'])
-  const index = require('../src/account-mapping-policy').createMappingIndex(mappings)
-  assert.equal(index.get('wechat:card'), 'batch-account', '旧来源键继续按本批明确决定解析')
-  assert.equal(index.get('wechat:' + buildPaymentMethodKey('wechat', '光大银行信用卡(2690)')), 'batch-account', '新语义引用可通过本批规范别名找回原决定')
-  assert.deepEqual(require('../src/account-mapping-policy').createMappingIndex([...mappings].reverse()), index, '兼容读取不依赖数据库行序')
+  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'batch'])
+  const policy = require('../src/account-mapping-policy'), index = policy.createMappingIndex(mappings)
+  assert.equal(index.has('wechat:card'), false, '旧历史不自动应用，本批决定也不跨事件广播')
+  for (const ordered of [mappings, [...mappings].reverse()]) {
+    const own = policy.indexForEvent(policy.createMappingIndex(ordered), { eventId: 'event-1' })
+    assert.equal(policy.accountIdFromIndex(own, 'wechat:card'), 'batch-account')
+    assert.equal(own.has('wechat:' + buildPaymentMethodKey('wechat', '光大银行信用卡(2690)')), false, '不得伪造规范别名扩大确认范围')
+  }
+  assert.deepEqual(mappings[1].rowIds, ['row-1'])
 })
 
-test('旧原文支付键保留原事实并派生低优先级规范别名', async function () {
+test('旧原文支付键保留原事实，不再派生可自动应用的规范别名', async function () {
   let call = 0
   const label = '支付宝小荷包(合成小荷包)'
   const legacyKey = digestParts('payment-method-v1', 'alipay', label)
@@ -108,8 +113,7 @@ test('旧原文支付键保留原事实并派生低优先级规范别名', async
     scope: mapping.mappingScope,
     action: mapping.mappingAction
   })), [
-    { key: legacyKey, scope: 'history', action: 'ignore' },
-    { key: currentKey, scope: 'history_alias', action: 'ignore' }
+    { key: legacyKey, scope: 'history', action: 'ignore' }
   ])
 })
 
@@ -245,18 +249,19 @@ test('账户步骤按成员资金端展示映射引用，不按原始支付方�
   assert.equal(issue.accountContext.accountId, null)
 })
 
-test('旧规划重建前冻结每个支付工具最新的本批映射决定', async function () {
+test('旧规划重建前保留每个原成员的本批映射，不按相同名称覆盖另一成员', async function () {
   const connection = {
     execute: async function () {
       return [[
-        { sourceType: 'alipay', paymentMethodKey: 'balance', paymentMethodHint: '余额', mappingAction: 'account', accountId: 'old' },
-        { sourceType: 'wechat', paymentMethodKey: 'change', paymentMethodHint: '零钱', mappingAction: 'account', accountId: 'wechat' },
-        { sourceType: 'alipay', paymentMethodKey: 'balance', paymentMethodHint: '账户余额', mappingAction: 'account', accountId: 'current' }
+        { eventId: 'old-event', rowIds: '["old-row"]', sourceType: 'alipay', paymentMethodKey: 'balance', paymentMethodHint: '余额', mappingAction: 'account', accountId: 'old' },
+        { eventId: 'wx-event', rowIds: '["wx-row"]', sourceType: 'wechat', paymentMethodKey: 'change', paymentMethodHint: '零钱', mappingAction: 'account', accountId: 'wechat' },
+        { eventId: 'current-event', rowIds: '["current-row"]', sourceType: 'alipay', paymentMethodKey: 'balance', paymentMethodHint: '账户余额', mappingAction: 'account', accountId: 'current' }
       ]]
     }
   }
   const mappings = await selectDraftPaymentMappings(connection, 'user-1', 'update-1')
-  assert.deepEqual(mappings.map((mapping) => mapping.accountId).sort(), ['current', 'wechat'])
+  assert.deepEqual(mappings.map((mapping) => mapping.accountId).sort(), ['current', 'old', 'wechat'])
+  assert.deepEqual(mappings.map(mapping => mapping.rowIds), [['old-row'], ['wx-row'], ['current-row']])
 })
 
 test('旧规划重建后把本批映射重新绑定到新事件', async function () {
@@ -269,19 +274,34 @@ test('旧规划重建后把本批映射重新绑定到新事件', async function
   }
   await restoreDraftPaymentMappings(connection, 'user-1', 'update-1', [{
     eventId: 'event-new', sourceType: 'wechat', paymentMethodKey: 'change',
-    fieldSources: { fundsProjection: {
+    fieldSources: { rowIds: ['row-1'], fundsProjection: {
       from: { sourceType: 'wechat', paymentMethodKey: 'change', label: '微信零钱' },
       to: { sourceType: 'wechat', paymentMethodKey: null, label: '兴业银行信用卡' }
     } }
   }], [{
-    sourceType: 'wechat', paymentMethodKey: 'change', paymentMethodHint: '零钱',
+    eventId: 'event-old', rowIds: ['row-1'], sourceType: 'wechat', paymentMethodKey: 'change', paymentMethodHint: '零钱',
     mappingAction: 'account', accountId: 'wechat-account'
   }], 'action-1')
   assert.equal(inserts.length, 1)
   assert.match(inserts[0].sql, /catledger_finance_update_account_mapping_drafts/)
   assert.deepEqual(inserts[0].values.slice(2), [
-    'update-1', 'event-new', 'wechat', 'change', '零钱', 'account', 'wechat-account', 'action-1'
+    'update-1', 'event-new', 'wechat', 'change', '微信零钱', 'account', 'wechat-account', 'action-1', null
   ])
+})
+
+test('旧同笔渠道升级恢复银行引用与平台还款目标，不扩散到其他事件', async () => {
+  const values = []
+  const reference = { sourceType: 'bank', paymentMethodKey: 'bank-reference', label: '合成银行' }
+  const target = { sourceType: 'alipay', paymentMethodKey: 'credit-reference', label: '合成负债' }
+  const event = { eventId: 'combined', fieldSources: { rowIds: ['bank-row', 'platform-row'],
+    bankChannelAccountContexts: { old: reference }, repaymentChannelResolution: { platformTargetReference: target } } }
+  const mappings = [reference, target].map((ref, n) => ({ ...ref, eventId: 'combined',
+    mappingAction: 'account', accountId: 'account-' + n }))
+  await restoreDraftPaymentMappings({ async execute(sql, params) { values.push(params); return [{ affectedRows: 1 }] } },
+    'user', 'update', [event, { ...event, eventId: 'unrelated', fieldSources: { ...event.fieldSources, rowIds: ['other-row'] } }], mappings, 'action')
+  const rows = values.flatMap(params => Array.from({ length: params.length / 11 }, (_, i) => params.slice(i * 11, i * 11 + 11)))
+  assert.deepEqual(rows.map(row => [row[3], row[4], row[5], row[8]]),
+    [['combined', 'bank', 'bank-reference', 'account-0'], ['combined', 'alipay', 'credit-reference', 'account-1']])
 })
 
 test('准备计划在首次 SQL 前只序列化有界事件块，不建立全量 JSON 副本', async () => {
@@ -341,14 +361,16 @@ test('升级恢复映射以有界 SQL 分块，重复支付引用每个事件只
   let calls = 0, rows = 0
   const events = Array.from({ length: 1000 }, (_, n) => ({ eventId: 'event-' + n,
     sourceType: 'wechat', paymentMethodKey: 'wallet', fieldSources: {
+      rowIds: ['row-' + n],
       fundsProjection: { from: { sourceType: 'wechat', paymentMethodKey: 'wallet' } }
     } }))
   await restoreDraftPaymentMappings({ async execute(sql, values) {
-    calls++; rows += values.length / 10
-    assert.ok(values.length <= 1000)
-    return [{ affectedRows: values.length / 10 }]
+    calls++; rows += values.length / 11
+    assert.ok(values.length <= 1100)
+    return [{ affectedRows: values.length / 11 }]
   } }, 'synthetic-user', 'synthetic-update', events,
-  [{ sourceType: 'wechat', paymentMethodKey: 'wallet', mappingAction: 'ignore' }], 'synthetic-action')
+  events.map((event, n) => ({ eventId: 'old-' + n, rowIds: ['row-' + n],
+    sourceType: 'wechat', paymentMethodKey: 'wallet', mappingAction: 'ignore' })), 'synthetic-action')
   assert.equal(rows, 1000)
   assert.ok(calls <= 10, 'mapping writes: ' + calls)
 })

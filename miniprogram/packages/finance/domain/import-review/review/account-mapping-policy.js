@@ -23,7 +23,11 @@ function assertChannelTarget(event) {
   if (resolution && event.counterpartyLedgerAccountId !== resolution.targetAccountId) throw importError('VALIDATION_ERROR')
 }
 
-function applyMappedAccount(event, memberRole, accountId, mappingIndex) {
+function applyMappedAccount(event, memberRole, accountId, mappingIndex, mappingAction = 'account') {
+  const decision = require('../account-reference-decision')
+  if (mappingAction === 'external' || event.fieldSources?.accountOwnership) {
+    return decision.apply(event, memberRole, mappingAction === 'external' ? 'external' : 'ledger', accountId)
+  }
   const resolution = channelResolution(event)
   if (resolution && ['mapping_to', 'payment_target'].includes(memberRole) && accountId !== resolution.targetAccountId) {
     throw importError('VALIDATION_ERROR')

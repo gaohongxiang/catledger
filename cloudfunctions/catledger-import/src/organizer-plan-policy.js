@@ -1,4 +1,4 @@
-const { resolveAccountMappings } = require('./account-mapping-policy')
+const { resolveAccountMappings, accountIdFromIndex } = require('./account-mapping-policy')
 const { digestParts } = require('./portable-digest')
 const {
   accountIdentityKeyForReference,
@@ -38,8 +38,7 @@ function exactAccountName(value) {
   return String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN')
 }
 
-// 只有规范全名在当前账本中唯一精确命中时才自动沿用。
-// 显式历史映射/本批决定会在 mappingIndex 中后写并覆盖这里的推断。
+// 名称命中只产生候选；统一绑定裁决不会把 inferred 当成用户确认。
 function inferExactAccountMappings(rows, accounts) {
   const accountsByName = new Map()
   ;(accounts || []).forEach((account) => {
@@ -250,12 +249,13 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
     event.status === EVENT_STATUS.READY && needsCategory(event)).forEach((event) => {
     const classification = classifyReviewIssue(event)
     const projection = event.fieldSources && event.fieldSources.fundsProjection
+    const ownership = require('./account-ownership').read(event)
     const accountRequirements = classification.issueType === 'account_mapping' && projection
       ? [
-          !event.ledgerAccountId && projection.from && projection.from.paymentMethodKey
+          ownership.source.kind !== 'external' && !ownership.source.accountId && projection.from && projection.from.paymentMethodKey
             ? { reference: projection.from, memberRole: 'mapping_from' }
             : null,
-          !event.counterpartyLedgerAccountId && projection.to && projection.to.paymentMethodKey
+          ownership.destination.kind !== 'external' && !ownership.destination.accountId && projection.to && projection.to.paymentMethodKey
             ? { reference: projection.to, memberRole: 'mapping_to' }
             : null
         ].filter(Boolean)
@@ -392,6 +392,7 @@ function excludedThisImport(event) {
 // 读的是同一份，不再靠整理之后再补一次分组，也就不存在“重排后分组没了”的中间态。
 function applyPaymentAccountReferences(events, rowsByEvent, mappingIndex) {
   events.forEach((event, index) => {
+    const eventIndex = require('./account-mapping-policy').indexForEvent(mappingIndex, event)
     if (![EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status)) return
     const references = referencesForRows(rowsByEvent.get(event.eventId) || [])
     if (!references.length) return
@@ -400,7 +401,7 @@ function applyPaymentAccountReferences(events, rowsByEvent, mappingIndex) {
     // 已发布的历史映射和本批草稿按成分键直接落到事件上：账户步骤只显示还需要确认的成分。
     const accounts = new Map((event.fieldSources.paymentAccounts || []).map((item) => [item.componentIndex, item]))
     references.forEach((reference) => {
-      const accountId = mappingIndex.get(paymentReferenceKey(reference))
+      const accountId = accountIdFromIndex(eventIndex, reference)
       if (!accountId) return
       // 还款目标与付款成分使用同一份映射。只把事项标成已确认却漏写目标账户，
       // 会使快照出现“已解决但没有账户”的矛盾，页面曾把它误显示为不计入。
@@ -420,7 +421,7 @@ function applyPaymentAccountReferences(events, rowsByEvent, mappingIndex) {
 function buildAccountIssues(updateId, events, rowsByEvent, effectiveMappings, idFactory) {
   const confirmedKeys = new Map((effectiveMappings || []).filter((mapping) => (
     mapping.mappingAction === 'account' && mapping.accountId
-  )).map((mapping) => [paymentReferenceKey(mapping), mapping.accountId]))
+  )).map((mapping) => [(mapping.eventId || '') + ':' + paymentReferenceKey(mapping), mapping.accountId]))
   const groups = new Map()
   ;(events || []).forEach((event) => {
     const projection = event.fieldSources && event.fieldSources.fundsProjection
@@ -453,17 +454,20 @@ function buildAccountIssues(updateId, events, rowsByEvent, effectiveMappings, id
       const current = excludedThisImport(event)
       const historical = event.reasonCodes.includes('source_account_ignored_default') && !candidate.accountId
       const ignored = current || historical
-      const confirmedAccountId = confirmedKeys.get(paymentReferenceKey(reference))
+      const actual = require('./account-issue-grouping').memberDecision(event, { memberRole: candidate.memberRole }, reference)
+      const external = actual.kind === 'external'
+      const confirmedAccountId = confirmedKeys.get(event.eventId + ':' + paymentReferenceKey(reference)) ||
+        confirmedKeys.get(':' + paymentReferenceKey(reference))
       // 已确认必须以事件实际写入的账户为准，不能用映射索引中的值掩盖漏写。
-      const accountId = candidate.accountId || null
+      const accountId = actual.accountId || null
       // 单账户的老路径只在“已确认或已忽略”时成组；成分引用是账户步骤的正式单元，
       // 还没有账户也要立组，否则组合付款又会退回一条合并的待核对。
-      if (!candidate.required && !ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
+      if (!candidate.required && !ignored && !external && (!confirmedAccountId || confirmedAccountId !== accountId)) return
       const identityKey = accountIdentityKeyForReference(reference) || paymentReferenceKey(reference)
-      const pending = !ignored && !accountId
+      const pending = !ignored && !external && !accountId
       // 「仅本次不计入」只是这次排除，不是账户决定，不能和同一支付方式的
       // 已确认账户并进一组，否则会把排除改成记入。
-      const key = current ? `${identityKey}:excluded`
+      const key = external ? `${identityKey}:external` : current ? `${identityKey}:excluded`
         : ignored ? `${identityKey}:ignore`
         : pending ? `${identityKey}:pending` : `${identityKey}:${accountId}`
       const group = groups.get(key) || { ignored: false, current: false, pending: false, items: [], memberKeys: new Set() }
@@ -498,7 +502,7 @@ function buildAccountIssues(updateId, events, rowsByEvent, effectiveMappings, id
           ? 'payment_reference_ignored_by_history'
           : group.pending ? 'payment_reference_mapping_required'
           : projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
-      memberCount: group.items.length,
+      memberCount: new Set(group.items.map(item => item.event.eventId)).size,
       candidateCount: 0,
       ruleVersion: REVIEW_ISSUE_VERSION,
       // 本次排除与长期忽略的原因码分开：前者不进入以后导入的自动排除，只
@@ -540,19 +544,29 @@ function buildOrganizePlan({ updateId, rows, paymentMappings = [], accounts = []
   const compatibleMappings = compatibleHistoricalMappings(
     inferredMappings.concat(historicalRowMappings, scopedPaymentMappings), validRows, accounts
   )
-  const mappingResolution = resolveAccountMappings({ references, mappings: compatibleMappings, accounts })
+  const drafts = require('./account-draft-binding'), draftIndex = drafts.lookup(compatibleMappings)
+  const mappingResolution = resolveAccountMappings({ references, mappings: draftIndex.common, accounts })
   const effectiveMappings = mappingResolution.mappings
   const visibleMappingResolution = resolveAccountMappings({
     references,
-    mappings: compatibleHistoricalMappings(inferredMappings.concat(scopedPaymentMappings), validRows, accounts),
+    mappings: draftIndex.common,
     accounts
   })
-  const mappingIndex = createMappingIndex(effectiveMappings)
+  const mappingIndex = createMappingIndex(effectiveMappings, { accounts })
   const grouped = groupEvidence(validRows)
   const events = []
   const evidence = []
   grouped.forEach((group) => {
-    const planned = representativeEvent(updateId, group, idFactory, mappingIndex, mappingResolution, references)
+    const groupReferences = accountReferences(group)
+    const decisions = drafts.forMembers(draftIndex, group.map(row => row.rowId), groupReferences)
+    const scoped = decisions.length ? resolveAccountMappings({ references: groupReferences,
+      mappings: draftIndex.common.concat(decisions), accounts }) : mappingResolution
+    const eventIndex = decisions.length ? createMappingIndex(scoped.mappings, { accounts }) : mappingIndex
+    const planned = representativeEvent(updateId, group, idFactory, eventIndex, scoped, references)
+    if (decisions.length) {
+      mappingIndex.eventIndexes.set(planned.event.eventId, eventIndex)
+      visibleMappingResolution.mappings.push(...scoped.mappings.map(mapping => ({ ...mapping, eventId: planned.event.eventId })))
+    }
     events.push(planned.event)
     evidence.push(...planned.evidence)
   })

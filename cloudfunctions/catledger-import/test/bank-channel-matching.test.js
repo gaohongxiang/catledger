@@ -9,6 +9,7 @@ const { applyFields } = require('../src/review/policy')
 const { bankTime } = require('../src/parsers/bank')
 const { parseLocalDateTime } = require('../src/parsers/normalize')
 const { pairingGraph } = require('../src/review/bank-channel-graph')
+const { confirmedBatchMappings } = require('../../../test/helpers/account-bindings')
 
 const ACCOUNT = '50000000-0000-4000-8000-000000000001'
 const OTHER_ACCOUNT = '50000000-0000-4000-8000-000000000002'
@@ -73,7 +74,14 @@ function row(sourceType, suffix = '1', overrides = {}) {
 }
 
 function plan(rows) {
-  return buildOrganizePlan({ updateId: 'synthetic-bank-channel-update', rows, accounts, idFactory: ids() })
+  return buildOrganizePlan({ updateId: 'synthetic-bank-channel-update', rows, accounts,
+    paymentMappings: confirmedMappings(rows), idFactory: ids() })
+}
+
+function confirmedMappings(rows) {
+  return confirmedBatchMappings(rows, rows.filter(row => row.mappingAction === 'account' && row.mappedAccountId)
+    .map(row => ({ sourceType: row.sourceType, paymentMethodKey: row.paymentMethodKey,
+      mappingAction: 'account', accountId: row.mappedAccountId })))
 }
 
 function channelIssues(result) {
@@ -353,7 +361,8 @@ test('Excel 序列时间必须包含实际日内小数，整数日期不能推�
 
 function separateEvents(rows) {
   const idFactory = ids()
-  return rows.map(item => buildOrganizePlan({ updateId: 'synthetic-bank-channel-update', rows: [item], accounts, idFactory }).events[0])
+  return rows.map(item => buildOrganizePlan({ updateId: 'synthetic-bank-channel-update', rows: [item], accounts,
+    paymentMappings: confirmedMappings([item]), idFactory }).events[0])
 }
 
 test('摘要与分页共用完整配对图，先算双向唯一再筛open问题，重复成员不重复计数', () => {

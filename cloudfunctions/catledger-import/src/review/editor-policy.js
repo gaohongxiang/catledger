@@ -24,7 +24,8 @@ function capability(event) {
   return { version: 1, readonly, blockingReasons: [...new Set((event.reasonCodes || []).concat(source.semanticBlockers || []).filter(code => protectedReasons.has(code)))], recordRole: registration ? 'installment_registration' : principal ? 'installment_source' : 'transaction',
     natures: registration ? ['unknown'] : principal ? [...PRINCIPAL_NATURES] : source.repaymentChannelResolution ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
     ...(source.repaymentChannelResolution ? { repaymentChannel: require('../repayment-channel').publicResolution(event) } : {}),
-    ownership: source.repaymentOwnership || null, composition: principal ? 'single' : composition.sourceKind(event),
+    ownership: source.repaymentOwnership || null, accountOwnership: require('../account-ownership').read(event),
+    composition: principal ? 'single' : composition.sourceKind(event),
     incompleteComposition: editor.incompleteComposition || null, evidenceNote: editor.evidenceNote || '',
     sourceCorrection: editor.sourceCorrection || null, incompleteRepayment: editor.incompleteRepayment || null,
     text: { ...has(editor, 'counterparty') && { counterparty: editor.counterparty }, ...has(editor, 'note') && { note: editor.note } },
@@ -43,7 +44,8 @@ function prepare(event, data) {
     'composition', 'decisions', 'sourceCorrection', 'expectedRelations', 'acknowledgedChanges'])
   if (data.editorVersion !== 1 || capability(event).readonly || event.currency !== 'CNY') fail()
   const fields = data.fields || {}, decisions = data.decisions || {}, acknowledgements = data.acknowledgedChanges || []
-  object(fields, BASIC); object(decisions, ['ownership', 'repayment', 'refund', 'repaymentChannel'])
+  object(fields, BASIC); object(decisions, ['ownership', 'accountOwnership', 'repayment', 'refund', 'repaymentChannel'])
+  if (has(decisions, 'ownership') && has(decisions, 'accountOwnership')) fail()
   if (!Array.isArray(acknowledgements) || acknowledgements.some(key => !['composition', 'repayment', 'refund'].includes(key))) fail()
   const before = event.fieldSources || {}, patch = { ...fields }, editor = { ...overrides(event), version: 1 }
   if (has(decisions, 'repaymentChannel')) {
@@ -74,8 +76,11 @@ function prepare(event, data) {
   if (kind(nature) !== kind(event.economicNature) && !has(fields, 'categoryId')) patch.categoryId = null
   if (!kind(nature)) patch.categoryId = null
   // 新归属决定经专用验证后替代旧归属；不借用 legacy 的“缺哪端”字段白名单。
-  const changingOwnership = has(decisions, 'ownership') || has(fields, 'economicNature') && nature !== 'repayment'
-  const base = changingOwnership ? { ...event, fieldSources: { ...before, repaymentOwnership: null } } : event
+  const changingOwnership = has(decisions, 'ownership') || has(decisions, 'accountOwnership') ||
+    has(fields, 'economicNature') && nature !== require('../account-ownership').read(event).businessNature
+  const clearOwnership = has(decisions, 'ownership') || decisions.accountOwnership === null ||
+    has(fields, 'economicNature') && nature !== require('../account-ownership').read(event).businessNature
+  const base = clearOwnership ? { ...event, fieldSources: { ...before, repaymentOwnership: null, accountOwnership: null } } : event
   let next = Object.keys(patch).length ? applyFields(base, patch) : { ...base }
   // applyFields 只把单键决定写进 fieldSources；普通字段保存仍以来源事实为底。
   // 「这笔分期」的决定是这里唯一需要保留的新键，不能随编辑覆盖一起丢掉。
@@ -130,6 +135,14 @@ function prepare(event, data) {
       next = require('../repayment-ownership').applyEditorDecision(next, decisions.ownership)
       delete next.fieldSources.editorOverrides.ownershipCleared
     }
+    if (decisions.accountOwnership != null) {
+      next = require('../account-ownership').apply(next, decisions.accountOwnership)
+      delete next.fieldSources.editorOverrides.ownershipCleared
+    }
+  }
+  // 归属决定可能把还款派生为收支；同次选定的分类按最终性质核验，不能按旧性质丢弃。
+  if (has(fields, 'categoryId') && kind(next.economicNature) && next.status !== 'excluded') {
+    next = applyFields(next, { categoryId: fields.categoryId })
   }
   if (has(decisions, 'repayment')) {
     // 普通还款只按全额转账。兼容旧草稿的显式解除，不再接受本息拆分或计划关联。
@@ -149,7 +162,9 @@ function prepare(event, data) {
   const derived = new Set(['blocking_issue_open','ledger_account_required','economic_nature_required','core_fields_missing',
     'category_required','postability_direction_conflict','transfer_account_required','repayment_account_required','borrow_account_required',
     'repayment_ownership_required','repayment_other_treatment_required','repayment_ownership_invalid','loan_repayment_required','editor_composition_incomplete',
-    'installment_attribution_required'])
+    'installment_attribution_required', 'account_source_required', 'account_destination_required',
+    'account_ownership_invalid', 'account_ownership_recheck_required', 'account_ownership_business_required',
+    'external_no_ledger_effect_required'])
   next.reasonCodes = (next.reasonCodes || []).filter(reason => !derived.has(reason) && !reason.startsWith('repayment_allocation_'))
   // 本金行的字段冲突正是这次改建的性质、对端和分配。改到合法组合、来源也没有其他硬阻断时，
   // 这条冲突已经由用户的选择解决，不能继续把整批卡在“交易信息冲突待核对”。

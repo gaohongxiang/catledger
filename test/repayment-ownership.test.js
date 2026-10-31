@@ -5,42 +5,46 @@ const { project } = require('../miniprogram/services/import-draft-session')
 
 function state() {
   const event = { eventId: 'e', economicNature: 'repayment', ledgerAccountId: 'wallet', counterpartyLedgerAccountId: null,
-    repaymentOwnershipRequired: true, fundsProjection: { kind: 'repayment', from: { label: '支付宝账户余额' },
+    accountOwnershipRequired: true, fundsProjection: { kind: 'repayment', from: { label: '支付宝账户余额' },
       to: { referenceKind: 'atomic', label: '合成银行信用卡' } } }
   return { currentIssue: model.issueView({ issueId: 'i', issueType: 'transfer_accounts', subject: event }), issueEvents: [event],
     accountChoices: [{ isPlaceholder: true }, { accountId: 'credit', type: 'credit' }, { isCreate: true }, { accountId: 'wallet-2', type: 'wallet' }],
     accountTypeOptions: [{ value: 'credit' }, { value: 'wallet' }],
-    issueDraft: { accountIndex: 0, accountTypeIndex: 0, newAccountName: '', repaymentOwner: '', repaymentOtherTreatment: '' } }
+    issueDraft: { accountIndex: 0, accountTypeIndex: 0, newAccountName: '' } }
 }
 
-test('无归属选择时即使已有账户选择也不能保存', () => {
+test('旧片段表单不能用单一目录选择完成资金两端确认', () => {
   const data = state(); data.issueDraft.accountIndex = 1
-  assert.equal(data.currentIssue.label, '还款账户归属待确认')
+  assert.equal(data.currentIssue.label, '资金两端归属待确认')
   assert.equal(model.buildIssueFieldsDraft(data).valid, false)
 })
 
-test('本人账户确认选择负债账户，本批新建也使用稳定账户 ID', async t => {
+test('账本还入端只能选择负债账户，本批新建也使用稳定账户 ID', async t => {
   const editor = require('./helpers/editor-workbench')
   const { page, accounts, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
   assert.equal(editor.select(page, 'reviewCounterparty', accounts[1]), false)
   assert.equal(editor.select(page, 'reviewCounterparty', drafts[0]), true)
-  assert.equal(editor.view(page).payload.fields.counterpartyLedgerAccountId, drafts[0].accountId)
-  assert.equal(editor.view(page).payload.decisions.ownership.owner, 'self')
+  assert.deepEqual(editor.plain(editor.view(page).payload.decisions.accountOwnership),
+    { source: { kind: 'ledger', accountId: 'account-0' }, destination: { kind: 'ledger', accountId: drafts[0].accountId } })
+  assert.equal(editor.view(page).payload.fields.counterpartyLedgerAccountId, undefined)
+  assert.equal(editor.view(page).complete, true)
 })
 
-test('代还需明确处理方式且不提交隐藏的本人账户或贷款信息', async t => {
+test('外部还入端直接按支出核对，未知端保留缺口，均不提交隐藏账户或贷款信息', async t => {
   const editor = require('./helpers/editor-workbench')
   const { page, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
-  editor.select(page, 'reviewCounterparty', drafts[0]); editor.mode(page, 'owner', 'other')
-  assert.ok(editor.view(page).missing.includes('代还处理方式'))
-  for (const treatment of ['expense', 'pending']) {
-    editor.mode(page, 'otherTreatment', treatment)
+  editor.select(page, 'reviewCounterparty', drafts[0])
+  for (const kind of ['external', 'unknown']) {
+    editor.mode(page, 'destinationKind', kind)
     const payload = editor.view(page).payload
-    assert.deepEqual(editor.plain(payload.decisions.ownership), { owner: 'other', treatment })
+    assert.deepEqual(editor.plain(payload.decisions.accountOwnership.destination), { kind })
+    assert.equal(payload.decisions.ownership, undefined)
     assert.equal(payload.decisions.repayment, undefined)
     assert.equal(payload.fields.counterpartyLedgerAccountId, undefined)
     assert.equal(payload.fields.ledgerAccountDraft, undefined)
-    assert.equal(payload.fields.economicNature, treatment === 'expense' ? 'expense' : 'unknown')
+    assert.equal(payload.fields.economicNature, undefined)
+    assert.equal(editor.view(page).complete, kind === 'external')
+    assert.equal(editor.view(page).missing.includes('还入账户'), kind === 'unknown')
   }
 })
 
@@ -54,6 +58,6 @@ test('暂存他人归属的乐观投影不减少待核对数量', () => {
 })
 
 test('已经明确归属的普通还款不重复插入归属问题', () => {
-  const data = state(); data.currentIssue.subject.repaymentOwnershipRequired = false
-  assert.equal(model.issueView(data.currentIssue).repaymentOwnershipRequired, false)
+  const data = state(); data.currentIssue.subject.accountOwnershipRequired = false
+  assert.equal(model.issueView(data.currentIssue).accountOwnershipRequired, false)
 })

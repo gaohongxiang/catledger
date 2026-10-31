@@ -125,9 +125,10 @@
       "version",
       "disabled_at",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "binding_json"
     ],
-    "json": []
+    "json": ["binding_json"]
   },
   {
     "name": "catledger_import_category_mappings",
@@ -656,9 +657,10 @@
       "account_id",
       "action_id",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "binding_json"
     ],
-    "json": []
+    "json": ["binding_json"]
   },
   {
     "name": "catledger_finance_update_sources",

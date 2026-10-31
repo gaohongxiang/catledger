@@ -42,7 +42,8 @@ function pair(overrides = {}) {
 }
 function organize(rows) {
   let id = 0
-  return buildOrganizePlan({ updateId: 'update-1', rows, accounts: ACCOUNTS, idFactory: () => 'id-' + (++id) })
+  return buildOrganizePlan({ updateId: 'update-1', rows, accounts: ACCOUNTS,
+    paymentMappings: require('./helpers/account-bindings').confirmedNamedAccounts(rows, ACCOUNTS), idFactory: () => 'id-' + (++id) })
 }
 
 test('同卡同日同额的一对现金分期放款记成借款，对行只留证据不计入', () => {

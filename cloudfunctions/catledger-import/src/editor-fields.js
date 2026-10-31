@@ -1,24 +1,9 @@
 // 单笔编辑的有效文本与真实资金角色；原始凭据保持独立。
-const ASSETS = new Set(['cash', 'bank', 'wallet', 'other_asset'])
-const DEBTS = new Set(['credit', 'other_liability'])
-const MOVEMENTS = new Set(['internal_transfer', 'repayment', 'borrow'])
-const has = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
-function overrides(event) {
-  const value = event.fieldSources && event.fieldSources.editorOverrides
-  return value && value.version === 1 ? value : {}
-}
+const { ASSETS, DEBTS, MOVEMENTS, has, overrides, funds } = require('./funds-route')
 function effectiveText(event, source = event) {
   const value = overrides(event)
   return { counterparty: has(value, 'counterparty') ? value.counterparty : source.counterparty || '',
     note: has(value, 'note') ? value.note : source.sourceNote || source.note || '' }
-}
-function funds(event) {
-  const fields = event.fieldSources || {}
-  const editor = overrides(event)
-  const allocated = editor.composition ? editor.composition !== 'single' : fields.paymentResolution || (fields.repaymentAllocations || []).length
-  const reverse = MOVEMENTS.has(event.economicNature) && !allocated && event.sourceDirection === 'income'
-  return { sourceAccountId: reverse ? event.counterpartyLedgerAccountId : event.ledgerAccountId,
-    destinationAccountId: reverse ? event.ledgerAccountId : event.counterpartyLedgerAccountId, reverse }
 }
 function accountRolesValid(event, accounts) {
   const fields = event.fieldSources || {}, primary = fields.installment

@@ -1,6 +1,7 @@
 const { commandResult } = require('./command-result')
 const repaymentOwnership = require('./repayment-ownership')
 const { randomUUID } = require('node:crypto')
+const { isDeepStrictEqual } = require('node:util')
 const { prepareEvidenceSplit } = require('./evidence-plan-upgrade')
 const { hasGroupConflict, identityGroups } = require('./evidence-matching')
 const { accountReferences, buildReviewIssues } = require('./organizer-planner')
@@ -19,7 +20,7 @@ const { recalculateUpdateCounts } = require('./review/reconciliation')
 const { createFollowUpIssue } = require('./review/issue-store')
 const { selectDomainEvents, saveEvent } = require('./review/event-store')
 const { FIELD_MASK } = require('./review/policy')
-const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
+const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts, selectDraftPaymentMappings, restoreDraftPaymentMappings } = require('./finance-update-repository')
 const { PLAN_VERSION } = require('./domain-versions')
 const { CATEGORY_RULE_VERSION } = require('./category-rules')
 const { prepareAccountIssueUpgrade, persistAccountIssueUpgrade } = require('./account-plan-upgrade')
@@ -71,14 +72,15 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
   const financial = semantics.every(semantic => semantic.moneyEffect === 'financial')
   const sources = current.fieldSources || {}
   const disbursementOf = semantic => semantic.relationHints && semantic.relationHints.disbursement || null
-  const signature = semantic => JSON.stringify([semantic.sourceAction, semantic.moneyEffect, semantic.settlement,
+  const signature = semantic => [semantic.sourceAction, semantic.moneyEffect, semantic.settlement,
     semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.ledgerAccountRef, semantic.fromAccountRef, semantic.toAccountRef,
-    semantic.relationHints && semantic.relationHints.installment || null, disbursementOf(semantic)])
+    semantic.relationHints && semantic.relationHints.installment || null, disbursementOf(semantic)]
   const installment = semantics[0].relationHints && semantics[0].relationHints.installment || null
   const installmentChanged = JSON.stringify(installment) !== JSON.stringify(sources.installment || null)
   const disbursement = disbursementOf(semantics[0])
   const sameDisbursement = semantics.every(semantic => JSON.stringify(disbursementOf(semantic)) === JSON.stringify(disbursement))
-  const sameSource = evidenceRows.every((row, index) => row.semantic && signature(row.semantic) === signature(semantics[index]))
+  const sameSource = evidenceRows.every((row, index) => row.semantic && isDeepStrictEqual(
+    signature(require('./account-binding').scopeSemantic(row.semantic, row)), signature(semantics[index])))
   if (sameSource && !installmentChanged && JSON.stringify(blockers.slice().sort()) === JSON.stringify((sources.semanticBlockers || []).slice().sort()) &&
       ((current.manualFieldMask & FIELD_MASK.economicNature) || (natures.length === 1 && natures[0] === current.economicNature))) return current
   const next = { ...current, fieldSources: { ...sources, semanticBlockers: blockers },
@@ -125,9 +127,9 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
   }
   if (semantics.some(semantic => semantic.moneyEffect === 'unknown')) next.reasonCodes.push('transaction_status_unknown')
   // 没有来源语义变化的事件保持原版本和原核对项。
-  const sourceView = event => JSON.stringify([event.economicNature, event.flowDirection,
-    event.fieldSources, event.reasonCodes.filter(reason => SOURCE_REASONS.has(reason) || reason === 'core_fields_conflict').sort()])
-  return sourceView(next) === sourceView(current) ? current : next
+  const sourceView = event => [event.economicNature, event.flowDirection,
+    event.fieldSources, event.reasonCodes.filter(reason => SOURCE_REASONS.has(reason) || reason === 'core_fields_conflict').sort()]
+  return isDeepStrictEqual(sourceView(next), sourceView(current)) ? current : next
 }
 
 function refreshAutomaticCategory(current, rows) {
@@ -163,22 +165,23 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   const eventRows = event => (linksByEvent.get(event.eventId) || []).map(link => rowMap.get(link.rowId)).filter(Boolean)
   const needsSplit = events.some(event => ['ready', 'needs_action'].includes(event.status) &&
     identityGroups(eventRows(event)).length > 1 && hasGroupConflict(eventRows(event)))
-  const paymentMappings = needsSplit ? await selectPaymentMappings(connection, uid, updateId) : []
-  const accounts = needsSplit ? await selectActiveAccounts(connection, uid) : []
+  const paymentMappings = await selectPaymentMappings(connection, uid, updateId)
+  const accounts = await selectActiveAccounts(connection, uid)
+  const draftMappings = await selectDraftPaymentMappings(connection, uid, updateId)
+  const mappingLookup = require('./account-draft-binding').lookup(paymentMappings)
   const references = accountReferences(rows)
   // 本批自己明确选过的「仅本次不计入」会留下忽略草稿，这类已决结果不能因为
   // 规则升级被重新追问；只有找不到本批决定的排除才是旧版永久规则留下的。
-  const [ignoredDrafts] = await connection.execute(`SELECT source_type AS sourceType, payment_method_key AS paymentMethodKey
+  const [ignoredDrafts] = await connection.execute(`SELECT event_id AS eventId, source_type AS sourceType, payment_method_key AS paymentMethodKey
     FROM catledger_finance_update_account_mapping_drafts
     WHERE uid = ? AND update_id = ? AND mapping_action = 'ignore'`, [uid, updateId])
-  const ignoredBatchKeys = new Set(ignoredDrafts.map((mapping) => paymentReferenceKey(mapping)))
+  const ignoredEvents = new Set(ignoredDrafts.map(mapping => mapping.eventId))
   const splits = []
   const changes = events.map(event => {
     const rows = eventRows(event)
     // 只由旧版永久忽略造成的排除先恢复成待确认，再按同一套规则重算语义；
     // 账户事项随后在 account-plan-upgrade 里从“已解决·忽略”改成待确认。
-    const keptByBatch = rows.some((row) => [ledgerAccountReferenceForRow(row), ...referencesForRows([row])]
-      .filter(Boolean).some((reference) => ignoredBatchKeys.has(paymentReferenceKey(reference))))
+    const keptByBatch = ignoredEvents.has(event.eventId)
     const released = keptByBatch ? null : releaseLegacyIgnore(event)
     if (released) {
       return { current: event, next: refreshAutomaticCategory(refreshEventSemantic(released, rows, references), rows) }
@@ -195,7 +198,11 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   })
     .map(pair => {
       if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
-      const reasons = repaymentOwnership.reasonsFor(pair.next)
+      pair.next = require('./account-binding-upgrade').refreshBindings(pair.next,
+        eventRows(pair.next).filter(row => !pair.next.fieldSources.rowIds || pair.next.fieldSources.rowIds.includes(row.rowId)), mappingLookup, accounts)
+      const ownership = require('./account-ownership').resolve(pair.next)
+      const reasons = require('./account-reference-decision').supported(pair.next) &&
+        (ownership.explicit || ownership.businessNature === 'repayment') ? ownership.reasons : []
       const source = pair.next.fieldSources || {}
       if (source.loanRepayment || source.editorOverrides?.incompleteRepayment) reasons.push('loan_repayment_required')
       if (reasons.some(reason => !(pair.next.reasonCodes || []).includes(reason))) {
@@ -261,7 +268,8 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
           pair.next.reasonCodes = unique([...pair.next.reasonCodes, 'core_fields_conflict'])
         }
       }
-      await saveEvent(connection, uid, pair.current, pair.next, actionId, { preserveReferences: true, actionSource: 'semantic', allowAutomaticCategory: true })
+      await saveEvent(connection, uid, pair.current, pair.next, actionId, { preserveReferences: true,
+        actionSource: 'semantic', allowAutomaticCategory: true, allowAutomaticAccounts: true })
       await connection.execute(`UPDATE catledger_review_issue_members m JOIN catledger_review_issues i
         ON i.uid = m.uid AND i.issue_id = m.issue_id SET m.object_version = ?
         WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.object_id = ? AND (i.status = 'open' OR (i.issue_type = 'account_mapping' AND i.status = 'resolved'))`,
@@ -277,6 +285,19 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   await insertAction(connection, uid, { actionId, updateId, expectedVersion: version, appliedVersion: version + 1,
     actionType: 'semantic_upgrade', requestDigest, reasons: ['source_semantics_upgraded'],
     decision: accountPlan.accountIssueMappings.length ? { accountIssueMappings: accountPlan.accountIssueMappings } : null })
+  const bindingView = event => {
+    const fields = event.fieldSources || {}
+    return [fields.accountBindingVersion, fields.ledgerAccountReference, fields.fundsProjection,
+      fields.paymentAccountReferences, fields.bankChannelAccountContexts]
+  }
+  const boundEvents = changes.filter(pair =>
+    pair.next.fieldSources.accountBindingVersion === require('./account-binding').VERSION &&
+    !isDeepStrictEqual(bindingView(pair.current), bindingView(pair.next))).map(pair => pair.next)
+  for (const part of require('./sql-batch').chunks(boundEvents.map(event => [event.eventId]))) {
+    await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
+      WHERE uid=? AND update_id=? AND event_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
+  }
+  await restoreDraftPaymentMappings(connection, uid, updateId, boundEvents, draftMappings, actionId)
   await persistAccountIssueUpgrade(connection, uid, updateId, accountPlan, actionId)
   const projected = await require('./review/reconciliation').refreshProjectedEvents(connection, uid, updateId, actionId)
   for (const event of projected) followUpIds.add(event.eventId)

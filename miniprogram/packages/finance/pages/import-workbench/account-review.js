@@ -45,11 +45,13 @@ function directoryRows(sheet, items) {
   return items.map(item => {
     const wrongType = sheet.allowedTypes ? !sheet.allowedTypes.includes(item.type)
       : sheet.liabilityOnly && !['credit', 'other_liability'].includes(item.type)
-    const unavailable = Boolean(item.archived || item.archivedAt || item.unavailable)
+    const wrongCurrency = sheet.currency && item.currency && sheet.currency !== item.currency
+    const unavailable = Boolean(item.archived || item.archivedAt || item.disabledAt || item.unavailable)
     const type = ACCOUNT_TYPE_OPTIONS.find(option => option.value === item.type)
     return { ...item, directorySelected: (sheet.kind === 'loans' ? item.loanId : item.accountId || item.categoryId) === sheet.selectedId,
-      directoryDisabled: wrongType || unavailable,
-      directoryMeta: unavailable ? (sheet.kind === 'categories' ? '分类不可用' : '账户不可用') : wrongType ? '账户类型不适用于当前资金端' : type ? type.label : '' }
+      directoryDisabled: wrongType || wrongCurrency || unavailable,
+      directoryMeta: unavailable ? (sheet.kind === 'categories' ? '分类不可用' : '账户不可用') : wrongCurrency ? '账户币种与本笔不同'
+        : wrongType ? '账户类型不适用于当前资金端' : type ? type.label : '' }
   }).sort((a, b) => Number(a.directoryDisabled) - Number(b.directoryDisabled))
 }
 
@@ -166,6 +168,7 @@ function showAccountChoice(event) {
       accountChoiceSheet: {
         issueId: issueId,
         label: mapping.label,
+        canExternal: mapping.canExternal,
         selectedValue: selectedValue,
         recommendedAccount: recommendedAccount
       },
@@ -189,7 +192,7 @@ function applyAccountChoice(event) {
     draft.accountId = value.slice('account:'.length)
     draft.recommendedAccountId = sheet.recommendedAccount &&
     sheet.recommendedAccount.accountId === draft.accountId ? draft.accountId : ''
-  } else if (['create', 'ignore'].includes(value)) {
+  } else if (['create', 'ignore'].includes(value) || value === 'external' && sheet.canExternal) {
     draft.mode = value
     draft.accountId = ''
     draft.recommendedAccountId = ''
@@ -247,23 +250,34 @@ module.exports = {
         }
         summary.inline += 1
         if (issue.status === 'open') summary.open += 1
-        const choices = model.accountChoiceOptions(accounts, accountDrafts)
+        const subject = issue.subject || {}, source = subject.fieldSources || {}, facts = subject.editorFacts || {}
+        const canExternal = Boolean(issue.subject && issue.accountContext?.canExternal !== false &&
+          !/^payment_component_/.test(issue.accountContext && issue.accountContext.fundsSide || '') &&
+          !['borrow', 'refund'].includes(subject.economicNature) && !subject.installment && !source.installment &&
+          !subject.disbursement && !source.disbursement && !subject.paymentResolution && !source.paymentResolution &&
+          !(subject.paymentAccounts || source.paymentAccounts || []).length && !(subject.repaymentAllocations || source.repaymentAllocations || []).length &&
+          !subject.repaymentChannel && !facts.repaymentChannel && !source.repaymentChannelResolution && !source.bankChannelResolution &&
+          !subject.loanRepayment && !source.loanRepayment && !facts.incompleteComposition && !facts.incompleteRepayment &&
+          (!facts.composition || facts.composition === 'single'))
+        const choices = model.accountChoiceOptions(accounts, accountDrafts, { canExternal })
         const mappingDraft = (accountMappingDrafts || []).find(function (item) {
           return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&
             item.sourceType === issue.accountContext.sourceType &&
-            item.paymentMethodKey === issue.accountContext.paymentMethodKey
+            item.paymentMethodKey === (issue.accountContext.bindingKey || issue.accountContext.paymentMethodKey)
         })
         const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
+        const resolvedExternal = issue.status === 'resolved' && canExternal && Boolean(
+          mappingDraft && mappingDraft.mappingAction === 'external' || issue.accountContext && issue.accountContext.mappingAction === 'external')
         // “已解决但没拿到账户”不是排除决定。只有本批映射或整组明确排除记录
         // 才能显示本次不计入；旧快照的矛盾状态须留在待确认。
         const resolvedExclusion = issue.status === 'resolved' && Boolean(
           mappingDraft && mappingDraft.mappingAction === 'ignore' ||
           (issue.reasonCodes || []).some(code => ['account_mapping_excluded', 'source_account_ignored_default'].includes(code)))
-        const missingResolution = issue.status === 'resolved' && !resolvedAccountId && !resolvedExclusion
+        const missingResolution = issue.status === 'resolved' && !resolvedAccountId && !resolvedExclusion && !resolvedExternal
         let draft = self._accountUiDrafts.get(issue.issueId)
         if (missingResolution && draft && !draft.dirty && !draft.localConfirmed) draft = null
         if (!draft) {
-          const resolvedMode = resolvedExclusion ? 'ignore' : resolvedAccountId ? 'account' : ''
+          const resolvedMode = resolvedExclusion ? 'ignore' : resolvedExternal ? 'external' : resolvedAccountId ? 'account' : ''
           const suggestedName = issue.accountContext && issue.accountContext.recognized
           ? issue.accountContext.label
           : ''
@@ -306,10 +320,11 @@ module.exports = {
         else summary.confirmed += 1
         return Object.assign({}, issue, {
             inline: true,
+            canExternal,
             needsConfirmation: needsConfirmation,
             canConfirm: ready,
             dirty: draft.dirty,
-            summaryText: draft.mode === 'ignore'
+            summaryText: ['ignore', 'external'].includes(draft.mode)
             ? choices[choiceIndex].name
             : '记入：' + (draft.mode === 'create' ? String(draft.name || '').trim() + '（' + (ACCOUNT_TYPE_OPTIONS[draft.typeIndex] || {}).label + '）' : choices[choiceIndex].name) + ' · 已确认',
             evidencePreview: issue.subject ? model.accountEvidenceView(issue.subject) : null,
@@ -467,6 +482,10 @@ module.exports = {
     const decision = { issueId: mapping.issueId, issueVersion: mapping.version, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
     if (draft.mode === 'ignore') {
       decision.decision = 'exclude_events'
+    } else if (draft.mode === 'external' && mapping.canExternal) {
+      decision.decision = 'apply_fields'
+      decision.paymentRuleAction = 'external'
+      decision.fields = {}
     } else {
       decision.decision = 'apply_fields'
       decision.fields = draft.mode === 'account' ? { mappingAccountId: draft.accountId } : {

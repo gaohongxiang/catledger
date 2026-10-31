@@ -4,7 +4,7 @@ const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { localServices, call } = require('./helpers/local-services')
-const { legacyAlipayAccounts } = require('../cloudfunctions/catledger-import/test/helpers/legacy-alipay-accounts')
+const { legacyAlipayAccounts, restoreLegacyAccountPlan } = require('../cloudfunctions/catledger-import/test/helpers/legacy-alipay-accounts')
 const { PLAN_VERSION } = require('../cloudfunctions/catledger-import/src/domain-versions')
 const { loadObject, saveObject } = require('../cloudfunctions/catledger-import/src/local-review-objects')
 const codec = require('../cloudfunctions/catledger-import/src/local-review-snapshot')
@@ -23,6 +23,17 @@ async function setup(lab, mode, apiPool, importPool) {
   const parsed = await call(services.import, 'imports.parseFile', { requestId: randomUUID(), importId: file.importId, fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 })
   await legacyAlipayAccounts(lab.owner, uid, parsed.batch.batchId)
   let update = await call(services.import, 'financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
+  await restoreLegacyAccountPlan(lab.owner, uid, update.updateId)
+  const [legacyEvents] = await lab.owner.execute('SELECT field_sources_json AS fields FROM catledger_economic_events WHERE uid=? AND update_id=?', [uid, update.updateId])
+  const legacyReferences = legacyEvents.map(event => {
+    const fields = typeof event.fields === 'string' ? JSON.parse(event.fields) : event.fields
+    assert.equal(fields.accountBindingVersion, undefined)
+    assert.equal(fields.ledgerAccountReference.bindingKey, undefined)
+    assert.equal(fields.ledgerAccountReference.binding, undefined)
+    return fields.ledgerAccountReference
+  })
+  assert.equal(new Set(legacyReferences.map(reference => reference.accountIdentityKey)).size, 2)
+  assert.equal(new Set(legacyReferences.map(reference => reference.paymentMethodKey)).size, 2)
   const issues = (await call(services.import, 'reviewIssues.list', { updateId: update.updateId })).items.filter(issue => issue.issueType === 'account_mapping')
   assert.equal(issues.length, 2)
   if (mode !== 'pending') for (const [index, issue] of issues.entries()) {
@@ -42,10 +53,23 @@ async function setup(lab, mode, apiPool, importPool) {
   return { services, uid, updateId: update.updateId, version: prepared.update.version, snapshotId, issues, accounts }
 }
 async function invariant(pool, uid, updateId) {
-  const [events] = await pool.execute('SELECT event_id,amount_minor,event_local_at,ledger_account_id,manual_field_mask FROM catledger_economic_events WHERE uid=? AND update_id=? ORDER BY event_id', [uid, updateId])
+  const [events] = await pool.execute(`SELECT event_id,amount_minor,event_local_at,ledger_account_id,category_id,manual_field_mask,
+    JSON_EXTRACT(field_sources_json,'$.lastUserActionId') AS user_action
+    FROM catledger_economic_events WHERE uid=? AND update_id=? ORDER BY event_id`, [uid, updateId])
   const [rows] = await pool.execute('SELECT row_id,payment_method_key,observed_identity_key,observed_core_digest FROM catledger_import_rows WHERE uid=? ORDER BY row_id', [uid])
+  const [evidence] = await pool.execute('SELECT evidence_id,event_id,row_id,evidence_role FROM catledger_event_evidence WHERE uid=? AND update_id=? ORDER BY evidence_id', [uid, updateId])
+  const [decisions] = await pool.execute(`SELECT action_id,action_type,decision_json FROM catledger_finance_actions
+    WHERE uid=? AND update_id=? AND action_type IN ('resolve_review_issue','resolve_account_mappings') ORDER BY action_id`, [uid, updateId])
   const [[formal]] = await pool.execute('SELECT (SELECT COUNT(*) FROM catledger_accounts WHERE uid=?) AS accounts,(SELECT COUNT(*) FROM catledger_transactions WHERE uid=?) AS transactions', [uid, uid])
-  return { events, rows, formal }
+  return { events, rows, evidence, decisions, formal }
+}
+async function upgradeState(pool, uid, updateId) {
+  const [[update]] = await pool.execute('SELECT plan_version,version FROM catledger_finance_updates WHERE uid=? AND update_id=?', [uid, updateId])
+  const [events] = await pool.execute('SELECT event_id,status,version,field_sources_json,reason_codes_json FROM catledger_economic_events WHERE uid=? AND update_id=? ORDER BY event_id', [uid, updateId])
+  const [issues] = await pool.execute('SELECT issue_id,status,version,blocking,resolved_action_id FROM catledger_review_issues WHERE uid=? AND update_id=? ORDER BY issue_id', [uid, updateId])
+  const [members] = await pool.execute('SELECT member_id,issue_id,object_id,object_version,member_role FROM catledger_review_issue_members WHERE uid=? AND update_id=? ORDER BY member_id', [uid, updateId])
+  const [mappings] = await pool.execute('SELECT draft_mapping_id,event_id,payment_method_key,account_id,action_id,binding_json FROM catledger_finance_update_account_mapping_drafts WHERE uid=? AND update_id=? ORDER BY draft_mapping_id', [uid, updateId])
+  return { update, events, issues, members, mappings }
 }
 test('v34账户族升级保留证据和人工决定，冲突转核对，旧快照拒绝且事务可重试', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async t => {
   const lab = await isolatedMysql()
@@ -54,6 +78,9 @@ test('v34账户族升级保留证据和人工决定，冲突转核对，旧快�
     for (const mode of ['pending', 'consistent', 'conflict']) await t.test(mode, async () => {
       const c = await setup(lab, mode, apiPool, importPool), { uid, updateId, services } = c
       const before = await invariant(lab.owner, uid, updateId)
+      assert.equal(before.decisions.length, mode === 'pending' ? 0 : 2)
+      const beforeUpgrade = await upgradeState(lab.owner, uid, updateId)
+      assert.ok(beforeUpgrade.mappings.every(mapping => mapping.binding_json == null), '旧决定保持无绑定证明的真实格式')
       await assert.rejects(call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId, version: c.version }), { publicCode: 'CONFLICT' })
       await assert.rejects(call(services.import, 'financeUpdates.stageDecisions', { requestId: randomUUID(), updateId, snapshotId: c.snapshotId,
         uploadId: randomUUID(), baseVersion: c.version, ruleVersion: PLAN_VERSION, chunkCount: 1, index: 0, content: '{}' }), { publicCode: 'CONFLICT' })
@@ -70,6 +97,7 @@ test('v34账户族升级保留证据和人工决定，冲突转核对，旧快�
         try {
           await assert.rejects(call(services.import, 'financeUpdates.organize', data))
           assert.deepEqual(await invariant(lab.owner, uid, updateId), before)
+          assert.deepEqual(await upgradeState(lab.owner, uid, updateId), beforeUpgrade)
           const [[actions]] = await lab.owner.execute("SELECT COUNT(*) AS count FROM catledger_finance_actions WHERE uid=? AND action_type='semantic_upgrade'", [uid])
           assert.equal(Number(actions.count), 0)
         } finally { await lab.owner.query('DROP TRIGGER ' + trigger) }
@@ -85,6 +113,7 @@ test('v34账户族升级保留证据和人工决定，冲突转核对，旧快�
       const [[action]] = await lab.owner.execute("SELECT decision_json AS decision FROM catledger_finance_actions WHERE uid=? AND update_id=? AND action_type='semantic_upgrade'", [uid, updateId])
       const decision = typeof action.decision === 'string' ? JSON.parse(action.decision) : action.decision
       assert.equal(decision.accountIssueMappings.length, 2)
+      assert.deepEqual(decision.accountIssueMappings.map(item => item.fromIssueId).sort(), c.issues.map(issue => issue.issueId).sort())
       assert.ok(decision.accountIssueMappings.every(item => item.toIssueId === issues[0].issueId))
       const snapshot = await call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId, version: upgraded.appliedVersion })
       assert.notEqual(snapshot.snapshot.objectId, c.snapshotId)

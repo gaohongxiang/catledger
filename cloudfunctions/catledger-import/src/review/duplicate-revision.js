@@ -196,7 +196,7 @@ async function split(connection, uid, data, requestDigest, values) {
   for (const issueId of new Set(Object.keys(event.fieldSources.bankChannelAccountContexts || {}).concat(channel?.bankAccountIssueIds || []))) {
     await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?
       AND object_type='event' AND object_id = ?`, [uid, updateId, issueId, eventId])
-    await connection.execute(`UPDATE catledger_review_issues SET member_count=(SELECT COUNT(*) FROM catledger_review_issue_members WHERE uid=? AND issue_id=?),
+    await connection.execute(`UPDATE catledger_review_issues SET member_count=(SELECT COUNT(DISTINCT object_type,object_id) FROM catledger_review_issue_members WHERE uid=? AND issue_id=?),
       status=IF(member_count=0,'superseded',status),blocking=IF(member_count=0,0,blocking),version=version+1
       WHERE uid=? AND update_id=? AND issue_id=?`, [uid, issueId, uid, updateId, issueId])
   }

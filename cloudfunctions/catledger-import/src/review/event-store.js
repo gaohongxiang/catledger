@@ -136,18 +136,20 @@ async function validateEventReferences(connection, uid, event, catalog = null, {
     const draftIds = accountIds.filter((accountId) => !existingIds.has(accountId))
     if (draftIds.length > 0) {
       const [drafts] = catalog ? [draftIds.map(id => catalog.drafts.get(id)).filter(Boolean)] : await connection.execute(
-        `SELECT draft_account_id AS accountId, type, currency
+        `SELECT draft_account_id AS accountId, type, currency, superseded_at AS supersededAt
            FROM catledger_finance_update_account_drafts
           WHERE uid = ? AND update_id = ?
             AND draft_account_id IN (${draftIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
         [uid, event.updateId, ...draftIds]
       )
-      if (drafts.length !== draftIds.length || drafts.some((draft) => draft.currency !== event.currency)) {
+      if (drafts.length !== draftIds.length || drafts.some((draft) => draft.currency !== event.currency || draft.supersededAt != null)) {
         throw importError('VALIDATION_ERROR')
       }
       drafts.forEach((draft) => accounts.push(draft))
     }
     if (!require('../editor-fields').accountRolesValid(event, new Map(accounts.map(account => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
+    if (fieldSources.accountOwnership && require('../account-ownership').resolve(event, { accounts }).reasons
+      .some(reason => ['account_ownership_invalid','account_ownership_business_required'].includes(reason))) throw importError('VALIDATION_ERROR')
     if (plan.valid && !allocationAccountsValid(event, plan, new Map(accounts.map((account) => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
     if (event.counterpartyLedgerAccountId && ((fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target') || repaymentOwnership.decisionFor(event)?.owner === 'self' && repaymentOwnership.decisionFor(event)?.version === repaymentOwnership.VERSION)) {
       const target = accounts.find((account) => account.accountId === event.counterpartyLedgerAccountId)
@@ -201,7 +203,7 @@ async function loadReferenceCatalog(connection, uid, updateId, events) {
     accounts.forEach(row => catalog.accounts.set(row.accountId, row))
     const missing = values.filter(id => !catalog.accounts.has(id))
     if (missing.length) {
-      const [drafts] = await connection.execute(`SELECT draft_account_id AS accountId, type, currency FROM catledger_finance_update_account_drafts
+      const [drafts] = await connection.execute(`SELECT draft_account_id AS accountId, type, currency, superseded_at AS supersededAt FROM catledger_finance_update_account_drafts
         WHERE uid = ? AND update_id = ? AND draft_account_id IN (${missing.map(() => '?').join(',')}) ORDER BY draft_account_id FOR UPDATE`, [uid, updateId, ...missing])
       drafts.forEach(row => catalog.drafts.set(row.accountId, row))
     }
@@ -235,14 +237,20 @@ async function saveEvents(connection, uid, updateId, pairs, actionId, { openBloc
   return pairs.map(pair => pair.next)
 }
 
-async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user', allowAutomaticCategory = false } = {}) {
+async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user', allowAutomaticCategory = false, allowAutomaticAccounts = false } = {}) {
   if (preserveReferences) {
     const categoryChanged = current.categoryId !== next.categoryId
     const automaticCategory = allowAutomaticCategory && actionSource === 'semantic' && !(current.manualFieldMask & FIELD_MASK.categoryId)
-    const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency'].every(key => current[key] === next[key]) &&
+    const automaticAccount = key => allowAutomaticAccounts && actionSource === 'semantic' &&
+      next.fieldSources?.accountBindingVersion === require('../account-binding').VERSION &&
+      !current.fieldSources?.accountOwnership && !current.fieldSources?.repaymentOwnership &&
+      !(current.manualFieldMask & FIELD_MASK[key])
+    const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency'].every(key => current[key] === next[key] ||
+      key !== 'currency' && automaticAccount(key)) &&
       (!categoryChanged || automaticCategory) &&
       ['paymentAccounts', 'paymentResolution', 'repaymentAllocations'].every(key =>
-        JSON.stringify(current.fieldSources && current.fieldSources[key]) === JSON.stringify(next.fieldSources && next.fieldSources[key]))
+        JSON.stringify(current.fieldSources && current.fieldSources[key]) === JSON.stringify(next.fieldSources && next.fieldSources[key]) ||
+        key === 'paymentAccounts' && automaticAccount(key))
     if (!sameReferences) throw importError('CONFLICT')
     if (categoryChanged && next.categoryId) {
       const [[category]] = await connection.execute(`SELECT kind FROM catledger_categories
