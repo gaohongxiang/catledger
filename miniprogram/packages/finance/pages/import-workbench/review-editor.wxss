@@ -37,6 +37,8 @@
   color: var(--ui-ink);
 }
 .unified-editor-sheet .mapping-field textarea { max-height: 240rpx; }
+.unified-editor-sheet .plan-form-picker { flex: 1; min-width: 0; }
+.unified-editor-sheet .plan-picker-value { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; min-height: 72rpx; color: var(--ui-ink); font-size: var(--font-body, 28rpx); }
 .unified-editor-sheet .mapping-value { min-width: 0; overflow-wrap: anywhere; }
 .unified-editor-sheet .editor-cancel { min-height: 64rpx; margin-top: 4rpx; padding: 12rpx 0; background: transparent; line-height: 1.5; }
 .unified-editor-sheet .editor-actions-row { display: flex; align-items: stretch; gap: var(--layout-space-3); }
@@ -308,7 +310,10 @@
 .unified-editor-sheet .attribution-plan.is-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .unified-editor-sheet .attribution-plan-copy { display: flex; flex-direction: column; min-width: 0; }
 .unified-editor-sheet .attribution-plan-name { font-size: 28rpx; color: var(--ui-ink); }
+.unified-editor-sheet .attribution-plan-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8rpx; }
 .unified-editor-sheet .attribution-plan-amount { margin-top: 4rpx; font-size: 24rpx; color: var(--ui-muted); }
+/* 计划本期已被另一笔利息占用：就写在计划名右侧，选它照常写入，不再弹框。 */
+.unified-editor-sheet .attribution-plan-taken { flex-shrink: 0; font-size: 22rpx; color: var(--theme-warning, #a76416); }
 .unified-editor-sheet .attribution-plan-radio { position: absolute; top: 50%; right: 22rpx; width: 32rpx; height: 32rpx; margin-top: -16rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
 .unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
@@ -440,6 +445,13 @@
 .nature-option-check { display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 32rpx; width: 32rpx; height: 32rpx; border: 1rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .nature-option.is-selected .nature-option-check { border-color: var(--ui-accent); background: var(--ui-accent); }
 .nature-option-check-icon { width: 24rpx; height: 24rpx; }
+/* 排除是处理决定而不是性质：和单选列表之间留出间距，用警示色说明“这次不入账”，
+   不给勾选框，免得它看起来像一个可以被选中的性质。 */
+.nature-exclude { display: flex; align-items: center; gap: var(--layout-space-3); margin-top: var(--layout-space-3); padding: 18rpx 24rpx;
+  border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
+.nature-exclude-label { display: block; color: var(--theme-danger, #a95132); font-size: 28rpx; font-weight: 500; line-height: 1.4; }
+.nature-exclude-hint { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; }
+.nature-exclude-chevron { flex-shrink: 0; color: var(--ui-subtle); font-size: 30rpx; line-height: 1; }
 .nature-sheet-hint { display: block; margin-top: var(--layout-space-3); padding: 16rpx 20rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--theme-warning-soft, #fdf6e6); color: var(--theme-warning, #a76416); font-size: 22rpx; line-height: 1.5; }
 
 /* 摘要卡：性质是这张表单的模式，单独一行；下面是账单事实（标题、金额、时间）。

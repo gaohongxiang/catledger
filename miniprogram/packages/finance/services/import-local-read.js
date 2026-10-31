@@ -43,10 +43,21 @@ function create(model) {
     return {...issue,subject,memberCount:ids.length,localAt:subject?.localAt,sortLocalAt:subject?.localAt,
       accountContext:issue.accountContext?{...issue.accountContext,accountId:issue.status==='resolved'?issue.accountContext.accountId:issue.accountContext.accountId}:null}
   }
+  function obsoletePaymentTarget(issue) {
+    if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved' ||
+        issue.accountContext?.fundsSide !== 'payment_target' || issue.accountContext.accountId ||
+        (issue.reasonCodes || []).some(code => ['account_mapping_excluded','source_account_ignored_default'].includes(code))) return false
+    const members = (model.members.get(issue.issueId) || []).filter(member => member.memberRole !== 'candidate')
+    // 人工把还款改成支出后，整组都不再需要目标账户时不重新询问。
+    // 必须检查完整成员；代表记录已改性质而其他成员仍在还款时仍要确认。
+    return members.length > 0 && members.every(member => member.objectType === 'event' && member.memberRole === 'payment_target' &&
+      model.events.has(member.objectId) && model.events.get(member.objectId).economicNature !== 'repayment')
+  }
   function issuePageValue(issue) { const { subjectEventIds, ...visible } = issue; return { ...visible, subjectEventIds: [] } }
   function eventMatches(event,data) {
+    if(model.hiddenOffset(event))return false
     const open=model.eventIssues(event.eventId).filter(issue=>issue.status==='open'),review=model.invalid.has(event.eventId)||open.some(issue=>issue.blocking&&issue.issueType!=='category_assignment')||event.status==='needs_action'&&!open.some(issue=>issue.issueType==='category_assignment')
-    const category=['income','expense','fee','unknown'].includes(event.economicNature),needed=category&&(!event.categoryId||event.economicNature==='unknown')
+    const category=require('../domain/import-review/workbench-summary').categoryRequired(event),needed=category&&(!event.categoryId||event.economicNature==='unknown')
     if(data.eventId&&event.eventId!==data.eventId||data.economicNature&&event.economicNature!==data.economicNature||data.accountId&&!accountIds(event).includes(data.accountId))return false
     if(data.issueId&&!model.issues.get(data.issueId)?.subjectEventIds.includes(event.eventId))return false
     if(data.status==='duplicate') { if(!historical(event)&&!(model.byEvent.get(event.eventId)||[]).some(row=>['duplicate','supporting'].includes(row.evidenceRole)))return false }
@@ -104,7 +115,7 @@ function create(model) {
     }
     if(action==='reviewIssues.list'){
       const rows=[...model.issues.values()].filter(issue=>(!data.status||issue.status===data.status)&&(!data.issueType||issue.issueType===data.issueType)&&
-        (!data.group||data.group==='accounts'&&issue.issueType==='account_mapping'&&['open','resolved'].includes(issue.status)||data.group==='category'&&issue.issueType==='category_assignment'||data.group==='review'&&!['account_mapping','category_assignment'].includes(issue.issueType)&&issue.blocking))
+        (!data.group||data.group==='accounts'&&issue.issueType==='account_mapping'&&['open','resolved'].includes(issue.status)&&!obsoletePaymentTarget(issue)||data.group==='category'&&issue.issueType==='category_assignment'||data.group==='review'&&!['account_mapping','category_assignment'].includes(issue.issueType)&&issue.blocking))
         .map(issueView).filter(issue=>!data.query||issue.subjectEventIds.some(id=>model.events.has(id)&&eventMatches(model.events.get(id),{query:data.query}))).sort(chronological)
       return page(action,data,rows,'issueId',issuePageValue)
     }
@@ -126,11 +137,11 @@ function create(model) {
       rows=rows.filter(row=>!row.archivedAt&&(!data.categoryKind||row.kind===data.categoryKind)&&(!data.id||row[key]===data.id)&&(!data.ids||data.ids.includes(row[key]))&&(!data.query||[row.name,row.parentName].join(' ').includes(data.query))).sort((a,b)=>a[key].localeCompare(b[key]))
       return page(action,data,rows,key)
     }
-    if(action==='economicEvents.evidence')return {...page(action,data,(model.byEvent.get(data.eventId)||[]),'evidenceId',link=>{const row=model.rows.get(link.rowId),source=facts.sources.find(item=>item.batchId===row.batchId);return{...link,sourceType:row.sourceType,rowNumber:row.rowNumber,fileName:source?.fileName,detailRequired:true}}),eventId:data.eventId}
+    if(action==='economicEvents.evidence')return {...page(action,data,model.evidenceFor(data.eventId),'evidenceId',link=>{const row=model.rows.get(link.rowId),source=facts.sources.find(item=>item.batchId===row.batchId);return{...link,sourceType:row.sourceType,rowNumber:row.rowNumber,fileName:source?.fileName,detailRequired:true}}),eventId:data.eventId}
     if(action==='economicEvents.detail'){
       const event=model.events.get(data.eventId);if(!event)error('NOT_FOUND')
       let text
-      if(data.evidenceId){const row=model.evidence.get(data.evidenceId);if(!row||row.eventId!==data.eventId)error('NOT_FOUND');text=JSON.stringify(facts.raw.find(item=>item.rowId===row.rowId)?.fields||[])}
+      if(data.evidenceId){const row=model.evidenceFor(data.eventId).find(link=>link.evidenceId===data.evidenceId);if(!row)error('NOT_FOUND');text=JSON.stringify(facts.raw.find(item=>item.rowId===row.rowId)?.fields||[])}
       else text=JSON.stringify({...model.publicRow(event.eventId),detailFacts:detailFacts(event),editorFacts:{...editor.capability(event),expectedRelations:expectations(event)}})
       const scope=sha256([version(),data.eventId,data.evidenceId||''].join(':')).slice(0,20),bits=data.cursor?data.cursor.split(':'):null,offset=bits?Number(bits[2]):0
       if(bits&&(bits[0]!=='detail'||bits[1]!==scope||!Number.isSafeInteger(offset)||offset<0))error('STALE_VIEW')
@@ -168,6 +179,26 @@ function create(model) {
       const result=page(action,data,dataFacts.charges.filter(row=>row.contractId===contract?.contractId),'chargeId')
       const loan=dataFacts.loans.find(row=>row.loanId===data.loanId)
       return{...result,contract:contract||null,loan,loanVersion:Number(loan?.version)}
+    }
+    if(action==='loans.planCandidates'){
+      const dataFacts=model.supplemental||facts,plan=require('../domain/import-review/installment-plan-fingerprint')
+      const accountId=String(data.accountId||'').trim(),totalTerms=data.totalTerms == null ? null : Number(data.totalTerms)
+      if(!accountId||totalTerms != null && (!Number.isInteger(totalTerms)||totalTerms<1||totalTerms>600))error('VALIDATION_ERROR','请先选择所属账户并检查总期数')
+      // 旧快照没有计划种类和期数，列不出可区分的候选；宁可明确报错，也不能让用户以为没有可归入的计划。
+      if(dataFacts.loans.length&&!dataFacts.loans.some(row=>row.kind!==undefined))error('LOCAL_REVIEW_REQUIRED','本机草稿缺少计划信息，请刷新后再归入已有计划')
+      const fingerprint=plan.fingerprint({accountId,totalTerms,planLabel:data.planLabel,
+        principalMinor:data.principalMinor==null?null:String(data.principalMinor),startMonth:data.startMonth})
+      const setupOf=value=>{if(value==null)return null;if(typeof value==='object')return value;try{return JSON.parse(value)}catch(_){return null}}
+      const items=dataFacts.loans.filter(row=>String(row.accountId||'')===accountId&&row.kind==='installment'&&!row.archivedAt).slice(0,50)
+        .map(row=>{
+          const setup=setupOf(row.installmentSetup)
+          return{loanId:row.loanId,name:row.name,scheduleTerms:Number(row.scheduleTerms),
+            startMonth:String(row.startDate||row.baselineDate||'').slice(0,7)||null,
+            originalPrincipalMinor:setup&&setup.originalPrincipalMinor!=null?String(setup.originalPrincipalMinor):null,
+            remainingPrincipalMinor:row.baselinePrincipalMinor==null?null:String(row.baselinePrincipalMinor),
+            matched:plan.matches(fingerprint,row)}
+        })
+      return{...envelope(),items,nextCursor:null}
     }
     error('LOCAL_REVIEW_REQUIRED','完整草稿核对期间，此操作需要在本机完成')
   }

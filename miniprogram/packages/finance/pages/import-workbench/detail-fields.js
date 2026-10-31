@@ -11,12 +11,26 @@ function money(value) {
   return (negative ? '-¥' : '¥') + digits.slice(0, -2) + '.' + digits.slice(-2)
 }
 function installmentOf(row) { return row.installment || row.fieldSources && row.fieldSources.installment || null }
+// 现金分期放款行：账单两行合成的一笔借款。期数和计划名只是来源事实，
+// 计划本身在贷款管理里登记，这里不预建也不会自动创建。
+function disbursementOf(row) {
+  const value = row.disbursement || row.fieldSources && row.fieldSources.disbursement || null
+  return value && value.role !== 'offset' ? value : null
+}
+function registrationOf(row) {
+  return Boolean(disbursementOf(row)?.role === 'registration' || row.editorFacts?.recordRole === 'installment_registration')
+}
 function principalOf(row) {
   const item = installmentOf(row)
   return Boolean(item && item.creditStatement === true && item.component === 'principal')
 }
 // 交易性质名称的唯一入口：列表各页签、详情和编辑器都按当前事实取名，不能被计划标题或旧展示值覆盖。
 function natureLabel(row) {
+  // 放款对行不是“性质待确认”：它已经识别为同一笔现金分期的卡内记账行，只是不重复入账。
+  const pair = row.disbursement || row.fieldSources && row.fieldSources.disbursement
+  if (pair && pair.role === 'offset') return '分期放款对行'
+  if (registrationOf(row)) return '分期登记'
+  if (pair && pair.role === 'disbursement' && row.economicNature === 'borrow') return '现金分期借款'
   const installment = installmentOf(row)
   if (installment && installment.creditStatement) {
     const label = { principal: '分期出账', interest: '分期利息', fee: '分期手续费' }[installment.component]
@@ -30,7 +44,7 @@ function fundsAccountLabels(nature) {
     to: nature === 'borrow' ? '到账账户' : nature === 'repayment' ? '还入账户' : '转入账户' }
 }
 function accountLabels(row) {
-  if (principalOf(row)) return { from: '所属信用卡', to: '', hasDestination: false }
+  if (principalOf(row) || registrationOf(row)) return { from: '所属信用卡', to: '', hasDestination: false }
   const nature = row.economicNature, dual = destinationNatures.includes(nature)
   const { from, to } = fundsAccountLabels(nature)
   // 普通双端事件的 ledgerAccountId 是原账单账户；入账时 income 来源会反向。
@@ -75,12 +89,14 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
   const facts = row.detailFacts || {}
   catalogs = { ...catalogs, accounts: (facts.accounts || []).concat(catalogs.accounts || []) }
   const installment = installmentOf(row), principal = principalOf(row), labels = accountLabels(row)
+  const disbursement = disbursementOf(row), registration = registrationOf(row)
   const allocation = row.paymentResolution || extra.paymentResolution
   const repayments = row.repaymentAllocations || extra.repaymentAllocations || []
-  const loan = row.loanRepayment || extra.loanRepayment
+  const historical = ['posted', 'corrected'].includes(row.status)
+  const loan = historical ? row.loanRepayment || extra.loanRepayment : null
   add('nature', '交易性质', natureLabel(row), false)
-  add('amount', principal ? '本期本金' : '交易金额', money(row.amountMinor), false)
-  add('time', '交易时间', row.localAt && String(row.localAt).replace(/\.\d+$/, ''), false)
+  add('amount', registration ? '分期本金' : principal ? '本期本金' : '交易金额', money(row.amountMinor), false)
+  add('time', registration ? '账单日期' : '交易时间', row.localAt && String(row.localAt).replace(/\.\d+$/, ''), false)
   add('party', '交易对方', Object.prototype.hasOwnProperty.call(row, 'counterparty') ? row.counterparty : source.counterparty, true)
   if (allocation && Array.isArray(allocation.allocations)) {
     allocation.allocations.forEach((part, index) => add('payment-' + index, '付款账户 ' + (index + 1),
@@ -91,7 +107,7 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
   else accountFields(row).forEach(field => add(field.key, field.label, accountText(field.accountId, catalogs.accounts), false))
   if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还入账户 ' + (index + 1),
     [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
-  if (categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')
+  if (!registration && categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')
   if (row.economicNature === 'refund') {
     const refund = facts.refund
     const original = refund && refund.originals && refund.originals[0]
@@ -118,7 +134,20 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
     add('plan', '分期计划', installment.loanName || row.loanName || '', true,
       installment.loanId || row.loanId ? '已关联计划，名称待读取' : '入账后关联或新建计划')
     if (principal) add('effect', '记账影响', '仅保留分期来源，不记实际还款', false)
-  } else if (loan || row.loanId) {
+  } else if (disbursement) {
+    add('disbursement', '现金分期', [disbursement.planLabel,
+      disbursement.totalTerms ? '共 ' + disbursement.totalTerms + ' 期' : ''].filter(Boolean).join(' · '), true, '分期期数待核对')
+    // 同笔的另一行是这张卡上的卡内记账，不产生资金流，只作为这笔借款的第二条来源。
+    if (disbursement.partner) add('disbursement-pair', '同笔的另一行', [disbursement.partner.item,
+      disbursement.partner.localDate, money(disbursement.partner.amountMinor)].filter(Boolean).join(' · ') +
+      '（卡内记账，不重复入账）', true)
+    const decision = row.installmentPlanDecision || extra.installmentPlan
+    add('plan', '分期计划', decision && ['link', 'create'].includes(decision.action) ? decision.planLabel : '', false,
+      decision?.action === 'skip' ? registration ? '先不关联，保留待核对' : '先不关联；当前尚无入账后补关联入口'
+        : registration ? '请选择已有计划或新建计划' : '尚未关联计划')
+    add('effect', '记账影响', registration ? '只登记分期计划，不生成资金流水'
+      : row.economicNature === 'borrow' ? '确认收款账户后按借款记一笔，卡内记账行不重复入账' : '按当前选择的性质处理，分期计划只用于跟踪还款', false)
+  } else if (historical && (loan || row.loanId)) {
     add('plan', '关联贷款', facts.loan && facts.loan.name || '', true,
       loan && loan.mode === 'associate' && loan.loanId ? '已关联贷款，名称待读取' : '尚未关联（可入账后补充）')
   }
@@ -132,4 +161,5 @@ function referencedIds(row = {}) {
     .concat((payment.allocations || []).map(item => item.accountId),
       (row.repaymentAllocations || extra.repaymentAllocations || []).map(item => item.accountId)).filter(Boolean))]
 }
-module.exports = { fieldsFor, natureLabel, accountLabels, accountFields, fundsAccountLabels, principalOf, installmentOf, money, referencedIds }
+module.exports = { fieldsFor, natureLabel, accountLabels, accountFields, fundsAccountLabels, principalOf, installmentOf, registrationOf,
+  disbursementOf, money, referencedIds }

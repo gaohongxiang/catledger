@@ -1,8 +1,7 @@
 const { commandResult } = require('../command-result')
 const { importError } = require('../errors')
-const { route, writesLoanPayment } = require('../repayment-policy')
 const { insertAction, selectUpdate } = require('../finance-update-repository')
-const { selectDomainEvents, loadReferenceCatalog, saveEvents } = require('./event-store')
+const { selectDomainEvents, saveEvents } = require('./event-store')
 const { updateMappingMemberVersions, createFollowUpIssues } = require('./issue-store')
 const { effectiveProjectedEvents, recalculateUpdateCounts } = require('./reconciliation')
 
@@ -20,7 +19,9 @@ async function setRepayment(connection, uid, data, requestDigest, { updateId, ev
           SET i.status='superseded',i.blocking=0,i.version=i.version+1,i.resolved_action_id=?
           WHERE i.uid=? AND i.update_id=? AND m.object_id=? AND m.object_type='event' AND i.status='open'
           AND i.primary_reason_code='loan_repayment_required'`,[actionId,uid,updateId,eventId])
-  const next = { ...event,fieldSources:{ ...event.fieldSources,loanRepayment:decision },
+  const editorOverrides = { ...event.fieldSources.editorOverrides }
+  delete editorOverrides.incompleteRepayment
+  const next = { ...event,fieldSources:{ ...event.fieldSources,loanRepayment:decision,editorOverrides },
     reasonCodes:event.reasonCodes.filter(r=>r!=='loan_repayment_required' && r!=='blocking_issue_open') }
   const affected = await saveEvents(connection,uid,updateId,[{ current:event,next }],actionId)
   await updateMappingMemberVersions(connection,uid,updateId,affected)
@@ -29,70 +30,9 @@ async function setRepayment(connection, uid, data, requestDigest, { updateId, ev
   return commandResult(connection,uid,updateId,data)
 }
 
-// 可在现有用户事务内复用，既有专用入口和统一单笔保存采用同一校验。
-async function prepareRepayment(connection, uid, updateId, event, value, { editor = false } = {}) {
-  const { booking, inputForEvent } = require('../explicit-repayment')
-  let decision = null
-  if (value != null) {
-    if (value.mode === 'review') decision = { mode:'review' }
-    else {
-      decision = booking.normalize(value,event.amountMinor)
-      inputForEvent({ ...event,fieldSources:{ ...event.fieldSources,loanRepayment:decision } })
-      // 整理决定不创建账户；已映射的草稿账户在整批入账时再次完整鉴权。
-      const catalog = await loadReferenceCatalog(connection,uid,updateId,[event])
-      const asset = catalog.accounts.get(decision.assetAccountId) || catalog.drafts.get(decision.assetAccountId)
-      const debt = catalog.accounts.get(decision.liabilityAccountId) || catalog.drafts.get(decision.liabilityAccountId)
-      // 信用卡和其他负债都可以持有计划；收费项台账跟着计划走，两类账户同一套校验。
-      if (!route(asset, debt)) throw importError('VALIDATION_ERROR')
-    }
-  }
-  const partial = editor && event.fieldSources.editorOverrides?.incompleteRepayment
-  if (partial) {
-    for (const key of ['interestCategoryId','feeCategoryId']) if (partial[key]) {
-      const [[row]] = await connection.execute('SELECT kind FROM catledger_categories WHERE uid=? AND category_id=? AND archived_at IS NULL', [uid, partial[key]])
-      if (!row || row.kind !== 'expense') throw importError('VALIDATION_ERROR')
-    }
-    if (partial.loanId) {
-      const [[row]] = await connection.execute('SELECT account_id AS accountId,version FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL', [uid, partial.loanId])
-      if (!row || Number(row.version) !== partial.loanVersion) throw importError('CONFLICT')
-      const route = require('../editor-fields').funds(event)
-      if (route.destinationAccountId && route.destinationAccountId !== row.accountId) throw importError('VALIDATION_ERROR')
-    }
-    if (partial.chargeAllocations?.length) {
-      const store = require('../loan-charge-store'), contract = partial.loanId && await store.contract(connection, uid, partial.loanId)
-      const seen = new Set(), totals = { interest: 0n, fee: 0n }
-      for (const selection of partial.chargeAllocations) {
-        if (!selection.chargeId || !contract || seen.has(selection.chargeId)) throw importError('LOAN_CHARGE_COVERAGE')
-        seen.add(selection.chargeId)
-        const charge = await store.charge(connection, uid, selection.chargeId)
-        if (charge.contractId !== contract.contractId || charge.component !== selection.component ||
-          !['planned','recorded','baseline'].includes(charge.state) || BigInt(selection.amountMinor) > BigInt(charge.outstandingMinor)) throw importError('LOAN_CHARGE_COVERAGE')
-        totals[selection.component] += BigInt(selection.amountMinor)
-      }
-      for (const key of ['interest','fee']) if (partial[key + 'Minor'] != null && totals[key] > BigInt(partial[key + 'Minor'])) throw importError('LOAN_CHARGE_COVERAGE')
-    }
-  }
-  if (editor && decision && decision.confirmed) {
-    // 读取核验不得触发 claimExisting 创建正式费用。导入编辑只引用已有收费项。
-    if (decision.chargeAllocations.some(row => row.transactionId)) throw importError('LOAN_CHARGE_COVERAGE')
-    for (const key of ['interest','fee']) if (decision[key + 'Treatment'] === 'expense' && decision[key + 'Minor'] !== '0') {
-      const [[category]] = await connection.execute(`SELECT kind FROM catledger_categories WHERE uid=? AND category_id=? AND archived_at IS NULL`,
-        [uid, decision[key + 'CategoryId']])
-      if (!category || category.kind !== 'expense') throw importError('VALIDATION_ERROR')
-    }
-    if (decision.mode === 'associate') {
-      const [[loan]] = await connection.execute(`SELECT loan_id AS loanId, account_id AS accountId,version,baseline_date AS baselineDate,
-        baseline_principal_minor AS baselinePrincipalMinor FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL FOR UPDATE`, [uid, decision.loanId])
-      if (!loan || Number(loan.version) !== decision.loanVersion) throw importError('CONFLICT')
-      if (loan.accountId !== decision.liabilityAccountId || !loan.baselineDate || loan.baselinePrincipalMinor == null ||
-        event.localAt.slice(0,10) < String(loan.baselineDate).slice(0,10)) throw importError('VALIDATION_ERROR')
-      await require('../loan-charge-payments').validate(connection, uid, loan, decision, { paymentDate: event.localAt.slice(0,10) })
-    } else if (decision.chargeAllocations.length ||
-      (!writesLoanPayment(decision, debt) && ['interest','fee'].some(key => decision[key+'Treatment'] === 'accrued' && decision[key+'Minor'] !== '0'))) {
-      // 收费项只能随计划冲抵；这次不落付款记录时（信用卡未关联计划），已记金额只计入转账。
-      throw importError('LOAN_CHARGE_COVERAGE')
-    }
-  }
-  return decision
+// 旧入口仅保留解除草稿决定的兼容能力；任何新拆分/关联均拒绝。
+async function prepareRepayment(connection, uid, updateId, event, value) {
+  if (value !== null) throw importError('VALIDATION_ERROR')
+  return null
 }
 module.exports = { setRepayment, prepareRepayment }

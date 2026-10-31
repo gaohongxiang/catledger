@@ -113,7 +113,7 @@ function resolveAccountMappings({ references = [], mappings = [], accounts = [] 
       // 「仅本次不计入」只属于当初那一次导入：历史里保存的忽略规则不能替新批次
       // 直接把记录排除掉，否则用户重新导入时这笔会莫名其妙变成“本次不计入”。
       // 这里不再采用历史忽略，让这个账户回到正常的账户确认；本批次自己明确选择的
-      // 忽略仍然生效（row.mappingAction 在事件构建阶段处理）。
+      // 忽略仍然通过 ignoredIdentityKeys 在事件构建阶段生效。
       if (['history', 'history_alias'].includes(selected.mappingScope)) continue
       ignoredIdentityKeys.add(identityKey)
       continue

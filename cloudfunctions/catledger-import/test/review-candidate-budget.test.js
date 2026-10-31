@@ -3,13 +3,13 @@ const assert = require('node:assert/strict')
 const { buildReviewIssues } = require('../src/organizer-planner')
 
 test('规则升级的已确认账户组去重保持成员顺序，读取次数有界', () => {
-  const { buildConfirmedAccountIssues } = require('../src/organizer-planner')
+  const { buildAccountIssues } = require('../src/organizer-planner')
   let reads = 0, next = 0
   const events = Array.from({ length: 1000 }, (_, n) => ({
     get eventId() { reads++; return 'event-' + n }, version: 1, reasonCodes: [], fieldSources: {},
     sourceType: 'wechat', paymentMethodKey: 'wallet', ledgerAccountId: 'account'
   }))
-  const result = buildConfirmedAccountIssues('update', [...events, events[0]],
+  const result = buildAccountIssues('update', [...events, events[0]], new Map(),
     [{ sourceType: 'wechat', paymentMethodKey: 'wallet', mappingAction: 'account', accountId: 'account' }], () => String(++next))
   assert.equal(result.issues.length, 1)
   assert.equal(result.issues[0].status, 'resolved')

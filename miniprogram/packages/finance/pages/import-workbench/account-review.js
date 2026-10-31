@@ -248,19 +248,22 @@ module.exports = {
         summary.inline += 1
         if (issue.status === 'open') summary.open += 1
         const choices = model.accountChoiceOptions(accounts, accountDrafts)
+        const mappingDraft = (accountMappingDrafts || []).find(function (item) {
+          return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&
+            item.sourceType === issue.accountContext.sourceType &&
+            item.paymentMethodKey === issue.accountContext.paymentMethodKey
+        })
+        const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
+        // “已解决但没拿到账户”不是排除决定。只有本批映射或整组明确排除记录
+        // 才能显示本次不计入；旧快照的矛盾状态须留在待确认。
+        const resolvedExclusion = issue.status === 'resolved' && Boolean(
+          mappingDraft && mappingDraft.mappingAction === 'ignore' ||
+          (issue.reasonCodes || []).some(code => ['account_mapping_excluded', 'source_account_ignored_default'].includes(code)))
+        const missingResolution = issue.status === 'resolved' && !resolvedAccountId && !resolvedExclusion
         let draft = self._accountUiDrafts.get(issue.issueId)
+        if (missingResolution && draft && !draft.dirty && !draft.localConfirmed) draft = null
         if (!draft) {
-          const mappingDraft = (accountMappingDrafts || []).find(function (item) {
-              return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&
-              item.sourceType === issue.accountContext.sourceType &&
-              item.paymentMethodKey === issue.accountContext.paymentMethodKey
-            })
-          const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
-          // 历史忽略只作为上次选择提示，不作为默认模式；已解决的排除项回到
-          // 「仅本次不计入」，用户仍可改选任一账户。
-          const resolvedMode = mappingDraft && mappingDraft.mappingAction === 'ignore'
-          ? 'ignore'
-          : resolvedAccountId ? 'account' : issue.status === 'resolved' ? 'ignore' : ''
+          const resolvedMode = resolvedExclusion ? 'ignore' : resolvedAccountId ? 'account' : ''
           const suggestedName = issue.accountContext && issue.accountContext.recognized
           ? issue.accountContext.label
           : ''
@@ -298,7 +301,7 @@ module.exports = {
         else summary.invalid += 1
         if (draft.mode === 'create') summary.create += 1
         if (draft.dirty) summary.dirty += 1
-        const needsConfirmation = !ready || ((issue.status === 'open' || draft.dirty) && !draft.localConfirmed)
+        const needsConfirmation = !ready || ((issue.status === 'open' || missingResolution || draft.dirty) && !draft.localConfirmed)
         if (needsConfirmation) summary.pending += 1
         else summary.confirmed += 1
         return Object.assign({}, issue, {

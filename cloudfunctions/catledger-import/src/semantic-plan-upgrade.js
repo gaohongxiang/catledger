@@ -7,12 +7,14 @@ const { accountReferences, buildReviewIssues } = require('./organizer-planner')
 const { sameEventCandidateGroups, refundRelation } = require('./relation-resolver')
 const { findRefundSourceConflicts, withRefundSourceEvidence, applyRefundSourceConflict } = require('./refund-source-conflict')
 const { getRowSemantic } = require('./row-semantic-resolver')
+const { applyInstallmentDisbursements } = require('./installment-disbursement')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
 const { economicNatureForRow, INSTALLMENT_PRINCIPAL_NATURES } = require('./organizer-model')
 const { unique } = require('./organizer-values')
 const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates } = require('./source-funds')
 const { paymentEvidenceFields } = require('./payment-resolution')
 const { referencesForRows } = require('./payment-account-groups')
+const { paymentReferenceKey } = require('./payment-account')
 const { recalculateUpdateCounts } = require('./review/reconciliation')
 const { createFollowUpIssue } = require('./review/issue-store')
 const { selectDomainEvents, saveEvent } = require('./review/event-store')
@@ -21,6 +23,7 @@ const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts }
 const { PLAN_VERSION } = require('./domain-versions')
 const { CATEGORY_RULE_VERSION } = require('./category-rules')
 const { prepareAccountIssueUpgrade, persistAccountIssueUpgrade } = require('./account-plan-upgrade')
+const { releaseLegacyIgnore } = require('./legacy-ignore-release')
 
 const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_required',
   'source_account_endpoint_unknown', 'transaction_status_unknown'])
@@ -34,14 +37,47 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
   const natures = unique(rows.map(economicNatureForRow))
   const semantics = rows.map(row => row.semantic)
   const blockers = unique(semantics.flatMap(semanticBlockers))
+  const registration = semantics.map(semantic => semantic.relationHints && semantic.relationHints.disbursement)
+  if (registration.every(hint => hint && hint.role === 'registration')) {
+    // 原文识别为登记时，已有人工资金决定保持原样；自动 unknown 记录原位补上登记职责。
+    const financialMask = FIELD_MASK.economicNature | FIELD_MASK.flowDirection | FIELD_MASK.counterpartyLedgerAccountId |
+      FIELD_MASK.categoryId | FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations
+    if (current.manualFieldMask & financialMask) return current
+    const fieldSources = { ...(current.fieldSources || {}), semanticBlockers: blockers, disbursement: registration[0],
+      ledgerAccountReference: ledgerAccountReferenceForRow(rows[0]), fundsProjection: null }
+    delete fieldSources.installment
+    const next = { ...current, economicNature: 'unknown', flowDirection: 'neutral', fieldSources,
+      reasonCodes: unique([...(current.reasonCodes || []).filter(reason => !SOURCE_REASONS.has(reason)), ...blockers]) }
+    return JSON.stringify([next.economicNature,next.flowDirection,next.fieldSources,next.reasonCodes]) ===
+      JSON.stringify([current.economicNature,current.flowDirection,current.fieldSources,current.reasonCodes]) ? current : next
+  }
+  // 放款对行是同一笔分期在卡内的记账行：两行合成一笔借款之后，它本身不产生资金流，
+  // 也不再需要确认账户。原地升级要按同一事实把它收进已排除，不能退回“性质待确认”，
+  // 否则每次规则升级都会把它重新变成一条待办。人工改过字段的事件不动。
+  const offsetHints = semantics.map(semantic => semantic.relationHints && semantic.relationHints.disbursement)
+    .filter(hint => hint && hint.role === 'offset')
+  if (offsetHints.length === semantics.length && !current.manualFieldMask) {
+    const hint = offsetHints[0]
+    const reasonCodes = unique([...blockers, 'economic_nature_required', 'installment_offset_pair'])
+    const fieldSources = { ...(current.fieldSources || {}), semanticBlockers: blockers, disbursement: hint }
+    delete fieldSources.installment
+    if (JSON.stringify(current.reasonCodes) === JSON.stringify(reasonCodes) &&
+        JSON.stringify(current.fieldSources || {}) === JSON.stringify(fieldSources)) return current
+    // 账户引用保持原样：已排除的事件不入账，不为了清掉一个不再使用的账户而改动引用，
+    // 否则原地升级会因为引用变化被判成冲突。
+    return { ...current, status: 'excluded', economicNature: 'unknown', reasonCodes, fieldSources }
+  }
   const sameNature = natures.length === 1 && natures[0] !== 'unknown'
   const financial = semantics.every(semantic => semantic.moneyEffect === 'financial')
   const sources = current.fieldSources || {}
+  const disbursementOf = semantic => semantic.relationHints && semantic.relationHints.disbursement || null
   const signature = semantic => JSON.stringify([semantic.sourceAction, semantic.moneyEffect, semantic.settlement,
     semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.ledgerAccountRef, semantic.fromAccountRef, semantic.toAccountRef,
-    semantic.relationHints && semantic.relationHints.installment || null])
+    semantic.relationHints && semantic.relationHints.installment || null, disbursementOf(semantic)])
   const installment = semantics[0].relationHints && semantics[0].relationHints.installment || null
   const installmentChanged = JSON.stringify(installment) !== JSON.stringify(sources.installment || null)
+  const disbursement = disbursementOf(semantics[0])
+  const sameDisbursement = semantics.every(semantic => JSON.stringify(disbursementOf(semantic)) === JSON.stringify(disbursement))
   const sameSource = evidenceRows.every((row, index) => row.semantic && signature(row.semantic) === signature(semantics[index]))
   if (sameSource && !installmentChanged && JSON.stringify(blockers.slice().sort()) === JSON.stringify((sources.semanticBlockers || []).slice().sort()) &&
       ((current.manualFieldMask & FIELD_MASK.economicNature) || (natures.length === 1 && natures[0] === current.economicNature))) return current
@@ -70,6 +106,11 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
     if (sameInstallment) {
       if (installment) next.fieldSources.installment = installment
       else delete next.fieldSources.installment
+    } else next.reasonCodes.push('core_fields_conflict')
+    // 放款行改成这一对放款的事实：期数、计划名和卡内那一行，供详情和排除说明引用。
+    if (sameDisbursement) {
+      if (disbursement) next.fieldSources.disbursement = disbursement
+      else delete next.fieldSources.disbursement
     } else next.reasonCodes.push('core_fields_conflict')
     if (installment && installment.component === 'principal' && next.economicNature === 'repayment' && !next.counterpartyLedgerAccountId) {
       next.reasonCodes = next.reasonCodes.filter(reason => !['transfer_account_required', 'repayment_account_required', 'borrow_account_required'].includes(reason))
@@ -105,6 +146,10 @@ function refreshAutomaticCategory(current, rows) {
 
 async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data = {}) {
   const updateId = current.updateId
+  // 与首次整理同一套来源事实推导：放款对改写的是行语义，重算来源语义前必须先应用，
+  // 否则一笔已识别成借款的放款行会在规则升级后重新变回“性质待确认”。规则升级就是
+  // 按新规则重算，所以所有可升级的计划都要先认出放款对；认不出来时规则本身不成立。
+  rows = applyInstallmentDisbursements(rows)
   const [links] = await connection.execute(`SELECT evidence_id AS evidenceId, event_id AS eventId, row_id AS rowId, evidence_role AS role
     FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
     ORDER BY event_id, (evidence_role = 'primary') DESC, evidence_id`, [uid, updateId])
@@ -121,9 +166,23 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   const paymentMappings = needsSplit ? await selectPaymentMappings(connection, uid, updateId) : []
   const accounts = needsSplit ? await selectActiveAccounts(connection, uid) : []
   const references = accountReferences(rows)
+  // 本批自己明确选过的「仅本次不计入」会留下忽略草稿，这类已决结果不能因为
+  // 规则升级被重新追问；只有找不到本批决定的排除才是旧版永久规则留下的。
+  const [ignoredDrafts] = await connection.execute(`SELECT source_type AS sourceType, payment_method_key AS paymentMethodKey
+    FROM catledger_finance_update_account_mapping_drafts
+    WHERE uid = ? AND update_id = ? AND mapping_action = 'ignore'`, [uid, updateId])
+  const ignoredBatchKeys = new Set(ignoredDrafts.map((mapping) => paymentReferenceKey(mapping)))
   const splits = []
   const changes = events.map(event => {
     const rows = eventRows(event)
+    // 只由旧版永久忽略造成的排除先恢复成待确认，再按同一套规则重算语义；
+    // 账户事项随后在 account-plan-upgrade 里从“已解决·忽略”改成待确认。
+    const keptByBatch = rows.some((row) => [ledgerAccountReferenceForRow(row), ...referencesForRows([row])]
+      .filter(Boolean).some((reference) => ignoredBatchKeys.has(paymentReferenceKey(reference))))
+    const released = keptByBatch ? null : releaseLegacyIgnore(event)
+    if (released) {
+      return { current: event, next: refreshAutomaticCategory(refreshEventSemantic(released, rows, references), rows) }
+    }
     const split = prepareEvidenceSplit({ current: event, rows, links: linksByEvent.get(event.eventId) || [], paymentMappings, accounts })
     if (split) {
       splits.push(split)
@@ -137,6 +196,8 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     .map(pair => {
       if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
       const reasons = repaymentOwnership.reasonsFor(pair.next)
+      const source = pair.next.fieldSources || {}
+      if (source.loanRepayment || source.editorOverrides?.incompleteRepayment) reasons.push('loan_repayment_required')
       if (reasons.some(reason => !(pair.next.reasonCodes || []).includes(reason))) {
         return { current: pair.current, next: { ...pair.next, reasonCodes: unique([...(pair.next.reasonCodes || []), ...reasons]) } }
       }

@@ -7,6 +7,7 @@ function localServices({ apiPool, importPool, now = Date.now, objects = new Map(
   const apiServices = moduleFor('api', 'action-registry').createActionHandlers({
     dataExportService: moduleFor('api', 'data-export-service').createDataExportService({ getPool }),
     loanService: moduleFor('api', 'loan-service').createLoanService({ getPool, now }),
+    homeAlertsService: moduleFor('api', 'home-alerts').createHomeAlertsService({ getPool }),
     accountService: moduleFor('api', 'account-service').createAccountService({ getPool }),
     categoryService: moduleFor('api', 'category-service').createCategoryService({ getPool }),
     catalogService: moduleFor('api', 'catalog-service').createCatalogService({ getPool }),

@@ -21,8 +21,8 @@ function create(model) {
   const fileObservationsPassed=facts.sources.length>0&&facts.sources.every(source=>analysisFullyObserved(source.analysis)&&source.analysis.dataRows===Number(source.summary.total))
   function applyEvent(value, direction) {
     if(!value)return
-    const { event, pending, accounts, selected, ready, missingEvidence }=value
-    const packet=workbenchSummary([event],[pending],[],0,0)
+    const { event, pending, accounts, selected, ready, missingEvidence, hidden }=value
+    const packet=workbenchSummary(hidden?[]:[event],hidden?[]:[pending],[],0,0)
     for(const [key,count]of Object.entries(packet.recordSummary))add('record:'+key,count*direction)
     for(const kind of ['reviewStatusTabs','categoryStatusTabs'])for(const tab of packet[kind])add(kind+':'+tab.value,tab.count*direction)
     for(const key of ['categoryEventCount','categorizedEventCount'])add(key,packet[key]*direction)
@@ -40,7 +40,7 @@ function create(model) {
     applyEvent(cache.get(id),-1);cache.delete(id)
     const event=model.events.get(id);if(!event)return
     const open=model.eventIssues(id).filter(issue=>issue.status==='open'),selected=!['excluded','corrected'].includes(event.status)
-    const value={event,selected,ready:selected&&['ready','posted'].includes(event.status)&&
+    const value={event,selected,hidden:model.hiddenOffset(event),ready:selected&&['ready','posted'].includes(event.status)&&
       !effectiveSemanticReasons(event,[...(event.reasonCodes||[]),...(event.fieldSources.semanticBlockers||[])]).some(reason=>SEMANTIC_HARD_BLOCKERS.includes(reason)),
       missingEvidence:selected&&!(model.byEvent.get(id)||[]).some(row=>row.evidenceRole!=='discarded'),
       accounts:event.status==='ready'?accountIds(event):[],pending:{eventId:id,
@@ -64,6 +64,9 @@ function create(model) {
   }
   function refresh(initial=false){
     const ids=initial?[...model.events.keys()]:[...model.dirtyEvents],rowIds=initial?[...model.rows.keys()]:[...model.dirtyRows]
+    // 对行的可见性取决于主行；主行被改判时一并刷新，资金与来源守恒仍按原事件计算。
+    if(!initial&&ids.length){const touched=new Set(ids),rowIds=new Set(ids.flatMap(id=>model.events.get(id)?.fieldSources.rowIds||[]))
+      for(const event of model.events.values())if(!touched.has(event.eventId)&&rowIds.has(event.fieldSources.disbursement?.partnerRowId))ids.push(event.eventId)}
     for(const id of rowIds)explained.delete(id)
     const changed=ids.map(id=>model.events.get(id)).filter(Boolean)
     const affectedRows=new Set(rowIds)

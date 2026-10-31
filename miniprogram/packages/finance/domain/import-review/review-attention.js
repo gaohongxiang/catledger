@@ -3,12 +3,12 @@
 const VERSION = 'review-attention-v1'
 const step = (key, label, priority) => ({ key, label, priority })
 const principal = event => Boolean(event.installment && event.installment.creditStatement && event.installment.component === 'principal')
-const knownNature = event => ['income', 'expense', 'fee', 'refund', 'internal_transfer', 'borrow', 'repayment', 'balance_adjustment'].includes(event.economicNature)
+const knownNature = event => require('./installment-business').isRegistration(event) || ['income', 'expense', 'fee', 'refund', 'internal_transfer', 'borrow', 'repayment', 'balance_adjustment'].includes(event.economicNature)
 
 function accounts(event) {
   let label = '资金账户待确认'
   const nature = event.economicNature
-  if (principal(event)) label = '所属信用卡待确认'
+  if (principal(event) || require('./installment-business').isRegistration(event)) label = '所属信用卡待确认'
   else if (event.repaymentOwnershipRequired) label = '资金账户待确认'
   else if (['income', 'refund'].includes(nature)) label = nature === 'refund' ? '退款到账账户待确认' : '收款账户待确认'
   else if (['expense', 'fee'].includes(nature)) label = nature === 'fee' ? '记费账户待确认' : '付款账户待确认'
@@ -27,6 +27,7 @@ function accounts(event) {
 }
 
 function reasonStep(reason, event) {
+  if (reason === 'installment_plan_required') return step('installment_plan', '分期计划待关联', 80)
   if (reason === 'refund_source_conflict') return step('source_conflict', '退款与原订单状态冲突', 0)
   if (['row_status_unknown', 'transaction_status_unknown'].includes(reason)) return step('status', '账单状态待核对', 1)
   if (reason === 'source_profile_unknown') return step('source', '账单来源待核对', 2)
@@ -47,7 +48,7 @@ function reasonStep(reason, event) {
   if (reason === 'editor_composition_incomplete') return step('payment', '资金分配待补齐', 60)
   if (reason === 'payment_components_ambiguous') return step('payment', '组合支付待核对', 60)
   if (reason.startsWith('repayment_allocation_') && event.economicNature === 'repayment' && !principal(event)) return step('allocation', '还款分配待补齐', 61)
-  if (reason === 'loan_repayment_required' && !principal(event)) return step('loan', '还款本息费待核对', 62)
+  if (reason === 'loan_repayment_required' && !principal(event)) return step('repayment', '还款转账待重新确认', 62)
   if (reason === 'repayment_channel_details_required') return step('repayment_channel', '还款信息待核对', 62)
   if (['refund_relation_required', 'refund_relation_ambiguous', 'refund_amount_exceeded', 'refund_relation_invalid'].includes(reason) && event.economicNature === 'refund') {
     return step('refund', reason === 'refund_amount_exceeded' ? '退款金额超额待核对' : '退款关系待确认', 70)

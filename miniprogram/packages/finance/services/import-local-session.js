@@ -35,14 +35,23 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
       if(choice.needsRecheck)throw Object.assign(new Error('账户规则已更新，请重新确认保留的选择'),{code:'LOCAL_RECHECK_REQUIRED'})
       work()
     }catch(error){invalid.push({choice,error})}}
+    const replayEditor=choice=>{
+      const prior=choice.editor
+      if(prior?.decisions?.repayment == null)return model.edit({eventId:choice.eventId,...prior})
+      // 旧决定仍保存在日志中；预览保留账户、金额和备注，只暂停本息拆分与计划联动。
+      // 必须在新界面重新保存，才能替换原决定并解除本机阻断。
+      model.edit({eventId:choice.eventId,...prior,decisions:{...prior.decisions,repayment:null},
+        acknowledgedChanges:[...new Set([...(prior.acknowledgedChanges||[]),'repayment'])]})
+      throw Object.assign(new Error('还款现按全额转账，请重新确认账户和金额'),{code:'LOCAL_RECHECK_REQUIRED'})
+    }
     for(const choice of final.duplicates.values())attempt(choice,()=>model.reviseDuplicate({...choice,eventVersion:undefined}))
     for(const choice of final.accounts.values())attempt(choice,()=>model.mapAccount(choice))
     const banks=new Set([...final.pairings.values()].filter(row=>row.decision==='same').map(row=>row.bankEventId)), memberEditors=new Map()
     for(const pair of final.pairings.values())for(const [id,value]of Object.entries(pair.memberEditors||{}))memberEditors.set(id,{eventId:id,editor:value})
     for(const choice of final.events.values())if(banks.has(choice.eventId))memberEditors.set(choice.eventId,choice)
-    for(const choice of memberEditors.values())attempt(choice,()=>model.edit({eventId:choice.eventId,...choice.editor}))
+    for(const choice of memberEditors.values())attempt(choice,()=>replayEditor(choice))
     for(const decision of ['distinct','same'])for(const choice of final.pairings.values())if(choice.decision===decision)attempt(choice,()=>model.pair({...choice,pairKey:choice.key}))
-    for(const choice of final.events.values())if(!banks.has(choice.eventId))attempt(choice,()=>model.edit({eventId:choice.eventId,...choice.editor}))
+    for(const choice of final.events.values())if(!banks.has(choice.eventId))attempt(choice,()=>replayEditor(choice))
     if(supplement)model.applySupplement(supplement)
     for(const choice of final.reviews.values())attempt(choice,()=>model.review({...choice.input,issueId:choice.issueId,decision:choice.decision}))
     // Preserve invalid choices on disk and in the submission model; only their
@@ -57,7 +66,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   function operation(action,data){
     if(action==='financeUpdates.setReview')return model.edit(data)
     if(action==='financeUpdates.setCategory')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,fields:{categoryId:data.categoryId}})
-    if(action==='financeUpdates.setRepayment')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,decisions:{repayment:data.repayment}})
+    if(action==='financeUpdates.setRepayment')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,decisions:{repayment:data.repayment},acknowledgedChanges:['repayment']})
     if(action==='financeUpdates.reviseDuplicate')return model.reviseDuplicate(data)
     if(action==='reviewIssues.resolveAccountMappings')return data.decisions.flatMap(choice=>model.mapAccount(choice))
     if(action==='reviewIssues.reviseAccountMapping')return model.mapAccount(data)
@@ -116,6 +125,16 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     closed=true;emit()
     return receipt
   }
+  // 核对时新建的计划是本机先调用接口建好的，服务端的事件里还没有这条决定；
+  // 计划 ID 仅兼容旧请求；服务端按创建回执识别本批计划，并保留已使用或被修改的计划。
+  function createdPlanIds() {
+    const ids = new Set()
+    for (const event of model.events.values()) {
+      const plan = event.fieldSources && event.fieldSources.installmentPlan
+      if (plan && plan.action === 'create' && plan.loanId) ids.add(plan.loanId)
+    }
+    return [...ids]
+  }
   const session={
     isLocal:true,state,get view(){return state.confirmedReceipt||reader.summary()},get projectionRevision(){return model.revision},
     get model(){return model},get status(){return{local:true,pending:0,syncing:Boolean(running),error:errorMessage,conflicts:model.invalid.size,saved:!errorMessage,serverReviewPending:model.needsCheck.size,frozen:Boolean(state.postFlight&&!state.confirmedReceipt)}},
@@ -132,7 +151,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     savePairingDraft(key,value){mutable();persist([{kind:'pairingDraft',key,value}]);emit()},pairingTask:key=>state.pairingResults[key]||null,
     enqueuePairing(key,draft,total){mutable();if(draft.needsRecheck)modelFactory.fail();const selection=draft.mode==='suggested'?{mode:'all_except',excludedPairKeys:draft.excludedPairKeys||[]}:{mode:'include',pairs:draft.pairs};const receipt=command('reviewIssues.resolvePairings',{requestId:requestId(),scopeToken:draft.scopeToken,selection});persist([{kind:'ui',key:'pairingResults',value:{...state.pairingResults,[key]:{...receipt.pairing,status:'saved',summaryReady:true,totalCount:total}}},{kind:'pairingDraft',key,value:null}]);emit()},
     post(){if(!running)running=sendPost().catch(error=>{errorMessage=posting.needsVerification(state.postFlight)?'提交结果待核实，已保留原请求，请继续核实':error.message;emit();throw error}).finally(()=>{running=null;emit()});return running},
-    async abandon(data){guard();if(state.postFlight)throw Object.assign(new Error('上次入账结果未确定，不能直接放弃；请先核实'),{code:'OPERATION_UNCONFIRMED'});const payload={requestId:data?.requestId||requestId(),updateId:state.updateId,version:facts.update.version};queueAbandon(payload);const cleaned=files.clear();closed=true;cleanup(cleaned);try{const receipt=await callNetwork('financeUpdates.abandon',payload);if(alive())queueAbandon(null,payload);return receipt}catch(error){return{update:{...facts.update,status:'abandoned'},offlineAbandon:true}}},
+    async abandon(data){guard();if(state.postFlight)throw Object.assign(new Error('上次入账结果未确定，不能直接放弃；请先核实'),{code:'OPERATION_UNCONFIRMED'});const planIds=createdPlanIds(),payload={requestId:data?.requestId||requestId(),updateId:state.updateId,version:facts.update.version,...(planIds.length?{planIds}:{})};queueAbandon(payload);const cleaned=files.clear();closed=true;cleanup(cleaned);try{const receipt=await callNetwork('financeUpdates.abandon',payload);if(alive())queueAbandon(null,payload);return receipt}catch(error){return{update:{...facts.update,status:'abandoned'},offlineAbandon:true}}},
     async pause(){paused=true},resume(){guard();paused=false},async retry(){return state.postFlight?session.post():session.flush()},discardConflicts(){errorMessage='请打开标记事项重新核对，原选择仍保留';emit()},
     clear(){if(state.postFlight&&!state.confirmedReceipt)throw Object.assign(new Error('入账结果待核实，原草稿仍保留'),{code:'OPERATION_UNCONFIRMED'});const cleaned=(!state.confirmedReceipt||compactReceiptSaved)&&files.clear();closed=true;try{cleanup(cleaned)}catch(_){}},
     destroy(){closed=true;files.clear();listeners.clear()}

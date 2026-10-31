@@ -23,6 +23,20 @@ const { executeIdempotentMutation, executeUserRead } = require('./import-transac
 const { validateUuid, validateVersion } = require('./validation')
 
 const MAX_UPDATE_SOURCES = 5
+// 整理规则升级一律在原计划上升级：重建会丢掉用户已经做过的重复合并、同笔判断和
+// 核对状态，只剩账户选择。只有 v26 以前、或者还没整理成功的批次才整份重建——那些
+// 批次本来就没有需要保留的决定。规则变化不再需要把旧版本号逐个加进白名单。
+const PLAN_UPGRADE_FLOOR = 26
+
+function planVersionNumber(planVersion) {
+  const match = /^organizer-plan-v(\d+)$/.exec(String(planVersion || ''))
+  return match ? Number(match[1]) : NaN
+}
+
+function upgradeablePlan(planVersion) {
+  const version = planVersionNumber(planVersion)
+  return Number.isInteger(version) && version >= PLAN_UPGRADE_FLOOR && version <= planVersionNumber(PLAN_VERSION)
+}
 
 function validateBatchIds(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_UPDATE_SOURCES) {
@@ -70,7 +84,7 @@ function createFinanceUpdateCore({ getPool }) {
       return commandResult(connection, uid, updateId, data)
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
-    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', 'organizer-plan-v29', 'organizer-plan-v30', 'organizer-plan-v31', 'organizer-plan-v32', 'organizer-plan-v33', 'organizer-plan-v34', PLAN_VERSION].includes(current.planVersion)) {
+    if (current.status === 'review' && upgradeablePlan(current.planVersion)) {
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data)
     }
     const paymentMappings = await selectPaymentMappings(connection, uid, updateId)
@@ -151,6 +165,9 @@ function createFinanceUpdateCore({ getPool }) {
   async function abandon(context) {
     const updateId = validateUuid(context.data.updateId)
     const version = validateVersion(context.data.version)
+    const planIds = context.data.planIds == null ? [] : context.data.planIds
+    if (!Array.isArray(planIds) || planIds.length > 50) throw importError('VALIDATION_ERROR')
+    const createdPlanIds = [...new Set(planIds.map(validateUuid))]
     return executeIdempotentMutation({
       getPool,
       ...context,
@@ -158,7 +175,7 @@ function createFinanceUpdateCore({ getPool }) {
       operation: async (connection, uid, data, requestDigest) => {
         const current = await selectUpdate(connection, uid, updateId, { forUpdate: true })
         if (current.status === 'abandoned') {
-          await discardUpdateGraph(connection, uid, updateId)
+          await discardUpdateGraph(connection, uid, updateId, { planIds: createdPlanIds })
           return publicUpdate(current)
         }
         if (!['draft', 'failed', 'review'].includes(current.status) || Number(current.version) !== version) {
@@ -179,7 +196,7 @@ function createFinanceUpdateCore({ getPool }) {
             WHERE uid = ? AND update_id = ? AND version = ?`,
           [appliedVersion, actionId, uid, updateId, version]
         )
-        await discardUpdateGraph(connection, uid, updateId)
+        await discardUpdateGraph(connection, uid, updateId, { planIds: createdPlanIds })
         return publicUpdate(await selectUpdate(connection, uid, updateId))
       }
     })
@@ -191,5 +208,6 @@ function createFinanceUpdateCore({ getPool }) {
 module.exports = {
   MAX_UPDATE_SOURCES,
   createFinanceUpdateCore,
+  upgradeablePlan,
   validateBatchIds
 }

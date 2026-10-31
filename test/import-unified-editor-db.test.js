@@ -313,84 +313,28 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
         const reused=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:after[1].eventId,eventVersion:after[1].version,kind:'transaction'})
         assert.equal(reused.items.find(row=>row.id===original.transactionId).remainingMinor,'5000')
       })
-      await t.test('UE08/09/51 本息费明确900+80+20，缺项待核对、越权费用拒绝，保存不提前记账',async()=>{
-        const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
-        const fields={economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability}
-        const repayment={confirmed:true,mode:'defer',assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.other_liability,
-          principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:categoryId,feeCategoryId:categoryId}
-        const before=await dump(c,'catledger_transactions','transaction_id')
-        const {confirmed,assetAccountId,liabilityAccountId,...draft}=repayment
-        const partial=await c.imp('financeUpdates.setReview',await input(c,0,{fields,decisions:{repayment:{mode:'review',draft:{...draft,interestMinor:null}}}}))
-        assert.equal(partial.event.status,'needs_action')
-        await assert.rejects(post(c),{publicCode:'UNRESOLVED_IMPORT'})
-        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{decisions:{repayment:{...repayment,interestCategoryId:randomUUID()}}})),{publicCode:'VALIDATION_ERROR'})
-        await c.imp('financeUpdates.setReview',await input(c,0,{decisions:{repayment}}))
-        assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
-        await post(c)
-        const tx=(await dump(c,'catledger_transactions','transaction_id')).filter(row=>row.origin==='import')
-        assert.deepEqual(tx.map(row=>[row.type,String(row.amount_minor)]).sort(),[['expense','2000'],['expense','8000'],['transfer','90000']])
-        assert.ok(tx.every(row=>row.source_account_id===c.accounts.wallet))
-        assert.equal((await c.api('loans.unassigned')).total,1)
-      })
-      await t.test('信用卡还款可按本息费拆分，费用入支出且不生成贷款付款记录',async()=>{
-        const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
+      await t.test('普通还款拒绝旧本息拆分和计划参数，失败整次回滚；两端确认后全额转账',async()=>{
+        const c=await setup([1000]),categoryId=c.categories.find(row=>row.kind==='expense').id
+        const fields={economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.credit}
         const repayment={confirmed:true,mode:'defer',assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.credit,
           principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',interestTreatment:'expense',feeTreatment:'expense',
           interestCategoryId:categoryId,feeCategoryId:categoryId}
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.credit},decisions:{repayment}}))
-        await post(c)
-        const tx=(await dump(c,'catledger_transactions','transaction_id')).filter(row=>row.origin==='import')
-        assert.deepEqual(tx.map(row=>[row.type,String(row.amount_minor)]).sort(),[['expense','2000'],['expense','8000'],['transfer','90000']])
-        assert.equal(tx.find(row=>row.type==='transfer').destination_account_id,c.accounts.credit)
-        assert.equal((await c.api('loans.unassigned')).total,0)
-        assert.equal((await dump(c,'catledger_loan_payments','payment_id')).length,0)
-      })
-      await t.test('信用卡已记利息只计入转账，不重复生成费用',async()=>{
-        const c=await setup([1000])
-        const repayment={confirmed:true,mode:'defer',assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.credit,
-          principalMinor:'90000',interestMinor:'10000',feeMinor:'0',interestTreatment:'accrued',feeTreatment:'expense'}
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.credit},decisions:{repayment}}))
+        const before=await dump(c,'catledger_transactions','transaction_id'),events=await rows(c)
+        for (const decision of [repayment,{mode:'review',draft:{mode:'defer',principalMinor:'90000'}},
+          {...repayment,mode:'associate',loanId:randomUUID(),loanVersion:1}]) {
+          await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields,decisions:{repayment:decision}})),{publicCode:'VALIDATION_ERROR'})
+          assert.deepEqual(await rows(c),events)
+          assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
+        }
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields}))
+        assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
         await post(c)
         const tx=(await dump(c,'catledger_transactions','transaction_id')).filter(row=>row.origin==='import')
         assert.deepEqual(tx.map(row=>[row.type,String(row.amount_minor)]),[['transfer','100000']])
-        assert.equal(tx[0].destination_account_id,c.accounts.credit)
+        assert.equal(tx[0].source_account_id,c.accounts.wallet);assert.equal(tx[0].destination_account_id,c.accounts.credit)
         assert.equal((await dump(c,'catledger_loan_payments','payment_id')).length,0)
       })
-      await t.test('信用卡分期计划可以随导入还款整笔关联，且不额外生成费用',async()=>{
-        const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
-        const {plan}=require('./helpers/loan-charges')
-        const loan=await c.api('loans.create',{...plan,requestId:randomUUID(),accountId:c.accounts.credit})
-        const latest=(await c.api('loans.get',{loanId:loan.loanId})).loan
-        const decision={confirmed:true,mode:'associate',loanId:loan.loanId,loanVersion:latest.version,
-          assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.credit,principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',
-          interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:categoryId,feeCategoryId:categoryId,chargeAllocations:[]}
-        // 还入账户和计划必须属于同一张卡：换成别的账户要拒绝。
-        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability},
-          decisions:{repayment:decision}})))
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.credit},decisions:{repayment:decision}}))
-        await post(c)
-        const payments=await dump(c,'catledger_loan_payments','payment_id')
-        assert.equal(payments.length,1)
-        const allocations=await dump(c,'catledger_loan_payment_allocations','principal_minor')
-        assert.equal(allocations.length,1);assert.equal(allocations[0].loan_id,loan.loanId);assert.equal(String(allocations[0].principal_minor),'90000')
-        assert.equal((await c.api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'510000')
-        const tx=(await dump(c,'catledger_transactions','transaction_id')).filter(row=>row.origin==='import')
-        assert.deepEqual(tx.map(row=>[row.type,String(row.amount_minor)]).sort(),[['expense','2000'],['expense','8000'],['transfer','90000']])
-        assert.equal(tx.find(row=>row.type==='transfer').destination_account_id,c.accounts.credit)
-      })
-      await t.test('只提交待核对状态不会清空已填还款明细',async()=>{
-        const c=await setup([1000]),partial={mode:'defer',principalMinor:'9000',interestMinor:null,feeMinor:'0',
-          interestTreatment:null,feeTreatment:null,interestCategoryId:null,feeCategoryId:null,chargeAllocations:[]}
-        let row=(await rows(c))[0]
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.credit},
-          decisions:{repayment:{mode:'review',draft:partial}}}))
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{note:'只改合成备注'},decisions:{repayment:{mode:'review'}}}))
-        const facts=await detail(c,row.eventId)
-        assert.equal(facts.editorFacts.incompleteRepayment.principalMinor,'9000')
-        assert.equal(facts.editorFacts.repayment.mode,'review')
-        assert.equal(facts.status,'needs_action')
-      })
-      await t.test('UE08 已记本息费只清偿既有收费项，入账1000不重复费用且本金只减900',async()=>{
+      await t.test('分期已单独记费后普通还款仅全额转账，不重复记费或擅自分配计划本金',async()=>{
         const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
         const {plan,authorization}=require('./helpers/loan-charges')
         const loan=await c.api('loans.create',{...plan,requestId:randomUUID(),accountId:c.accounts.other_liability,
@@ -408,16 +352,16 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
           interestTreatment:'accrued',feeTreatment:'accrued',chargeAllocations:[{chargeId:interest.chargeId,component:'interest',amountMinor:'8000'},
             {chargeId:fee.chargeId,component:'fee',amountMinor:'2000'}]}
         await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability},
-          decisions:{repayment:{...decision,chargeAllocations:[{...decision.chargeAllocations[0],chargeId:randomUUID()},decision.chargeAllocations[1]]}}})),{publicCode:'NOT_FOUND'})
-        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability},decisions:{repayment:decision}}))
+          decisions:{repayment:{...decision,chargeAllocations:[{...decision.chargeAllocations[0],chargeId:randomUUID()},decision.chargeAllocations[1]]}}})),{publicCode:'VALIDATION_ERROR'})
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability}}))
         assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
         await post(c)
         const after=await dump(c,'catledger_transactions','transaction_id'),created=after.filter(row=>!before.some(old=>old.transaction_id===row.transaction_id))
         assert.deepEqual(created.map(row=>[row.type,String(row.amount_minor)]),[['transfer','100000']])
-        assert.equal((await c.api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'990000')
+        assert.equal((await c.api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,latest.remainingPrincipalMinor)
         const settled=(await c.api('loans.chargePlan',{loanId:loan.loanId})).items
-        assert.equal(settled.find(row=>row.chargeId===interest.chargeId).outstandingMinor,'0')
-        assert.equal(settled.find(row=>row.chargeId===fee.chargeId).outstandingMinor,'0')
+        assert.equal(settled.find(row=>row.chargeId===interest.chargeId).outstandingMinor,interest.outstandingMinor)
+        assert.equal(settled.find(row=>row.chargeId===fee.chargeId).outstandingMinor,fee.outstandingMinor)
       })
     } finally { await lab.close() }
   })

@@ -17,6 +17,9 @@ const {
   projectSourceFunds
 } = require('./source-funds')
 const { getRowSemantic } = require('./row-semantic-resolver')
+const { applyInstallmentDisbursements } = require('./installment-disbursement')
+const { referencesForRows, mappedAccount, VERSION: ACCOUNT_GROUPS_VERSION } = require('./payment-account-groups')
+const { coalesceAccountIssues } = require('./account-issue-grouping')
 const { EVENT_STATUS, RELATION_STATUS, RELATION_TYPE, REVIEW_ISSUE_TYPE, classifyReviewIssue, needsCategory } = require('./organizer-model')
 const { unique } = require('./organizer-values')
 
@@ -102,6 +105,9 @@ function accountReferences(rows) {
   }
   ;(rows || []).forEach((row) => {
     add(ledgerAccountReferenceForRow(row))
+    // 组合付款的每个成分也是本批真实用到的付款账户：只有把它们一起交给映射解析，
+    // 历史决定才能按成分键自动沿用，账户步骤才只问真正没定过的那些。
+    referencesForRows([row]).forEach(add)
     const projection = projectSourceFunds(row)
     if (!projection) return
     add(projection.from)
@@ -381,14 +387,51 @@ function excludedThisImport(event) {
     !reasons.includes('source_account_ignored_default')
 }
 
-function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFactory) {
+// 付款方式里有多个资金成分时，账户步骤的单元是“每个账户”，不是“这笔事件”。
+// 成分引用属于来源事实，先固化成事件上的一份引用：账户事项、金额分摊、重新整理
+// 读的是同一份，不再靠整理之后再补一次分组，也就不存在“重排后分组没了”的中间态。
+function applyPaymentAccountReferences(events, rowsByEvent, mappingIndex) {
+  events.forEach((event, index) => {
+    if (![EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status)) return
+    const references = referencesForRows(rowsByEvent.get(event.eventId) || [])
+    if (!references.length) return
+    const next = { ...event, fieldSources: { ...event.fieldSources,
+      paymentAccountReferences: references, paymentAccountGroupsVersion: ACCOUNT_GROUPS_VERSION } }
+    // 已发布的历史映射和本批草稿按成分键直接落到事件上：账户步骤只显示还需要确认的成分。
+    const accounts = new Map((event.fieldSources.paymentAccounts || []).map((item) => [item.componentIndex, item]))
+    references.forEach((reference) => {
+      const accountId = mappingIndex.get(paymentReferenceKey(reference))
+      if (!accountId) return
+      // 还款目标与付款成分使用同一份映射。只把事项标成已确认却漏写目标账户，
+      // 会使快照出现“已解决但没有账户”的矛盾，页面曾把它误显示为不计入。
+      if (reference.memberRole === 'payment_target') next.counterpartyLedgerAccountId = accountId
+      else if (reference.memberRole && reference.memberRole.startsWith('payment_component_')) {
+        accounts.set(reference.componentIndex, { componentIndex: reference.componentIndex, accountId })
+      }
+    })
+    if (accounts.size) next.fieldSources.paymentAccounts = [...accounts.values()]
+      .sort((left, right) => left.componentIndex - right.componentIndex)
+    events[index] = next
+  })
+}
+
+// 账户事项的唯一来源：每个账户引用一条。已确定账户的是已解决记录，没有账户的是
+// 待确认；历史映射、本批决定、来源成分引用都在同一个循环里收敛，不再分两处实现。
+function buildAccountIssues(updateId, events, rowsByEvent, effectiveMappings, idFactory) {
   const confirmedKeys = new Map((effectiveMappings || []).filter((mapping) => (
     mapping.mappingAction === 'account' && mapping.accountId
   )).map((mapping) => [paymentReferenceKey(mapping), mapping.accountId]))
   const groups = new Map()
   ;(events || []).forEach((event) => {
     const projection = event.fieldSources && event.fieldSources.fundsProjection
-    const candidates = projection
+    // 已排除、已入账的事件不需要账户：成分引用只在仍要入账的事件上成组。
+    const componentReferences = [EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status)
+      ? referencesForRows(rowsByEvent.get(event.eventId) || []) : []
+    // 组合付款的每个成分、还款目标各自成组：账户还没确定也先立一条待确认。
+    const candidates = componentReferences.length
+      ? componentReferences.map((reference) => ({ reference, memberRole: reference.memberRole,
+          accountId: mappedAccount(event, reference), required: true }))
+      : projection
       ? [
           { reference: projection.from, accountId: event.ledgerAccountId, memberRole: 'mapping_from' },
           { reference: projection.to, accountId: event.counterpartyLedgerAccountId, memberRole: 'mapping_to' }
@@ -411,14 +454,22 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       const historical = event.reasonCodes.includes('source_account_ignored_default') && !candidate.accountId
       const ignored = current || historical
       const confirmedAccountId = confirmedKeys.get(paymentReferenceKey(reference))
-      if (!ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
+      // 已确认必须以事件实际写入的账户为准，不能用映射索引中的值掩盖漏写。
+      const accountId = candidate.accountId || null
+      // 单账户的老路径只在“已确认或已忽略”时成组；成分引用是账户步骤的正式单元，
+      // 还没有账户也要立组，否则组合付款又会退回一条合并的待核对。
+      if (!candidate.required && !ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
       const identityKey = accountIdentityKeyForReference(reference) || paymentReferenceKey(reference)
+      const pending = !ignored && !accountId
       // 「仅本次不计入」只是这次排除，不是账户决定，不能和同一支付方式的
       // 已确认账户并进一组，否则会把排除改成记入。
-      const key = current ? `${identityKey}:excluded` : `${identityKey}:${ignored ? 'ignore' : confirmedAccountId}`
-      const group = groups.get(key) || { ignored: false, current: false, items: [], memberKeys: new Set() }
+      const key = current ? `${identityKey}:excluded`
+        : ignored ? `${identityKey}:ignore`
+        : pending ? `${identityKey}:pending` : `${identityKey}:${accountId}`
+      const group = groups.get(key) || { ignored: false, current: false, pending: false, items: [], memberKeys: new Set() }
       group.ignored = group.ignored || ignored
       group.current = group.current || current
+      group.pending = group.pending || pending
       const memberKey = `${event.eventId}:${candidate.memberRole}`
       if (!group.memberKeys.has(memberKey)) {
         group.memberKeys.add(memberKey)
@@ -438,13 +489,14 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       issueKey: digestParts(REVIEW_ISSUE_VERSION, updateId, 'account_mapping', groupKey),
       issueKeyVersion: REVIEW_ISSUE_VERSION,
       issueType: 'account_mapping',
-      status: 'resolved',
+      status: group.pending ? 'open' : 'resolved',
       version: 1,
-      blocking: false,
+      blocking: group.pending,
       primaryReasonCode: group.current
         ? 'payment_reference_excluded_this_import'
         : group.ignored
           ? 'payment_reference_ignored_by_history'
+          : group.pending ? 'payment_reference_mapping_required'
           : projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
       memberCount: group.items.length,
       candidateCount: 0,
@@ -452,7 +504,8 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       // 本次排除与长期忽略的原因码分开：前者不进入以后导入的自动排除，只
       // 让账户步骤显示“本次不计入”并可改回。
       reasonCodes: group.current ? ['account_mapping_excluded']
-        : group.ignored ? ['source_account_ignored_default'] : ['account_mapping_confirmed']
+        : group.ignored ? ['source_account_ignored_default']
+        : group.pending ? ['payment_reference_mapping_required'] : ['account_mapping_confirmed']
     })
     group.items.forEach(({ event, memberRole }, index) => members.push({
       memberId: idFactory(), updateId, issueId, objectType: 'event', objectId: event.eventId,
@@ -463,8 +516,10 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
 }
 
 function buildOrganizePlan({ updateId, rows, paymentMappings = [], accounts = [], idFactory }) {
-  const validRows = rows.filter((row) => row.parseState === 'valid')
-    .map((row) => ({ ...row, semantic: getRowSemantic(row) }))
+  // 放款对先于分组：一组来源事实（同卡同日同额的两行现金分期放款）决定这两行各自的性质，
+  // 识别后放款行是借款、对行不产生资金流，后面的分组、配对和问题分类都按来源事实走。
+  const validRows = applyInstallmentDisbursements(rows.filter((row) => row.parseState === 'valid')
+    .map((row) => ({ ...row, semantic: getRowSemantic(row) })))
   const inferredMappings = inferExactAccountMappings(validRows, accounts)
   // 优先级：名称精确推断 < 类型兼容的已发布历史映射 < 本批账户草稿。
   // selectPlanningRows 上的 mappingAction 只代表已发布历史映射，必须先于
@@ -501,13 +556,26 @@ function buildOrganizePlan({ updateId, rows, paymentMappings = [], accounts = []
     events.push(planned.event)
     evidence.push(...planned.evidence)
   })
+  // 账户引用先于问题分类：组合付款的事件一旦带上成分引用，账户归属就由每个
+  // 账户各自的待确认事项承接，不再产生一条合并的“组合支付”待核对。
+  const rowsByEvent = new Map()
+  const rowById = new Map(validRows.map((row) => [row.rowId, row]))
+  evidence.forEach((link) => {
+    const row = rowById.get(link.rowId)
+    if (!row || !link.eventId) return
+    if (!rowsByEvent.has(link.eventId)) rowsByEvent.set(link.eventId, [])
+    rowsByEvent.get(link.eventId).push(row)
+  })
+  applyPaymentAccountReferences(events, rowsByEvent, mappingIndex)
   const candidateGroups = sameEventCandidateGroups(events)
   const relations = buildRelations(updateId, events, idFactory)
   applyInstallmentAttribution(events)
   const review = buildReviewIssues(updateId, events, relations, candidateGroups, idFactory)
   // 所有实际生效的账户归属都必须在账户步骤可见、可修改；不能因为来自
   // 历史映射就在界面中隐藏，否则错误映射会静默进入后续整理。
-  const confirmedAccounts = buildConfirmedAccountIssues(updateId, events, visibleMappingResolution.mappings, idFactory)
+  const confirmedAccounts = buildAccountIssues(updateId, events, rowsByEvent, visibleMappingResolution.mappings, idFactory)
+  const accountGroups = coalesceAccountIssues(events, review.issues.concat(confirmedAccounts.issues),
+    review.members.concat(confirmedAccounts.members), idFactory)
   const counts = {
     sourceCount: new Set(rows.map((row) => row.batchId)).size,
     validEvidenceCount: validRows.length,
@@ -526,8 +594,8 @@ function buildOrganizePlan({ updateId, rows, paymentMappings = [], accounts = []
     events,
     evidence,
     relations,
-    issues: review.issues.concat(confirmedAccounts.issues),
-    members: review.members.concat(confirmedAccounts.members),
+    issues: accountGroups.issues,
+    members: accountGroups.members,
     counts
   }
 }
@@ -540,7 +608,8 @@ module.exports = {
   buildOrganizePlan,
   accountReferences,
   applyInstallmentAttribution,
-  buildConfirmedAccountIssues,
+  applyPaymentAccountReferences,
+  buildAccountIssues,
   buildReviewIssues,
   installmentGroupMembers,
   compatibleHistoricalMappings,

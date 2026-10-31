@@ -68,18 +68,42 @@ test('分期本金只显示来源字段，不误呈现为已发生的还款；�
   assert.match(value.effect.value, /不记实际还款/)
   assert.equal(fields({ ...row('expense'), amountMinor: null }).amount.missing, true)
 })
+test('现金分期放款行显示来源期数与当前计划归属，不冒充分期账单行', () => {
+  const value = fields({ ...row('borrow'), sourceDirection: 'expense', flowDirection: 'neutral',
+    disbursement: { totalTerms: 12, planLabel: '电销现金分期' } })
+  assert.equal(value.nature.value, '借款')
+  assert.deepEqual([value.account.label, value.counterparty.label], ['借款负债账户', '到账账户'])
+  assert.equal(value.disbursement.label, '现金分期')
+  assert.equal(value.disbursement.value, '电销现金分期 · 共 12 期')
+  assert.equal(value.plan.value, '尚未关联计划')
+  assert.equal(value.period, undefined)
+  assert.match(value.effect.value, /借款记一笔/)
+  // 同笔的另一行并列显示，用户看到的是这笔分期的两条来源，而不是两件事。
+  const paired = fields({ ...row('borrow'), disbursement: { totalTerms: 12, planLabel: '电销现金分期',
+    partner: { item: '电销现金分期12期 转分期付款', localDate: '2026-08-25', amountMinor: '2600000' } } })
+  assert.equal(paired['disbursement-pair'].label, '同笔的另一行')
+  assert.equal(paired['disbursement-pair'].value, '电销现金分期12期 转分期付款 · 2026-08-25 · ¥26000.00（卡内记账，不重复入账）')
+  // 对行不是放款行：不显示现金分期和计划引导，性质直接写明它是分期放款对行。
+  const offset = fields({ ...row('unknown'), fieldSources: { disbursement: { role: 'offset', totalTerms: 12, planLabel: '电销现金分期' } } })
+  assert.equal(offset.disbursement, undefined)
+  assert.equal(offset.plan, undefined)
+  assert.equal(offset.nature.value, '分期放款对行')
+})
 test('退款、费用分项和计划来自已读取事实，不用缺 DTO 推断未关联', () => {
   assert.equal(fields(row('refund')).refund.value, '关联信息待读取')
   const original = { localAt: '2026-08-01 12:00:00', amountMinor: '15000', categoryName: '餐饮 / 美食' }
   const refund = fields({ ...row('refund'), detailFacts: { refund: { status: 'confirmed', originals: [original] } } })
   assert.match(refund.refund.value, /150.00/)
   assert.equal(refund.category.value, '餐饮 / 美食')
-  const repayment = fields({ ...row('repayment'), loanRepayment: { mode: 'associate', loanId: 'synthetic-loan', principalMinor: '12000',
+  const repayment = fields({ ...row('repayment'), status: 'posted', loanRepayment: { mode: 'associate', loanId: 'synthetic-loan', principalMinor: '12000',
     interestMinor: '345', feeMinor: '0', interestTreatment: 'accrued', feeTreatment: 'expense' }, detailFacts: { loan: { name: '合成贷款' } } })
   assert.equal(repayment.principal.value, '¥120.00')
   assert.equal(repayment.fee.value, '¥0.00')
   assert.match(repayment['interest-treatment'].value, /不重复支出/)
   assert.equal(repayment.plan.value, '合成贷款')
+  const pending = fields({ ...row('repayment'), loanRepayment: { mode: 'associate', loanId: 'synthetic-loan' } })
+  assert.equal(pending.principal, undefined)
+  assert.equal(pending.plan, undefined)
 })
 test('完整详情分段读取校验对象身份；迟到结果、残缺 JSON 和过长内容不冒充完成', async () => {
   const text = JSON.stringify(row('income')), calls = []

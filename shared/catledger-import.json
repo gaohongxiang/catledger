@@ -575,7 +575,8 @@
       "data": [
         "requestId",
         "updateId",
-        "version"
+        "version",
+        "planIds? (≤50 legacy advisory ids; never accepted as proof of plan creation)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -590,7 +591,10 @@
         "posting",
         "invalidates"
       ],
-      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。",
+      "rules": [
+        "Read loans.create receipts whose server-validated importOrigin belongs to this update. Retire only unchanged unused version-1 plans and cancel their periods while retaining initial audit. Another non-abandoned update reference, source item, binding, payment/allocation, charge contract or later period revision preserves the plan. This also handles creation before event save; client planIds/action:create alone never prove origin. Legacy plans without origin receipts are preserved."
+      ]
     },
     "economicEvents.correctionImpact": {
       "kind": "read",

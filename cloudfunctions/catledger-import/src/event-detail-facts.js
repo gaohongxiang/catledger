@@ -46,14 +46,14 @@ async function eventDetailFacts(connection, uid, updateId, event) {
       // 系统自动绑定（manual=0）的关系允许在单笔编辑器里更换；人工选定的仍走同笔判断入口。
       autoLinked: originals.some(row => row.manual === 0 || row.manual === '0') }
   }
-  const repayment = fields.loanRepayment
+  const repayment = ['posted','corrected'].includes(event.status) ? fields.loanRepayment : null
   let loan = null
   if (repayment && repayment.mode === 'associate' && repayment.loanId) {
     const [[row]] = await connection.execute('SELECT loan_id AS loanId,name FROM catledger_loans WHERE uid=? AND loan_id=?', [uid, repayment.loanId])
     loan = row || null
   }
   const categories = []
-  const repaymentFacts = { ...(repayment || {}), ...(fields.editorOverrides?.incompleteRepayment || {}) }
+  const repaymentFacts = repayment || {}
   const categoryIds = [...new Set([event.categoryId, repaymentFacts.interestCategoryId, repaymentFacts.feeCategoryId,
     fields.repaymentChannelResolution?.feeCategoryId].filter(Boolean))]
   if (categoryIds.length) {

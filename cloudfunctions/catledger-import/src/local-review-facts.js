@@ -72,7 +72,10 @@ async function loadFacts(connection, uid, updateId) {
   const [categories] = await connection.execute(`SELECT c.category_id AS categoryId,c.name,c.kind,c.system_key AS systemKey,
     c.parent_id AS parentId,p.name AS parentName,c.sort_order AS sortOrder,c.version,c.archived_at AS archivedAt
     FROM catledger_categories c LEFT JOIN catledger_categories p ON p.uid=c.uid AND p.category_id=c.parent_id WHERE c.uid=?`, [uid])
-  const [loans] = await connection.execute(`SELECT loan_id AS loanId,name,account_id AS accountId,version,
+  // 分期计划的指纹匹配在本机核对时要给出候选，kind/期数/起始月/原始本金都要随事实下发；
+  // 只多这几列，计划和费用规则的其他判断仍以服务端提交为准。
+  const [loans] = await connection.execute(`SELECT loan_id AS loanId,name,account_id AS accountId,version,kind,
+    schedule_terms AS scheduleTerms,start_date AS startDate,installment_setup_json AS installmentSetup,
     baseline_principal_minor AS baselinePrincipalMinor,baseline_date AS baselineDate,archived_at AS archivedAt
     FROM catledger_loans WHERE uid=? AND deleted_at IS NULL`, [uid])
   const chargeStore = require('./loan-charge-store')

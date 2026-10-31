@@ -104,6 +104,12 @@ function applyFields(event, fields) {
       next.localDate = normalized.slice(0, 10)
       next.timezoneOffsetMinutes = fields.timezoneOffsetMinutes
       next.utcAt = new Date(localEpoch + fields.timezoneOffsetMinutes * 60_000).toISOString().replace('T', ' ').replace('Z', '')
+    } else if (key === 'installmentPlan') {
+      // 「这笔分期」的决定单独存放：放款行与对行的 installment 事实已被放款对改写，
+      // 计划归属不能挤进来源事实里。结构在这里校验，账户和计划可用性由保存时查库确认。
+      const decision = require('../installment-plan-fingerprint').inspectDecision(fields[key])
+      if (!decision) throw importError('VALIDATION_ERROR')
+      next.fieldSources = { ...(next.fieldSources || {}), installmentPlan: decision }
     } else if (key === 'repaymentAllocations') {
       if (!isAggregateRepayment(next)) throw importError('VALIDATION_ERROR')
       const allocation = inspectRepaymentAllocations(fields[key], next.amountMinor)

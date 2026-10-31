@@ -865,7 +865,6 @@ button::after { border: 0; }
 .review-batch-list { margin-top: 18rpx; min-height: 384rpx; }
 .review-batch { padding: 0 0 16rpx; }
 .review-batch + .review-batch { margin-top: 4rpx; }
-.review-batch-note { display: block; margin: 0 0 10rpx; padding: 0 4rpx; color: var(--ui-muted); font-size: 24rpx; line-height: 1.5; }
 .review-decision-card {
   width: 100%;
   min-width: 100%;

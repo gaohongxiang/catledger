@@ -899,10 +899,8 @@ module.exports = {
         patch.accountMappingsExcluded = excluded
         patch.accountStepSummary = state.summary
       } else if (kind === 'reviewGroups') {
-        // 组级笔数（本期还有几笔利息没定归属）放组标题，卡头只写状态，避免每张卡重复一遍。
         const cards = presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))
         patch.reviewGroups = events.length ? [{ key: 'pending-events',
-          installmentNote: presentation.installmentPendingNote(cards),
           issues: presentation.linkGroupRows(cards) }] : []
       }
       else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))

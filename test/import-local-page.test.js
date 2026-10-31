@@ -6,6 +6,134 @@ const {localWorkbench}=require('./helpers/local-workbench')
 const tap=data=>({currentTarget:{dataset:data}})
 const text=(page,field,value)=>page.changeEditorText({...tap({field}),detail:{value}})
 
+async function compositeRepaymentFacts(count = 1) {
+  const accountId = randomUUID()
+  const content = Buffer.from(['支付宝(中国)网络技术有限公司 电子客户回单',
+    '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+    ...Array.from({ length: count }, (_, index) => `2026-09-0${index + 1} 12:00:00,信用借还,1688先采后付,合成组合还款,10.00,支出,测试银行储蓄卡(1234)&账户余额,交易成功,,SYNTHETIC-TARGET-ACCOUNT-${index},,`)
+  ].join('\n'))
+  const paymentMethodKey = require('../cloudfunctions/catledger-import/src/identity').buildPaymentMethodKey('alipay', '1688先采后付')
+  const value = await facts({ content,
+    accounts: [{ accountId, name: '合成还款目标', type: 'credit', nature: 'liability', currency: 'CNY', version: 1 }],
+    paymentMappings: [{ sourceType: 'alipay', paymentMethodKey, paymentMethodHint: '1688先采后付',
+      mappingAction: 'account', accountId, mappingScope: 'history' }] })
+  return { value, accountId, target: value.issues.find(issue => issue.accountContext?.fundsSide === 'payment_target') }
+}
+
+test('真实账户页：重新上传的组合还款目标沿用账户，不能误显为本次不计入', async t => {
+  const { value, accountId, target } = await compositeRepaymentFacts()
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  const mapping = page.data.accountMappings.find(item => item.issueId === target.issueId)
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+  assert.equal(mapping.choiceValue, 'account:' + accountId)
+  assert.equal(mapping.needsConfirmation, false)
+  assert.equal(h.local.model.events.get(value.events[0].eventId).counterpartyLedgerAccountId, accountId)
+  assert.equal(h.local.model.choices.accounts.size, 0, '历史沿用不能伪造本批人工决定')
+  assert.equal(h.network.length, 0)
+})
+
+test('真实账户页：旧快照已解决但缺账户时重新确认，只有明确保存排除才进入本次不计入', async t => {
+  const { value, target } = await compositeRepaymentFacts()
+  // v40 曾把目标事项标为已确认，却没把目标账户写进事件和公开账户上下文。
+  value.events[0].counterpartyLedgerAccountId = null
+  target.accountContext.accountId = null
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  // 旧页面还可能把这个错误的默认值存成未确认的界面草稿。
+  page._accountUiDrafts.set(target.issueId, { mode: 'ignore', accountId: '', name: '1688先采后付',
+    typeIndex: 3, dirty: false, localConfirmed: false, revision: 0 })
+  page.refreshAccountMappings()
+  const pending = page.data.accountMappings.find(item => item.issueId === target.issueId)
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+  assert.equal(pending.needsConfirmation, true)
+  assert.notEqual(pending.choiceValue, 'ignore')
+  assert.notEqual(h.local.model.events.get(value.events[0].eventId).status, 'excluded')
+  await page.openAccountChoice(tap({ id: target.issueId }))
+  page.selectAccountChoice(tap({ value: 'ignore' }))
+  assert.equal(page.data.accountMappingsExcluded.length, 0, '未确认的排除选择仍留在待确认')
+  await page.completeAccountMapping(tap({ id: target.issueId }))
+  await h.flush()
+  assert.ok(page.data.accountMappingsExcluded.some(item => item.issueId === target.issueId))
+  assert.equal(h.local.model.events.get(value.events[0].eventId).status, 'excluded')
+  const factory = require('../miniprogram/packages/finance/services/import-local-session')
+  const reopened = factory.create({ files: h.files, restored: h.files.restore(), requestId: randomUUID })
+  assert.equal(reopened.model.events.get(value.events[0].eventId).status, 'excluded')
+  assert.equal(reopened.model.choices.accounts.size, 1)
+  assert.equal(h.network.length, 0)
+})
+
+test('真实账户页：代表交易被排除不代表整个账户组排除', async t => {
+  const { value, target, accountId } = await compositeRepaymentFacts()
+  value.events[0].status = 'excluded'
+  value.events[0].reasonCodes = ['manual_exclusion']
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  assert.equal(page.data.accountMappings.find(item => item.issueId === target.issueId).choiceValue, 'account:' + accountId)
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+})
+
+test('真实账户页：整组明确排除优先于残留账户', async t => {
+  const { value, target } = await compositeRepaymentFacts()
+  target.reasonCodes = ['account_mapping_excluded']
+  value.events[0].status = 'excluded'
+  value.events[0].reasonCodes = ['manual_exclusion', 'account_mapping_excluded']
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  assert.ok(page.data.accountMappingsExcluded.some(item => item.issueId === target.issueId))
+})
+
+for (const count of [1, 2]) test('真实账户页：目标账户是否仍需确认按完整成员判断，成员数 ' + count, async t => {
+  const { value, target } = await compositeRepaymentFacts(count)
+  target.accountContext.accountId = null
+  for (const event of value.events) event.counterpartyLedgerAccountId = null
+  Object.assign(value.events[0], { economicNature: 'expense', flowDirection: 'outflow', manualFieldMask: 8 })
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  const targetMapping = page.data.accountMappings.find(item => item.issueId === target.issueId)
+  if (count === 1) assert.equal(targetMapping, undefined, '整组已改成支出，不再确认无用的还款目标')
+  else assert.equal(targetMapping.needsConfirmation, true, '同组另一笔仍在还款，不能按代表记录隐藏')
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+})
+
+test('真实账户页：余额一次确认同时覆盖组合付款a和普通付款b，银行卡只覆盖a', async t => {
+  const content = Buffer.from(['支付宝(中国)网络技术有限公司 电子客户回单',
+    '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+    '2026-09-01 12:00:00,餐饮美食,合成商户,a,10.00,支出,光大银行储蓄卡(1234)&账户余额,交易成功,,SYNTHETIC-GROUP-A,,',
+    '2026-09-02 12:00:00,餐饮美食,合成商户,b,2.00,支出,账户余额,交易成功,,SYNTHETIC-GROUP-B,,'
+  ].join('\n'))
+  const value = await facts({ content, mapped: false })
+  const bankId = randomUUID(), walletId = value.accounts[0].accountId
+  value.accounts[0].name = '支付宝余额'
+  value.accounts.push({ accountId: bankId, name: '光大银行卡', type: 'bank', nature: 'asset', currency: 'CNY', version: 1 })
+  const combined = value.events.find(event => event.fieldSources.paymentAccountReferences)
+  const single = value.events.find(event => !event.fieldSources.paymentAccountReferences)
+  const issues = value.issues.filter(issue => issue.issueType === 'account_mapping')
+  assert.equal(issues.length, 2)
+  const wallet = issues.find(issue => value.members.some(member => member.issueId === issue.issueId && member.objectId === single.eventId))
+  const bank = issues.find(issue => issue !== wallet)
+  const h = await localWorkbench(t, value), page = h.page
+  await page.setStep({ currentStep: 2 })
+  assert.equal(page.data.accountMappings.length, 2)
+  for (const [issue, accountId] of [[wallet, walletId], [bank, bankId]]) {
+    await page.openAccountChoice(tap({ id: issue.issueId }))
+    page.selectAccountChoice(tap({ value: 'account:' + accountId }))
+    await page.completeAccountMapping(tap({ id: issue.issueId }))
+    await h.flush()
+  }
+  assert.equal(page.data.accountStepSummary.pending, 0, page.data.accountStepError)
+  assert.equal(h.local.model.choices.accounts.size, 2)
+  assert.equal(h.local.model.events.get(single.eventId).ledgerAccountId, walletId)
+  assert.deepEqual(h.local.model.events.get(combined.eventId).fieldSources.paymentAccounts,
+    [{ componentIndex: 0, accountId: bankId }, { componentIndex: 1, accountId: walletId }])
+  const factory = require('../miniprogram/packages/finance/services/import-local-session')
+  const reopened = factory.create({ files: h.files, restored: h.files.restore(), requestId: randomUUID })
+  assert.equal(reopened.model.choices.accounts.size, 2)
+  assert.ok([...reopened.model.issues.values()].filter(issue => issue.issueType === 'account_mapping').every(issue => issue.status === 'resolved'))
+  assert.equal(reopened.model.events.size, 2)
+  assert.equal(h.network.length, 0)
+})
+
 test('完整草稿真实 Page/API：账户、字段、分类、证据和退款核对零网络',async t=>{
   const value=await facts({count:5,mapped:false})
   value.categories.push({...value.categories[0],categoryId:randomUUID(),name:'另一分类'})
@@ -66,29 +194,69 @@ test('完整草稿真实 Page/API：账户、字段、分类、证据和退款�
   t.diagnostic('真实工作台 + 真实导入 API + 本地路由：网络调用 0')
 })
 
-test('本地真实 Page 贷款目录、费用分配和本息费编辑不补读网络',async t=>{
-  const value=await facts({count:2}),loanId=randomUUID(),contractId=randomUUID(),chargeId=randomUUID()
-  value.loans=[{loanId,accountId:value.accounts[2].accountId,name:'合成贷款',version:4,baselinePrincipalMinor:'1080000',baselineDate:'2026-01-01'}]
-  value.contracts=[{contractId,loanId,accountId:value.accounts[2].accountId,version:1}]
-  value.charges=[{chargeId,contractId,component:'interest',chargeKey:'period:1:interest',periodNumber:1,state:'recorded',outstandingMinor:'800',amountMinor:'800',version:1}]
-  const h=await localWorkbench(t,value),page=h.page,id=value.events[0].eventId
-  h.local.call('financeUpdates.setReview',{eventId:id,editorVersion:1,fields:{economicNature:'repayment',counterpartyLedgerAccountId:value.accounts[2].accountId,amountMinor:'10000'}})
-  page.applyUpdateView(h.local.view);await page.setStep({currentStep:3});await page.openReviewEdit(tap({id}))
-  page.toggleRepaymentDetails()
-  page.changeEditorMode(tap({field:'loanMode',value:'associate'}))
-  assert.equal(page.selectEditorDirectory(value.loans[0],'editorLoan'),true,page.data.reviewEditSheet.error)
-  text(page,'principalInput','92');text(page,'interestInput','8');text(page,'feeInput','0')
-  // 没保存过时默认“没记过，记一笔”；三选一里直接点“记过，只冲抵”。
-  page.setEditorTreatment(tap({field:'interestTreatment',value:'accrued'}))
-  await page.loadEditorCharges()
-  assert.equal(page.data.reviewEditSheet.chargeChoices.length,1,page.data.reviewEditSheet.chargeError)
-  page.selectEditorCharge(tap({id:chargeId}))
+test('本地真实 Page 普通还款拒绝旧计划和本息费入口，只保存整笔还款且零网络', async t => {
+  const value = await facts({ count: 2 }), loanId = randomUUID()
+  value.loans = [{ loanId, accountId: value.accounts[2].accountId, name: '合成贷款', version: 4 }]
+  const h = await localWorkbench(t, value), page = h.page, id = value.events[0].eventId
+  h.local.call('financeUpdates.setReview', { eventId: id, editorVersion: 1,
+    fields: { economicNature: 'repayment', counterpartyLedgerAccountId: value.accounts[2].accountId, amountMinor: '10000' } })
+  page.applyUpdateView(h.local.view); await page.setStep({ currentStep: 3 }); await page.openReviewEdit(tap({ id }))
+  assert.equal(page.data.reviewEditSheet.editor.showLoan, false)
+  const original = JSON.stringify(page._reviewEditToken.draft)
+  page.changeEditorMode(tap({ field: 'loanMode', value: 'associate' }))
+  for (const field of ['principalInput', 'interestInput', 'feeInput']) text(page, field, '999')
+  for (const target of ['editorLoan', 'editorInterest', 'editorFee']) {
+    assert.equal(page.reviewEditorDirectory(target), null)
+    assert.equal(page.selectEditorDirectory(value.loans[0], target), false)
+  }
+  assert.equal(JSON.stringify(page._reviewEditToken.draft), original)
+  text(page, 'note', '核对整笔还款')
   await page.saveReviewEdit()
-  const decision=h.local.model.choices.events.get(id).editor.decisions.repayment
-  assert.equal(decision.mode,'associate',page.data.reviewEditSheet?.error)
-  assert.equal(decision.principalMinor,'9200');assert.equal(decision.interestMinor,'800')
-  assert.equal(decision.chargeAllocations[0].chargeId,chargeId)
-  assert.equal(h.network.length,0)
+  const decision = h.local.model.choices.events.get(id).editor
+  assert.equal(decision.fields.note, '核对整笔还款', page.data.reviewEditSheet?.error)
+  assert.equal(decision.decisions.repayment, undefined)
+  assert.equal(h.local.model.events.get(id).fieldSources.loanRepayment, undefined)
+  assert.equal(h.network.length, 0)
+})
+
+test('本地真实 Page 恢复旧还款决定后保留证据，重新保存替换决定并解除冲突', async t => {
+  const value = await facts({ count: 1 }), id = value.events[0].eventId
+  const h = await localWorkbench(t, value)
+  const prior = { key: id, eventId: id, sourceIds: value.evidence.filter(row => row.eventId === id).map(row => row.rowId),
+    editor: { editorVersion: 1, fields: { economicNature: 'repayment', amountMinor: '10000',
+      counterpartyLedgerAccountId: value.accounts[2].accountId, note: '旧草稿备注' },
+    decisions: { repayment: { mode: 'review', draft: { mode: 'associate', loanId: randomUUID(), loanVersion: 2,
+      principalMinor: '9000', interestMinor: null, feeMinor: '0', chargeAllocations: [] } } } } }
+  h.files.save([{ kind: 'events', key: id, value: prior }])
+  h.page.onUnload()
+  const factory = require('../miniprogram/packages/finance/services/import-local-session')
+  const restored = factory.create({ files: h.files, restored: h.files.restore(), requestId: randomUUID,
+    callNetwork: async () => { assert.fail('普通还款重新核对不能补读网络') } })
+  assert.equal(restored.model.invalid.has(id), true)
+  assert.deepEqual(restored.model.choices.events.get(id).editor.decisions.repayment, prior.editor.decisions.repayment)
+  const path = require('node:path')
+  h.load(path.resolve(__dirname, '../miniprogram/services/import-local-router.js')).bind(restored)
+  h.summary = restored.view
+  const page = h.page = h.createPage()
+  t.after(() => page.onUnload())
+  await page.setStep({ currentStep: 3 }); await page.openReviewEdit(tap({ id }))
+  assert.equal(page._reviewEditToken.row.legacyRepaymentReview, true)
+  assert.equal(page._reviewEditToken.row.loanRepayment, null)
+  assert.equal(page.data.reviewEditSheet.draft.note, '旧草稿备注')
+  assert.equal(page.data.reviewEditSheet.canSave, true)
+  assert.deepEqual(restored.model.choices.events.get(id).editor.decisions.repayment, prior.editor.decisions.repayment,
+    '只读恢复必须保留旧决定')
+  h.wx.showModal = () => assert.fail('保存替换旧决定不另加确认')
+  await page.saveReviewEdit()
+  assert.equal(restored.model.invalid.has(id), false, page.data.reviewEditSheet?.error)
+  const saved = restored.model.choices.events.get(id).editor
+  assert.equal(saved.decisions.repayment, null)
+  assert.ok(saved.acknowledgedChanges.includes('repayment'))
+  assert.equal(saved.fields.note, '旧草稿备注')
+  const reopened = factory.create({ files: h.files, restored: h.files.restore(), requestId: randomUUID })
+  assert.equal(reopened.model.invalid.has(id), false)
+  assert.equal(reopened.model.choices.events.get(id).editor.decisions.repayment, null)
+  assert.equal(h.network.length, 0)
 })
 
 test('本地真实 Page 分期归属选择、清除和整组状态更新不补读网络',async t=>{
@@ -197,10 +365,63 @@ test('真实 Page：只指定一笔时另一笔仍在待核对，本金早已进
   await h.flush()
   // 指定成功：这笔不再待归属，另一笔仍是待核对里唯一的事；两笔本金一直都不在待核对。
   assert.equal(h.local.model.events.get(interestIds[0]).reasonCodes.includes('installment_attribution_required'),false)
+  // 事项还开着（同组另一笔没定），但这笔已经退组：不能再按旧成员关系挂 blocking_issue_open，
+  // 否则只指定一笔时它停在待核对，用户看到的就是“归属了却没进已核对”。
+  assert.equal(h.local.model.events.get(interestIds[0]).status,'ready')
+  const pendingCards=(page.data.reviewGroups||[]).flatMap(group=>group.issues||[])
+  assert.equal(pendingCards.length,1)
+  assert.equal((pendingCards[0].subjects||[]).map(row=>row.eventId).join(','),interestIds[1])
   for(const id of principalIds)assert.equal(h.local.model.events.get(id).status,'ready')
   const openIssues=[...h.local.model.issues.values()].filter(issue=>issue.status==='open'&&issue.primaryReasonCode==='installment_attribution_required')
   assert.equal(openIssues.length,1)
   assert.deepEqual(openIssues[0].subjectEventIds||[],[interestIds[1]])
+})
+
+test('真实 Page：利息选计划时在计划行标出本期已被占用的计划，选中照常写入',async t=>{
+  const value=await facts({count:4})
+  const labels=['电销总账分月12期第12期共12期','电销现分按月收12期第12期共12期','分期付款利息第12期共12期','分期付款利息第12期共12期']
+  value.events.forEach((event,index)=>{
+    const principal=index<2
+    Object.assign(event,{economicNature:principal?'repayment':'fee',flowDirection:principal?'neutral':'outflow',
+      ledgerAccountId:value.accounts[1].accountId,categoryId:principal?null:value.categories[0].categoryId,
+      status:'ready',reasonCodes:[],accountGroupingKey:'synthetic-bank|6106',
+      display:{item:labels[index],counterparty:'',sourceNote:''},
+      primaryEvidence:{...event.primaryEvidence,item:labels[index],sourceType:'bank'},
+      fieldSources:{installment:{schema:2,creditStatement:true,factKind:'billing',component:principal?'principal':'interest',
+        periodNumber:12,totalTerms:12,originKind:'unconfirmed',referenceKey:null,referenceLabel:null}}})
+  })
+  const planner=require('../cloudfunctions/catledger-import/src/organizer-planner')
+  planner.applyInstallmentAttribution(value.events)
+  const planned=planner.buildReviewIssues(value.update.updateId,value.events,[],[],randomUUID)
+  value.issues=planned.issues.map(issue=>({...issue,subjectEventIds:planned.members.filter(row=>row.issueId===issue.issueId&&row.objectType==='event').map(row=>row.objectId)}))
+  value.members=planned.members
+  const h=await localWorkbench(t,value),page=h.page
+  await page.setStep({currentStep:3})
+  const interestIds=value.events.slice(2).map(event=>event.eventId)
+  // 第一笔利息先归到「电销现分按月收12期」。
+  await page.openReviewEdit(tap({id:interestIds[0]}))
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  await page.saveReviewEdit()
+  await h.flush()
+  // 第二笔利息打开时，这个计划已占用的金额要写在计划行上；没被占用的计划保持干净。
+  await page.openReviewEdit(tap({id:interestIds[1]}))
+  const plans=page.data.reviewEditSheet.editor.attribution.plans
+  const interestAmount='¥'+(Number(value.events[2].amountMinor)/100).toFixed(2)
+  // 整句写明“还有另一笔”，不能只说“本期已有 ¥X 利息”——那会被读成本期利息就是这些钱。
+  assert.equal(plans.find(plan=>plan.planName==='电销现分按月收12期').takenBy,'本期已有另一笔 '+interestAmount+' 利息',page.data.reviewEditSheet.error)
+  assert.equal(plans.find(plan=>plan.planName==='电销总账分月12期').takenBy,'')
+  // 占用已经写在卡面，选它照常写入草稿，不弹框打断。
+  h.wx.modal=null
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  assert.equal(h.wx.modal,null)
+  assert.equal(page.data.reviewEditSheet.draft.planLabel,'电销现分按月收12期')
+  // 再点一次是取消归属，同样安静。
+  page.selectEditorInstallmentPlan(tap({plan:'电销现分按月收12期'}))
+  assert.equal(page.data.reviewEditSheet.draft.planLabel,'')
+  // 选没被占用的计划也一样。
+  page.selectEditorInstallmentPlan(tap({plan:'电销总账分月12期'}))
+  assert.equal(h.wx.modal,null)
+  assert.equal(page.data.reviewEditSheet.draft.planLabel,'电销总账分月12期')
 })
 
 test('完整草稿真实 Page：本批与原消费都在本机，退款候选读取零网络',async t=>{

@@ -18,6 +18,21 @@ test('整理摘要返回去重的真实成员 ID，不用候选数推算主体',
   assert.deepEqual(issue.subjectEventIds, ['event-a', 'event-b'])
 })
 
+test('账户组只按本事项的明确决定投影排除，不借用其他组或代表事件的状态', () => {
+  const row = { issueId: 'target', issueType: 'account_mapping', status: 'resolved', version: 1,
+    reasonCodes: [], subjectEventId: 'event', subjectEventStatus: 'excluded' }
+  assert.deepEqual(publicIssue(row).reasonCodes, [])
+  const decisions = [{ issueId: 'target', decision: 'exclude_events' }, { issueId: 'other', decision: 'apply_fields' }]
+  for (const resolvedDecision of [{ decisions }, JSON.stringify({ decisions }), decisions[0]]) {
+    const issue = publicIssue({ ...row, resolvedDecision, subjectLedgerAccountId: 'old-account' })
+    assert.deepEqual(issue.reasonCodes, ['account_mapping_excluded'])
+    assert.equal('resolvedDecision' in issue, false)
+  }
+  assert.deepEqual(publicIssue({ ...row, resolvedDecision: { issueId: 'other', decision: 'exclude_events' } }).reasonCodes, [])
+  assert.deepEqual(publicIssue({ ...row, reasonCodes: ['account_mapping_excluded', 'source_account_ignored_default'],
+    resolvedDecision: { issueId: 'target', decision: 'apply_fields' } }).reasonCodes, [])
+})
+
 test('整理成员与重复数量查询限定用户和批次，同笔辅助原文计入减少的记录数', async () => {
   const { selectIssues, selectEvents } = require('../src/finance-update-repository')
   const queries = []

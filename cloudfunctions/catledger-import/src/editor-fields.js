@@ -22,6 +22,7 @@ function funds(event) {
 }
 function accountRolesValid(event, accounts) {
   const fields = event.fieldSources || {}, primary = fields.installment
+  if (require('./installment-business').isRegistration(event)) return !event.ledgerAccountId || accounts.get(event.ledgerAccountId)?.type === 'credit'
   if (fields.repaymentChannelResolution) {
     return require('./repayment-channel').relationValid(event) &&
       (!event.ledgerAccountId || ASSETS.has(accounts.get(event.ledgerAccountId)?.type)) &&

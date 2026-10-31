@@ -13,7 +13,13 @@ async function staleHistoricalLinks(connection, uid, updateId) {
     WHERE e.uid = ? AND e.update_id = ? AND e.status = 'excluded'
       AND ((l.link_id IS NOT NULL AND (t.transaction_id IS NULL OR t.deleted_at IS NOT NULL OR t.version <> l.transaction_version))
         OR (l.link_id IS NULL AND (JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('already_posted'))
-          OR JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('linked_existing_transaction')))))`, [uid, updateId])
+          OR JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('linked_existing_transaction')))))
+      AND NOT (l.link_id IS NULL AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.disbursement.role')),'')='registration'
+        AND EXISTS (SELECT 1 FROM catledger_event_evidence source_link JOIN catledger_import_rows processed_row
+          ON processed_row.uid=source_link.uid AND processed_row.row_id=source_link.row_id
+          WHERE source_link.uid=e.uid AND source_link.update_id=e.update_id AND source_link.event_id=e.event_id
+            AND source_link.evidence_role<>'discarded' AND processed_row.identity_state<>'identity_conflict'
+            AND ${require('./installment-plan-store').postedPlanSql('processed_row')} IS NOT NULL))`, [uid, updateId])
   return rows
 }
 

@@ -15,7 +15,7 @@ function record(event) {
     'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision',
     'amountMinor', 'rowTitle', 'rowMeta', 'rowSource', 'rowRole', 'rowRoleKey', 'installmentRole',
     'installmentPeriod', 'installmentPlan', 'installmentKey', 'installmentNote', 'installmentPlanLabel',
-    'installmentAttribution'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+    'installmentAttribution', 'disbursement', 'installmentPlanDecision'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
   if (event.status === 'excluded') {
     result.exclusionReasonText = model.exclusionReasonText(event)
     result.sourceStatus = String(event.primaryEvidence && event.primaryEvidence.status || '').trim()
@@ -228,16 +228,6 @@ function splitInstallmentCards(cards) {
     else if (!dropped.has(card)) result.push(card)
   })
   return result
-}
-
-// 待核对列表的组标题：本期次还有几笔利息没定归属，是这一组共有的事实。
-// 放在组标题上只说一次；卡头只写「利息待归属」，否则每张卡重复同一句“还有 N 笔”，
-// 读起来像“这张卡要配 N 笔”。只有一笔时不写——那是废话，卡片本身就在。
-function installmentPendingNote(cards) {
-  const pending = (cards || []).filter(function (card) {
-    return (card.subjects || []).some(function (row) { return row.installmentPending })
-  })
-  return pending.length > 1 ? '本期利息待归属 ' + pending.length + ' 笔' : ''
 }
 
 function excludedGroups(events, expanded) {
@@ -578,4 +568,4 @@ function refundCandidateView(item) {
   }
 }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, installmentPendingNote, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf, mergedSourceCount, canChangeJudgment, groupReviewAction }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, buildReviewedCards, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, splitInstallmentCards, excludedGroups, evidencePartFields, PAGE_SIZE, shortFileName, sourceCaption, refundCandidateView, merchantOf, mergedSourceCount, canChangeJudgment, groupReviewAction }

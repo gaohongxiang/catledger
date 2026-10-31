@@ -2,11 +2,18 @@
 const detail = require('./detail-fields')
 const bankAccounts = require('./bank-suggestion')
 const refundView = require('./refund-state')
+const scheduleForm = require('../loan-detail/schedule-form')
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const MOVEMENTS = ['internal_transfer', 'borrow', 'repayment']
 const ASSETS = ['cash', 'bank', 'wallet', 'other_asset'], DEBTS = ['credit', 'other_liability']
 const NATURES = ['expense', 'income', 'refund', 'internal_transfer', 'repayment', 'borrow', 'fee', 'unknown']
   .map(value => ({ value, label: detail.natureLabel({ economicNature: value }) }))
+const PLAN_FIELDS = ['planAction', 'planLoanId', 'planName', 'planTerms', 'planPrincipalInput', 'planStartMonth',
+  'planMethodIndex', 'planQuoteIndex', 'planRatePercent', 'planFirstPaymentDate']
+const PLAN_FORM_FIELDS = PLAN_FIELDS.filter(key => !['planAction', 'planLoanId'].includes(key))
+const LEGACY_REPAYMENT_FIELDS = new Set(['repaymentDetails', 'loanMode', 'loanId', 'loanVersion',
+  'principalInput', 'interestInput', 'feeInput', 'interestTreatment', 'feeTreatment',
+  'interestCategoryId', 'feeCategoryId', 'chargeAllocations'])
 // 分期本金行可以改判经济性质：默认“还款”只登记来源；支出、费用、收入会形成实际流水；
 // 暂不确定保留来源但不入账。退款、内部转账和借款需要原消费关系或第二个账户，不由本金行直接改判。
 const PRINCIPAL_NATURES = ['repayment', 'expense', 'fee', 'income', 'unknown']
@@ -14,6 +21,16 @@ const PRINCIPAL_NATURES = ['repayment', 'expense', 'fee', 'income', 'unknown']
 const NATURE_HINTS = Object.freeze({ expense: '日常消费、付款', income: '工资、收款', refund: '退回原消费',
   internal_transfer: '自己账户之间', repayment: '信用卡、贷款', borrow: '借款到账', fee: '手续费、服务费', unknown: '先留待核对' })
 const categoryKind = nature => nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
+// 排除不是一种经济性质，而是“这一笔本次不入账”的处理决定：它不生成任何账目，
+// 只把原文和证据留在本批里。所以它单独成段，排在性质列表下面，也不参与性质单选。
+// 只有当前挂着开放事项时才有这个入口——排除决定必须挂在那件事项上；
+// 组里不止这一笔时只说清这一笔被排除，同组其余仍留给用户逐笔判断。
+function excludeAction(issue) {
+  const scopeCount = Math.max(1, Number(issue.memberCount || 1) - Number(issue.candidateCount || 0))
+  return { label: '不计入本次账本', scopeCount,
+    hint: scopeCount > 1 ? '只排除这一笔，同组另外 ' + (scopeCount - 1) + ' 笔仍待核对；原文都保留'
+      : '原文保留，本次不生成任何账目' }
+}
 // 与 cloudfunctions semantic-plan-upgrade 的 flowDirection 重算规则同源：
 // 转账类不计收支（中性墨色），收入退款为流入（绿），其余含“暂不确定”为流出（红）。
 const flowClass = nature => ['repayment', 'borrow', 'internal_transfer'].includes(nature) ? ''
@@ -33,42 +50,60 @@ function minor(value) {
   if (digits.length > 19 || digits.length === 19 && digits > '9223372036854775807') return null
   return digits
 }
-// 处理方式用三句人话，不再用“补记／清偿”这类账务术语：
-// 现在记一笔支出、以前记过所以只冲抵、或者拿不准先留待核对。
-const treatmentLabel = value => value === 'expense' ? '没记过，记一笔' : value === 'accrued' ? '记过，只冲抵' : '待核对'
-// 只有填了大于零的金额才需要问“这笔费用记过没有”；留空是未知，填 0 是没有这一项。
-const positive = value => { const current = minor(value); return current != null && current !== '0' }
+// 现金分期放款行：服务端把它和同笔的卡内记账行配成一对。放款行按借款入账，
+// 计划只跟踪还款进度，不改变这笔钱的记法；对行仍然排除。
+function disbursementOf(row) {
+  const value = row && (row.disbursement || row.fieldSources && row.fieldSources.disbursement)
+  return value && ['disbursement', 'registration'].includes(value.role) ? value : null
+}
+function sourcePlanTerms(row) {
+  const terms = Number(disbursementOf(row)?.totalTerms)
+  return Number.isInteger(terms) && terms > 0 && terms <= 600 ? terms : null
+}
+function planAccountDraftOf(draft, catalogs) {
+  const selected = catalogs.planAccountDraft
+  if (selected?.accountId === draft.ledgerAccountId) return selected
+  return (catalogs.accounts || []).find(account => account.accountId === draft.ledgerAccountId && account.isDraft) || null
+}
+function planDecisionOf(row) {
+  const value = row && row.installmentPlanDecision
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null
+}
 function create(row) {
-  const source = row.primaryEvidence || {}, facts = row.editorFacts || {}, loan = { ...(row.loanRepayment || {}), ...(row.editorFacts?.incompleteRepayment || {}) }
+  const source = row.primaryEvidence || {}, facts = row.editorFacts || {}
   const channel = repaymentChannelOf(row)
   const ownership = row.repaymentOwnership || facts.ownership || {}
+  const disbursement = disbursementOf(row), planDecision = planDecisionOf(row), registration = detail.registrationOf(row)
   const parts = facts.incompleteComposition ? facts.incompleteComposition.parts : row.paymentResolution ? row.paymentResolution.allocations : facts.composition === 'repayment' ? row.repaymentAllocations || []
     : (row.paymentComponents || []).map((part, componentIndex) => ({ ...part, componentIndex }))
       .filter(part => part.componentKind === 'financial').map(part => ({ ...part,
         ...((row.paymentResolution && row.paymentResolution.allocations || []).find(value => value.componentIndex === part.componentIndex) ||
           (row.paymentAccounts || []).find(value => value.componentIndex === part.componentIndex) || {}) }))
-  const draft = { economicNature: ownership.owner === 'other' ? 'repayment'
+  const draft = { economicNature: registration ? 'unknown' : ownership.owner === 'other' ? 'repayment'
       : detail.principalOf(row) ? (PRINCIPAL_NATURES.includes(row.economicNature) ? row.economicNature : 'repayment') : row.economicNature,
-    ledgerAccountId: row.ledgerAccountId || '', counterpartyLedgerAccountId: detail.principalOf(row) ? '' : row.counterpartyLedgerAccountId || '',
+    ledgerAccountId: row.ledgerAccountId || '', counterpartyLedgerAccountId: registration || detail.principalOf(row) ? '' : row.counterpartyLedgerAccountId || '',
     amountInput: yuan(row.amountMinor), date: String(row.localAt || '').slice(0, 10), time: String(row.localAt || '').slice(11, 19),
     counterparty: (has(row, 'counterparty') ? row.counterparty : source.counterparty || '').slice(0, 200),
-    note: (has(row, 'note') ? row.note : source.note || '').slice(0, 200), categoryId: row.categoryId || '',
+    note: (has(row, 'note') ? row.note : source.note || '').slice(0, 200), categoryId: registration ? '' : row.categoryId || '',
     owner: ownership.owner || 'self', otherTreatment: ownership.treatment || '',
-    // 明细是可选的：已有还款决定或分项金额时才展开；否则整笔记为还款本金。
-    repaymentDetails: Boolean(loan.mode) || ['principalMinor', 'interestMinor', 'feeMinor'].some(key => has(loan, key)),
-    loanMode: loan.mode === 'associate' ? 'associate' : 'defer', loanId: loan.loanId || '', loanVersion: loan.loanVersion || 0,
-    principalInput: yuan(loan.principalMinor), interestInput: yuan(loan.interestMinor), feeInput: yuan(loan.feeMinor),
-    // 没有保存过的处理方式默认“没记过，记一笔”：填了金额就能直接往下走，以前记过再改。
-    // 已保存的空值表示用户明确选了“待核对”，不能拿默认值覆盖。
-    interestTreatment: has(loan, 'interestTreatment') ? loan.interestTreatment || '' : 'expense',
-    feeTreatment: has(loan, 'feeTreatment') ? loan.feeTreatment || '' : 'expense',
-    interestCategoryId: loan.interestCategoryId || '', feeCategoryId: loan.feeCategoryId || '',
-    chargeAllocations: (loan.chargeAllocations || []).map(part => ({ ...part, amountInput: yuan(part.amountMinor) })),
+    repaymentDetails: false,
     composition: facts.composition || 'single', parts: parts.map(part => ({ ...part, accountId: part.accountId || '', amountInput: yuan(part.amountMinor) })),
     evidenceNote: facts.incompleteComposition?.evidenceNote || row.paymentResolution?.evidenceNote || facts.evidenceNote || '',
     periodInput: String(row.installment?.periodNumber || ''), totalTermsInput: String(row.installment?.totalTerms || ''),
     // 计划归属：空表示用户没有改动；只在用户主动选择时才进入 sourceCorrection。
     planLabel: '',
+    // 这笔分期：归入已有计划、新建计划或先不挂。没有保存过时动作留空，默认不动，
+    // 照常入账；已经决定过的批次回显上次的选择和计划名。
+    ...(disbursement ? {
+      planAction: planDecision ? planDecision.action || '' : '',
+      planLoanId: planDecision && planDecision.loanId || '',
+      planName: String(planDecision && planDecision.planLabel || disbursement.planLabel || '').slice(0, 120),
+      planTerms: String(planDecision && planDecision.totalTerms || disbursement.totalTerms || ''),
+      planPrincipalInput: yuan(planDecision && planDecision.principalMinor || row.amountMinor),
+      // 账单月和放款日不能冒充合同起始月或首次还款日；需要用户明确填写。
+      planStartMonth: String(planDecision && planDecision.startMonth || ''),
+      planMethodIndex: 0, planQuoteIndex: 0, planRatePercent: '', planFirstPaymentDate: ''
+    } : {}),
     refund: null, dirty: {}, dormant: {}, acknowledgedChanges: [] }
   if (channel) Object.assign(draft, { economicNature: 'repayment', amountInput: yuan(channel.totalMinor),
     [repaymentTargetKey(row)]: channel.targetAccountId, owner: 'self', composition: 'single', parts: [], repaymentDetails: false,
@@ -80,6 +115,12 @@ function create(row) {
 }
 function change(row, draft, key, value) {
   const channel = repaymentChannelOf(row)
+  // 旧控件或迟到事件不能重新写回已经退出普通还款编辑器的本息费、计划和收费项决定。
+  if (LEGACY_REPAYMENT_FIELDS.has(key)) return draft
+  if (detail.registrationOf(row) && !['ledgerAccountId', 'acknowledgedChanges', ...PLAN_FIELDS].includes(key)) return draft
+  if (key === 'planTerms' && sourcePlanTerms(row)) return draft
+  // 计划已经创建后，重试只保存同一计划决定，不允许把界面参数改成另一份计划。
+  if (draft.planAction === 'create' && draft.planLoanId && PLAN_FORM_FIELDS.includes(key)) return draft
   if (key === 'repaymentChannelConfirmed' && (!channel || channel.confirmed !== false || typeof value !== 'boolean')) return draft
   if (channel && ![repaymentPayerKey(row), 'counterparty', 'note', 'acknowledgedChanges', 'repaymentChannelConfirmed'].includes(key)) return draft
   const next = { ...draft, dirty: { ...draft.dirty, [key]: true }, dormant: { ...draft.dormant } }
@@ -137,11 +178,11 @@ function accountFields(row, draft, catalog) {
   return detail.accountFields(projected).map(field => {
     let allowedTypes = null
     if (other || field.label === '付款账户' && draft.economicNature === 'repayment' || field.label === '到账账户') allowedTypes = ASSETS
-    // 还款的收款端统一是负债账户：信用卡和贷款都从同一入口选，是否有关联计划由还款构成决定。
+    // 普通还款只核对资金两端，收款端统一允许信用卡和其他负债账户。
     if (field.label === '还入账户' || field.label === '借款负债账户') allowedTypes = DEBTS
-    if (detail.principalOf(row)) allowedTypes = ['credit']
+    if (detail.principalOf(row) || detail.registrationOf(row) || disbursementOf(row) && field.key === 'account') allowedTypes = ['credit']
     const account = catalog.find(item => item.accountId === field.accountId)
-    const readonly = Boolean(channel && field.label === '还入账户')
+    const readonly = Boolean(channel && field.label === '还入账户' || disbursementOf(row) && field.key === 'account' && draft.planAction === 'create' && draft.planLoanId)
     return { ...field, target: readonly ? '' : field.key === 'account' ? 'reviewAccount' : 'reviewCounterparty', allowedTypes, readonly,
       name: account ? account.name : field.accountId ? '账户名称待读取' : '',
       invalid: Boolean(account && (account.archivedAt || account.unavailable || allowedTypes && !allowedTypes.includes(account.type))) }
@@ -190,10 +231,85 @@ function attributionOf(row, draft, catalogs) {
   }
   if (!(attribution.plans || []).length) return null
   const selected = draft.dirty.planLabel ? draft.planLabel : row.installment && row.installment.planLabel || ''
+  // 本期次同组别的利息已经归到哪个计划：本机投影按全组算好（taken），计划行据此标出占用。
+  // 不用当前列表里的同组行：待核对只下发当前页，已归属的那笔已经不在里面了。
+  const takenByPlan = new Map((attribution.taken || []).map(item => [item.planName, item]))
   return { role: 'charge', required: !selected, selected: Boolean(selected),
-    plans: attribution.plans.map(item => ({ planName: item.planName,
-      amountText: item.amountMinor == null || item.amountMinor === '' ? '' : '¥' + yuan(item.amountMinor),
-      selected: item.planName === selected })) }
+    plans: attribution.plans.map(item => {
+      const taken = takenByPlan.get(item.planName)
+      // 说清“这个计划本期还剩另一笔利息”，别写成只描述本期的“本期已有 ¥X 利息”——
+      // 那句话会被读成本期利息就是这些钱，正是用户选它之前最需要区分的事。
+      const takenText = taken
+        ? (taken.count > 1
+          ? '本期已有 ' + taken.count + ' 笔利息，共 ¥' + yuan(taken.amountMinor)
+          : '本期已有另一笔 ¥' + yuan(taken.amountMinor) + ' 利息')
+        : ''
+      return { planName: item.planName,
+        amountText: item.amountMinor == null || item.amountMinor === '' ? '' : '¥' + yuan(item.amountMinor),
+        selected: item.planName === selected, takenBy: takenText }
+    }) }
+}
+
+// 「这笔分期」区块：只给现金分期放款行。候选来自 loans.planCandidates，同名同总期数的
+// 计划会一起列出来，靠本金和起始月区分；只有指纹唯一命中才标“与本笔一致”。
+// 客户端不按金额相似度猜，也不跨月记住上次选择。
+function disbursementPlanOf(row, draft, catalogs, fieldErrors) {
+  const disbursement = disbursementOf(row)
+  if (!disbursement) return null
+  const saved = planDecisionOf(row), registration = detail.registrationOf(row), terms = sourcePlanTerms(row)
+  const candidates = (catalogs.planCandidates || []).map(item => {
+    const disabled = Boolean(terms && Number(item.scheduleTerms) !== terms)
+    return { loanId: item.loanId, name: item.name,
+      meta: ['共' + (item.scheduleTerms || '?') + '期', item.startMonth ? item.startMonth + ' 起' : '',
+        item.originalPrincipalMinor == null ? '' : '本金 ¥' + yuan(item.originalPrincipalMinor)].filter(Boolean).join(' · '),
+      disabled, disabledReason: disabled ? '账单为 ' + terms + ' 期，期数不符' : '',
+      matched: Boolean(item.matched) && !disabled, selected: draft.planLoanId === item.loanId }
+  })
+  const billLabel = String(disbursement.planLabel || '').trim()
+  const accountDraft = planAccountDraftOf(draft, catalogs)
+  return {
+    registration,
+    planLabel: billLabel || '这笔分期',
+    // 计划名就是后续每期账单对上的依据；改了名，之后只能手动补挂。
+    nameMismatch: Boolean(billLabel) && Boolean(String(draft.planName || '').trim()) && String(draft.planName).trim() !== billLabel,
+    totalTerms: disbursement.totalTerms || null,
+    principalText: row.amountMinor == null ? '' : '¥' + yuan(row.amountMinor),
+    startMonth: draft.planStartMonth || '',
+    accountMissing: !draft.ledgerAccountId,
+    action: draft.planAction || '',
+    effectText: registration ? '只关联分期计划，不生成资金流水。'
+      : draft.economicNature === 'borrow' ? '确认到账账户后，这笔借款只记一次；分期计划用于跟踪还款。'
+        : '记录按当前选择的性质处理，分期计划只用于跟踪还款。',
+    skipText: registration ? '先不关联会保留待核对，不生成资金流水。'
+      : draft.economicNature === 'borrow' ? '先只记录借款，暂不关联分期计划。' : '先按当前性质记录，暂不关联分期计划。',
+    savedText: saved && saved.action === 'create' ? '已新建「' + saved.planLabel + '」'
+      : saved && saved.action === 'link' ? '已归入「' + saved.planLabel + '」'
+        : saved && saved.action === 'skip' ? registration ? '已选先不关联，仍待核对' : '已选先不关联计划' : '',
+    loading: Boolean(catalogs.planLoading), error: catalogs.planError || '',
+    candidates, matchedCount: candidates.filter(item => item.matched).length,
+    selectedLoanId: draft.planLoanId || '',
+    formLocked: draft.planAction === 'create' && Boolean(draft.planLoanId),
+    termsReadonly: Boolean(terms),
+    accountCreationText: accountDraft && draft.planAction === 'create'
+      ? (draft.planLoanId ? '信用卡已创建' : '会同时创建这张信用卡') + '；放弃导入时信用卡保留。' : '',
+    methods: scheduleForm.METHOD_OPTIONS, quotes: scheduleForm.QUOTE_OPTIONS,
+    form: { name: draft.planName || '', terms: String(draft.planTerms || ''), principal: draft.planPrincipalInput || '',
+      startMonth: draft.planStartMonth || '', methodIndex: draft.planMethodIndex || 0, quoteIndex: draft.planQuoteIndex || 0,
+      methodLabel: scheduleForm.METHOD_OPTIONS[draft.planMethodIndex || 0]?.label || '',
+      quoteLabel: scheduleForm.QUOTE_OPTIONS[draft.planQuoteIndex || 0]?.label || '',
+      ratePercent: draft.planRatePercent || '', firstPaymentDate: draft.planFirstPaymentDate || '' },
+    formError: fieldErrors && fieldErrors.plan || ''
+  }
+}
+function planSchedule(draft) {
+  const schedule = scheduleForm.payload({ terms: draft.planTerms, methodIndex: draft.planMethodIndex,
+    measurementIndex: 0, quoteIndex: draft.planQuoteIndex, ratePercent: draft.planRatePercent,
+    firstPaymentDate: draft.planFirstPaymentDate }, draft.planPrincipalInput)
+  const first = String(draft.planFirstPaymentDate || '').trim(), date = new Date(first + 'T00:00:00Z')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(first) || Number(first.slice(0, 4)) < 1000 || !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== first) throw Error('请选择有效的首次还款日期')
+  if (!schedule || !Number.isSafeInteger(Number(schedule.ratePpm))) throw Error('请填写有效的利率或费率')
+  return { ...schedule, firstPaymentDate: first }
 }
 
 // 资金路径是「端点组」的列表：付款端、还入端，每组一个标题加一份账户清单。
@@ -235,7 +351,7 @@ function derive(row, draft, catalogs = {}) {
     errors.push(message)
     if (!(fieldErrors[field] || '').includes(message)) fieldErrors[field] = [fieldErrors[field], message].filter(Boolean).join('；')
   }
-  const facts = row.editorFacts, channel = repaymentChannelOf(row), supported = Boolean(facts && facts.version === 1 && !facts.readonly)
+  const facts = row.editorFacts, channel = repaymentChannelOf(row), registration = detail.registrationOf(row), supported = Boolean(facts && facts.version === 1 && !facts.readonly)
   const refundConflict = Boolean((row.reasonCodes || []).includes('refund_source_conflict'))
   // 可退金额不足或原关联失效：候选照常给，但状态行要先说清为什么这笔还是待核对，
   // 不能继续挂着“已关联原消费”或“待关联”。
@@ -243,7 +359,7 @@ function derive(row, draft, catalogs = {}) {
     : Boolean((row.reasonCodes || []).includes('refund_relation_invalid')) ? 'invalid' : ''
   const originalRefund = row.detailFacts && row.detailFacts.refund || null
   const other = draft.economicNature === 'repayment' && draft.owner === 'other'
-  const effectiveNature = other ? draft.otherTreatment === 'expense' ? 'expense' : 'unknown' : draft.economicNature
+  const effectiveNature = registration ? 'unknown' : other ? draft.otherTreatment === 'expense' ? 'expense' : 'unknown' : draft.economicNature
   const principal = detail.principalOf(row)
   // 性质在界面上只有一个值：分期来源的三种角色优先，其余行显示当前草稿的经济性质。
   // 分期角色是来源事实，不允许在性质选择里改成支出/收入；经济性质仍决定记账。
@@ -260,13 +376,8 @@ function derive(row, draft, catalogs = {}) {
     if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(localAt) || !Number.isFinite(date.getTime()) ||
       date.toISOString().slice(0, 19) !== localAt.replace(' ', 'T') || Number(draft.date.slice(0, 4)) < 1000) invalid('time', '请输入有效日期和时分秒')
   }
-  if (effectiveNature === 'unknown') missing.push('交易性质')
+  if (effectiveNature === 'unknown' && !registration) missing.push('交易性质')
   const fields = accountFields(row, draft, accounts)
-  const payee = fields[1] && accounts.find(item => item.accountId === fields[1].accountId)
-  const creditPayee = Boolean(payee && payee.type === 'credit')
-  // 只有收款端确实是贷款账户时才谈“关联计划”；信用卡和未确定账户都不显示这一组。
-  // 信用卡和其他负债都能持有分期/贷款计划，计划目录再按收款账户过滤。
-  const loanPayee = Boolean(payee && DEBTS.includes(payee.type))
   const routeFields = draft.composition === 'single' ? fields : fields.filter(field => draft.composition === 'payment' ? field.key === 'counterparty' : field.key === 'account')
   // 建议沿用原银行/尾号规则，只投影到当前草稿的真实付款、还入端，不自动选账户。
   const suggestion = !other && draft.composition === 'single' && routeFields.length === 2
@@ -284,10 +395,66 @@ function derive(row, draft, catalogs = {}) {
   }
   if (fields.length === 2 && fields[0].accountId && fields[0].accountId === fields[1].accountId) invalid('funds', '两个资金账户必须不同')
   const output = {}, original = create(row)
+  // 分期登记必须有计划才能完成；现金借款的计划可暂不关联。新建参数只交给 loans.create，
+  // 事件决定仍只记录计划 ID、名称、本金、期数及起始月。
+  const disbursement = disbursementOf(row)
+  const planDirty = Boolean(disbursement) && PLAN_FIELDS.some(key => draft.dirty[key])
+  const planName = String(draft.planName || '').trim().slice(0, 120)
+  const planTerms = /^\d+$/.test(String(draft.planTerms || '').trim()) ? Number(String(draft.planTerms).trim()) : null
+  const planPrincipal = minor(draft.planPrincipalInput)
+  const planStartMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(draft.planStartMonth || '').trim()) ? String(draft.planStartMonth).trim() : ''
+  const planAccountId = draft.ledgerAccountId || ''
+  const planCandidates = catalogs.planCandidates || []
+  const selectedPlan = planCandidates.find(item => item.loanId === draft.planLoanId) || null
+  const sourceTerms = sourcePlanTerms(row)
+  let planDecision = null, planRequest = null
+  if (disbursement && draft.planAction === 'link') {
+    if (!planAccountId) invalid('plan', '请先选择这笔分期的所属账户')
+    if (draft.planLoanId && sourceTerms && Number(selectedPlan ? selectedPlan.scheduleTerms : planTerms) !== sourceTerms) {
+      invalid('plan', '账单为 ' + sourceTerms + ' 期，请选择相同期数的计划')
+    }
+    if (!draft.planLoanId) invalid('plan', '请选择一个分期计划')
+    else planDecision = { action: 'link', loanId: draft.planLoanId,
+      planLabel: selectedPlan ? selectedPlan.name : planName,
+      totalTerms: selectedPlan ? selectedPlan.scheduleTerms : planTerms || disbursement.totalTerms,
+      principalMinor: planPrincipal, startMonth: (selectedPlan && selectedPlan.startMonth) || planStartMonth || null,
+      accountId: planAccountId }
+  } else if (disbursement && draft.planAction === 'create') {
+    if (!planName) invalid('plan', '请填写计划名')
+    if (!Number.isInteger(planTerms) || planTerms < 1 || planTerms > 600) invalid('plan', '总期数需为 1～600 的整数')
+    if (sourceTerms && planTerms !== sourceTerms) invalid('plan', '账单为 ' + sourceTerms + ' 期，计划期数不符，请重新核对')
+    if (planPrincipal == null || planPrincipal === '0') invalid('plan', '本金需为大于零的金额')
+    if (!planStartMonth) invalid('plan', '起始月需为 2026-03 这样的年月')
+    if (!planAccountId) invalid('plan', '请先选择这笔分期的所属账户')
+    let schedule
+    if (!draft.planLoanId) {
+      const accountDraft = planAccountDraftOf(draft, catalogs)
+      let importAccountDraft = null
+      if (accountDraft) {
+        const snapshotId = typeof catalogs.snapshotId === 'string' ? catalogs.snapshotId.trim() : ''
+        const name = String(accountDraft.name || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
+        if (!snapshotId) invalid('plan', '尚未读取本批账户资料，请重新打开本次导入后再创建计划')
+        if (!name || Array.from(name).length > 32 || accountDraft.type !== 'credit' || accountDraft.currency !== 'CNY') {
+          invalid('plan', '本批信用卡资料不完整，请先核对账户名称和类型')
+        } else if (snapshotId) importAccountDraft = { snapshotId, name, type: 'credit', currency: 'CNY' }
+      }
+      try { schedule = planSchedule(draft) } catch (error) { invalid('plan', error.message) }
+      if (schedule && (!accountDraft || importAccountDraft)) planRequest = { name: planName, terms: planTerms, principalMinor: planPrincipal,
+        startMonth: planStartMonth, accountId: planAccountId, schedule, ...(importAccountDraft ? { importAccountDraft } : {}) }
+    }
+    if (draft.planLoanId) planDecision = { action: 'create', loanId: draft.planLoanId, planLabel: planName,
+      totalTerms: planTerms, principalMinor: planPrincipal, startMonth: planStartMonth, accountId: planAccountId }
+  } else if (disbursement && draft.planAction === 'skip') {
+    // 暂不关联仍须明确来源信用卡；分期登记继续待核对。
+    if (!planAccountId) invalid('plan', '请先选择这笔分期的所属账户')
+    planDecision = { action: 'skip', planLabel: planName, totalTerms: planTerms || disbursement.totalTerms || null,
+      principalMinor: planPrincipal, startMonth: planStartMonth || null, accountId: planAccountId }
+  }
+  if (registration && !['link', 'create'].includes(draft.planAction)) missing.push('分期计划')
+  if (planDirty && planDecision) output.installmentPlan = planDecision
   if (channel) {
     const fixed = ['economicNature', 'amountInput', 'date', 'time', repaymentTargetKey(row), 'owner', 'otherTreatment',
-      'composition', 'parts', 'repaymentDetails', 'loanMode', 'loanId', 'loanVersion', 'principalInput', 'interestInput', 'feeInput',
-      'interestTreatment', 'feeTreatment', 'interestCategoryId', 'feeCategoryId', 'chargeAllocations', 'categoryId', 'refund', 'evidenceNote', 'periodInput', 'totalTermsInput']
+      'composition', 'parts', ...LEGACY_REPAYMENT_FIELDS, 'categoryId', 'refund', 'evidenceNote', 'periodInput', 'totalTermsInput']
     if (fixed.some(key => JSON.stringify(draft[key]) !== JSON.stringify(original[key]))) invalid('repaymentChannel', '这组还款的金额、时间和还入账户来自来源；请先修改同笔判断，再分别核对原记录')
   }
   const put = (key, value, before) => { if (value !== before) output[key] = value }
@@ -348,76 +515,11 @@ function derive(row, draft, catalogs = {}) {
     // 说明为选填，仅用于留下当时的判断依据，不阻塞保存。
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
   }
-  if (!channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' && draft.repaymentDetails) {
-    const loanMode = draft.loanMode
-    // 与服务端 settle 同一条规则：关联了计划，或收款端本来就是贷款账户，这次才落贷款付款记录。
-    const persistsLoanPayment = loanMode === 'associate' || payee && payee.type === 'other_liability'
-    const chargeAllocations = loanMode === 'associate' ? draft.chargeAllocations.map(part => {
-      const value = minor(part.amountInput == null ? yuan(part.amountMinor) : part.amountInput)
-      if (value == null || value === '0') invalid('repayment', '费用清偿金额需为大于零的有效金额')
-      return { chargeId: part.chargeId, component: part.component, amountMinor: value }
-    }) : []
-    for (const key of ['principal', 'interest', 'fee']) if (draft[key + 'Input'].trim() && minor(draft[key + 'Input']) == null) invalid('repayment', '本息费金额格式不正确')
-    const values = ['principal', 'interest', 'fee'].map(key => minor(draft[key + 'Input']))
-    if (amount != null && values.filter(value => value != null).reduce((sum, value) => sum + BigInt(value), 0n) > BigInt(amount)) invalid('repayment', '已填本息费不能超过付款总额')
-    // 未知分项、未选处理方式都只是“待核对”；明确填 0 才算没有这一项。
-    const treatmentIncomplete = ['interest', 'fee'].some(key => {
-      const value = minor(draft[key + 'Input'])
-      if (value == null || value === '0') return false
-      const treatment = draft[key + 'Treatment']
-      if (treatment === 'expense') return !draft[key + 'CategoryId']
-      if (treatment !== 'accrued') return true
-      // 不落付款记录时（信用卡未关联计划），已记费用只计入转账；要冲抵的必须有收费项。
-      if (!persistsLoanPayment) return false
-      const allocated = chargeAllocations.filter(part => part.component === key && part.amountMinor != null)
-        .reduce((sum, part) => sum + BigInt(part.amountMinor), 0n)
-      return loanMode !== 'associate' || !draft.loanId || allocated !== BigInt(value)
-    })
-    const incompleteLoan = values.some(value => value == null) || amount == null || fields.some(field => !field.accountId) ||
-      loanMode === 'associate' && !draft.loanId || treatmentIncomplete
-    if (values.every(value => value != null) && amount != null && values.reduce((sum, value) => sum + BigInt(value), 0n) !== BigInt(amount)) invalid('repayment', '本金、利息和费用合计必须等于付款总额')
-    if (incompleteLoan) {
-      decisions.repayment = { mode: 'review', draft: { principalMinor: values[0], interestMinor: values[1], feeMinor: values[2],
-        mode: loanMode, loanId: loanMode === 'associate' ? draft.loanId || null : null, loanVersion: loanMode === 'associate' ? draft.loanVersion || null : null,
-        interestTreatment: draft.interestTreatment || null, feeTreatment: draft.feeTreatment || null,
-        interestCategoryId: draft.interestTreatment === 'expense' ? draft.interestCategoryId || null : null,
-        feeCategoryId: draft.feeTreatment === 'expense' ? draft.feeCategoryId || null : null, chargeAllocations } }; missing.push('还款本息费')
-    } else {
-      const treatments = {}
-      for (const key of ['interest', 'fee']) {
-        const value = minor(draft[key + 'Input'])
-        // 0 是明确没有；未知已在上面的不完整分支，不会走到确认。
-        const treatment = value === '0' ? 'expense' : draft[key + 'Treatment']
-        treatments[key + 'Treatment'] = treatment
-        treatments[key + 'CategoryId'] = treatment === 'expense' && value !== '0' ? draft[key + 'CategoryId'] || null : null
-        if (treatment === 'expense' && value !== '0' && !draft[key + 'CategoryId']) invalid('repayment', '请选择利息／费用的支出分类')
-      }
-      decisions.repayment = { confirmed: true, mode: loanMode, assetAccountId: fields[0]?.accountId,
-        liabilityAccountId: fields[1]?.accountId, principalMinor: values[0], interestMinor: values[1], feeMinor: values[2],
-        chargeAllocations,
-        ...(loanMode === 'associate' ? { loanId: draft.loanId, loanVersion: draft.loanVersion } : {}), ...treatments }
-      for (const key of ['interest', 'fee']) {
-        const index = key === 'interest' ? 1 : 2
-        const allocated = chargeAllocations.filter(part => part.component === key && part.amountMinor != null).reduce((sum, part) => sum + BigInt(part.amountMinor), 0n)
-        if (allocated > BigInt(values[index])) invalid('repayment', '费用清偿分配超出对应分项')
-        // 会落付款记录时就要逐项冲抵收费项；信用卡未关联计划时只是一次转账，不要求收费项。
-        if (draft[key + 'Treatment'] === 'accrued' && persistsLoanPayment && allocated !== BigInt(values[index])) invalid('repayment', '选「记过，只冲抵」时要选全对应的收费项')
-      }
-    }
-  } else if (!channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' &&
-      !draft.repaymentDetails && loanPayee && draft.loanMode === 'associate') {
-    // 不展开明细也能关联计划：整笔都记为本金，利息和手续费此时是 0。
-    const assetAccountId = fields[0]?.accountId, liabilityAccountId = fields[1]?.accountId
-    if (amount == null) missing.push('还款金额')
-    if (!draft.loanId || !draft.loanVersion) missing.push('贷款计划')
-    if (!assetAccountId || !liabilityAccountId) missing.push('还款账户')
-    decisions.repayment = assetAccountId && liabilityAccountId && amount != null && draft.loanId && draft.loanVersion
-      ? { confirmed: true, mode: 'associate', assetAccountId, liabilityAccountId, principalMinor: amount,
-        interestMinor: '0', feeMinor: '0', chargeAllocations: [], loanId: draft.loanId, loanVersion: draft.loanVersion }
-      : { mode: 'review', draft: { principalMinor: amount, interestMinor: null, feeMinor: null,
-        mode: 'associate', loanId: draft.loanId || null, loanVersion: draft.loanVersion || null,
-        interestTreatment: null, feeTreatment: null, interestCategoryId: null, feeCategoryId: null, chargeAllocations: [] } }
-  } else if (!channel && row.loanRepayment && (draft.dirty.repaymentDetails || draft.dirty.economicNature || draft.dirty.owner || draft.dirty.composition)) decisions.repayment = null
+  // 旧草稿里的拆分/计划决定只在用户保存本笔时清除；读取不改写原决定或来源证据。
+  const clearLegacyRepayment = Boolean(row.loanRepayment || facts?.incompleteRepayment || row.legacyRepaymentReview)
+  if (clearLegacyRepayment) decisions.repayment = null
+  const acknowledgedChanges = clearLegacyRepayment
+    ? [...new Set([...(draft.acknowledgedChanges || []), 'repayment'])] : draft.acknowledgedChanges
   if (effectiveNature === 'refund' && draft.refund) decisions.refund = draft.refund
   if (effectiveNature === 'refund' && !draft.refund && row.detailFacts?.refund?.status !== 'confirmed' && row.detailFacts?.refund?.status !== 'pending') missing.push('退款关联')
   let sourceCorrection
@@ -433,9 +535,11 @@ function derive(row, draft, catalogs = {}) {
     if (sourceCorrection.periodNumber === null) missing.push('分期期号')
   }
   if (channel) for (const key of Object.keys(output)) if (![repaymentPayerKey(row), 'counterparty', 'note'].includes(key)) delete output[key]
-  const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition)
+  if (registration) for (const key of Object.keys(output)) if (!['ledgerAccountId', 'installmentPlan'].includes(key)) delete output[key]
+  // 新建计划在拿到 ID 之前不产出 installmentPlan，但动作本身已经是修改，保存要先建计划。
+  const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition) || planDirty
   const targetName = routeFields.find(field => field.label === '还入账户')?.name || channel?.targetAccountName || '此账户'
-  const options = (principal ? NATURES.filter(item => PRINCIPAL_NATURES.includes(item.value))
+  const options = (registration ? [{ value: 'unknown', label: '分期登记' }] : principal ? NATURES.filter(item => PRINCIPAL_NATURES.includes(item.value))
       // 本金行的“还款”在列表里仍叫“分期出账”，与顶部当前值保持一致。
       .map(item => item.value === 'repayment' ? { ...item, label: detail.natureLabel({ ...row, economicNature: 'repayment' }) } : item)
     : channel ? NATURES.filter(item => item.value === 'repayment')
@@ -446,25 +550,27 @@ function derive(row, draft, catalogs = {}) {
     })).map(item => ({ ...item, hint: NATURE_HINTS[item.value] || '' }))
   // 切换后的性质名取自草稿而不是原行，避免选项标签把分期角色当成经济性质显示。
   // 本金行仍是还款时保留“分期出账”这个来源角色名；改判成实际收支后显示经济性质。
-  const natureLabel = principal
+  const natureLabel = registration || disbursement ? detail.natureLabel({ ...row, economicNature: draft.economicNature }) : principal
     ? draft.economicNature === 'repayment' ? detail.natureLabel({ ...row, economicNature: 'repayment' }) : detail.natureLabel({ economicNature: draft.economicNature })
     : installmentRole ? detail.natureLabel({ ...row, economicNature: 'repayment' }) : detail.natureLabel({ economicNature: draft.economicNature })
   const evidence = row.primaryEvidence || {}, evidenceTitle = String(evidence.item || '').trim()
   const counterparty = String(draft.counterparty || '').trim()
-  return { supported, chargeRows: draft.chargeAllocations.map((part, index) => ({ ...part, index, amountInput: part.amountInput == null ? yuan(part.amountMinor) : part.amountInput })), readonlyReason: facts?.lockedReason || (!facts ? '需更新导入服务后才能编辑' : ''),
+  return { supported, readonlyReason: facts?.lockedReason || (!facts ? '需更新导入服务后才能编辑' : ''),
     natureOptions: options, natureIndex: Math.max(0, options.findIndex(item => item.value === draft.economicNature)),
-    natureLabel, natureEditable: supported && !channel && (!installmentRole || principal),
-    natureFixedHint: installmentRole && !principal ? '由分期来源确定' : channel ? '由还款渠道确定' : '',
-    directionClass: flowClass(effectiveNature),
+    natureLabel, natureEditable: supported && !registration && !channel && (!installmentRole || principal),
+    natureFixedHint: registration ? '不生成资金流水' : installmentRole && !principal ? '由分期来源确定' : channel ? '由还款渠道确定' : '',
+    // 还款渠道的整组已经由同笔判断定下来，排除半笔会和那条关系打架；这类行只走同笔判断。
+    exclude: supported && !registration && !channel && row.pendingIssue ? excludeAction(row.pendingIssue) : null,
+    directionClass: registration ? '' : flowClass(effectiveNature),
     // 性质未确定时给性质行一层强调底色，提示这里还没选；定了性质就回到普通表面。
-    naturePending: !effectiveNature || effectiveNature === 'unknown',
+    naturePending: !registration && (!effectiveNature || effectiveNature === 'unknown'),
     routeFields, bankSuggestion,
     // 端点组是资金路径唯一的渲染模型：组标题、账户清单、加号可用性都在这里定，模板不再判 composition。
     fundsEndpoints: fundsEndpointsOf(draft, fields, accounts, { channel: Boolean(channel), principal, other }),
     // 真的拆成多还入才提示“多个还入账户”的约束；只有一行时它读起来自相矛盾。
     splitRepayment: draft.composition === 'repayment' && draft.parts.length > 1,
     // 标题只说清这一块是什么：结构切换已经不在界面上，不再需要“资金结构”这个中间态。
-    routeTitle: principal ? '分期所属账户' : fields.length > 1 ? '资金路径' : '资金账户',
+    routeTitle: registration || principal ? '分期所属账户' : fields.length > 1 ? '资金路径' : '资金账户',
     repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor),
       confirmed: channel.confirmed !== false,
       // 还款事实（正文）与需要用户做的动作（细节行）分开：长句折行后末句会被当成注释，
@@ -472,17 +578,17 @@ function derive(row, draft, catalogs = {}) {
       ...(channel.confirmed === false ? { confirmationText: '确认还入「' + targetName + '」，' +
         (String(channel.feeMinor) === '0' ? '无手续费' : '差额 ¥' + yuan(channel.feeMinor) + ' 为手续费'),
         confirmationAction: '勾选后才能正式入账；不勾选时按钮只保存草稿，这 ¥' + yuan(channel.feeMinor) + ' 既不计手续费也不入账' } : {}) } : null,
-    title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
+    title: registration ? '分期登记' : disbursement && draft.economicNature === 'borrow' ? '现金分期借款' : draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
     // 摘要卡只放账单事实：标题优先用账单对方，没有时回到账单条目，再没有才显示占位。
     summaryTitle: counterparty || evidenceTitle || '未提供交易对方',
     summaryTitlePlaceholder: !counterparty && !evidenceTitle,
     summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
-    source: Boolean(row.installment),
+    source: !registration && Boolean(row.installment), registration,
     attribution: attributionOf(row, draft, catalogs),
+    disbursementPlan: disbursementPlanOf(row, draft, catalogs, fieldErrors),
+    // 新建计划的请求参数只在保存时用；拿到计划 ID 前不出现在 payload 里。
+    planRequest,
     needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && original.composition !== 'single',
-    loanFields: ['principal','interest','fee'].map((key, index) => ({ key: key + 'Input', label: ['本金','利息','费用'][index], value: draft[key + 'Input'] })),
-    interestTreatmentLabel: treatmentLabel(draft.interestTreatment), feeTreatmentLabel: treatmentLabel(draft.feeTreatment),
-    interestPositive: positive(draft.interestInput), feePositive: positive(draft.feeInput), creditPayee, loanPayee,
     refundOriginalText: (row.detailFacts?.refund?.originals || []).map(item => [item.note, item.localAt, item.amountMinor == null ? '' : '¥' + yuan(item.amountMinor)].filter(Boolean).join(' · ')).join('；'),
     refundCategory: row.detailFacts?.refund?.originals?.[0]?.categoryName || '',
     // 自动关联的退款也要能回看和更换：把已绑定的原消费当成“当前选择”，
@@ -497,10 +603,8 @@ function derive(row, draft, catalogs = {}) {
       matchKind: row.detailFacts.refund.originals[0].matchKind || '',
       auto: row.detailFacts.refund.autoLinked === true
     } : null,
-    interestCategoryName: categories.find(item => item.categoryId === draft.interestCategoryId)?.name || '',
-    feeCategoryName: categories.find(item => item.categoryId === draft.feeCategoryId)?.name || '',
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
-    showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: !channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
+    showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: false,
     refund: effectiveNature === 'refund', principal,
     // 退款区的状态与可用动作由同一份事实派生：模板不再用嵌套三元判断“已选/已关联/待关联”，
     // 也不会出现“按钮灰着但说不出原因”。
@@ -519,7 +623,7 @@ function derive(row, draft, catalogs = {}) {
     canSave: supported && Boolean(changed) && errors.length === 0,
     complete: missing.length === 0 && !(facts?.blockingReasons || []).length && !(row.reasonCodes || []).some(reason => ['row_status_unknown','identity_conflict','same_event_candidate','refund_source_conflict','core_fields_conflict'].includes(reason)),
     payload: { editorVersion: 1, fields: output, expectedRelations: facts?.expectedRelations || [], ...(composition ? { composition } : {}),
-      ...(Object.keys(decisions).length ? { decisions } : {}), ...(sourceCorrection ? { sourceCorrection } : {}), acknowledgedChanges: draft.acknowledgedChanges } }
+      ...(Object.keys(decisions).length ? { decisions } : {}), ...(sourceCorrection ? { sourceCorrection } : {}), acknowledgedChanges } }
 }
 // 结果未知时展示冻结请求的完整值；重试始终发送原 payload，而非重新派生的新请求。
 function restore(row, payload) {
@@ -546,12 +650,12 @@ function restore(row, payload) {
   }
   if (has(decisions, 'repayment')) {
     const repayment = decisions.repayment
-    // 有还款决定就展开明细；null 表示用户收起并同意解除。
+    // 只为旧冻结请求保留原值；界面不再提供拆分编辑，重试仍使用调用方保存的原 payload。
     draft.repaymentDetails = Boolean(repayment)
-    // {mode:'review'} 只表示“仍是待核对”，没有 draft 时沿用行上已经填好的明细。
-    const value = repayment && (repayment.draft || (repayment.mode === 'review' ? null : repayment))
+    const value = repayment && (repayment.draft || (repayment.mode === 'review'
+      ? { ...(row.loanRepayment || {}), ...(row.editorFacts?.incompleteRepayment || {}) } : repayment))
     if (value) {
-      if (['defer','associate'].includes(value.mode)) draft.loanMode = value.mode
+      draft.loanMode = value.mode === 'associate' ? 'associate' : 'defer'
       draft.loanId = value.loanId || ''; draft.loanVersion = value.loanVersion || 0
       for (const key of ['principal','interest','fee']) draft[key + 'Input'] = yuan(value[key + 'Minor'])
       for (const key of ['interestTreatment','feeTreatment','interestCategoryId','feeCategoryId']) draft[key] = value[key] || ''
@@ -559,6 +663,17 @@ function restore(row, payload) {
     }
   }
   if (decisions.refund) draft.refund = { ...decisions.refund }
+  // 冻结请求里的分期计划决定也要恢复，重试时原样再发一次同样的决定。
+  if (has(fields, 'installmentPlan')) {
+    const plan = fields.installmentPlan || {}
+    draft.planAction = plan.action || ''
+    draft.planLoanId = plan.loanId || ''
+    for (const [key, source] of [['planName', 'planLabel'], ['planTerms', 'totalTerms'], ['planPrincipalInput', 'principalMinor'], ['planStartMonth', 'startMonth']]) {
+      if (plan[source] == null) continue
+      draft[key] = key === 'planPrincipalInput' ? yuan(plan[source]) : String(plan[source])
+    }
+    draft.dirty = { ...draft.dirty, planAction: true, planLoanId: true }
+  }
   // 计划归属要连“已改动”一起恢复，否则重试前再编辑会把这个选择丢掉。
   if (payload.sourceCorrection && has(payload.sourceCorrection, 'planLabel')) {
     draft.planLabel = payload.sourceCorrection.planLabel || ''
@@ -570,4 +685,4 @@ function restore(row, payload) {
   draft.acknowledgedChanges = payload.acknowledgedChanges || []
   return draft
 }
-module.exports = { create, restore, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan }
+module.exports = { create, restore, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan, planSchedule }

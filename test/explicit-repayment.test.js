@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
-const { localServices,call,prepareSyntheticUpdate,confirmSyntheticHistoryDistinct } = require('./helpers/local-services')
+const { localServices,call,prepareSyntheticUpdate } = require('./helpers/local-services')
 const booking = require('../cloudfunctions/catledger-api/src/repayment-booking').createRepaymentBooking(code=>Object.assign(new Error(code),{ publicCode:code }))
 const { decision } = require('../miniprogram/packages/finance/pages/repayment-entry/model')
 test('本金、利息和费用必须明确且守恒；未知不能变成零',()=>{
@@ -98,41 +98,16 @@ test('明确还款：真实 MySQL 原子入账、延期关联、幂等及导入'
       await lab.owner.execute("UPDATE catledger_review_issues SET status='superseded',blocking=0 WHERE uid=? AND update_id=? AND issue_type='category_assignment'",[user.uid,update.updateId])
       return { update,event }
     }
-    await t.test('导入未知本息费留待核对；已确认后整批原子入账并建立真实待办',async()=>{
-      const {update,event}=await importDraft('SYNTHETIC-DEFER')
-      let result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version),repayment:{ mode:'review' } })
-      await assert.rejects(imp('financeUpdates.post',{ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion }),{ publicCode:'UNRESOLVED_IMPORT' })
-      result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:result.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version)+1,repayment })
-      // 同额同日的合成还款彼此独立；先经过现行历史核对门禁。
-      result=await confirmSyntheticHistoryDistinct(services,result)
-      const summary=await imp('financeUpdates.summary',{ updateId:update.updateId })
-      assert.equal(summary.workbench.finalSummary.expenseText,'¥0.20')
-      const expensePage=await imp('economicEvents.list',{ protocolVersion:2,updateId:update.updateId,view:'expense',pageSize:10 })
-      assert.equal(expensePage.items[0].summaryExpenseMinor,'20')
-      const before=await expenses(), post={ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion }
-      const receipt=await imp('financeUpdates.post',post)
-      assert.equal(receipt.posting.createdTransactionCount,2);assert.deepEqual(await imp('financeUpdates.post',post),receipt)
-      assert.equal(BigInt(await expenses())-BigInt(before),20n);assert.equal((await api('loans.unassigned')).total,1)
-      const item=(await api('loans.unassigned')).items[0], payment=(await api('loans.payment',{ paymentId:item.paymentId })).payment
-      const funds=await balances()
-      await api('loans.assignRepayment',{ requestId:randomUUID(),paymentId:item.paymentId,version:payment.version,loanId:loan.loanId,loanVersion:2,confirmed:true })
-      assert.deepEqual(await balances(),funds)
-    })
-    await t.test('导入立即关联失败整批回滚；更换有效贷款版本后可重试且撤销保留已入账流水',async()=>{
-      const {update,event}=await importDraft('SYNTHETIC-ASSOCIATE')
-      const current=(await api('loans.get',{ loanId:loan.loanId })).loan
-      let result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version),repayment:{ ...repayment,mode:'associate',loanId:loan.loanId,loanVersion:1 } })
-      result=await confirmSyntheticHistoryDistinct(services,result)
-      const before=await balances()
-      await assert.rejects(imp('financeUpdates.post',{ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion }),{ publicCode:'CONFLICT' })
+    await t.test('导入旧本息费与计划关联入口拒绝新决定，原字段和余额保持',async()=>{
+      const {update,event}=await importDraft('SYNTHETIC-REJECT-SPLIT')
+      const before=await balances(),version=(await imp('financeUpdates.summary',{updateId:update.updateId})).update.version
+      for (const decision of [{mode:'review'},repayment,{...repayment,mode:'associate',loanId:loan.loanId,loanVersion:1}]) {
+        await assert.rejects(imp('financeUpdates.setRepayment',{requestId:randomUUID(),updateId:update.updateId,
+          updateVersion:version,eventId:event.eventId,eventVersion:Number(event.version),repayment:decision}),{publicCode:'VALIDATION_ERROR'})
+      }
+      assert.equal((await imp('financeUpdates.summary',{updateId:update.updateId})).update.version,version)
       assert.deepEqual(await balances(),before)
-      result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:result.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version)+1,repayment:{ ...repayment,mode:'associate',loanId:loan.loanId,loanVersion:current.version } })
-      await imp('financeUpdates.post',{ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion })
       assert.equal((await api('loans.unassigned')).total,0)
-      const [[source]]=await lab.owner.execute('SELECT payment_id AS paymentId FROM catledger_loan_payment_sources WHERE uid=? AND event_id=? AND active=1',[user.uid,event.eventId])
-      const funds=await balances()
-      await api('loans.reverse',{ requestId:randomUUID(),paymentId:source.paymentId,version:1,loans:[{ loanId:loan.loanId,version:current.version+1 }],confirmed:true })
-      assert.deepEqual(await balances(),funds)
     })
   } finally { await lab.close() }
 })

@@ -32,6 +32,8 @@ function reasonFor(row) {
     }
     return { key: 'account_mapping_excluded', label: '账户已排除', note: '这些记录按账户排除决定不计入本次账本。' }
   }
+  // 分期放款对的对行：同一笔现金分期在卡内的记账行。放款本身已经按借款记录，这一行不能重复入账。
+  if (reasons.has('installment_offset_pair')) return { key: 'installment_offset_pair', label: '分期放款的卡内记账行', note: '同一笔现金分期已按借款记录，这一行只是卡内把本金转进分期账单，不重复入账。' }
   if (reasons.has('source_non_financial')) return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。' }
   if (reasons.has('transaction_closed')) return { key: 'transaction_closed', label: '交易关闭', note: '账单状态明确为关闭，不会计入账本。' }
   if (reasons.has('transaction_failed')) return { key: 'transaction_failed', label: '交易失败', note: '账单状态明确为失败，不会计入账本。' }

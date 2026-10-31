@@ -83,10 +83,23 @@ async function materializeAccountDrafts(connection, uid, updateId, reachableDraf
     [uid, updateId]
   )
   const reachable = drafts.filter((draft) => reachableDraftIds.has(draft.accountId))
+  const existing = new Map()
+  for (const part of chunks(reachable.map(draft => [draft.accountId]))) {
+    const [rows] = await connection.execute(`SELECT account_id AS accountId,type,nature,normalized_name AS normalizedName,currency,archived_at AS archivedAt
+      FROM catledger_accounts WHERE uid=? AND account_id IN (${part.map(() => '?').join(',')}) FOR UPDATE`, [uid, ...part.flat()])
+    for (const row of rows) existing.set(row.accountId, row)
+  }
+  // 核对中显式新建计划可同时建立所属信用卡；入账沿用同一 ID，仍核验属性与可用状态。
+  for (const draft of reachable) {
+    const account = existing.get(draft.accountId)
+    if (account && (account.archivedAt != null || ['type', 'nature', 'normalizedName', 'currency']
+      .some(key => account[key] !== draft[key]))) throw importError('CONFLICT')
+  }
   try {
     await insertMany(connection, `INSERT INTO catledger_accounts
       (uid, account_id, type, nature, name, normalized_name, currency) VALUES`,
-      reachable.map(draft => [uid, draft.accountId, draft.type, draft.nature, draft.name, draft.normalizedName, draft.currency]))
+      reachable.filter(draft => !existing.has(draft.accountId))
+        .map(draft => [uid, draft.accountId, draft.type, draft.nature, draft.name, draft.normalizedName, draft.currency]))
   } catch (error) {
     if (error && error.code === 'ER_DUP_ENTRY') throw importError('CONFLICT')
     throw error

@@ -78,6 +78,9 @@ async function setReview(connection, uid, data, requestDigest, { updateId, event
 // 与旧 setReview 共用外层用户锁、幂等回执和批次版本，不新增写协议或嵌套事务。
 async function saveEditor(connection, uid, data, requestDigest, update, event) {
   let next = require('./editor-policy').prepare(event, data)
+  // 计划决定与仍安全配对的来源同步，登记只保存自己的归属。
+  await require('../installment-plan-store').validatePlan(connection, uid, next)
+  await require('./installment-plan-link').mirrorPlan(connection, uid, event.updateId, next, next.fieldSources.installmentPlan)
   await require('./editor-refund').validateExpectations(connection, uid, event, data.expectedRelations)
   if (event.fieldSources.installment && (data.sourceCorrection || ['ledgerAccountId','amountMinor','occurredLocalAt'].some(key => Object.hasOwn(data.fields || {}, key)))) {
     const [[claimed]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_installment_items WHERE uid=? AND source_event_id=? AND active=1', [uid, event.eventId])
@@ -91,7 +94,6 @@ async function saveEditor(connection, uid, data, requestDigest, update, event) {
     if (!require('../repayment-channel').evidenceValid(verified, verified.relationEvidence.rows)) throw importError('VALIDATION_ERROR')
     next = await require('./repayment-channel-merge').confirmDetails(connection, uid, event.updateId, verified, actionId)
   }
-  if (next.fieldSources.loanRepayment) next.fieldSources.loanRepayment = await require('./repayment').prepareRepayment(connection, uid, event.updateId, next, next.fieldSources.loanRepayment, { editor: true })
   await require('./editor-refund').apply(connection, uid, event, next, data)
   const openBlockingIssues = await require('./issue-store').refreshEditedEventIssues(connection, uid, event.updateId, next, actionId)
   const saved = await saveEvents(connection, uid, event.updateId, [{ current: event, next }], actionId, { openBlockingIssues })
@@ -121,6 +123,8 @@ async function saveEditors(connection, uid, updateId, items, actionId) {
     if (!current) throw importError('CONFLICT')
     const data = item.editor
     let next = require('./editor-policy').prepare(current, data)
+    await require('../installment-plan-store').validatePlan(connection, uid, next)
+    await require('./installment-plan-link').mirrorPlan(connection, uid, updateId, next, next.fieldSources.installmentPlan)
     // Historical targets retain the user's explicit versions. Local event and
     // relation versions are server-internal and have already changed in this
     // transaction; their exact source scopes are checked by the v3 kernel.
@@ -140,7 +144,6 @@ async function saveEditors(connection, uid, updateId, items, actionId) {
       if (!require('../repayment-channel').evidenceValid(verified, verified.relationEvidence.rows)) throw importError('VALIDATION_ERROR')
       next = await require('./repayment-channel-merge').confirmDetails(connection, uid, updateId, verified, actionId)
     }
-    if (next.fieldSources.loanRepayment) next.fieldSources.loanRepayment = await require('./repayment').prepareRepayment(connection, uid, updateId, next, next.fieldSources.loanRepayment, { editor: true })
     changes.push({ current, next, data })
   }
   // Save all final field values before validating relationships, so the outcome

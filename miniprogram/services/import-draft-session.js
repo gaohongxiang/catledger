@@ -231,15 +231,30 @@ function create(options) {
     async retry() {
       const fresh = await refresh()
       const next = clone(state)
+      const expired = []
       for (const entry of next.entries) {
         // 配对范围冲突必须重新展示、核验和显式确认，不能替换版本自动重放。
         if (entry.kind === 'pairing') continue
+        // 核对项已经不存在时服务端返回 NOT_FOUND；这正是“被新结果替换”的情形。
         const issue = entry.error
-          ? (await options.call('reviewIssues.get', { protocolVersion: 2, updateId: state.updateId, issueId: entry.issueId, pageSize: 1 })).issue
+          ? await options.call('reviewIssues.get', { protocolVersion: 2, updateId: state.updateId, issueId: entry.issueId, pageSize: 1 })
+            .then(result => result.issue, error => { if (error && error.code === 'NOT_FOUND') return null; throw error })
           : (fresh.issues || []).find(i => i.issueId === entry.issueId)
-        if (entry.error && issue && issue.status === 'open' && issue.version === entry.issueVersion) entry.error = ''
+        if (!entry.error) continue
+        if (issue && issue.status === 'open' && issue.version === entry.issueVersion) entry.error = ''
+        // 原核对项已经被新的整理结果替换（版本不同或已不存在）：这条决定不可能再落到
+        // 原处，留在队列里只会让“重试”反复失败。撤下它，这一笔会重新出现在待核对里。
+        else expired.push(entry)
       }
-      persist(next); return flush()
+      if (expired.length) {
+        const ids = new Set(expired.map(entry => entry.issueId))
+        next.entries = next.entries.filter(entry => !ids.has(entry.issueId))
+        next.conflictedChoices = (next.conflictedChoices || []).filter(entry => !ids.has(entry.issueId))
+      }
+      persist(next)
+      try { await flush() } finally {
+        if (expired.length) { errorMessage = expired.length + ' 项选择已随整理结果更新，请在明细里重新核对'; emit() }
+      }
     },
     async pause() { paused = true; if (timer) clearTimeout(timer); timer = null; if (running) await running.catch(() => {}) },
     resume() { paused = false; schedule() },

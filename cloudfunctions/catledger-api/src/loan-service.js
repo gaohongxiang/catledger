@@ -57,7 +57,9 @@ function createLoanService({ getPool, now = Date.now }) {
   async function create(context) {
     return write(context, 'loans.create', async (connection, uid, data) => {
       const value = loanMetadata(data), loanId = randomUUID()
+      const importOrigin = await require('./loan-import-origin').importOrigin(connection, uid, data)
       if (value.installmentSetup && (data.generatePlan !== true || value.kind !== 'installment')) throw ledgerError('VALIDATION_ERROR')
+      const importAccount = await require('./loan-import-account').createImportAccount(connection, uid, data, importOrigin)
       await validateLiability(connection, uid, value.accountId)
       const plan = data.generatePlan ? remainingSchedule(storedScheduleInput(value)) : null
       if(data.repayments!==undefined&&!Array.isArray(data.repayments))throw ledgerError('VALIDATION_ERROR')
@@ -81,7 +83,8 @@ function createLoanService({ getPool, now = Date.now }) {
         await require('./installment-repayment').confirm(connection,uid,loan,view,selections,false,data)
       }
       if (selections && !selections.length && data.originKind==='cash_borrowing') await require('./installment-repayment').context(connection,uid,{...value,loanId,originKind:data.originKind})
-      return { loanId, version: 1,...(plan ? { generatedPeriods:plan.periods.length } : {}) }
+      return { loanId, version: 1,...(plan ? { generatedPeriods:plan.periods.length } : {}),
+        ...(importOrigin ? { importOrigin } : {}), ...(importAccount ? { importAccount } : {}) }
     })
   }
   async function update(context) {
@@ -92,7 +95,7 @@ function createLoanService({ getPool, now = Date.now }) {
       const previousSetup = parseSetup(current.installmentSetup)
       const value = loanMetadata({ ...data,...(data.installmentSetup === undefined && previousSetup ? { installmentSetup:previousSetup } : {}) })
       if(chargeContract && ['accountId','kind','baselinePrincipalMinor','baselineDate','scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate'].some(key=>String(value[key])!==String(current[key])))throw ledgerError('LOAN_BASELINE_LOCKED')
-      if (data.generatePlan !== undefined || data.sourceItemId !== undefined || data.chargeContractId !== undefined || data.repayments !== undefined || data.coverage !== undefined || data.oneOffCharges !== undefined) throw ledgerError('VALIDATION_ERROR')
+      if (data.generatePlan !== undefined || data.sourceItemId !== undefined || data.chargeContractId !== undefined || data.repayments !== undefined || data.coverage !== undefined || data.oneOffCharges !== undefined || data.importOrigin !== undefined || data.importAccountDraft !== undefined) throw ledgerError('VALIDATION_ERROR')
       if (previousSetup) {
         const core = setup => setup && [setup.originalPrincipalMinor,setup.historicalPaidTerms,setup.discountKind,setup.discountValue]
         const changed = JSON.stringify(core(previousSetup)) !== JSON.stringify(core(value.installmentSetup)) ||

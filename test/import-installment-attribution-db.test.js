@@ -77,7 +77,6 @@ test('分期归属：真实 MySQL JSON、往返保存、旧事项修复与页签
           assert.equal(card.subjects[0].installmentPending, true)
           assert.equal(card.installmentPendingCount, undefined)
         }
-        assert.equal(presentation.installmentPendingNote(cards), count === 2 ? '本期利息待归属 2 笔' : '')
         const [members] = await lab.owner.execute(`SELECT e.event_id AS eventId, e.field_sources_json AS fields, m.sort_order AS position
           FROM catledger_review_issue_members m JOIN catledger_economic_events e
           ON e.uid=m.uid AND e.update_id=m.update_id AND e.event_id=m.object_id

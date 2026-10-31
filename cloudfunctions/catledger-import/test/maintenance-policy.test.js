@@ -7,6 +7,7 @@ test('只物化最终可达草稿，旧选择不能成为正式账户', async ()
   const inserted = []
   const connection = { async execute(sql, values) {
     if (sql.includes('SELECT draft_account_id')) return [[{ accountId: 'used' }, { accountId: 'obsolete' }]]
+    if (sql.includes('SELECT account_id AS accountId')) return [[]]
     if (sql.includes('INSERT INTO catledger_accounts')) inserted.push(values[1])
     return [{ affectedRows: 1 }]
   } }

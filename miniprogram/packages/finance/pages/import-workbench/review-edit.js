@@ -4,12 +4,63 @@ const pending = require('../../../../services/pending-ledger-write')
 const presentation = require('./presentation')
 const { record, errorText, sourceCaption, refundCandidateView, canChangeJudgment, groupReviewAction } = presentation
 const model = require('./review-editor-model')
+const scheduleForm = require('../loan-detail/schedule-form')
+const { envId } = require('../../../../config/cloudbase')
 const { readDetail } = require('./detail-reader')
 const { previewFields } = require('./inline-evidence')
 const { setChangedData } = require('../../services/view-patch')
 const ACTION = 'financeUpdates.setReview'
+const PLAN_RECOVERY_PREFIX = 'catledger_import_plan_create_v1:'
+const copy = value => JSON.parse(JSON.stringify(value))
+function planScope() {
+  const app = getApp(), uid = app && app.globalData.uid
+  return app && app.hasLoginApproval() && uid ? envId + ':' + uid : ''
+}
+function planRecoveryKey(scope, updateId, eventId) { return PLAN_RECOVERY_PREFIX + scope + ':' + updateId + ':' + eventId }
+function readPlanRecovery(scope, updateId, eventId) {
+  const saved = scope && wx.getStorageSync(planRecoveryKey(scope, updateId, eventId))
+  return saved && saved.schema === 1 && saved.requestId && saved.updateId && saved.eventId &&
+    saved.data && saved.data.kind === 'installment' && saved.data.installmentSetup && saved.draft ? copy(saved) : null
+}
+function writePlanRecovery(scope, value) {
+  const key = planRecoveryKey(scope, value.updateId, value.eventId)
+  try {
+    wx.setStorageSync(key, copy(value))
+    if (JSON.stringify(wx.getStorageSync(key)) !== JSON.stringify(value)) throw Error('not persisted')
+  } catch (_) { throw Object.assign(Error('本机未能保存计划创建请求，请释放空间后重试'), { code: 'DRAFT_STORAGE_FAILED' }) }
+}
+function forgetPlanRecovery(token) {
+  if (!token.planRecovery) return
+  const saved = readPlanRecovery(token.planRecoveryScope, token.planRecovery.updateId, token.eventId)
+  if (saved && saved.requestId === token.planRecovery.requestId) wx.removeStorageSync(planRecoveryKey(token.planRecoveryScope, saved.updateId, saved.eventId))
+}
+function restorePlanDraft(row, recovery) {
+  const data = recovery.data, schedule = scheduleForm.fromLoan(data), initial = model.create(row)
+  return { ...initial, ...recovery.draft,
+    economicNature: row.disbursement?.role === 'registration' || row.editorFacts?.recordRole === 'installment_registration' ? 'unknown' : recovery.draft.economicNature || initial.economicNature,
+    ledgerAccountId: data.accountId, planAction: 'create', planLoanId: recovery.loanId || '', planName: data.name,
+    planTerms: String(data.scheduleTerms), planPrincipalInput: model.yuan(data.installmentSetup.originalPrincipalMinor),
+    planStartMonth: String(data.startDate || data.baselineDate || '').slice(0, 7),
+    planMethodIndex: schedule.methodIndex, planQuoteIndex: schedule.quoteIndex,
+    planRatePercent: schedule.ratePercent, planFirstPaymentDate: schedule.firstPaymentDate,
+    dirty: { ...recovery.draft.dirty, planAction: true, planLoanId: true } }
+}
+// 复用同一个账务请求槽。请求 ID 在发送前固定，创建回执先保存到恢复指针再清除在途请求。
+function planWriter(recovery, scope) {
+  return pending.createPendingWrite({ scope: planScope,
+    read: key => wx.getStorageSync(key), write: (key, value) => wx.setStorageSync(key, value), remove: key => wx.removeStorageSync(key),
+    requestId: () => recovery.requestId,
+    call: (target, action, data) => target === 'import' ? api.callImport(action, data) : require('../../../../services/catledger-api').callApi(action, data),
+    onConfirmed(packet, result) {
+      if (packet.target === 'api' && packet.action === 'loans.create' && packet.payload.requestId === recovery.requestId && result?.loanId) {
+        recovery.loanId = result.loanId
+        writePlanRecovery(scope, recovery)
+      }
+    } })
+}
 // 账单事实（金额、日期、时间、交易对方）只读：核对页只接受用户自己的记账决定，不接受旧控件事件改写原文。
-const TEXT_FIELDS = new Set(['note','evidenceNote','principalInput','interestInput','feeInput','periodInput','totalTermsInput'])
+const TEXT_FIELDS = new Set(['note','evidenceNote','periodInput','totalTermsInput',
+  'planName','planTerms','planPrincipalInput','planStartMonth','planRatePercent','planFirstPaymentDate'])
 function current(page, token) {
   return Boolean(token && page._viewActive && page._reviewEditToken === token && page.data.reviewEditSheet &&
     page._viewEpoch === token.epoch && page._viewSession === token.session && cache.getSession() === token.scope && getApp().hasLoginApproval())
@@ -18,7 +69,7 @@ function editable(page, token) {
   const sheet = page.data.reviewEditSheet
   return !page._draftSession?.state.postFlight && current(page, token) && token.session.active && token.session.summary.viewVersion === token.version && token.draft &&
     token.row.editorFacts?.version === 1 && !token.row.editorFacts.readonly &&
-    !sheet.stale && !sheet.loading && !sheet.saving && !sheet.pending && !sheet.saved
+    !sheet.stale && !sheet.loading && !sheet.saving && !sheet.pending && !sheet.planCreatePending && !sheet.saved
 }
 // 本次草稿里勾选、且仍属于“本期未归属”的利息。已保存或已经离开候选的行不重复写。
 // 归属改动有两类：把未归属的勾给本卡，和把已归到本卡的取消掉。两者都要逐笔写回。
@@ -33,6 +84,29 @@ function packetFor(page, eventId) {
   return packet && packet.target === 'import' && packet.action === ACTION && page.data.update &&
     packet.payload.updateId === page.data.update.updateId && (!eventId || packet.payload.eventId === eventId) ? packet : null
 }
+function pendingPlanFor(page) {
+  const scope = planScope(), updateId = page.data.update?.updateId
+  if (!scope || !updateId) return null
+  const prefix = PLAN_RECOVERY_PREFIX + scope + ':' + updateId + ':'
+  for (const key of wx.getStorageInfoSync().keys || []) {
+    if (!key.startsWith(prefix)) continue
+    const recovery = readPlanRecovery(scope, updateId, key.slice(prefix.length))
+    // 其他页面可以确认并清掉通用请求槽；本笔决定保存前，恢复指针本身仍是入账门禁。
+    if (recovery) {
+      return { target: 'api', action: 'loans.create', payload: { updateId, eventId: recovery.eventId, requestId: recovery.requestId } }
+    }
+  }
+  return null
+}
+function planAccountContext(page, token) {
+  const accountId = token.draft.ledgerAccountId
+  const frozen = token.planRecovery?.data.accountId === accountId && token.planRecovery.data.importAccountDraft
+  if (frozen) return { planAccountDraft: { ...frozen, accountId }, snapshotId: frozen.snapshotId }
+  const local = page._draftSession?.model
+  const account = local?.drafts?.get(accountId) || (page.data.accountDrafts || []).find(item => item.accountId === accountId)
+  const selected = token.accounts.get(accountId)
+  return { planAccountDraft: account || (selected?.isDraft ? selected : null), snapshotId: local?.facts?.snapshotId || '' }
+}
 function refresh(page) {
   const token = page._reviewEditToken, sheet = page.data.reviewEditSheet || {}
   const view = token.view = model.derive(token.row, token.draft, { accounts: [...token.accounts.values()],
@@ -43,7 +117,10 @@ function refresh(page) {
     pendingClears: token.attributionClears || new Set(),
     // 状态文案和暂记动作由模型统一派生，模板不再自己拼条件。候选数量只用于区分
     // “还有候选可选”和“当前没有候选项”，不决定暂记能不能点。
-    refundCandidateCount: (sheet.refundChoices || []).length, refundStale: Boolean(sheet.refundStale) })
+    refundCandidateCount: (sheet.refundChoices || []).length, refundStale: Boolean(sheet.refundStale),
+    // 这笔分期的候选计划：本机只缓存读取结果，是否命中指纹由服务端判定。
+    planCandidates: token.planCandidates || [], planLoading: Boolean(token.planLoading), planError: token.planError || '',
+    ...planAccountContext(page, token) })
   const labels = view.accountFields
   const { payload, ...visibleEditor } = view
   const { dirty, dormant, acknowledgedChanges, ...visibleDraft } = token.draft
@@ -55,7 +132,7 @@ function refresh(page) {
     accountFields: labels, hasDestination: labels.length === 2, refundClosed: Boolean(view.refundConflict),
     attributionSelected: Boolean(
       (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)),
-    canSave: view.canSave || Boolean(
+    canSave: sheet.planCreatePending || view.canSave || Boolean(
       (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)), error: '' } })
 }
 function update(page, key, value) {
@@ -77,10 +154,11 @@ function update(page, key, value) {
       'reviewEditSheet.refundStale': true, 'reviewEditSheet.refundTotal': null,
       'reviewEditSheet.refundError': '', 'reviewEditSheet.refundHistoryPending': false })
   }
-  if (['loanId','loanMode','owner','economicNature'].includes(key) || key === 'repaymentDetails' && !next.repaymentDetails) {
-    token.chargeEpoch = (token.chargeEpoch || 0) + 1
-    if (key === 'loanId') { token.charges.clear(); token.chargeCursor = null; token.draft.chargeAllocations = [] }
-    page.setData({ 'reviewEditSheet.chargeLoading': false, 'reviewEditSheet.chargeError': '', 'reviewEditSheet.chargeChoices': [], 'reviewEditSheet.chargeMore': false })
+  // 换了所属账户，这张卡上的计划候选就作废；已选的计划不再适用于新账户。
+  if (key === 'ledgerAccountId') {
+    token.planCandidates = []; token.planLoading = false; token.planError = ''
+    token.planEpoch = (token.planEpoch || 0) + 1
+    if (token.draft.planAction === 'link') token.draft.planLoanId = ''
   }
   refresh(page)
   page.loadEditorSuggestions()
@@ -118,25 +196,24 @@ async function evidence(page, token) {
   finally { token.evidenceReading = false }
 }
 module.exports = {
-  pendingReviewEdit() { return packetFor(this) },
+  pendingReviewEdit() { return packetFor(this) || pendingPlanFor(this) },
   async openReviewEdit(event) {
     const eventId = event.currentTarget.dataset.id
     if (!eventId || !this._viewActive || !this._viewSession?.active || this.data.busy ||
       this.data.reviewEditSheet?.saving || this.data.update.status !== 'review') return
     const token = this._reviewEditToken = { session: this._viewSession, scope: cache.getSession(), epoch: this._viewEpoch,
       version: this._viewSession.summary.viewVersion, eventId, updateVersion: this.data.update.version,
-      accounts: new Map(), categories: new Map(), charges: new Map(), sourceCount: 0, evidenceSources: [],
+      accounts: new Map(), categories: new Map(), sourceCount: 0, evidenceSources: [],
       // 本金编辑器里勾选的利息只在本机草稿里，保存时才逐笔写回，和退款候选的选择语义一致。
       attributionSelections: new Set(),
       // 已归到本卡的利息被点掉时记在这里，保存时清空那笔的归属。
       attributionClears: new Set(),
       focusIssueId: event.currentTarget.dataset.focusIssueId || '' }
-    this.setData({ reviewEditSheet: { eventId, record: null, loading: true, saving: false, pending: false,
+    this.setData({ reviewEditSheet: { eventId, record: null, loading: true, saving: false, pending: false, planCreatePending: false,
       saved: false, stale: false, canSave: false, error: '',
       natureOpen: false, natureHint: '',
       suggestionLoading: false, suggestionError: '', suggestionMore: false,
       sources: [], evidenceLoading: true, evidenceError: '', moreEvidence: false,
-      chargeChoices: [], chargeLoading: false, chargeError: '', chargeMore: false,
       refundChoices: [], refundKind: 'event', refundLoading: false, refundError: '', refundTotal: null,
       refundStale: false, refundHistoryPending: false } })
     try {
@@ -154,6 +231,15 @@ module.exports = {
       const packet = packetFor(this, eventId)
       token.payload = packet && packet.payload
       token.draft = packet ? model.restore(row, packet.payload) : model.create(row)
+      const recoveryScope = planScope(), recovery = readPlanRecovery(recoveryScope, this.data.update.updateId, eventId)
+      if (recovery && recovery.updateId === this.data.update.updateId && recovery.eventId === eventId) {
+        token.planRecovery = recovery; token.planRecoveryScope = recoveryScope
+        if (!packet) token.draft = restorePlanDraft(row, recovery)
+        if (recovery.loanId) {
+          token.createdPlanId = recovery.loanId
+          token.createdPlanAccountId = recovery.data.accountId
+        }
+      }
       for (const item of [].concat(this.data.accounts || [], this.data.accountDrafts || [], row.detailFacts?.accounts || [])) token.accounts.set(item.accountId, item)
       for (const item of [].concat(this.data.categories || [], row.detailFacts?.categories || [])) token.categories.set(item.categoryId, item)
       if (row.categoryId && row.categoryName) token.categories.set(row.categoryId, { categoryId: row.categoryId, name: row.categoryName, kind: model.categoryKind(row.economicNature) })
@@ -165,13 +251,14 @@ module.exports = {
       const groupAction = groupReviewAction(row.pendingIssue, judgmentEditable)
       this.setData({ 'reviewEditSheet.record': record(row), 'reviewEditSheet.loading': false,
         'reviewEditSheet.pending': Boolean(packet), 'reviewEditSheet.issue': row.pendingIssue || null,
+        'reviewEditSheet.planCreatePending': Boolean(token.planRecovery && !token.planRecovery.loanId && !packet),
         'reviewEditSheet.groupAction': groupAction,
         'reviewEditSheet.attention': (row.reviewAttention?.steps || []).filter(step => row.status !== 'ready' || step.key !== 'review'),
-        'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
+        'reviewEditSheet.originalRefund': row.detailFacts?.refund || null,
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }),
         'reviewEditSheet.judgmentEditable': judgmentEditable })
       refresh(this)
-      if (packet) this.setData({ 'reviewEditSheet.canSave': true })
+      if (packet || this.data.reviewEditSheet.planCreatePending) this.setData({ 'reviewEditSheet.canSave': true })
       token.suggestionRead = this.loadEditorSuggestions()
       token.evidenceRead = evidence(this, token)
       // 退款默认直接列出本批原消费：候选只在本机内存里过滤，不该让用户先点一次范围才看得到。
@@ -246,7 +333,6 @@ module.exports = {
     const draft = token.draft, resets = [], hints = []
     if (token.view.principal) hints.push('本金行改判为支出、收入或手续费后会按实际流水入账；同一笔消费已入账时不要重复选择。')
     if (draft.refund) resets.push('退款原消费')
-    if ((draft.chargeAllocations || []).length) resets.push('费用分配')
     if (token.attributionSelections && token.attributionSelections.size) resets.push('利息归属')
     if (resets.length) hints.push('切换会清空已选的' + resets.join('、') + '，需要的话重新选一次。')
     this.setData({ 'reviewEditSheet.natureOpen': true, 'reviewEditSheet.natureHint': hints.join(' ') })
@@ -271,35 +357,49 @@ module.exports = {
     // 切到退款是离散动作：立即按新性质读一次候选，不要等用户再点“本批消费”。
     if (token.view.refund && editable(this, token)) token.refundRead = this.loadEditorRefunds({ currentTarget: { dataset: {} } })
   },
+  // 排除不是一种性质：它是“这一笔本次不入账”的处理决定，挂在当前开放事项上。
+  // 账单原文和证据都留着，也不生成任何交易；同组还有别的记录时只排除当前这笔。
+  async excludeEditorEvents() {
+    const token = this._reviewEditToken, sheet = this.data.reviewEditSheet
+    if (!editable(this, token) || !sheet?.editor?.exclude) return
+    const issue = token.row.pendingIssue
+    // 入口只在挂着开放事项时出现；事项已经被别处处理掉时说清原因，不再静默返回。
+    if (!issue) {
+      this.setData({ 'reviewEditSheet.error': '这笔的核对事项已变化，请返回列表刷新后再试' })
+      return
+    }
+    const content = '这笔本次不入账，原文仍保留，之后可以在“已排除 · 手动排除”里查看。' +
+      (Object.keys(token.draft.dirty).length ? '当前未保存的修改也会一起放弃。' : '') +
+      (sheet.editor.exclude.scopeCount > 1 ? '同组另外 ' + (sheet.editor.exclude.scopeCount - 1) + ' 笔保留待核对。' : '')
+    const accepted = await new Promise(resolve => wx.showModal({ title: '不计入本次账本', content,
+      // confirmText 最多 4 个字符；超长时微信直接 fail，弹窗不会出现，看起来就像按钮没反应。
+      confirmText: '确认排除', success: resolve, fail: error => resolve({ confirm: false, error }) }))
+    if (!accepted.confirm) {
+      if (accepted.error && current(this, token)) this.setData({ 'reviewEditSheet.error': '确认窗口没有打开，请再点一次' })
+      return
+    }
+    if (!current(this, token)) return
+    try {
+      // 明确只排除当前这一笔：同组还有别的记录时，它们仍留给用户逐笔判断。
+      this._draftSession.enqueue([{ kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
+        subjectIds: [token.eventId],
+        decision: { decision: 'exclude_events', selection: { mode: 'include', eventIds: [token.eventId] } },
+        form: { issueDraft: this.data.issueDraft, historicalSelection: this.data.historicalSelection,
+          accountId: '', categoryId: '', categoryChanged: false } }])
+      this.closeReviewEdit()
+    } catch (error) { this.setData({ 'reviewEditSheet.error': errorText(error) }) }
+  },
   changeEditorMode(event) {
     const { field, value } = event.currentTarget.dataset
     // 资金结构不再是一个可点的模式：拆开/收起来自账户行的加号与删除，composition 只由 addFundsAccount
     // 和 removeFundsAccount 改写，界面没有直接切换它的入口。
-    const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'],
-      loanMode: ['defer','associate'], repaymentChannelConfirmed: [true, false] }
+    const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'], repaymentChannelConfirmed: [true, false] }
     if (!choices[field]?.includes(value)) return
     const token = this._reviewEditToken
     if (!editable(this, token) || field === 'owner' && value === 'other' && token.draft.composition === 'repayment') return
     this.closeDirectory()
-    // 可选单选（代还处理方式）允许回到“未选”：再点已选项清空。贷款关联仍是必选，
-    // 点已选项保持幂等，不制造假空值。
+    // 可选单选（代还处理方式）允许回到“未选”：再点已选项清空。
     if (field === 'otherTreatment' && token.draft.otherTreatment === value) return update(this, field, '')
-    update(this, field, value)
-  },
-  // 还款明细是可选的展开区：收起表示“整笔就是还款本金”。已关联计划时收起仍保留整笔关联；
-  // 没关联计划时，收起会解除已有拆分决定。
-  toggleRepaymentDetails() {
-    const token = this._reviewEditToken
-    if (!editable(this, token)) return
-    this.closeDirectory()
-    update(this, 'repaymentDetails', !token.draft.repaymentDetails)
-  },
-  // 处理方式三选一：没记过记一笔／记过只冲抵／待核对。三个选项同时摆出来，点哪个是哪个，
-  // 不再“点一下换一档”让人猜。信用卡的“记过只冲抵”只把金额计入转账，不生成费用；贷款才会关联收费项。
-  setEditorTreatment(event) {
-    const token = this._reviewEditToken, { field, value } = event.currentTarget.dataset
-    if (!editable(this, token) || !['interestTreatment','feeTreatment'].includes(field) || !['expense','accrued',''].includes(value)) return
-    this.closeDirectory()
     update(this, field, value)
   },
   // 分期费用归属：只能从服务端下发的候选计划里选，避免客户端自造计划名。
@@ -308,7 +408,79 @@ module.exports = {
     const token = this._reviewEditToken
     if (!editable(this, token)) return
     const plan = (token.view.attribution?.plans || []).find(item => item.planName === event.currentTarget.dataset.plan)
+    // 计划被本期另一笔利息占用时，卡面已经写明占用金额；这里照常写入，不再弹框打断。
     if (plan) update(this, 'planLabel', plan.selected ? '' : plan.planName)
+  },
+  // 分期登记的“先不关联”仍待核对；现金借款可以只保存账户决定。
+  selectEditorPlanAction(event) {
+    const token = this._reviewEditToken, action = event.currentTarget.dataset.value
+    if (!editable(this, token) || !token.view?.disbursementPlan || !['link', 'create', 'skip'].includes(action)) return
+    this.closeDirectory()
+    // 切到别的动作时，已选的已有计划不再沿用；本次新建的计划仍保留，重试不会重复建。
+    if (action === token.draft.planAction) return
+    const saved = token.row.installmentPlanDecision
+    const createdId = token.createdPlanAccountId === token.draft.ledgerAccountId ? token.createdPlanId
+      : saved?.action === 'create' && saved.accountId === token.draft.ledgerAccountId ? saved.loanId : ''
+    update(this, 'planAction', action)
+    update(this, 'planLoanId', action === 'create' ? createdId || '' : '')
+    if (action !== 'link') return
+    if (!(token.planCandidates || []).length) this.loadEditorPlanCandidates()
+  },
+  selectEditorPlanSchedule(event) {
+    const token = this._reviewEditToken, field = event.currentTarget.dataset.field, index = Number(event.detail.value)
+    if (!editable(this, token) || !token.view?.disbursementPlan || token.view.disbursementPlan.formLocked ||
+        !Number.isInteger(index) || index < 0) return
+    const state = { methodIndex: token.draft.planMethodIndex, quoteIndex: token.draft.planQuoteIndex }
+    let next
+    if (field === 'planMethodIndex' && scheduleForm.METHOD_OPTIONS[index]) next = scheduleForm.selectMethod(state, index)
+    else if (field === 'planQuoteIndex' && scheduleForm.QUOTE_OPTIONS[index]) next = scheduleForm.selectQuote(state, index)
+    else return
+    update(this, 'planMethodIndex', next.methodIndex)
+    update(this, 'planQuoteIndex', next.quoteIndex)
+  },
+  // 候选计划：同一张卡上的分期计划全部列出来，由服务端标出哪一笔与账单指纹一致。
+  // 唯一命中才预选；同名同总期数的多笔必须由用户按本金和起始月自己挑。
+  async loadEditorPlanCandidates() {
+    const token = this._reviewEditToken
+    if (!editable(this, token) || !token.view?.disbursementPlan) return
+    const view = token.view.disbursementPlan
+    const accountId = token.draft.ledgerAccountId || ''
+    if (!accountId) { this.setData({ 'reviewEditSheet.error': '请先选择这笔分期的所属账户' }); return }
+    const termsText = String(view.totalTerms || token.draft.planTerms || '').trim()
+    const totalTerms = termsText ? Number(termsText) : null
+    if (totalTerms != null && (!Number.isInteger(totalTerms) || totalTerms < 1 || totalTerms > 600)) {
+      token.planError = '总期数需为 1～600 的整数'
+      refresh(this)
+      return
+    }
+    const epoch = token.planEpoch = (token.planEpoch || 0) + 1
+    token.planLoading = true; token.planError = ''
+    refresh(this)
+    try {
+      const api = this._draftSession && this._draftSession.isLocal ? { callApi: (action, data) => this._draftSession.call(action, data) } : require('../../../../services/catledger-api')
+      const result = await api.callApi('loans.planCandidates', { accountId, totalTerms, planLabel: view.planLabel,
+        principalMinor: model.minor(token.draft.amountInput) || String(token.row.amountMinor == null ? '' : token.row.amountMinor) || null,
+        startMonth: token.draft.planStartMonth || view.startMonth || null }, { force: true })
+      if (!editable(this, token) || token.planEpoch !== epoch) return
+      token.planCandidates = result.items || []
+      token.planLoading = false
+      refresh(this)
+      const matched = token.view.disbursementPlan.candidates.filter(item => item.matched && !item.disabled)
+      if (token.draft.planAction === 'link' && !token.draft.planLoanId && matched.length === 1) {
+        update(this, 'planLoanId', matched[0].loanId)
+        return
+      }
+    } catch (error) {
+      if (!editable(this, token) || token.planEpoch !== epoch) return
+      token.planLoading = false; token.planError = errorText(error)
+      refresh(this)
+    }
+  },
+  selectEditorPlanCandidate(event) {
+    const token = this._reviewEditToken, id = event.currentTarget.dataset.id
+    if (!editable(this, token) || token.view?.disbursementPlan?.action !== 'link' ||
+        !token.view.disbursementPlan.candidates.some(item => item.loanId === id && !item.disabled)) return
+    update(this, 'planLoanId', token.draft.planLoanId === id ? '' : id)
   },
   // 资金路径的账户级操作。加号往当前端点组追加一行账户；composition 只在这里被读写，
   // 模板不再需要知道“组合支付/多个还入”这两个模式名。能否点、是否已在分摊都由视图的
@@ -372,22 +544,19 @@ module.exports = {
   },
   clearEditorChoice(event) {
     const token = this._reviewEditToken, key = event.currentTarget.dataset.field
-    if (!editable(this, token) || !['ledgerAccountId','counterpartyLedgerAccountId','categoryId','interestCategoryId','feeCategoryId','loanId'].includes(key)) return
+    if (!editable(this, token) || !['ledgerAccountId','counterpartyLedgerAccountId','categoryId'].includes(key)) return
     update(this, key, '')
-    if (key === 'loanId') { update(this, 'loanVersion', 0); this.setData({ 'reviewEditSheet.loanName': '' }) }
   },
   reviewEditorDirectory(target) {
     const token = this._reviewEditToken
     if (!editable(this, token)) return null
     const field = token.view.accountFields.find(field => field.target === target)
     if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId, allowedTypes: field.allowedTypes }
-    if (token.view.repaymentChannel) return null
+    if (token.view.repaymentChannel || token.view.registration) return null
     if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId,
       allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null }
-    const categories = { editorCategory: 'categoryId', editorInterest: 'interestCategoryId', editorFee: 'feeCategoryId' }
-    if (categories[target]) return { kind: 'categories', title: '选择分类', selectedId: token.draft[categories[target]],
-      categoryKind: target === 'editorCategory' ? token.view.categoryKind : 'expense' }
-    if (target === 'editorLoan') return { kind: 'loans', title: '选择贷款计划', selectedId: token.draft.loanId }
+    if (target === 'editorCategory') return { kind: 'categories', title: '选择分类', selectedId: token.draft.categoryId,
+      categoryKind: token.view.categoryKind }
     return null
   },
   isReviewEditorCurrent() { return editable(this, this._reviewEditToken) },
@@ -406,14 +575,7 @@ module.exports = {
     } else if (options.kind === 'categories') {
       if (!item.categoryId || item.archivedAt || item.kind !== options.categoryKind) return false
       token.categories.set(item.categoryId, item)
-      update(this, { editorCategory: 'categoryId', editorInterest: 'interestCategoryId', editorFee: 'feeCategoryId' }[target], item.categoryId)
-    } else {
-      if (!item.loanId || !item.version) return false
-      if (item.accountId && !token.view.accountFields.some(field => field.label === '还入账户' && field.accountId === item.accountId)) {
-        this.setData({ 'reviewEditSheet.error': '该贷款不属于当前还入账户，请先核对资金账户' }); return false
-      }
-      update(this, 'loanId', item.loanId); update(this, 'loanVersion', Number(item.version)); update(this, 'chargeAllocations', [])
-      this.setData({ 'reviewEditSheet.loanName': item.name })
+      update(this, 'categoryId', item.categoryId)
     }
     return true
   },
@@ -529,48 +691,6 @@ module.exports = {
     const selected = draft.refund?.mode === 'link' && draft.refund.id === item.id
     update(this, 'refund', selected ? null : { mode: 'link', kind: item.kind, id: item.id, version: item.version })
   },
-  async loadEditorCharges(event) {
-    const token = this._reviewEditToken
-    if (!editable(this, token) || !token.view.showLoan || !token.draft.repaymentDetails || !token.draft.loanId || token.draft.loanMode !== 'associate') return
-    const loanId = token.draft.loanId, epoch = token.chargeEpoch = (token.chargeEpoch || 0) + 1
-    const active = () => editable(this, token) && token.chargeEpoch === epoch && token.draft.loanId === loanId
-    this.setData({ 'reviewEditSheet.chargeLoading': true, 'reviewEditSheet.chargeError': '' })
-    try {
-      const more = event?.currentTarget?.dataset?.more
-      const chargeApi = this._draftSession && this._draftSession.isLocal ? { callApi: (action, data) => this._draftSession.call(action, data) } : require('../../../../services/catledger-api')
-      const result = await chargeApi.callApi('loans.chargePlan', { loanId, pageSize: 20, ...(more && token.chargeCursor ? { cursor: token.chargeCursor } : {}) }, { force: true })
-      if (!active()) return
-      if (Number(result.loanVersion) !== token.draft.loanVersion) throw Error('贷款资料已变更，请重新选择该计划后核验费用')
-      const choices = result.items.filter(item => ['planned','recorded','baseline'].includes(item.state))
-      for (const item of choices) token.charges.set(item.chargeId, item)
-      token.chargeCursor = result.nextCursor
-      this.setData({ 'reviewEditSheet.chargeChoices': choices.map(item => ({ chargeId: item.chargeId, component: item.component,
-        label: (item.periodNumber ? '第 ' + item.periodNumber + ' 期' : '一次性') + (item.component === 'interest' ? '利息' : '费用'),
-        treatment: item.state === 'planned' ? '补记费用' : '已记费用', amount: model.yuan(item.outstandingMinor),
-        selected: token.draft.chargeAllocations.some(part => part.chargeId === item.chargeId) })),
-        'reviewEditSheet.chargeLoading': false, 'reviewEditSheet.chargeMore': Boolean(result.nextCursor) })
-    } catch (error) { if (active()) this.setData({ 'reviewEditSheet.chargeLoading': false, 'reviewEditSheet.chargeError': error.message || errorText(error) }) }
-  },
-  selectEditorCharge(event) {
-    const token = this._reviewEditToken, id = event.currentTarget.dataset.id
-    if (!editable(this, token) || this.data.reviewEditSheet.chargeLoading) return
-    const item = token.charges.get(id)
-    if (!item) return
-    const old = token.draft.chargeAllocations, exists = old.some(part => part.chargeId === id)
-    if (!exists && old.length >= 80) return
-    update(this, 'chargeAllocations', exists ? old.filter(part => part.chargeId !== id)
-      : old.concat({ chargeId: id, component: item.component, amountInput: model.yuan(item.outstandingMinor) }))
-    this.setData({ 'reviewEditSheet.chargeChoices': this.data.reviewEditSheet.chargeChoices.map(choice => ({ ...choice, selected: token.draft.chargeAllocations.some(part => part.chargeId === choice.chargeId) })) })
-  },
-  changeEditorChargeAmount(event) {
-    const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
-    if (!editable(this, token) || !Number.isInteger(index) || !token.draft.chargeAllocations[index]) return
-    update(this, 'chargeAllocations', token.draft.chargeAllocations.map((part, i) => i === index ? { ...part, amountInput: String(event.detail.value) } : part))
-  },
-  removeEditorCharge(event) {
-    const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
-    if (editable(this, token) && Number.isInteger(index)) update(this, 'chargeAllocations', token.draft.chargeAllocations.filter((_, i) => i !== index))
-  },
   async openEditorOriginal(event) {
     const token = this._reviewEditToken
     if (!current(this, token) || this.data.reviewEditSheet.saving) return
@@ -581,7 +701,7 @@ module.exports = {
   loadEditorEvidence() { const token = this._reviewEditToken; if (current(this, token)) return evidence(this, token) },
   async openEditorIssue() {
     const token = this._reviewEditToken, sheet = this.data.reviewEditSheet, issue = sheet?.issue
-    if (!current(this, token) || !sheet?.groupAction || sheet.saving || sheet.pending) return
+    if (!current(this, token) || !sheet?.groupAction || sheet.saving || sheet.pending || sheet.planCreatePending) return
     if (!issue) return
     if (Object.keys(token.draft.dirty).length) {
       this.setData({ 'reviewEditSheet.error': '请先保存当前修改，再核对关系；关系判断不会自动保存本笔字段' })
@@ -603,7 +723,7 @@ module.exports = {
   invalidateReviewEdit() {
     if (this.data.reviewEditSheet) this.setData({ 'reviewEditSheet.stale': true, 'reviewEditSheet.loading': false,
       ...(!this._reviewEditToken?.sent ? { 'reviewEditSheet.saving': false } : {}),
-      'reviewEditSheet.canSave': this.data.reviewEditSheet.pending, 'reviewEditSheet.error': '记录已更新，输入已保留，请重新读取后核验' })
+      'reviewEditSheet.canSave': this.data.reviewEditSheet.pending || this.data.reviewEditSheet.planCreatePending, 'reviewEditSheet.error': '记录已更新，输入已保留，请重新读取后核验' })
   },
   closeReviewEdit() {
     if (this.data.reviewEditSheet?.saving) return
@@ -690,23 +810,102 @@ module.exports = {
         : errorText(error) })
     }
   },
+  // 先保存创建参数和请求 ID，再发送；关闭、重开或响应中断都只继续这一次创建。
+  async createEditorPlan(token) {
+    if (!current(this, token)) return false
+    if (token.draft.planLoanId) return true
+    const scope = planScope()
+    let recovery = null, outcomeReceived = false
+    try {
+      recovery = readPlanRecovery(scope, this.data.update.updateId, token.eventId)
+      const inFlight = pending.pending()
+      if (inFlight && (!recovery || inFlight.target !== 'api' || inFlight.action !== 'loans.create' ||
+          inFlight.payload.requestId !== recovery.requestId)) {
+        throw Object.assign(Error('另一次操作结果仍待确认，请先返回原记录继续处理'), { code: 'PENDING_OPERATION_EXISTS' })
+      }
+      if (!recovery) {
+        const checked = model.derive(token.row, token.draft, { accounts: [...token.accounts.values()],
+          categories: [...token.categories.values()], planCandidates: token.planCandidates || [], ...planAccountContext(this, token) })
+        const request = checked.planRequest
+        if (!request || checked.errors.length || !request.accountId || !request.schedule?.firstPaymentDate || request.schedule.ratePpm == null) {
+          this.setData({ 'reviewEditSheet.error': checked.fieldErrors.plan || '请先补全分期计划、利率和首次还款日期' })
+          return false
+        }
+        const data = { name: request.name, kind: 'installment', accountId: request.accountId,
+          baselinePrincipalMinor: request.principalMinor, baselineDate: request.startMonth + '-01',
+          startDate: request.startMonth + '-01', ...request.schedule,
+          repaymentMethod: scheduleForm.METHOD_LABELS[request.schedule.scheduleMethod],
+          installmentSetup: { schema: 1, originalPrincipalMinor: request.principalMinor, historicalPaidTerms: 0 },
+          generatePlan: true, confirmed: true,
+          importOrigin: { updateId: this.data.update.updateId, eventId: token.eventId },
+          ...(request.importAccountDraft ? { importAccountDraft: request.importAccountDraft } : {}) }
+        recovery = { schema: 1, requestId: require('../../../../services/catledger-api').createRequestId(),
+          updateId: this.data.update.updateId, eventId: token.eventId, data, draft: copy(token.draft) }
+        writePlanRecovery(scope, recovery)
+      }
+      token.planRecovery = recovery; token.planRecoveryScope = scope
+      let loanId = recovery.loanId
+      if (!loanId) {
+        const outcome = await planWriter(recovery, scope).send('api', 'loans.create', recovery.data,
+          { exact: true, canSend: () => current(this, token) })
+        outcomeReceived = true
+        loanId = outcome && outcome.result && outcome.result.loanId
+      }
+      if (!loanId) throw Error('分期计划没有建立成功，请重试')
+      // 保存中不能走 update（它会因为 sheet.saving 拒绝），直接把计划 ID 写进草稿并重算。
+      token.createdPlanId = loanId
+      token.createdPlanAccountId = recovery.data.accountId
+      token.draft = { ...token.draft, planLoanId: loanId,
+        dirty: { ...token.draft.dirty, planLoanId: true, ...(token.draft.planAction ? { planAction: true } : {}) } }
+      if (current(this, token)) {
+        this.setData({ 'reviewEditSheet.planCreatePending': false })
+        refresh(this)
+      }
+      return true
+    } catch (error) {
+      if (current(this, token)) {
+        let packet, storageUnreadable = false
+        try { packet = pending.pending() } catch (_) { storageUnreadable = true }
+        const unresolved = Boolean(recovery && (storageUnreadable || outcomeReceived || error.confirmedResult ||
+          packet && packet.target === 'api' && packet.action === 'loans.create' && packet.payload.requestId === recovery.requestId))
+        if (!unresolved && token.planRecovery && !token.planRecovery.loanId) {
+          try { forgetPlanRecovery(token); token.planRecovery = null } catch (_) {}
+        }
+        this.setData({ 'reviewEditSheet.planCreatePending': unresolved,
+          'reviewEditSheet.canSave': unresolved || this.data.reviewEditSheet.canSave,
+          'reviewEditSheet.error': unresolved ? '计划创建结果待确认，重试会继续原请求，不会另建计划' : errorText(error) })
+      }
+      return false
+    }
+  },
   async saveReviewEdit() {
     const token = this._reviewEditToken, sheet = this.data.reviewEditSheet
-    if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave || !sheet.pending && !editable(this, token)) return
+    if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave || !sheet.pending && !sheet.planCreatePending && !editable(this, token)) return
     // 本金编辑器里勾选的利息是另一笔事件：先逐笔写回归属，再走原来的本笔保存/刷新。
     // 两件事不混在一个请求里，服务端仍按单笔事务复核；部分失败时保留未保存的勾选。
     const changes = pendingAttributionChanges(token)
     if (changes.assign.length || changes.clear.length) return this.saveEditorAttributions(token, changes)
+    // 新建计划的决定要先把计划真建出来：事件里只存计划 ID，计划本身由这一步创建。
+    // 建好之后计划 ID 留在草稿里，重试保存不会重复建第二笔。
+    const planView = token.view?.disbursementPlan
+    if (planView && planView.action === 'create' && token.view.planRequest && !token.draft.planLoanId) {
+      this.setData({ 'reviewEditSheet.saving': true, 'reviewEditSheet.error': '' })
+      const created = await this.createEditorPlan(token)
+      if (!current(this, token)) return
+      // 后面的事件保存会自己再置保存中；先放开，避免确认弹窗前被当成不可编辑。
+      this.setData({ 'reviewEditSheet.saving': false })
+      if (!created) return
+      if (!token.view.canSave) return
+    }
     const editVersion = token.editVersion || 0
     const payload = token.payload || { updateId: this.data.update.updateId, updateVersion: token.updateVersion,
       eventId: token.eventId, eventVersion: token.row.version, ...token.view.payload }
     const requires = []
     if (!sheet.pending && token.row.detailFacts?.refund?.status === 'confirmed' && (token.draft.economicNature !== 'refund' || token.draft.refund)) requires.push('refund')
-    if (!sheet.pending && token.row.loanRepayment && payload.decisions?.repayment === null) requires.push('repayment')
     if (!sheet.pending && token.row.editorFacts && payload.composition && (token.row.paymentResolution || token.row.repaymentAllocations?.length) &&
       (payload.composition.kind !== token.row.editorFacts.composition || payload.composition.incomplete)) requires.push('composition')
     if (requires.length && !requires.every(key => payload.acknowledgedChanges.includes(key))) {
-      const accepted = await new Promise(resolve => wx.showModal({ title: '确认关系变更', content: '保存将重新核验或解除本笔已保存的资金分配、退款或还款关系，原始账单不会改变。', success: result => resolve(result.confirm), fail: () => resolve(false) }))
+      const accepted = await new Promise(resolve => wx.showModal({ title: '确认关系变更', content: '保存将重新核验或解除本笔已保存的资金分配或退款关系，原始账单不会改变。', success: result => resolve(result.confirm), fail: () => resolve(false) }))
       if (!accepted || !editable(this, token) || editVersion !== (token.editVersion || 0)) return
       payload.acknowledgedChanges = [...new Set(payload.acknowledgedChanges.concat(requires))]
     }
@@ -719,6 +918,7 @@ module.exports = {
         canSend: () => current(this, token) && (sheet.pending || !this.data.reviewEditSheet.stale && token.session.active && token.session.summary.viewVersion === token.version) })
       if (!current(this, token)) return
       token.receipt = result.result
+      try { forgetPlanRecovery(token) } catch (_) {}
       this.setData({ 'reviewEditSheet.saved': true, 'reviewEditSheet.pending': false, 'reviewEditSheet.canSave': false, 'reviewEditSheet.saving': false })
       return this.refreshReviewEdit()
     } catch (error) {

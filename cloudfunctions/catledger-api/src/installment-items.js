@@ -47,6 +47,20 @@ async function boundLoan(c,uid,accountId,referenceKey) {
     WHERE b.uid=? AND b.account_id=? AND b.reference_key=?`,[uid,accountId,referenceKey])
   return row && row.archivedAt==null ? row : null
 }
+// 账单没有合同编号时，绑定表里没有可查的键；按计划指纹直接找计划。
+// 只有唯一命中才算数：同名同总期数的两笔计划本来就分不出来，留给人工在待补清单里归。
+async function fingerprintLoan(c,uid,event) {
+  const fingerprint = require('./installment-plan-fingerprint').fingerprintOf(event)
+  if (!fingerprint) return null
+  const [rows]=await c.execute(`SELECT l.loan_id AS loanId,l.account_id AS accountId,l.name,l.schedule_terms AS terms,
+    l.start_date AS startDate,l.baseline_date AS baselineDate,l.baseline_principal_minor AS baselinePrincipalMinor,
+    l.installment_setup_json AS installmentSetup,l.archived_at AS archivedAt,l.deleted_at AS deletedAt
+    FROM catledger_loans l WHERE l.uid=? AND l.account_id=? AND l.kind='installment'
+      AND l.schedule_terms=? AND l.archived_at IS NULL AND l.deleted_at IS NULL LIMIT 21`,[uid,fingerprint.accountId,fingerprint.totalTerms])
+  const matched=rows.filter(row=>row.archivedAt==null&&row.deletedAt==null&&
+    require('./installment-plan-fingerprint').matches(fingerprint,{...row,scheduleTerms:row.terms}))
+  return matched.length===1 ? matched[0] : null
+}
 async function canonicalItem(c,uid,loanId,periodNumber,component) {
   if (!loanId) return null
   const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.period_number=? AND i.component=? AND i.canonical=1 AND i.active=1',
@@ -87,7 +101,7 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   const [[account]]=await c.execute('SELECT type FROM catledger_accounts WHERE uid=? AND account_id=?',[uid,event.ledgerAccountId])
   if (!account || account.type!=='credit') fail('LOAN_SOURCE_MISMATCH')
   const identityId=identityIds.length===1?identityIds[0]:null
-  const loan=await boundLoan(c,uid,event.ledgerAccountId,evidence.referenceKey)
+  const loan=await boundLoan(c,uid,event.ledgerAccountId,evidence.referenceKey)||await fingerprintLoan(c,uid,event)
   if (loan && (evidence.periodNumber>Number(loan.terms) || evidence.totalTerms && evidence.totalTerms!==Number(loan.terms))) fail('LOAN_SOURCE_MISMATCH')
   let previous=null
   if (identityId) {

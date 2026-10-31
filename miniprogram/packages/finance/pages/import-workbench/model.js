@@ -867,6 +867,9 @@ function installmentParts(event, installment, title, sourceText) {
 const EVENT_TITLE_FALLBACK = Object.freeze({ repayment: '信用卡还款', internal_transfer: '账户转账', refund: '退款', expense: '支出', income: '收入' })
 
 function displayTitleOf(event) {
+  const business = event && (event.disbursement || event.fieldSources && event.fieldSources.disbursement)
+  if (business?.role === 'disbursement' && event.economicNature === 'borrow') return '现金分期借款'
+  if (business?.role === 'registration') return '分期登记'
   const evidence = event && event.primaryEvidence || {}
   return [evidence.item, evidence.counterparty].find(function (value) {
     return value && !/^(?:[\s/／—-]+|不详|未知)$/.test(value)
@@ -948,6 +951,16 @@ function exclusionReasonText(event) {
     ['account_mapping_excluded', '按本次账户选择排除'],
     ['source_account_ignored_default', '按已保存的账户规则自动排除']
   ].filter(([code]) => reasons.has(code)).map(([, label]) => label)
+  // 放款对行是已识别的来源事实，不是“原因待核对”；产品名按账单上的叫法，不写死成现金分期。
+  // 放款行已在核对时归入或新建了分期计划时，直接写出计划名，说明这条卡内记账行为什么不再入账。
+  if (reasons.has('installment_offset_pair')) {
+    const pair = event && (event.disbursement || event.fieldSources && event.fieldSources.disbursement) || {}
+    const decision = event && (event.installmentPlanDecision || event.fieldSources && event.fieldSources.installmentPlan) || null
+    const planLabel = String(pair.planLabel || '').trim() || '分期借款'
+    labels.push(decision && decision.action && decision.action !== 'skip'
+      ? '已并入「' + (String(decision.planLabel || '').trim() || planLabel) + '」，不重复入账'
+      : '同一笔' + planLabel + '的卡内记账行，已并入这笔借款，不重复入账')
+  }
   if (reasons.has('manual_exclusion') && !reasons.has('account_mapping_excluded') && !reasons.has('source_account_ignored_default')) {
     labels.push('本次手动排除')
   }

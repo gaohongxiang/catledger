@@ -93,6 +93,48 @@ test('账户同义字段可归并，但同一账户的其他配置差异不能�
   assert.equal(rebase([{ changes: choices }], oldFacts, next)[0].value.needsRecheck, true)
 })
 
+test('历史自动忽略释放后待确认，同批本机明确保存的排除或新建账户继续生效', async t => {
+  const { randomUUID } = require('node:crypto')
+  const { planAccountIssueUpgrade } = require('../cloudfunctions/catledger-import/src/account-plan-upgrade')
+  const { releaseLegacyIgnore } = require('../cloudfunctions/catledger-import/src/legacy-ignore-release')
+  const sessionFactory = require('../miniprogram/packages/finance/services/import-local-session')
+  for (const mode of ['history-only', 'unconfirmed-draft', 'explicit-ignore', 'explicit-create']) await t.test(mode, async () => {
+    const old = await require('./helpers/local-review').facts({ count: 2, mapped: false })
+    old.ruleVersion = old.update.planVersion = 'organizer-plan-v38'
+    const issue = old.issues.find(row => row.issueType === 'account_mapping')
+    issue.status = 'resolved'; issue.blocking = false; issue.primaryReasonCode = 'payment_reference_ignored_by_history'
+    old.events = old.events.map(event => ({ ...event, status: 'excluded', reasonCodes: ['source_account_ignored_default'] }))
+    const records = [], files = { save(changes) { records.push({ changes: structuredClone(changes) }) }, touch() {}, close() {} }
+    const oldSession = sessionFactory.create({ restored: { facts: old, records }, files, requestId: randomUUID })
+    if (mode === 'unconfirmed-draft') records.push({ changes: [{ kind: 'draft', key: issue.issueId,
+      value: { mode: 'ignore', localConfirmed: false, dirty: true } }] })
+    if (mode.startsWith('explicit-')) oldSession.call('reviewIssues.resolveAccountMappings', {
+      requestId: randomUUID(), decisions: [{ issueId: issue.issueId,
+        decision: mode === 'explicit-ignore' ? 'exclude_events' : 'apply_fields',
+        fields: mode === 'explicit-ignore' ? {} : { ledgerAccountDraft: { name: '合成新账户', type: 'wallet', currency: 'CNY' } } }]
+    })
+    const next = structuredClone(old)
+    next.snapshotId = randomUUID(); next.ruleVersion = next.update.planVersion = require('../cloudfunctions/catledger-import/src/domain-versions').PLAN_VERSION
+    next.events = old.events.map(event => ({ ...releaseLegacyIgnore(event), version: event.version + 1 }))
+    const plan = planAccountIssueUpgrade({ updateId: old.update.updateId, previousEvents: old.events,
+      events: next.events, issues: old.issues, members: old.members })
+    next.issues = next.issues.filter(row => !plan.supersededIssueIds.includes(row.issueId)).concat(plan.issues.map(row => ({ ...row,
+      subjectEventIds: [...new Set(plan.members.filter(member => member.issueId === row.issueId).map(member => member.objectId))] })))
+    next.members = next.members.filter(row => !plan.supersededIssueIds.includes(row.issueId)).concat(plan.members)
+    next.actions.push({ actionType: 'semantic_upgrade', decision: { accountIssueMappings: plan.accountIssueMappings } })
+    const before = JSON.stringify({ old, records }), adopted = rebase(records, old, next)
+    const current = sessionFactory.create({ restored: { facts: next, records: [{ changes: adopted }] }, files, requestId: randomUUID })
+    assert.equal(current.model.invalid.size, 0)
+    assert.equal(current.model.issues.get(plan.issues[0].issueId).status, mode.startsWith('explicit-') ? 'resolved' : 'open')
+    assert.equal([...current.model.events.values()].every(event => event.status === 'excluded'), mode === 'explicit-ignore')
+    if (mode === 'explicit-create') assert.ok([...current.model.events.values()].every(event =>
+      event.ledgerAccountId === identity.accountId(next.snapshotId, '合成新账户', 'wallet')))
+    if (!mode.startsWith('explicit-')) assert.equal(current.model.choices.accounts.size, 0)
+    if (mode === 'unconfirmed-draft') assert.equal(current.state.drafts[plan.issues[0].issueId].localConfirmed, false)
+    assert.equal(JSON.stringify({ old, records }), before, '重整不能改写旧快照和决定日志')
+  })
+})
+
 test('真实session冲突不能提交，按新事项重选或按原事件保存后可恢复且重启不复发', async t => {
   const { randomUUID } = require('node:crypto'), sessionFactory = require('../miniprogram/packages/finance/services/import-local-session')
   for (const mode of ['mapped','unrouted','event-only']) await t.test(mode, async () => {

@@ -1,6 +1,5 @@
 const { effectiveText, accountRolesValid } = require('./editor-fields')
 const repaymentChannel = require('./repayment-channel')
-const { booking:repaymentBooking,inputForEvent:repaymentInput } = require('./explicit-repayment')
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { loadRefundPostingContext } = require('./refund-posting-context')
@@ -426,10 +425,9 @@ function transactionDraft(event, originalTransactionId) {
 function transactionDrafts(event, originalTransactionId) {
   // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
   // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
-  if (event.confirmedCreditInstallmentPrincipal === true) return []
+  if (event.confirmedCreditInstallmentPrincipal === true || event.confirmedInstallmentRegistration === true) return []
   if (repaymentChannel.resolutionFor(event)) return repaymentChannel.drafts(event)
-  const repayment = repaymentInput(event)
-  if (repayment) return repaymentBooking.drafts(repayment)
+  if (event.fieldSources?.loanRepayment || event.fieldSources?.editorOverrides?.incompleteRepayment) throw importError('UNRESOLVED_IMPORT')
   const plan = eventAllocation(event)
   if (!plan.valid) throw importError('UNRESOLVED_IMPORT')
   if (plan.kind !== 'none') return allocationTransactionDrafts(event, plan)
@@ -551,8 +549,9 @@ async function postInTransaction(connection, uid, data, requestDigest) {
   if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
   let created = 0, reused = 0, refundContext = null
-  const transactionRows = [], linkRows = [], newByIdentity = new Map(), repaymentSettlements = [], installmentRows = [], installmentInBatch = new Map()
+  const transactionRows = [], linkRows = [], newByIdentity = new Map(), installmentRows = [], installmentInBatch = new Map()
   const installmentStore = require('./installment-items')
+  const planClaims = new Map(), bySourceRow = require('./installment-business').indexByRow(events)
   async function flush() {
     await insertMany(connection, `INSERT INTO catledger_transactions
       (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
@@ -565,6 +564,15 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     event.postingId = postingId
     const eventIdentities = identities.get(event.eventId) || []
     const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
+    const hint = require('./installment-business').hintOf(event)
+    const candidate = hint && hint.role === 'disbursement' && bySourceRow.get(hint.partnerRowId)
+    const partner = candidate && require('./installment-business').hiddenOffset(candidate, bySourceRow) ? candidate : null
+    await require('./installment-plan-store').recordPlan(connection, uid, event,
+      eventIdentities.concat(partner ? identities.get(partner.eventId) || [] : []), planClaims)
+    if (require('./installment-business').isRegistration(event)) {
+      if (!require('./installment-business').hasPlan(event)) throw importError('UNRESOLVED_IMPORT')
+      event.confirmedInstallmentRegistration = true
+    }
     // prepareImport 在服务端核对账户 type=credit，其他账户拒绝该分期账单路径。
     const prepared = await installmentStore.prepareImport(connection,uid,event,eventIdentities)
     // 分期本金默认只保存来源；用户改判成支出、费用或收入时按实际流水入账，不能跳过交易。
@@ -583,10 +591,10 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     }
     const existing = history.get(event.eventId) || inBatch || prepared && prepared.reuseTransactionId &&
       {transactionId:prepared.reuseTransactionId,version:prepared.reuseTransactionVersion}
-    const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment) || Boolean(repaymentChannel.resolutionFor(event))
+    const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(repaymentChannel.resolutionFor(event))
     if (allocation && existing) throw importError('IDENTITY_CONFLICT')
     let transactions
-    if(prepared&&prepared.skipFinancial){if(existing)throw importError('LOAN_SOURCE_MISMATCH');transactions=[]}
+    if(event.confirmedInstallmentRegistration || prepared&&prepared.skipFinancial){if(existing)throw importError('LOAN_SOURCE_MISMATCH');transactions=[]}
     else if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
     else if (event.economicNature === ECONOMIC_NATURE.REFUND) {
       if (!refundContext) {
@@ -615,7 +623,6 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     }
     for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
       transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
-    if (event.fieldSources.loanRepayment) repaymentSettlements.push({ event,transactions })
     if (prepared) {
       const transactionId=transactions[0] && transactions[0].transactionId
       installmentRows.push({prepared,transactionId})
@@ -688,26 +695,6 @@ async function postInTransaction(connection, uid, data, requestDigest) {
     [appliedVersion, ready.length, actionId, uid, updateId, version]
   )
   if (completed.affectedRows !== 1) throw importError('CONFLICT')
-  const loanVersions = new Map()
-  for (const { event,transactions } of repaymentSettlements) {
-    const input = repaymentInput(event)
-    if (input.mode === 'associate') {
-      const previous = loanVersions.get(input.loanId)
-      if (previous && previous.base !== input.loanVersion) throw importError('CONFLICT')
-      loanVersions.set(input.loanId,{ base:input.loanVersion,count:(previous ? previous.count : 0) + 1 })
-      input.loanVersion += previous ? previous.count : 0
-    }
-    await repaymentBooking.settle(connection,uid,input,{ totalMinor:event.amountMinor,localAt:event.localAt,utcAt:event.utcAt,
-      timezoneOffsetMinutes:event.timezoneOffsetMinutes,transactions,source:async () => {
-        const [links] = await connection.execute(`SELECT link_id AS linkId,transaction_id AS transactionId,transaction_version AS transactionVersion,
-          role,creation_method AS creationMethod FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL`,[uid,event.eventId])
-        const sourceEvent = { eventId:event.eventId,updateId,version:event.version+1,state:'posted',status:'posted',economicNature:event.economicNature,
-          flowDirection:event.flowDirection,ledgerAccountId:event.ledgerAccountId,counterpartyLedgerAccountId:event.counterpartyLedgerAccountId,
-          categoryId:event.categoryId,manualFieldMask:event.manualFieldMask,fieldSources:event.fieldSources,reasonCodes:event.reasonCodes,
-          updateVersion:appliedVersion,updateStatus:'posted' }
-        return { event:sourceEvent,links }
-      } })
-  }
   return commandResult(connection, uid, updateId, data)
 }
 

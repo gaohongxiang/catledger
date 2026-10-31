@@ -138,3 +138,32 @@ test('本机退款候选只有一种表形状：行数组 + 覆盖 metadata，�
   assert.equal(legacy.refundCandidates(legacyEvent, 'event').historyComplete, true, '本批范围永远完整')
   assert.equal(legacy.refundCandidates(legacyEvent, 'transaction').historyComplete, false)
 })
+
+test('本机计划候选按同一指纹判断：同名同长期数靠本金和起始月区分，旧快照明确报错', async () => {
+  const value = await facts({ count: 2 }), accountId = value.accounts[0].accountId
+  const plan = (loanId, extra) => ({ loanId, accountId, name: '某卡分期', version: 1, kind: 'installment',
+    scheduleTerms: 12, startDate: '2026-03-01', baselineDate: '2026-03-01', baselinePrincipalMinor: '300000',
+    installmentSetup: { schema: 1, originalPrincipalMinor: '600000', historicalPaidTerms: 0 }, archivedAt: null, ...extra })
+  value.loans = [plan('a', {}), plan('b', { baselinePrincipalMinor: '500000', startDate: '2026-05-01',
+    installmentSetup: { schema: 1, originalPrincipalMinor: '500000', historicalPaidTerms: 0 } }),
+    plan('e', { baselinePrincipalMinor: '700000', startDate: '2026-05-01',
+      installmentSetup: { schema: 1, originalPrincipalMinor: '700000', historicalPaidTerms: 0 } }),
+    plan('c', { accountId: value.accounts[1].accountId }), plan('d', { archivedAt: '2026-06-01' })]
+  const reader = read.create(local.create(value))
+  // 账单行带着本金：只有 a 完全一致。
+  const one = reader.read('loans.planCandidates', { accountId, totalTerms: 12, planLabel: '某卡分期',
+    principalMinor: '600000', startMonth: '2026-03' })
+  assert.deepEqual(one.items.map(row => [row.loanId, row.matched]), [['a', true], ['b', false], ['e', false]],
+    '同卡未归档的分期计划都要列出来，归档和别的卡不出现')
+  assert.equal(one.items[0].startMonth, '2026-03')
+  assert.equal(one.items[0].originalPrincipalMinor, '600000')
+  // 每期账单行没有本金事实：起始月相同的 b、e 都算命中，必须由用户按本金自己挑，不能预选。
+  const many = reader.read('loans.planCandidates', { accountId, totalTerms: 12, planLabel: '某卡分期', startMonth: '2026-05' })
+  assert.deepEqual(many.items.map(row => [row.loanId, row.matched]), [['a', false], ['b', true], ['e', true]])
+  // 旧快照没有计划种类列：明确报错，不能悄悄返回空候选。
+  value.loans = value.loans.map(({ kind, ...row }) => row)
+  assert.throws(() => read.create(local.create(value)).read('loans.planCandidates', { accountId, totalTerms: 12 }),
+    error => error.code === 'LOCAL_REVIEW_REQUIRED')
+  assert.throws(() => reader.read('loans.planCandidates', { accountId: '', totalTerms: 12 }),
+    error => error.code === 'VALIDATION_ERROR')
+})

@@ -351,7 +351,6 @@
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">
-            <text wx:if="{{item.installmentNote}}" class="review-batch-note">{{item.installmentNote}}</text>
             <button wx:for="{{item.issues}}" wx:for-item="issue" wx:key="eventId" class="review-decision-card {{issue.groupPos ? 'card-group-' + issue.groupPos : ''}}" data-id="{{issue.eventId}}" data-issue-id="{{issue.issueId}}" bindtap="openPendingRecord" aria-label="{{issue.batchDecision}} {{issue.label}}">
               <template is="review-card-heading" data="{{card: issue, pending: true}}" />
               <view class="review-preview-list review-decision-previews">

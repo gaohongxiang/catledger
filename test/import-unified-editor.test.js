@@ -145,149 +145,92 @@ test('分期本金保留来源与单账户控件，可改判为支出、费用�
   const blocked={...conflicted,fieldSources:{...row.fieldSources,semanticBlockers:['row_semantic_conflict']}}
   assert.ok(prepare(blocked,{fields:{economicNature:'expense'}}).reasonCodes.includes('core_fields_conflict'))
 })
-test('不完整本息费保留明确零值；不把错误输入悄悄当零或旧金额', () => {
-  const row=base('repayment',{counterpartyLedgerAccountId:debt.accountId})
-  const view=change(row,[['repaymentDetails',true],['principalInput','90'],['interestInput',''],['feeInput','0']])
-  assert.equal(view.canSave,true);assert.equal(view.complete,false)
-  const next=prepare(row,view.payload)
-  assert.equal(next.fieldSources.loanRepayment.mode,'review');assert.equal(next.fieldSources.editorOverrides.incompleteRepayment.feeMinor,'0')
-  assert.equal(evaluatePostability(next).status,'needs_action')
-  const bad=change(row,[['repaymentDetails',true],['principalInput','90x']]);assert.equal(bad.canSave,false)
-  assert.match(bad.fieldErrors.repayment,/格式不正确/)
-  const over=change(row,[['repaymentDetails',true],['principalInput','110'],['interestInput',''],['feeInput','0']])
-  assert.equal(over.canSave,false);assert.match(over.fieldErrors.repayment,/超过付款总额/)
-  invalid(()=>prepare(row,over.payload))
-})
-test('还款分项填 0 不要求处理方式，整笔可直接确认', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
-  const view = change(row, [['repaymentDetails',true], ['principalInput','100'], ['interestInput','0'], ['feeInput','0']])
-  assert.equal(view.canSave, true); assert.equal(view.complete, true)
-  const decision = view.payload.decisions.repayment
-  assert.equal(decision.confirmed, true); assert.equal(decision.mode, 'defer')
-  assert.equal(decision.interestMinor, '0'); assert.equal(decision.feeMinor, '0')
-  assert.equal(decision.interestTreatment, 'expense'); assert.equal(decision.feeTreatment, 'expense')
-  const next = prepare(row, view.payload)
-  assert.equal(next.fieldSources.loanRepayment.mode, 'defer')
-  assert.equal(next.fieldSources.loanRepayment.interestTreatment, 'expense')
-})
-test('利息／手续费留空不问处理方式，也不显示这两行', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
-  const view = change(row, [['repaymentDetails',true], ['principalInput','100'], ['interestInput',''], ['feeInput','']])
-  assert.equal(view.interestPositive, false); assert.equal(view.feePositive, false)
-  assert.equal(view.canSave, true); assert.equal(view.complete, false)
-  assert.equal(view.payload.decisions.repayment.mode, 'review')
-  const filled = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0']])
-  assert.equal(filled.interestPositive, true); assert.equal(filled.feePositive, false)
-})
-test('非零利息默认记一笔，选好分类即可确认；显式改成待核对才留空', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
-  const view = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0']])
-  assert.equal(view.interestTreatmentLabel, '没记过，记一笔')
-  assert.equal(view.canSave, true); assert.equal(view.complete, false)
-  assert.equal(view.payload.decisions.repayment.draft.interestTreatment, 'expense')
-  const confirmed = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestCategoryId',randomUUID()]])
-  assert.equal(confirmed.complete, true)
-  assert.equal(confirmed.payload.decisions.repayment.confirmed, true)
-  const pending = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','']])
-  assert.equal(pending.payload.decisions.repayment.mode, 'review')
-  assert.equal(pending.payload.decisions.repayment.draft.interestTreatment, null)
-  const next = prepare(row, pending.payload)
-  assert.equal(next.fieldSources.loanRepayment.mode, 'review')
-  assert.equal(next.fieldSources.editorOverrides.incompleteRepayment.interestTreatment, null)
-})
-test('只提交待核对状态时保留已填还款明细', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
-  const first = prepare(row, { decisions: { repayment: { mode: 'review', draft: { mode:'defer', principalMinor:'9000',
-    interestMinor:null, feeMinor:'0', interestTreatment:null, feeTreatment:null, interestCategoryId:null, feeCategoryId:null, chargeAllocations:[] } } } })
-  assert.equal(first.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
-  const second = prepare(first, { decisions: { repayment: { mode: 'review' } } })
-  assert.equal(second.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
-  assert.equal(second.fieldSources.loanRepayment.mode, 'review')
-  const third = prepare(second, { fields: { note: '只改备注' } })
-  assert.equal(third.fieldSources.editorOverrides.incompleteRepayment.principalMinor, '9000')
-})
-test('信用卡也能关联分期计划，与贷款同一套落账规则', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId }), loanId = randomUUID()
-  const view = change(row, [['repaymentDetails',true], ['loanMode','associate'], ['loanId',loanId], ['loanVersion',2],
-    ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','expense'], ['interestCategoryId',randomUUID()]])
-  assert.equal(view.creditPayee, true); assert.equal(view.loanPayee, true)
-  assert.equal(view.canSave, true); assert.equal(view.complete, true)
-  const decision = view.payload.decisions.repayment
-  assert.equal(decision.mode, 'associate'); assert.equal(decision.loanId, loanId)
-  assert.equal(decision.interestTreatment, 'expense'); assert.equal(decision.chargeAllocations.length, 0)
-  const next = prepare(row, view.payload)
-  assert.equal(next.fieldSources.loanRepayment.mode, 'associate')
-  assert.equal(next.fieldSources.loanRepayment.loanId, loanId)
-  // 不展开明细也能整笔关联：整笔记为本金。
-  const whole = change(row, [['loanMode','associate'], ['loanId',loanId], ['loanVersion',2]])
-  assert.equal(whole.complete, true)
-  assert.equal(whole.payload.decisions.repayment.mode, 'associate')
-  assert.equal(whole.payload.decisions.repayment.principalMinor, '10000')
-})
-test('信用卡关联计划时“记过只冲抵”要选全收费项；不关联仍只计入转账', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
-  const associated = change(row, [['repaymentDetails',true], ['loanMode','associate'], ['loanId',randomUUID()], ['loanVersion',2],
-    ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
-  assert.equal(associated.complete, false)
-  assert.equal(associated.payload.decisions.repayment.mode, 'review')
-  const deferred = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
-  assert.equal(deferred.complete, true)
-  assert.equal(deferred.payload.decisions.repayment.interestTreatment, 'accrued')
-  assert.equal(deferred.payload.decisions.repayment.chargeAllocations.length, 0)
-})
-test('信用卡已记利息只计入转账，不再生成费用', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
-  const view = change(row, [['repaymentDetails',true], ['principalInput','90'], ['interestInput','10'], ['feeInput','0'], ['interestTreatment','accrued']])
-  assert.equal(view.canSave, true); assert.equal(view.complete, true)
-  const decision = view.payload.decisions.repayment
-  assert.equal(decision.confirmed, true); assert.equal(decision.interestTreatment, 'accrued')
-  assert.equal(decision.chargeAllocations.length, 0)
-  const drafts = transactionDrafts(prepare(row, view.payload))
-  assert.deepEqual(drafts.map(draft => [draft.type, String(draft.amountMinor)]), [['transfer','10000']])
-})
-test('收起还款明细会解除已保存决定，并保留确认要求', () => {
-  const repayment = { confirmed: true, mode: 'defer', assetAccountId: wallet.accountId, liabilityAccountId: debt.accountId,
-    principalMinor: '10000', interestMinor: '0', feeMinor: '0', interestTreatment: 'expense', feeTreatment: 'expense',
-    interestCategoryId: null, feeCategoryId: null, chargeAllocations: [] }
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId, loanRepayment: repayment, fieldSources: { loanRepayment: repayment } })
-  const view = change(row, [['repaymentDetails', false]])
+for (const target of [credit, debt]) for (const sourceDirection of ['expense', 'income']) {
+  test('普通还款只保存账户和整笔转账，不接受旧本息费或计划输入：' + target.type + '/' + sourceDirection, () => {
+    const row = publicRow(base('repayment', { sourceDirection,
+      ledgerAccountId: sourceDirection === 'income' ? target.accountId : wallet.accountId,
+      counterpartyLedgerAccountId: sourceDirection === 'income' ? wallet.accountId : target.accountId }))
+    const original = model.create(row)
+    const oldInputs = { repaymentDetails: true, loanMode: 'associate', loanId: randomUUID(), loanVersion: 2,
+      principalInput: '90', interestInput: '10', feeInput: '0', interestTreatment: 'accrued', feeTreatment: 'expense',
+      interestCategoryId: randomUUID(), feeCategoryId: randomUUID(), chargeAllocations: [{ chargeId: randomUUID(), amountInput: '10' }] }
+    for (const [key, value] of Object.entries(oldInputs)) assert.equal(model.change(row, original, key, value), original, key)
+    const draft = model.change(row, { ...original, ...oldInputs }, 'note', '核对整笔还款')
+    const view = model.derive(row, draft, catalog)
+    assert.equal(view.showLoan, false)
+    assert.equal(view.loanFields, undefined)
+    assert.equal(view.chargeRows, undefined)
+    assert.equal(view.payload.decisions.repayment, undefined)
+    assert.equal(view.complete, true)
+    assert.equal(view.canSave, true)
+    const next = prepare(row, view.payload)
+    assert.equal(next.fieldSources.loanRepayment, undefined)
+    assert.deepEqual(transactionDrafts(next).map(item => [item.type, item.sourceAccountId, item.destinationAccountId, String(item.amountMinor)]),
+      [['transfer', wallet.accountId, target.accountId, '10000']])
+  })
+}
+
+test('旧还款决定只在重新保存时主动清除，读取保留来源和明确零值', () => {
+  const repayment = { confirmed: true, mode: 'associate', loanId: randomUUID(), loanVersion: 2,
+    assetAccountId: wallet.accountId, liabilityAccountId: debt.accountId,
+    principalMinor: '9000', interestMinor: '1000', feeMinor: '0', chargeAllocations: [] }
+  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId,
+    loanRepayment: repayment, fieldSources: { loanRepayment: repayment } }))
+  const before = JSON.stringify(row)
+  const draft = model.create(row)
+  assert.equal(draft.repaymentDetails, false)
+  assert.equal(draft.loanId, undefined)
+  const view = model.derive(row, draft, catalog)
+  assert.equal(view.canSave, true)
   assert.equal(view.payload.decisions.repayment, null)
-  assert.throws(() => prepare(row, view.payload), error => error.code === 'VALIDATION_ERROR' || error.publicCode === 'VALIDATION_ERROR')
-  const next = prepare(row, { ...view.payload, acknowledgedChanges: ['repayment'] })
+  assert.deepEqual(view.payload.acknowledgedChanges, ['repayment'])
+  assert.equal(JSON.stringify(row), before, '读取和派生不能改写旧证据')
+  const next = prepare(row, view.payload)
   assert.equal(next.fieldSources.loanRepayment, null)
+  assert.deepEqual(transactionDrafts(next).map(item => [item.type, String(item.amountMinor)]), [['transfer', '10000']])
 })
-test('贷款账户不展开明细也能整笔关联计划', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
-  assert.equal(model.derive(publicRow(row), model.create(publicRow(row)), catalog).loanPayee, true)
-  const view = change(row, [['loanMode','associate'], ['loanId',randomUUID()], ['loanVersion',2]])
-  assert.equal(view.canSave, true); assert.equal(view.complete, true)
-  const decision = view.payload.decisions.repayment
-  assert.equal(decision.confirmed, true); assert.equal(decision.mode, 'associate')
-  assert.equal(decision.principalMinor, '10000'); assert.equal(decision.interestMinor, '0'); assert.equal(decision.feeMinor, '0')
-  assert.deepEqual(transactionDrafts(prepare(row, view.payload)).map(draft => [draft.type, String(draft.amountMinor)]), [['transfer','10000']])
-  const missingPlan = change(row, [['loanMode','associate']])
-  assert.equal(missingPlan.complete, false)
-  assert.equal(missingPlan.payload.decisions.repayment.mode, 'review')
+
+test('仅残留未完成明细或本机旧决定冲突，也能单次保存替换旧还款决定', () => {
+  for (const legacy of ['incomplete', 'localConflict']) {
+    const row = publicRow(base('repayment', { counterpartyLedgerAccountId: credit.accountId }))
+    if (legacy === 'incomplete') row.editorFacts.incompleteRepayment = { mode: 'defer', principalMinor: '9000', interestMinor: null, feeMinor: '0' }
+    else row.legacyRepaymentReview = true
+    const before = JSON.stringify(row)
+    const draft = model.change(row, model.create(row), 'acknowledgedChanges', ['refund', 'repayment'])
+    const view = model.derive(row, draft, catalog)
+    assert.equal(view.canSave, true)
+    assert.equal(view.payload.decisions.repayment, null)
+    assert.deepEqual(view.payload.acknowledgedChanges, ['refund', 'repayment'])
+    assert.equal(JSON.stringify(row), before)
+  }
 })
-test('信用卡收款端同样显示贷款计划组', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: credit.accountId })
-  const view = model.derive(publicRow(row), model.create(publicRow(row)), catalog)
-  assert.equal(view.loanPayee, true); assert.equal(view.creditPayee, true); assert.equal(view.showLoan, true)
-  // 只有付给资产账户时才没有计划可关联。
-  const bankRow = base('repayment', { counterpartyLedgerAccountId: bank.accountId })
-  assert.equal(model.derive(publicRow(bankRow), model.create(publicRow(bankRow)), catalog).loanPayee, false)
-})
-test('恢复只有待核对状态的重试请求不抹掉已填明细', () => {
+
+test('恢复旧冻结请求保留原金额与计划，但普通派生只清除旧决定', () => {
   const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId, fieldSources: {
     loanRepayment: { mode: 'review' },
     editorOverrides: { version: 1, incompleteRepayment: { mode:'defer', principalMinor:'9000', interestMinor:null, feeMinor:'0',
       interestTreatment:null, feeTreatment:null, interestCategoryId:null, feeCategoryId:null, chargeAllocations:[] } } } }))
-  const restored = model.restore(row, { decisions: { repayment: { mode: 'review' } } })
+  const payload = { decisions: { repayment: { mode: 'review' } }, acknowledgedChanges: [] }
+  const before = JSON.stringify(payload)
+  const restored = model.restore(row, payload)
   assert.equal(restored.repaymentDetails, true)
   assert.equal(restored.principalInput, '90.00')
   assert.equal(restored.interestTreatment, '')
   assert.equal(restored.loanMode, 'defer')
+  const view = model.derive(row, restored, catalog)
+  assert.equal(view.showLoan, false)
+  assert.equal(view.payload.decisions.repayment, null)
+  assert.equal(JSON.stringify(payload), before, '被冻结的请求内容不能被普通派生改写')
 })
+
+test('普通还款模板不再提供本息费拆分、贷款计划或收费项清偿入口', () => {
+  const template = require('node:fs').readFileSync(require('node:path').resolve(__dirname,
+    '../miniprogram/packages/finance/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  assert.doesNotMatch(template, /还款构成|editor\.showLoan|data-field="(?:principalInput|interestInput|feeInput|loanMode)"|data-target="editor(?:Loan|Interest|Fee)"|bindtap="(?:loadEditorCharges|selectEditorCharge|setEditorTreatment)"/)
+  assert.match(template, /editor\.disbursementPlan/)
+  assert.match(template, /editor\.fundsEndpoints/)
+})
+
 test('合并唯一人工文本含显式清空；两个冲突值不静默选主记录', () => {
   const primary=base(), secondary=prepare(base(),{fields:{note:'',counterparty:'合成修改对方'}})
   const merged=roles.mergeText(primary,[primary,secondary]);assert.equal(roles.overrides(merged).note,'');assert.equal(roles.overrides(merged).counterparty,'合成修改对方')
@@ -318,6 +261,66 @@ test('退款暂记是用户决定：候选和其他待核对项不构成门禁�
 })
 
 const tap=(data)=>({currentTarget:{dataset:data}})
+test('真实 Page 重新保存旧还款决定自动清除，不额外弹确认窗口', async () => {
+  const data = fixture(1, true)
+  const repayment = { mode: 'review' }
+  Object.assign(data.events[0], { economicNature: 'repayment', sourceDirection: 'expense', categoryId: null,
+    ledgerAccountId: wallet.accountId, counterpartyLedgerAccountId: debt.accountId, loanRepayment: repayment,
+    fieldSources: { loanRepayment: repayment, editorOverrides: { incompleteRepayment: { principalMinor: '9000', feeMinor: '0' } } } })
+  const h = runtime(data), page = h.page
+  h.wx.showModal = () => assert.fail('普通还款简化不另加确认步骤')
+  h.intercept = action => {
+    if (action !== 'financeUpdates.setReview') return
+    h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+    return { protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update, event: { status: 'ready' } }
+  }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  assert.equal(page.data.reviewEditSheet.editor.showLoan, false)
+  assert.equal(page.data.reviewEditSheet.canSave, true)
+  assert.equal(h.calls.some(call => call.action === 'financeUpdates.setReview'), false, '只读打开不能清除旧决定')
+  await page.saveReviewEdit()
+  const writes = h.calls.filter(call => call.action === 'financeUpdates.setReview')
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].input.decisions.repayment, null)
+  assert.deepEqual(writes[0].input.acknowledgedChanges, ['repayment'])
+  assert.equal(page.data.reviewEditSheet, null)
+  page.onUnload()
+})
+
+test('真实 Page 恢复旧冻结还款请求时原键原内容重试，不能改成清除请求', async () => {
+  const data = fixture(1, true)
+  Object.assign(data.events[0], { economicNature: 'repayment', sourceDirection: 'expense', categoryId: null,
+    ledgerAccountId: wallet.accountId, counterpartyLedgerAccountId: debt.accountId, legacyRepaymentReview: true })
+  const h = runtime(data), page = h.page
+  const frozen = { requestId: randomUUID(), updateId: h.summary.update.updateId, updateVersion: 1,
+    eventId: h.events[0].eventId, eventVersion: 1, editorVersion: 1, fields: { note: '旧请求原备注' },
+    decisions: { repayment: { mode: 'review', draft: { mode: 'associate', loanId: randomUUID(), loanVersion: 2,
+      principalMinor: '9000', interestMinor: null, feeMinor: '0', chargeAllocations: [] } } }, acknowledgedChanges: [] }
+  const envId = require('../miniprogram/config/cloudbase').envId
+  h.storage.set('catledger_pending_ledger_v1:' + envId + ':1234567890',
+    { schema: 1, target: 'import', action: 'financeUpdates.setReview', payload: frozen })
+  h.wx.showModal = () => assert.fail('冻结请求不能追加关系确认')
+  h.intercept = action => {
+    if (action === 'imports.commandResult') throw Object.assign(Error('原结果仍未确认'), { code: 'OPERATION_UNCONFIRMED' })
+    if (action !== 'financeUpdates.setReview') return
+    h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+    return { protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update, event: { status: 'needs_action' } }
+  }
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  assert.equal(page.data.reviewEditSheet.pending, true)
+  assert.equal(page._reviewEditToken.view.payload.decisions.repayment, null, '新编辑器派生不能替换冻结请求')
+  page.changeEditorText({ ...tap({ field: 'note' }), detail: { value: '不可覆盖' } })
+  assert.equal(page.data.reviewEditSheet.draft.note, '旧请求原备注')
+  page.closeReviewEdit()
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page.saveReviewEdit()
+  const writes = h.calls.filter(call => call.action === 'financeUpdates.setReview')
+  assert.equal(writes.length, 1)
+  assert.deepEqual(writes[0].input, frozen)
+  assert.equal(page.data.reviewEditSheet, null)
+  page.onUnload()
+})
+
 test('UE47 旧服务无 editorFacts 时只读，不能通过输入或保存伪造编辑成功',async()=>{
   const h=runtime(fixture(1,true)),page=h.page
   h.intercept=(action,input)=>action==='economicEvents.detail'&&!input.evidenceId
@@ -369,17 +372,18 @@ test('真实 Page：退款候选晚到或失败不改写输入；暂记不依赖
   page.onUnload()
 })
 
-test('隐藏本息费不随多账户模式提交；缺账户的组成保留合法未完成草稿', () => {
-  const row = base('repayment', { counterpartyLedgerAccountId: debt.accountId })
-  let draft = model.create(publicRow(row))
-  for (const [key, value] of [['repaymentDetails',true], ['principalInput','100'], ['interestInput','0'], ['feeInput','0']]) draft = model.change(publicRow(row), draft, key, value)
-  const partial = model.derive(publicRow(row), model.change(publicRow(row), draft, 'counterpartyLedgerAccountId', ''), catalog)
+test('普通还款缺账户和未完成多账户组成仍可保存，始终不产出贷款决定', () => {
+  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId }))
+  const draft = model.create(row)
+  const partial = model.derive(row, model.change(row, draft, 'counterpartyLedgerAccountId', ''), catalog)
   assert.equal(partial.canSave, true)
-  assert.equal(partial.payload.decisions.repayment.mode, 'review')
-  const split = model.derive(publicRow(row), model.change(publicRow(row), draft, 'composition', 'payment'), catalog)
+  assert.equal(partial.complete, false)
+  assert.equal(partial.payload.decisions.repayment, undefined)
+  const split = model.derive(row, model.change(row, draft, 'composition', 'payment'), catalog)
   assert.equal(split.showLoan, false)
   assert.ok(split.accountFields.find(field => field.label === '还入账户').allowedTypes.includes('credit'))
-  assert.equal(split.payload.decisions && split.payload.decisions.repayment, undefined)
+  assert.equal(split.payload.composition.incomplete, true)
+  assert.equal(split.payload.decisions.repayment, undefined)
 })
 
 test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前单端', () => {
@@ -399,18 +403,6 @@ test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前
   assert.equal(other.payload.decisions.repayment, undefined)
   draft = model.change(row, draft, 'owner', 'self')
   assert.equal(draft.composition, 'payment'); assert.equal(draft.parts[1].accountId, bank.accountId)
-})
-
-test('UE10 贷款延后关联不提交隐藏计划和分类，切回恢复输入', () => {
-  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId }))
-  let draft = model.create(row)
-  for (const [key, value] of [['repaymentDetails',true], ['loanMode','associate'], ['loanId',randomUUID()],
-    ['loanVersion',2], ['principalInput','90'], ['interestInput',''], ['interestCategoryId',randomUUID()], ['interestTreatment','accrued'], ['feeInput','0'], ['loanMode','defer']]) draft = model.change(row, draft, key, value)
-  const saved = model.derive(row, draft, catalog).payload.decisions.repayment.draft
-  assert.equal(saved.loanId, null); assert.equal(saved.loanVersion, null); assert.equal(saved.interestCategoryId, null)
-  const selected = draft.loanId
-  draft = model.change(row, draft, 'loanMode', 'associate')
-  assert.equal(draft.loanId, selected); assert.equal(draft.principalInput, '90')
 })
 
 test('UE41 冻结请求恢复完整金额、时间、组成、贷款和明确清空值', () => {

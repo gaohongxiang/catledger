@@ -121,8 +121,9 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     else if (!channel.valid(event)) reasons.push('repayment_channel_details_required')
   }
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
-  if (event.fieldSources && event.fieldSources.loanRepayment) {
-    try { require('./explicit-repayment-policy').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
+  // 旧草稿的本息拆分/计划关联不再参与普通还款入账，必须重新确认全额转账。
+  if (event.fieldSources && (event.fieldSources.loanRepayment || event.fieldSources.editorOverrides?.incompleteRepayment)) {
+    reasons.push('loan_repayment_required')
   }
   const editor = event.fieldSources && event.fieldSources.editorOverrides
   if (editor && editor.version === 1 && editor.incompleteComposition) reasons.push('editor_composition_incomplete')
@@ -137,6 +138,14 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     reasons.push('core_fields_missing')
   }
   if (!event.ledgerAccountId) reasons.push('ledger_account_required')
+  if (require('./installment-business').isRegistration(event)) {
+    // 登记只是来源与计划的关系，不借用还款本金期次，也不能通过改性质变成资金流水。
+    if (event.economicNature !== ECONOMIC_NATURE.UNKNOWN || event.flowDirection !== FLOW_DIRECTION.NEUTRAL ||
+        event.counterpartyLedgerAccountId || event.categoryId || event.fieldSources.loanRepayment ||
+        event.fieldSources.paymentResolution || (event.fieldSources.repaymentAllocations || []).length) reasons.push('core_fields_conflict')
+    if (!require('./installment-business').hasPlan(event)) reasons.push('installment_plan_required')
+    return unique(reasons)
+  }
   const installment = event.fieldSources && event.fieldSources.installment
   // 本金出账默认只登记分期来源；用户改判成支出、费用、收入或待确认后按所选性质入账。
   // 人工选择的实际转账、贷款付款或多账户分配仍不能沿用到此类记录。
@@ -243,15 +252,16 @@ function classifyReviewIssue(event) {
     return { issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS, primaryReason: 'repayment_channel_details_required' }
   }
   if (reasons.has('payment_components_ambiguous') && !paymentResolutionForEvent(event).valid) {
-    return { issueType: inspectPaymentAccounts(event, event.fieldSources && event.fieldSources.paymentAccounts).valid
-      ? REVIEW_ISSUE_TYPE.SHARED_FIELDS : REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'payment_components_ambiguous' }
+    // 账户归属由每个付款成分各自的账户事项承接（payment_account_groups 的引用），
+    // 这里只剩“各账户实际支付多少”，属于这笔事件自己的字段。
+    return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'payment_components_ambiguous' }
   }
   if (reasons.has('bank_channel_same_event_candidate')) {
     return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'bank_channel_same_event_candidate' }
   }
   const bankRepaymentAccount = event.economicNature === ECONOMIC_NATURE.REPAYMENT && !fundsProjection &&
     event.fieldSources?.ledgerAccountReference?.sourceType === 'bank' && event.fieldSources.ledgerAccountReference.paymentMethodKey
-  if (reasons.has('ledger_account_required') && (ACCOUNT_FIRST_NATURES.has(event.economicNature) || bankRepaymentAccount || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
+  if (reasons.has('ledger_account_required') && (require('./installment-business').isPlanSource(event) || ACCOUNT_FIRST_NATURES.has(event.economicNature) || bankRepaymentAccount || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
   if (reasons.has('repayment_other_treatment_required') || reasons.has('repayment_ownership_invalid') ||
@@ -269,6 +279,7 @@ function classifyReviewIssue(event) {
   if (reasons.has('installment_origin_required') || reasons.has('installment_composition_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: 'installment_origin_required' }
   }
+  if (reasons.has('installment_plan_required')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'installment_plan_required' }
   // 期次来源确定之后才谈归属：一笔费用要先知道是哪一期的，才谈得上属于哪个计划。
   if (reasons.has('installment_attribution_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.INSTALLMENT_ORIGIN, primaryReason: 'installment_attribution_required' }

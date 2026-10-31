@@ -4,7 +4,7 @@ const { randomBytes } = require('node:crypto')
 const { runMigrations } = require('../migrations/runner')
 const mysql = require('../cloudfunctions/catledger-import/node_modules/mysql2/promise')
 
-const UPDATE_COLUMNS = new Set(['object_version','row_id','state','status','version','economic_nature','flow_direction',
+const UPDATE_COLUMNS = new Set(['object_version','row_id','state','status','version','economic_nature','flow_direction','deleted_at','archived_at','cancelled',
   'ledger_account_id','counterparty_ledger_account_id','category_id','manual_field_mask','field_sources_json',
   'reason_codes_json','superseded_at','transaction_version','current_action_id'])
 function validRuntimePrivileges(value) {

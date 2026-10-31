@@ -1,6 +1,13 @@
 const { DRAFT_TABLES } = require('./discarded-update')
 
 const RUNTIME_PERMISSION_REQUIREMENTS = Object.freeze([
+  ...['catledger_loan_periods','catledger_loan_period_revisions','catledger_loan_period_allocations'].map(table => Object.freeze({
+    table, privilege: 'SELECT', columns: Object.freeze([]), reason: '核对新建分期的使用和修订保护'
+  })),
+  Object.freeze({ table: 'catledger_loans', privilege: 'UPDATE', columns: Object.freeze(['version','deleted_at','archived_at']),
+    reason: '注销废弃草稿中新建且尚未使用的计划，保留审计' }),
+  Object.freeze({ table: 'catledger_loan_periods', privilege: 'UPDATE', columns: Object.freeze(['cancelled','version']),
+    reason: '注销临时计划的未使用期次' }),
   ...['SELECT','INSERT','UPDATE'].map(privilege=>Object.freeze({table:'catledger_import_review_objects',privilege,columns:Object.freeze([]),reason:'完整草稿和不可变决定暂存'})),
   ...['SELECT','INSERT'].map(privilege=>Object.freeze({table:'catledger_import_review_chunks',privilege,columns:Object.freeze([]),reason:'完整草稿分块校验与读取'})),
   ...['SELECT', 'INSERT', 'UPDATE'].map(privilege => Object.freeze({ table: 'catledger_bank_channel_decisions', privilege,

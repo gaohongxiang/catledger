@@ -14,8 +14,11 @@ const { bankChannelEvidenceForRow } = require('./bank-channel-matching')
 function representativeEvent(updateId, group, idFactory, mappingIndex, mappingResolution, references) {
   const primary = group[0]
   const primarySemantic = getRowSemantic(primary)
+  const registration = primarySemantic.relationHints && primarySemantic.relationHints.disbursement &&
+    primarySemantic.relationHints.disbursement.role === 'registration'
   const primaryLedgerReference = ledgerAccountReferenceForRow(primary)
   const identities = unique(group.map((row) => row.identityId))
+  const registered = registration && group.some(row => row.existingRegistrationLoanId)
   const existingTransactionIds = unique(group.map((row) => row.existingTransactionId))
   const projections = group.map(projectSourceFunds)
     .filter(Boolean)
@@ -30,7 +33,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   const nature = projection && !projectionConflict
     ? projection.kind === 'repayment' ? ECONOMIC_NATURE.REPAYMENT : ECONOMIC_NATURE.INTERNAL_TRANSFER
     : economicNatureForRow(primary)
-  const flowDirection = [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(nature)
+  const flowDirection = registration || [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(nature)
     ? FLOW_DIRECTION.NEUTRAL
     : [ECONOMIC_NATURE.INCOME, ECONOMIC_NATURE.REFUND].includes(nature)
       ? FLOW_DIRECTION.INFLOW
@@ -47,10 +50,12 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   const coreConflict = group.some((row) => !compatibleCore(primary, row, STRONG_REFERENCE_WINDOW_MS))
   const identityConflict = group.some((row) => row.identityState === 'identity_conflict')
   const bankIdentityConflict = group.some((row) => row.sourceType === 'bank' && row.identityState === 'identity_conflict')
+  // 只认本批核对时明确选定的“仅本次不计入”。旧版本把忽略发布成永久映射，
+  // 这类历史规则不能再替新导入自动排除，否则重新导入时这笔会无声消失；
+  // 它应像其他没定过账户的付款方式一样，回到账户确认。
   const ignoredBySavedRule = group.every((row) => {
     const reference = ledgerAccountReferenceForRow(row)
-    return row.mappingAction === 'ignore' || Boolean(reference &&
-      mappingResolution.ignoredIdentityKeys.has(accountIdentityKeyForReference(reference)))
+    return Boolean(reference && mappingResolution.ignoredIdentityKeys.has(accountIdentityKeyForReference(reference)))
   })
   const accountMappingConflict = group.some((row) => (
     mappingResolution.conflictIdentityKeys.has(accountGroupingKey(row.sourceType, row.paymentMethod))
@@ -59,6 +64,12 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   ))
   const failedOrClosed = group.every((row) => ['failed', 'closed'].includes(row.economicEffect))
   const nonFinancial = group.every(isNonFinancialSourceRecord)
+  // 现金分期放款的对行：卡内把本金转进分期账单的记账行。它同样不产生资金流，但排除原因
+  // 要写成这一对的事实，而不是笼统的“非资金记录”。
+  const installmentOffset = group.every((row) => {
+    const hint = getRowSemantic(row).relationHints
+    return Boolean(hint && hint.disbursement && hint.disbursement.role === 'offset')
+  })
   const rowBlockers = unique(group.flatMap((row) => semanticBlockers(getRowSemantic(row))))
   const reasons = [...rowBlockers]
   if (identityConflict) reasons.push('identity_conflict')
@@ -66,7 +77,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   if (accountConflict || coreConflict) reasons.push('core_fields_conflict')
   if (projectionConflict) reasons.push('core_fields_conflict')
   if (existingTransactionIds.length > 1) reasons.push('identity_conflict')
-  if (nature === ECONOMIC_NATURE.UNKNOWN) reasons.push('economic_nature_required')
+  if (nature === ECONOMIC_NATURE.UNKNOWN && !registration) reasons.push('economic_nature_required')
   if (primary.economicEffect === 'unknown') reasons.push('transaction_status_unknown')
   if (primarySemantic.issues.some((issue) => issue.code === 'account_endpoint_unknown')) {
     reasons.push('source_account_endpoint_unknown')
@@ -87,9 +98,8 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     batchId: primary.batchId,
     eventKey,
     eventKeyVersion: EVENT_KEY_VERSION,
-    // “以后不计入”直接应用到后续匹配事件，同时保留一条可见、可修改的
-    // 已确认账户项；用户无需重复选择，也不会失去覆盖历史决定的入口。
-    status: !bankIdentityConflict && (existingTransactionIds.length > 0 || failedOrClosed || nonFinancial || ignoredBySavedRule)
+    // 本批明确选择的不计入保留为可修改的已确认账户项；历史永久忽略不参与排除。
+    status: !bankIdentityConflict && (existingTransactionIds.length > 0 || registered || failedOrClosed || nonFinancial && !registration || ignoredBySavedRule)
       ? EVENT_STATUS.EXCLUDED
       : EVENT_STATUS.NEEDS_ACTION,
     flowDirection,
@@ -109,6 +119,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     fieldSources: {
       semanticBlockers: rowBlockers,
       ...(primarySemantic.relationHints && primarySemantic.relationHints.installment ? { installment:primarySemantic.relationHints.installment } : {}),
+      ...(primarySemantic.relationHints && primarySemantic.relationHints.disbursement ? { disbursement: primarySemantic.relationHints.disbursement } : {}),
       ...paymentEvidenceFields(group.map((row) => ({ direction: row.direction, semantic: getRowSemantic(row) }))),
       primaryEvidenceId: null,
       rowIds: group.map((row) => row.rowId),
@@ -118,9 +129,9 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     },
     reasonCodes: unique([
       ...reasons,
-      existingTransactionIds.length > 0 ? 'already_posted' : null,
+      existingTransactionIds.length > 0 || registered ? 'already_posted' : null,
       ignoredBySavedRule ? 'source_account_ignored_default' : null,
-      nonFinancial ? 'source_non_financial' : null,
+      nonFinancial && !registration ? (installmentOffset ? 'installment_offset_pair' : 'source_non_financial') : null,
       failedOrClosed ? primary.economicEffect === 'failed' ? 'transaction_failed' : 'transaction_closed' : null
     ]),
     version: 1,

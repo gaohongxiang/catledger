@@ -90,6 +90,48 @@ test('切换性质前提示会清空的已选内容，不静默丢弃', async t 
   assert.equal(page.data.reviewEditSheet.natureHint, '')
 })
 
+test('性质列表末尾可以把这一笔排除出本批，决定只作用于这一笔', async t => {
+  const { h, page, row } = await editor.open(t, { economicNature: 'unknown' })
+  const exclude = editor.view(page).exclude
+  assert.equal(exclude.label, '不计入本次账本')
+  assert.equal(exclude.scopeCount, 1)
+  assert.match(exclude.hint, /原文保留/)
+  page.openNatureSheet()
+  await page.excludeEditorEvents()
+  assert.ok(h.wx.modal, '应先弹出确认框，而不是静默返回')
+  assert.equal(h.wx.modal.title, '不计入本次账本')
+  assert.ok(Array.from(h.wx.modal.confirmText).length <= 4, '确认按钮文字要在微信的 4 字上限内，否则弹窗不会出现')
+  assert.match(h.wx.modal.content, /原文仍保留/)
+  assert.equal(page.data.reviewEditSheet, null, '决定入队后关闭核对页')
+  const entries = page._draftSession.state.entries
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0].kind, 'review')
+  assert.equal(entries[0].issueId, 'synthetic-issue')
+  assert.equal(entries[0].issueVersion, 1)
+  assert.deepEqual(JSON.parse(JSON.stringify(entries[0].decision)),
+    { decision: 'exclude_events', selection: { mode: 'include', eventIds: [row.eventId] } })
+})
+
+test('没有开放事项就没有排除入口；同组多笔时只说清这一笔', async t => {
+  const { h, page, row } = await editor.open(t, { economicNature: 'unknown' })
+  page._reviewEditToken.row.pendingIssue = null
+  editor.edit(page, 'note', '只改备注')
+  assert.equal(editor.view(page).exclude, null, '排除决定必须挂在开放事项上')
+
+  page._reviewEditToken.row.pendingIssue = { issueId: 'synthetic-issue', issueType: 'shared_fields', status: 'open',
+    version: 1, blocking: true, memberCount: 3, candidateCount: 0 }
+  editor.edit(page, 'note', '再改一次备注')
+  const exclude = editor.view(page).exclude
+  assert.equal(exclude.scopeCount, 3)
+  assert.match(exclude.hint, /同组另外 2 笔/)
+  page.openNatureSheet()
+  await page.excludeEditorEvents()
+  assert.match(h.wx.modal.content, /同组另外 2 笔保留待核对/)
+  assert.match(h.wx.modal.content, /当前未保存的修改也会一起放弃/)
+  const decision = page._draftSession.state.entries[0].decision
+  assert.deepEqual(JSON.parse(JSON.stringify(decision.selection.eventIds)), [row.eventId], '同组其余记录不被连带排除')
+})
+
 test('性质切换列表只列经济性质，并带各自模式说明', async t => {
   const { page } = await editor.open(t, { economicNature: 'expense' })
   const options = editor.view(page).natureOptions

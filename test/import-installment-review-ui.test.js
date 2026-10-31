@@ -460,14 +460,8 @@ test('待核对按计划一卡：两笔本金各自一张卡，未归属利息�
   assert.equal(chargeCard.subjects.length, 1)
   assert.equal(chargeCard.subjects[0].rowRoleKey, 'interest')
   assert.equal(chargeCard.subjects[0].installmentPending, true)
-  // 卡头只写状态：每张卡都是同一件事，不重复“还有 N 笔”。笔数是组级事实，放组标题上。
+  // 每笔卡片只写自己的归属状态。
   assert.equal(chargeCard.label, '分期利息｜利息待归属')
-  // 只有一笔时不写——那是废话，卡片自己就在。
-  assert.equal(presentation.installmentPendingNote([chargeCard]), '')
-  const another = presentation.pendingCard(pendingInstallmentEvent('interest', 17600, PERIOD_INTEREST), false)
-  assert.equal(presentation.installmentPendingNote([chargeCard, another]), '本期利息待归属 2 笔')
-  // 本金卡不算进笔数：它是已确定的行，不是待归属的利息。
-  assert.equal(presentation.installmentPendingNote([chargeCard, another].concat(planCards)), '本期利息待归属 2 笔')
 })
 
 test('已指定归属的利息进对应计划卡，不再出现在待指定里', () => {

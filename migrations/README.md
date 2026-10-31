@@ -28,6 +28,8 @@
 - `catledger_review_issue_members`：既有 `SELECT, INSERT, DELETE`，并仅对 `object_version` 增加列级 `UPDATE`；
 - `discarded-update.js`的8张派生/草稿表：表级`DELETE`，用于回收abandoned批次。
 
+核对时新建分期的废弃清理无需结构迁移。import 角色按 [运行权限清单](../scripts/runtime-role-grants.js) 增加 `catledger_loan_periods` 的 `SELECT, UPDATE(cancelled,version)`、`catledger_loan_period_revisions`／`catledger_loan_period_allocations` 的 `SELECT`，以及 `catledger_loans` 的 `UPDATE(version,deleted_at,archived_at)`；不授予计划／期次 DELETE。部署新版 import 前按实际账号核验并补齐差额，权限检查已纳入同一契约；仓库改动不代表云端授权已执行。
+
 来源表的UPDATE用于MySQL的`SELECT ... FOR UPDATE`锁定读取；应用代码仍不得改写既有来源。ReviewIssueMember的列级UPDATE用于账户归属批处理保存事件后同步乐观并发版本，缺少时resolveAccountMappings整体回滚并返回ER_COLUMNACCESS_DENIED_ERROR。部署或迁移后必须执行运行权限检查：可在VPC可连接环境以应用账号运行`npm run check:db-permissions`，或由管理SQL读取`SHOW GRANTS FOR 'catledger_app'@'%'`，将原始授权行交给同一`assertRuntimePermissions`检查；随后用真实微信会话核对云函数读取。0012后撤回退出旧表的授权，不得只验证表存在和函数Active。
 
 `test/runtime-roles-db.test.js` 每轮使用独立库、当前全部迁移及重跑，API/import两个表/列级DML账号运行真实handler，覆盖跨块失败回滚、并发回执、身份隔离、余额统计、退款、撤销和废弃清理。DDL、账户/分类/文件/身份/审计DELETE、导入账号正式交易DELETE、成员身份及原文列UPDATE的反向拒绝同步验证。清单在 `scripts/runtime-role-grants.js`；默认进入 `npm run test:db`。本机成功不代表云端权限已调整或新版已部署。

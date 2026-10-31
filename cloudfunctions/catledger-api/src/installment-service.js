@@ -128,6 +128,30 @@ function createInstallmentService({getPool,selectLoan}) {
       return {items,nextCursor:rows.length>limit?encodeCursor(context.subjectHash,{action:'loans.installmentSources',uid,accountId,itemId,updateId,revision,last:rows[limit-1].itemId}):null}
     })
   }
+  // 核对页「这笔分期」的候选：同一张卡上的分期计划。同名同总期数的两笔都会列出来，
+  // 由本金和起始月区分；只有指纹唯一命中才标 matched，客户端据此预选，不替用户归并。
+  async function planCandidates(context) {
+    return read(context,async(c,uid)=>{
+      const data=context.data||{},accountId=validateId(data.accountId),totalTerms=data.totalTerms == null ? null : Number(data.totalTerms)
+      if (totalTerms != null && (!Number.isInteger(totalTerms)||totalTerms<1||totalTerms>600)) throw ledgerError('VALIDATION_ERROR')
+      const fingerprint=require('./installment-plan-fingerprint').fingerprint({accountId,planLabel:data.planLabel,totalTerms,
+        principalMinor:data.principalMinor==null?null:String(data.principalMinor),startMonth:data.startMonth})
+      const [rows]=await c.execute(`SELECT l.loan_id AS loanId,l.account_id AS accountId,l.name,l.schedule_terms AS scheduleTerms,
+        l.start_date AS startDate,l.baseline_date AS baselineDate,l.baseline_principal_minor AS baselinePrincipalMinor,
+        l.installment_setup_json AS installmentSetup FROM catledger_loans l
+        WHERE l.uid=? AND l.account_id=? AND l.kind='installment' AND l.archived_at IS NULL AND l.deleted_at IS NULL
+        ORDER BY l.created_at DESC,l.loan_id DESC LIMIT 50`,[uid,accountId])
+      const plan=require('./installment-plan-fingerprint'),parseSetup=require('./loan-installment').parseSetup
+      return {items:rows.map(row=>{
+        const setup=parseSetup(row.installmentSetup)
+        return {loanId:row.loanId,name:row.name,scheduleTerms:Number(row.scheduleTerms),
+          startMonth:String(row.startDate||row.baselineDate||'').slice(0,7)||null,
+          originalPrincipalMinor:setup&&setup.originalPrincipalMinor!=null?String(setup.originalPrincipalMinor):null,
+          remainingPrincipalMinor:row.baselinePrincipalMinor==null?null:String(row.baselinePrincipalMinor),
+          matched:plan.matches(fingerprint,row)}
+      }),nextCursor:null}
+    })
+  }
   async function linkInstallmentSource(context) {
     return write(context,'loans.linkInstallmentSource',async(c,uid,data)=>{
       const loan=await editable(c,uid,data),linked=await attachSource(c,uid,loan,data.itemId)
@@ -173,6 +197,6 @@ function createInstallmentService({getPool,selectLoan}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     })
   }
-  return {installments,installment,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,archiveInstallment,removeInstallmentItem}
+  return {installments,installment,planCandidates,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,archiveInstallment,removeInstallmentItem}
 }
 module.exports={createInstallmentService,loadView,populateTracking}

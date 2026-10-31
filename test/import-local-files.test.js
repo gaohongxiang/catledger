@@ -341,3 +341,67 @@ test('换号覆盖决定上传、结果查询及迟到响应，原请求不能�
     assert.equal(files.create({...options,scope:'test:B'}).restore(),null)
   })
 })
+
+test('本机核对新建的分期计划随放弃一并清理：计划 ID 进入放弃请求，离线排队和重发都带着', async t => {
+  const lab = filesystem(); t.after(lab.cleanup)
+  const value = await facts({ count: 2 }), loanId = randomUUID()
+  const event = value.events[0]
+  // 让这笔记录成为现金分期放款行，才能保存「新建计划」的决定。
+  event.fieldSources = { ...event.fieldSources, disbursement: { role: 'disbursement', planLabel: '某卡分期', totalTerms: 12 } }
+  event.ledgerAccountId = value.accounts[1].accountId
+  event.status = 'ready'; event.reasonCodes = []
+  const wire = packed(value), options = { ...lab, scope: 'test:plan-abandon', updateId: value.update.updateId }
+  const store = files.create(options); await store.download(wire.header, wire.call)
+  let queued = null, sent = null
+  const current = session.create({ files: store, restored: store.restore(), requestId: randomUUID, saveReceipt() {}, cleanup() {},
+    queueAbandon(payload) { queued = payload },
+    callNetwork: async (action, data) => { sent = { action, data }; throw Object.assign(Error('offline'), { code: 'NETWORK' }) } })
+  // 决定只存在本机草稿里，服务端事件里读不到；放弃只能靠请求把计划 ID 带过去。
+  current.call('financeUpdates.setReview', { eventId: event.eventId, editorVersion: 1, fields: { installmentPlan: {
+    version: 'installment-plan-decision-v1', action: 'create', loanId, planLabel: '某卡分期', totalTerms: 12,
+    principalMinor: event.amountMinor, startMonth: '2026-05', accountId: event.ledgerAccountId } } })
+  assert.equal(current.model.events.get(event.eventId).fieldSources.installmentPlan.loanId, loanId)
+  const receipt = await current.abandon({})
+  assert.equal(receipt.offlineAbandon, true)
+  assert.deepEqual(queued.planIds, [loanId], '离线放弃排队时也要带上计划 ID，之后重发才能清理')
+  assert.equal(sent.action, 'financeUpdates.abandon')
+  assert.deepEqual(sent.data.planIds, [loanId], '联网放弃的请求同样带着计划 ID')
+})
+
+test('旧本机还款拆分恢复保留账户备注，必须重新确认全额转账，重开与原请求重试不复活旧决定', async t => {
+  const lab=filesystem();t.after(lab.cleanup)
+  const value=await facts({count:1}),event=value.events[0],asset=value.accounts.find(a=>a.type==='wallet'),debt=value.accounts.find(a=>a.type==='credit')
+  const old={eventId:event.eventId,sourceIds:[value.rows[0].rowId],editor:{editorVersion:1,
+    fields:{economicNature:'repayment',ledgerAccountId:asset.accountId,counterpartyLedgerAccountId:debt.accountId,amountMinor:'100000',note:'合成保留备注'},
+    decisions:{repayment:{confirmed:true,mode:'associate',loanId:randomUUID(),loanVersion:1,assetAccountId:asset.accountId,liabilityAccountId:debt.accountId,
+      principalMinor:'97000',interestMinor:'3000',feeMinor:'0',interestTreatment:'expense',interestCategoryId:value.categories[0].categoryId}}}}
+  const options={...lab,scope:'test:old-repayment-transfer',updateId:value.update.updateId},store=files.create(options),wire=packed(value)
+  await store.download(wire.header,wire.call)
+  store.save([{kind:'events',key:event.eventId,value:old}])
+  let network=0
+  const open=()=>session.create({files:store,restored:store.restore(),requestId:randomUUID,saveReceipt(){},cleanup(){},queueAbandon(){},
+    callNetwork:async()=>{network++;throw Error('Unexpected network')}})
+  let current=open()
+  assert.equal(current.status.conflicts,1)
+  let row=current.model.publicRow(event.eventId)
+  assert.equal(row.legacyRepaymentReview,true);assert.equal(row.note,'合成保留备注');assert.equal(row.amountMinor,'100000')
+  assert.equal(row.ledgerAccountId,asset.accountId);assert.equal(row.counterpartyLedgerAccountId,debt.accountId)
+  assert.deepEqual(current.model.choices.events.get(event.eventId),old)
+  assert.equal(current.view.workbench.finalSummary.expenseText,'¥0.00')
+  await assert.rejects(current.post(),{code:'LOCAL_RECHECK_REQUIRED'});assert.equal(network,0)
+  const model=require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
+  row.editorFacts=require('../cloudfunctions/catledger-import/src/review/editor-policy').capability(current.model.events.get(event.eventId))
+  const view=model.derive(row,model.create(row),{accounts:value.accounts,categories:value.categories})
+  assert.equal(view.canSave,true);assert.equal(view.payload.decisions.repayment,null)
+  const request={...view.payload,requestId:randomUUID(),eventId:event.eventId,eventVersion:row.version}
+  const receipt=current.call('financeUpdates.setReview',request)
+  assert.equal(current.status.conflicts,0)
+  assert.equal(current.model.choices.events.get(event.eventId).editor.decisions.repayment,null)
+  assert.equal(current.model.publicRow(event.eventId).legacyRepaymentReview,undefined)
+  current=open()
+  assert.equal(current.status.conflicts,0)
+  assert.deepEqual(current.call('financeUpdates.setReview',request),receipt)
+  assert.equal(current.model.publicRow(event.eventId).loanRepayment,null)
+  assert.equal(current.model.publicRow(event.eventId).note,'合成保留备注')
+  assert.equal(network,0)
+})

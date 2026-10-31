@@ -549,11 +549,30 @@ test('多笔退款仍保持逐笔问题，绝不批量套用同一原消费', ()
   assert.equal(refundIssues.every((issue) => issue.memberCount === 1), true)
 })
 
-test('以后不计入自动排除并生成非阻塞可修改账户项', () => {
+test('旧版本发布的永久忽略不再替新导入排除，只回到账户确认', () => {
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000014',
     idFactory: ids(),
+    // selectPlanningRows 上的映射只来自已发布规则；旧版本会把「仅本次不计入」
+    // 发布成永久忽略，这类历史规则不能替这一批做决定。
     rows: [row({ mappingAction: 'ignore', mappedAccountId: null })]
+  })
+
+  assert.notEqual(plan.events[0].status, 'excluded')
+  assert.equal(plan.events[0].reasonCodes.includes('source_account_ignored_default'), false)
+  assert.equal(plan.issues.length, 1)
+  assert.equal(plan.issues[0].issueType, 'account_mapping')
+  assert.equal(plan.issues[0].status, 'open')
+  assert.equal(plan.issues[0].blocking, true)
+})
+
+test('本批自己选定的仅本次不计入仍排除并保留可修改账户项', () => {
+  const plan = buildOrganizePlan({
+    updateId: '60000000-0000-4000-8000-000000000015',
+    idFactory: ids(),
+    rows: [row({ mappingAction: null, mappedAccountId: null })],
+    paymentMappings: [{ sourceType: 'wechat', paymentMethodKey: 'a'.repeat(64), paymentMethodHint: '微信零钱',
+      mappingAction: 'ignore', accountId: null, mappingScope: 'batch' }]
   })
 
   assert.equal(plan.events[0].status, 'excluded')
@@ -565,7 +584,7 @@ test('以后不计入自动排除并生成非阻塞可修改账户项', () => {
 })
 
 test('仅本次不计入的已排除事件仍保留已解决账户项，重新整理不再追问', () => {
-  const { buildConfirmedAccountIssues } = require('../src/organizer-planner')
+  const { buildAccountIssues } = require('../src/organizer-planner')
   const reference = { sourceType: 'alipay', paymentMethodKey: 'b'.repeat(64), accountIdentityKey: 'wallet-identity' }
   const events = [
     { eventId: 'event-only-this', version: 3, status: 'excluded', ledgerAccountId: '50000000-0000-4000-8000-000000000021',
@@ -576,7 +595,7 @@ test('仅本次不计入的已排除事件仍保留已解决账户项，重新�
       reasonCodes: ['ledger_account_required'], sourceType: 'alipay', paymentMethodKey: 'c'.repeat(64),
       accountGroupingKey: 'wallet-identity-b', fieldSources: {} }
   ]
-  const result = buildConfirmedAccountIssues('update', events, [{ sourceType: 'alipay', paymentMethodKey: 'c'.repeat(64),
+  const result = buildAccountIssues('update', events, new Map(), [{ sourceType: 'alipay', paymentMethodKey: 'c'.repeat(64),
     mappingAction: 'account', accountId: 'account-other' }], ids())
   const onlyThis = result.issues.find(issue => issue.reasonCodes.includes('account_mapping_excluded'))
   assert.ok(onlyThis, '本次人工排除必须保留可取回的已解决账户项')
@@ -588,7 +607,7 @@ test('仅本次不计入的已排除事件仍保留已解决账户项，重新�
 })
 
 test('同一账户组里仍存在本次排除的事件时不写成已确认账户，避免排除被记入', () => {
-  const { buildConfirmedAccountIssues } = require('../src/organizer-planner')
+  const { buildAccountIssues } = require('../src/organizer-planner')
   const reference = { sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64), accountIdentityKey: 'wallet-shared' }
   const events = [
     { eventId: 'event-excluded', version: 2, status: 'excluded', ledgerAccountId: 'account-wallet',
@@ -598,7 +617,7 @@ test('同一账户组里仍存在本次排除的事件时不写成已确认账�
       reasonCodes: ['ledger_account_required'], sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64),
       fieldSources: { ledgerAccountReference: reference } }
   ]
-  const result = buildConfirmedAccountIssues('update', events,
+  const result = buildAccountIssues('update', events, new Map(),
     [{ sourceType: 'alipay', paymentMethodKey: 'd'.repeat(64), mappingAction: 'account', accountId: 'account-wallet' }], ids())
   const confirmed = result.issues.filter(issue => issue.reasonCodes.includes('account_mapping_confirmed'))
   const excluded = result.issues.filter(issue => issue.reasonCodes.includes('account_mapping_excluded'))

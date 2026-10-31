@@ -1,6 +1,6 @@
 // 只汇总金额与数量，原始证据、事件和成员始终从版本分页读取。
 const active = event => ['ready', 'needs_action', 'posted'].includes(event.status)
-const categoryRequired = event => ['income', 'expense', 'fee', 'unknown'].includes(event.economicNature)
+const categoryRequired = event => !require('./installment-business').isRegistration(event) && ['income', 'expense', 'fee', 'unknown'].includes(event.economicNature)
 function accountIds(event) {
   const fields = event.fieldSources || {}
   return [...new Set([event.ledgerAccountId, event.counterpartyLedgerAccountId]
@@ -13,10 +13,12 @@ function repaymentExpense(event) {
   if (channel) return (event.repaymentChannel ? channel.confirmed === true : channel.repaymentConfirmed === true)
     ? BigInt(channel.feeMinor || '0') : 0n
   const value = event.loanRepayment || event.fieldSources && event.fieldSources.loanRepayment
-  if (!value || !value.confirmed) return 0n
+  // 仅为已入账旧记录保留历史展示；待提交草稿不再把还款拆出费用。
+  if (!['posted','corrected'].includes(event.status) || !value || !value.confirmed) return 0n
   return ['interest','fee'].reduce((sum,field)=>sum + (value[field+'Treatment'] === 'expense' ? BigInt(value[field+'Minor'] || '0') : 0n),0n)
 }
 function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCount) {
+  events = require('./installment-business').visibleEvents(events)
   const reviewIds = new Set(pending.filter(row => Number(row.review)).map(row => row.eventId))
   const categoryIds = new Set(pending.filter(row => Number(row.category)).map(row => row.eventId))
   const rows = events.filter(active)
@@ -50,4 +52,4 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
         .reduce((total, row) => total + BigInt(row.fieldSources?.repaymentChannelResolution?.repaymentMinor || row.amountMinor), 0n)), records: [] }))
   }
 }
-module.exports = { workbenchSummary, accountIds, repaymentExpense }
+module.exports = { workbenchSummary, accountIds, repaymentExpense, categoryRequired }

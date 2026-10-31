@@ -42,6 +42,20 @@ function publicEvent(row) {
       groupKey: String(installment.groupKey || '').trim()
     } } : {}),
     ...(fieldSources.installmentAttribution ? { installmentAttribution: fieldSources.installmentAttribution } : {}),
+    // 现金分期放款对：放款行按借款入账，期数和计划名只是这笔借款的来源事实，
+    // 计划本身在贷款管理里登记，导入不创建贷款记录。两行都下发角色：对行据此在
+    // 已排除里显示“分期放款对行”，不再落到“性质待确认”；放款行带上同笔的另一行，
+    // 详情里两行并列，用户看到的是同一笔而不是两件事。
+    // 核对阶段对「这笔分期」的决定：归入已有计划、新建计划或先不挂。
+    // 放款行用它预填并回显；对行据此把排除原因写成“已并入某计划”。
+    // 单独命名，避免与分期行展示用的计划名 installmentPlan 混淆。
+    ...(fieldSources.installmentPlan ? { installmentPlanDecision: fieldSources.installmentPlan } : {}),
+    ...(fieldSources.disbursement ? { disbursement: {
+      role: fieldSources.disbursement.role || 'disbursement',
+      totalTerms: fieldSources.disbursement.totalTerms || null,
+      planLabel: String(fieldSources.disbursement.planLabel || '').trim(),
+      ...(fieldSources.disbursement.partner ? { partner: fieldSources.disbursement.partner } : {})
+    } } : {}),
     sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
     ...(repaymentOwnership.bankRepayment({ fieldSources }) || repaymentOwnership.decisionFor({ fieldSources }) ? {
@@ -124,7 +138,18 @@ function publicIssue(row) {
   const mergedAccount = subjectFieldSources.bankChannelAccountContexts && subjectFieldSources.bankChannelAccountContexts[row.issueId]
   const account = mergedAccount ? { ...mergedAccount, accountId: row.subjectLedgerAccountId || null }
     : groupedAccount || mappingAccount || projectedAccount || subjectAccount
-  const reasonCodes = parseJson(row.reasonCodes, [])
+  let reasonCodes = parseJson(row.reasonCodes, [])
+  // 旧账户决定只写在操作记录中；按当前事项取出决定，不能用代表事件的
+  // excluded 状态推断整个账户组都被用户排除。只投影原因，不公开操作原文。
+  if (row.issueType === 'account_mapping' && row.status === 'resolved') {
+    const action = parseJson(row.resolvedDecision, {}) || {}
+    const decision = (Array.isArray(action.decisions) ? action.decisions : [action])
+      .find(item => item && item.issueId === row.issueId)
+    if (decision && ['exclude_events', 'apply_fields'].includes(decision.decision)) {
+      reasonCodes = reasonCodes.filter(code => !['account_mapping_excluded', 'source_account_ignored_default'].includes(code))
+      if (decision.decision === 'exclude_events') reasonCodes = [...reasonCodes, 'account_mapping_excluded']
+    }
+  }
   return {
     issueId: row.issueId,
     issueType: row.issueType,

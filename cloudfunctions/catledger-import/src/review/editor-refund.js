@@ -104,11 +104,6 @@ async function expectations(connection, uid, event) {
     result.push({ kind: row.kind, id: row.id, version: Number(row.version) })
     if (row.relationId) result.push({ kind: 'refund_relation', id: row.relationId, version: Number(row.relationVersion) })
   }
-  const loanId = event.fieldSources?.loanRepayment?.loanId || event.fieldSources?.editorOverrides?.incompleteRepayment?.loanId
-  if (loanId) {
-    const [[loan]] = await connection.execute('SELECT version FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL', [uid, loanId])
-    if (loan) result.push({ kind: 'loan', id: loanId, version: Number(loan.version) })
-  }
   return result.sort((a, b) => (a.kind + a.id).localeCompare(b.kind + b.id))
 }
 async function validateExpectations(connection, uid, event, value) {
@@ -120,7 +115,7 @@ async function validateExpectations(connection, uid, event, value) {
       !['event','transaction','refund_relation','loan'].includes(row.kind) || !Number.isSafeInteger(row.version) || row.version < 1) fail()
     validateUuid(row.id)
   }
-  const expected = value.map(row => ({ kind: row.kind, id: row.id, version: row.version })).sort((a, b) => (a.kind + a.id).localeCompare(b.kind + b.id))
+  const expected = value.filter(row => row.kind !== 'loan').map(row => ({ kind: row.kind, id: row.id, version: row.version })).sort((a, b) => (a.kind + a.id).localeCompare(b.kind + b.id))
   if (JSON.stringify(expected) !== JSON.stringify(await expectations(connection, uid, event))) throw importError('CONFLICT')
 }
 async function detach(connection, uid, event) {

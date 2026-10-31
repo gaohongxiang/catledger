@@ -9,6 +9,7 @@ const { paymentReferenceKey } = require('../domain/import-review/payment-account
 const { publicEvent } = require('../domain/import-review/review-presentation')
 const historyPolicy = require('../domain/import-review/historical-match-policy')
 const attribution = require('../domain/import-review/installment-plan')
+const business = require('../domain/import-review/installment-business')
 const clone = value => JSON.parse(JSON.stringify(value))
 const fail = message => { throw Object.assign(new Error(message || '这项选择需重新核对'), { code: 'LOCAL_RECHECK_REQUIRED' }) }
 const active = event => event && ['ready','needs_action'].includes(event.status)
@@ -29,6 +30,30 @@ function create(facts) {
   const choices = Object.fromEntries(KINDS.map(kind => [kind, new Map()]))
   const links = facts.links.map(row => ({ ...row })), needsCheck = new Set(), invalid = new Map()
   let revision = 0, supplemental = null, summaryCache = null
+  let businessRevision = -1, businessByRow = new Map(), offsetsByMain = new Map()
+  function businessIndex() {
+    if (businessRevision === revision) return
+    const linked = new Set(links.filter(link => !link.supersededAt).map(link => link.eventId))
+    const values = [...events.values()].map(event => linked.has(event.eventId) ? { ...event, hasTransaction: true } : event)
+    businessByRow = business.indexByRow(values)
+    offsetsByMain = new Map()
+    for (const event of values) if (business.hiddenOffset(event, businessByRow)) {
+      const main = businessByRow.get(business.hintOf(event).partnerRowId)
+      if (!offsetsByMain.has(main.eventId)) offsetsByMain.set(main.eventId, [])
+      offsetsByMain.get(main.eventId).push(event.eventId)
+    }
+    businessRevision = revision
+  }
+  function hiddenOffset(event) {
+    businessIndex()
+    const indexed = businessByRow.get((event.fieldSources.rowIds || [])[0]) || event
+    return business.hiddenOffset(indexed, businessByRow)
+  }
+  function evidenceFor(id) {
+    businessIndex()
+    return (byEvent.get(id) || []).concat((offsetsByMain.get(id) || []).flatMap(other =>
+      (byEvent.get(other) || []).filter(link => link.evidenceRole !== 'discarded')))
+  }
   let coverageByEvent = new Map(facts.historyCoverage.duplicates.map(row => [row.eventId, row]))
   const historyIndex = new Map(), historySignatures = new Map()
   let historyDiscarded=[]
@@ -197,7 +222,11 @@ function create(facts) {
     if (active(event) && !event.reasonCodes.includes('blocking_issue_open') &&
       (event.status === 'needs_action' || rules.needsCategory(event))) {
       const classification = rules.classifyReviewIssue(event)
-      const existing = relevant.find(issue => issue.status === 'open' && issue.primaryReasonCode === classification.primaryReason)
+      // 同一个账户组可能同时含普通付款与组合成分，两者的缺账户原因码不同。
+      // 已有服务端账户待办承接该事件时，不能再按原因码派生一条单笔账户组。
+      const existing = relevant.find(issue => issue.status === 'open' &&
+        (issue.primaryReasonCode === classification.primaryReason ||
+          classification.issueType === 'account_mapping' && issue.issueType === 'account_mapping' && !issue.localDerived))
       if (!existing) addIssue(event, classification.issueType, classification.primaryReason)
     }
     const refundCoverage = event.economicNature === 'refund' && (supplemental || facts).historyCoverage.refunds.find(row => row.eventId === id)
@@ -452,11 +481,20 @@ function create(facts) {
     // 本金行不带原因码、也不是事项成员；这里只处理“这笔费用已经指定完”的退出。
     const context = sourceOf(event).installmentAttribution
     if (!context || context.role !== 'charge' || attribution.needsAttribution(event)) return
+    let dropped = false
     for (const issue of eventIssues(id)) if (issue.status === 'open' && issue.primaryReasonCode === attribution.REASON_CODE) {
       // 已经指定完的这笔不再需要在“利息待归属”里出现。
       dropMember(issue, id)
+      // 事项还可能开着，因为同组别的利息没定；但这笔已经不是成员了。
+      // 反向索引留着，derive 就会继续读到 blocking_issue_open——只指定一笔时，
+      // 指定完的这笔停在待核对，卡面也还写着“利息待归属”，直到整组都指定完才一起放行。
+      const keys = issueEvents.get(id)
+      if (keys) { keys.delete(issue.issueId); if (!keys.size) issueEvents.delete(id) }
       if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false; issue.version++ }
+      dropped = true
     }
+    // 退组后要重算这一笔：否则它仍挂着按旧成员关系算出的阻断，明明归属已定却进不了已核对。
+    if (dropped) derive(id)
   }
   function finish(ids) {
     const affected = dependencies([...ids])
@@ -547,6 +585,8 @@ function create(facts) {
       invalid.delete(current.eventId)
     }
     issue.status = 'resolved'; issue.blocking = false; issue.version++
+    issue.reasonCodes = (issue.reasonCodes || []).filter(code => !['account_mapping_excluded','source_account_ignored_default'].includes(code))
+    if (input.decision === 'exclude_events') issue.reasonCodes.push('account_mapping_excluded')
     if (issue.accountContext) issue.accountContext.accountId = id || null
     choices.accounts.set(decision.key, decision); finish(affected)
     return [{ kind: 'accounts', key: decision.key, value: decision },...historyDiscarded.splice(0)]
@@ -633,6 +673,26 @@ function create(facts) {
     choices.reviews.set(decision.key, decision); for (const id of ids) invalid.delete(id); finish(ids)
     return [{ kind: 'reviews', key: decision.key, value: decision }]
   }
+  // 本期次同组别的利息已经归到哪个计划。利息行的计划单选要据此标出占用，
+  // 所以按全组算：待核对列表只下发当前页，已经归好的那笔早已不在里面，拿页面行算不出来。
+  function installmentOccupancy(event) {
+    const context = event.fieldSources && event.fieldSources.installmentAttribution
+    if (!context || context.role !== 'charge' || !(context.plans || []).length) return null
+    const groupKey = context.groupKey || attribution.groupKeyOf(event)
+    const taken = new Map()
+    for (const other of events.values()) {
+      if (other.eventId === event.eventId) continue
+      const otherContext = other.fieldSources && other.fieldSources.installmentAttribution
+      if (!otherContext || otherContext.role !== 'charge' || (otherContext.groupKey || attribution.groupKeyOf(other)) !== groupKey) continue
+      const plan = attribution.confirmedPlan(other)
+      if (!plan) continue
+      const entry = taken.get(plan) || { planName: plan, count: 0, amountMinor: '0' }
+      entry.count += 1
+      entry.amountMinor = String(BigInt(entry.amountMinor) + BigInt(other.amountMinor || 0))
+      taken.set(plan, entry)
+    }
+    return taken.size ? [...taken.values()] : null
+  }
   function publicRow(id) {
     const event = events.get(id); if (!event) return null
     const first = (byEvent.get(id) || []).find(row => row.evidenceRole === 'primary') || (byEvent.get(id) || [])[0]
@@ -641,8 +701,10 @@ function create(facts) {
     const result = publicEvent({ ...event, categoryName: category?.name, parentCategoryName: category?.parentName,
       primaryRowId: row?.rowId, sourceType: row?.sourceType, fileName: source?.fileName, rowNumber: row?.rowNumber,
       counterparty: row?.counterparty, item: row?.item, paymentMethod: row?.paymentMethod, sourceStatus: row?.rawStatus,
-      sourceNote: row?.sourceNote, evidenceCount: (byEvent.get(id) || []).length,
+      sourceNote: row?.sourceNote, evidenceCount: evidenceFor(id).length,
       duplicateEvidenceCount: (byEvent.get(id) || []).filter(row => ['duplicate','supporting'].includes(row.evidenceRole)).length })
+    const taken = result.installmentAttribution ? installmentOccupancy(event) : null
+    if (taken) result.installmentAttribution = { ...result.installmentAttribution, taken }
     const attention = require('../domain/import-review/review-attention').reviewAttention(result, eventIssues(id))
     const reason = invalid.get(id)
     const conflict = reason && ({ account_unavailable: '账户已停用或不可用，请重新选择',
@@ -656,7 +718,9 @@ function create(facts) {
       VALIDATION_ERROR: '当前决定与最新账本不符，请重新核对' }[reason] ||
       (/^[a-zA-Z_]+$/.test(reason) ? '账本信息已变化，请重新核对' : reason))
     if (conflict) attention.reviewAttention.steps.unshift({ key: 'local_recheck', label: conflict })
+    const legacyRepaymentReview = choices.events.get(id)?.editor?.decisions?.repayment != null
     return { ...result, timezoneOffsetMinutes: event.timezoneOffsetMinutes, ...attention,
+      ...(legacyRepaymentReview ? { legacyRepaymentReview: true } : {}),
       ...(needsCheck.has(id) ? { serverReviewPending: true } : {}), ...(conflict ? { localConflict: conflict } : {}) }
   }
   function splitOrigins(eventId) {
@@ -744,7 +808,7 @@ function create(facts) {
   for (const event of events.values()) indexEvent(event)
   rebuildPairs([...events.keys()])
   return { facts, base, events, rows, evidence, byEvent, baseEvidence, relations, issues, members, issueEvents, accounts, drafts, categories,
-    choices, links, needsCheck, invalid, sourceIds, hydrate, context, eventIssues, publicRow, refundCandidates,
+    choices, links, needsCheck, invalid, sourceIds, hydrate, context, eventIssues, publicRow, refundCandidates, hiddenOffset, evidenceFor,
     dirtyEvents, dirtyIssues, dirtyRows,
     edit, mapAccount, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState,
     get pairs() { return pairs }, get revision() { return revision }, get supplemental() { return supplemental },

@@ -268,7 +268,7 @@ test('真实 Page 隐藏固定编辑入口，旧控件事件不改渠道事实�
   edit(page, 'date', '2026-10-01')
   mode(page, 'owner', 'other')
   page.addFundsAccount(tap({ endpoint: 'payer' }))
-  page.toggleRepaymentDetails()
+  assert.equal(page.toggleRepaymentDetails, undefined)
   assert.equal(select(page, 'reviewCounterparty', { ...credit, accountId: 'synthetic-other-credit' }), false)
   assert.equal(page.reviewEditorDirectory('editorLoan'), null)
   assert.deepEqual(plain(draft(page)), prior)

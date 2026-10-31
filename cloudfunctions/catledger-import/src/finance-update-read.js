@@ -16,6 +16,7 @@ const { buildCoverageReport } = require('./coverage-report')
 const { analysisFullyObserved } = require('./statement-analysis')
 const accountGroups = require('./payment-account-groups')
 const excludedGroups = require('./excluded-event-groups')
+const { visibleSql } = require('./installment-business')
 const { workbenchSummary } = require('./workbench-summary')
 const { REASON: PAIRING_REASON } = require('./bank-channel-matching')
 const { pairingGraph } = require('./review/bank-channel-graph')
@@ -132,8 +133,8 @@ function eventSearch(query) {
   values: [query, query, query, query, query] }
 }
 const activeSql = "e.status IN ('ready','needs_action','posted')"
-const needsCategorySql = "e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
-const requiredCategorySql = "e.economic_nature IN ('income','expense','fee','unknown')"
+const needsCategorySql = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.disbursement.role')),'')<>'registration' AND e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
+const requiredCategorySql = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.disbursement.role')),'')<>'registration' AND e.economic_nature IN ('income','expense','fee','unknown')"
 const historicalDuplicateSql = `(e.status = 'excluded' AND (JSON_CONTAINS(e.reason_codes_json, '"already_posted"')
   OR JSON_CONTAINS(e.reason_codes_json, '"linked_existing_transaction"')))`
 const reviewSql = `EXISTS (SELECT 1 FROM catledger_review_issue_members m JOIN catledger_review_issues i
@@ -156,13 +157,14 @@ async function summary(connection, uid, updateId) {
     flow_direction AS flowDirection, amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
     counterparty_ledger_account_id AS counterpartyLedgerAccountId, field_sources_json AS fieldSources,
     category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes,
-    manual_field_mask AS manualFieldMask${pairing ? `,
+    manual_field_mask AS manualFieldMask,
+    EXISTS (SELECT 1 FROM catledger_economic_event_transactions t WHERE t.uid=e.uid AND t.event_id=e.event_id AND t.superseded_at IS NULL) AS hasTransaction${pairing ? `,
       ((COALESCE((SELECT d.currency FROM catledger_finance_update_account_drafts d
           WHERE d.uid = e.uid AND d.update_id = e.update_id AND d.draft_account_id = e.ledger_account_id),
         (SELECT a.currency FROM catledger_accounts a WHERE a.uid = e.uid AND a.account_id = e.ledger_account_id AND a.archived_at IS NULL)) = e.currency OR e.economic_nature = 'repayment')
         AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions t
-          WHERE t.uid = e.uid AND t.update_id = e.update_id AND t.event_id = e.event_id)) AS pairingAvailable` : ''} FROM catledger_economic_events${pairing ? ' e' : ''} WHERE uid = ? AND update_id = ?`, [uid, updateId])
-  const events = rows.map(row => ({ ...row, status: publicEvent(row).status, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
+          WHERE t.uid = e.uid AND t.update_id = e.update_id AND t.event_id = e.event_id)) AS pairingAvailable` : ''} FROM catledger_economic_events e WHERE e.uid = ? AND e.update_id = ?`, [uid, updateId])
+  const events = rows.map(row => ({ ...row, hasTransaction: Boolean(Number(row.hasTransaction)), status: publicEvent(row).status, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
   const [pending] = await connection.execute(`SELECT m.object_id AS eventId,
     MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category${pairing ? `,
     JSON_ARRAYAGG(CASE WHEN i.issue_type = 'same_event' AND i.primary_reason_code = ? AND m.member_role = 'subject'
@@ -231,14 +233,14 @@ async function eventPage(connection, uid, context, state) {
     return excludedGroupPage(connection, uid, context, state, query, excludedGroupId)
   }
   const page = preparePage(context, state, uid, 'events', { status, eventId, issueId, nature, view, accountId, query }, TIME_ORDER)
-  let where = 'e.uid = ? AND e.update_id = ?'
+  let where = 'e.uid = ? AND e.update_id = ? AND ' + visibleSql('e')
   const values = [uid, state.update.updateId]
   if (eventId) { where += ' AND e.event_id = ?'; values.push(eventId) }
   if (status === 'duplicate') where += ` AND (${historicalDuplicateSql} OR EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role IN ('duplicate', 'supporting')))`
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (status === 'excluded') where += ` AND NOT ${historicalDuplicateSql}`
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
-  if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
+  if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (e.status IN ('posted','corrected') AND JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
     (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestMinor')) AS UNSIGNED)>0) OR
     (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeMinor')) AS UNSIGNED)>0))) OR
     (JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.repaymentConfirmed')=TRUE AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.feeMinor')) AS UNSIGNED)>0))`
@@ -318,7 +320,7 @@ async function excludedGroupPage(connection, uid, context, state, query, exclude
       AND v.event_id = e.event_id AND v.evidence_role = 'primary'
     LEFT JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
     LEFT JOIN catledger_finance_update_sources s ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
-    WHERE e.uid = ? AND e.update_id = ? AND e.status = 'excluded' AND NOT ${historicalDuplicateSql}
+    WHERE e.uid = ? AND e.update_id = ? AND e.status = 'excluded' AND NOT ${historicalDuplicateSql} AND ${visibleSql('e')}
       ${search ? ' AND ' + search.sql : ''}
     ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id`, [uid, state.update.updateId, ...(search ? search.values : [])])
   const groups = new Map(), members = []
@@ -443,7 +445,8 @@ async function memberPage(connection, uid, context, state) {
 async function evidencePage(connection, uid, context, state) {
   const eventId = validateUuid(context.data.eventId)
   const page = preparePage(context, state, uid, 'evidence', { eventId })
-  const [[count]] = await connection.execute('SELECT COUNT(*) AS total FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND event_id = ?', [uid, state.update.updateId, eventId])
+  const ids = await require('./installment-business-read').evidenceEventIds(connection, uid, state.update.updateId, eventId)
+  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND event_id IN (${ids.map(() => '?').join(',')})`, [uid, state.update.updateId, ...ids])
   const [rows] = await connection.execute(`SELECT v.evidence_id AS evidenceId, v.evidence_role AS evidenceRole,
     r.row_id AS rowId, r.source_row_number AS rowNumber, r.source_locator AS sourceLocator,
     r.raw_snapshot_version AS rawSnapshotVersion, r.parser_version AS parserVersion,
@@ -452,7 +455,7 @@ async function evidencePage(connection, uid, context, state) {
     FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
     JOIN catledger_finance_update_sources s ON s.uid = r.uid AND s.update_id = v.update_id AND s.batch_id = r.batch_id
     JOIN catledger_import_files f ON f.uid = s.uid AND f.import_id = s.import_id
-    WHERE v.uid = ? AND v.update_id = ? AND v.event_id = ? AND v.evidence_id > ? ORDER BY v.evidence_id LIMIT ?`, [uid, state.update.updateId, eventId, page.last, page.size + 1])
+    WHERE v.uid = ? AND v.update_id = ? AND v.event_id IN (${ids.map(() => '?').join(',')}) AND v.evidence_id > ? ORDER BY v.evidence_id LIMIT ?`, [uid, state.update.updateId, ...ids, page.last, page.size + 1])
   return { ...finishPage(context, state, page, rows.map(({ displayName, originalFileName, ...row }) => ({ ...row,
     ...(displayName ? { originalFileName } : {}), detailRequired: true })), count.total, 'evidenceId', 'evidence'), eventId }
 }
@@ -516,10 +519,11 @@ async function detail(connection, uid, context, state) {
   if (!Number.isInteger(offset) || offset < 0) throw importError('INVALID_CURSOR')
   let text
   if (evidenceId) {
+    const ids = await require('./installment-business-read').evidenceEventIds(connection, uid, state.update.updateId, eventId)
     const [[row]] = await connection.execute(`SELECT SUBSTRING(CAST(r.raw_fields_json AS CHAR CHARACTER SET utf8mb4), ?, 2048) AS part,
       CHAR_LENGTH(CAST(r.raw_fields_json AS CHAR CHARACTER SET utf8mb4)) AS length FROM catledger_event_evidence v
       JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
-      WHERE v.uid = ? AND v.update_id = ? AND v.event_id = ? AND v.evidence_id = ?`, [offset + 1, uid, state.update.updateId, eventId, evidenceId])
+      WHERE v.uid = ? AND v.update_id = ? AND v.event_id IN (${ids.map(() => '?').join(',')}) AND v.evidence_id = ?`, [offset + 1, uid, state.update.updateId, ...ids, evidenceId])
     if (!row || offset > row.length) throw importError('NOT_FOUND')
     return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, eventId, evidenceId, format: 'json-text', part: row.part,
       nextCursor: offset + 2048 < Number(row.length) ? encodeCursor(context.subjectHash, scope, offset + 2048) : null }, 'page')

@@ -8,7 +8,7 @@
       <skeleton-rows wx:if="{{reviewEditSheet.loading}}" rows="{{3}}" />
       <block wx:elif="{{reviewEditSheet.record}}">
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
-        <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
+        <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.planCreatePending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
         <!-- 整组关系入口：只承接同笔判断、来源冲突和字段冲突；分期归属、退款和账户各有自己的区域。
              原始交易只保留下面的来源条，不再重复一行“原始交易”标题。 -->
         <view wx:if="{{reviewEditSheet.sources.length || reviewEditSheet.evidenceLoading || reviewEditSheet.groupAction || reviewEditSheet.evidenceError || reviewEditSheet.moreEvidence}}" class="evidence-section">
@@ -34,13 +34,14 @@
     </scroll-view>
     <view class="sheet-actions">
       <text wx:if="{{reviewEditSheet.error}}" class="inline-error">{{reviewEditSheet.error}}</text>
-      <text wx:if="{{reviewEditSheet.editor.canSave && !reviewEditSheet.editor.complete}}" class="sheet-copy">{{reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '可以只保存草稿：上面的差额仍待核对，保存不会改变正式余额，也不会把这笔差额算进手续费。' : '可保存当前草稿，剩余事项仍需核对；保存不会改变正式余额。'}}</text>
+      <text wx:if="{{reviewEditSheet.planCreatePending}}" class="sheet-copy">正在恢复上次创建的计划，参数暂时锁定；重试会继续原请求，不会另建计划。</text>
+      <text wx:elif="{{reviewEditSheet.editor.canSave && !reviewEditSheet.editor.complete}}" class="sheet-copy">{{reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '可以只保存草稿：上面的差额仍待核对，保存不会改变正式余额，也不会把这笔差额算进手续费。' : '可保存当前草稿，剩余事项仍需核对；保存不会改变正式余额。'}}</text>
       <button wx:if="{{reviewEditSheet.saved || (reviewEditSheet.stale && !reviewEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshReviewEdit" disabled="{{reviewEditSheet.saving}}">{{reviewEditSheet.saved ? '刷新列表' : '重新核验'}}</button>
       <view wx:elif="{{reviewEditSheet.judgmentEditable}}" class="editor-actions-row">
-        <button class="editor-judgment-btn" bindtap="openEditorRepaymentJudgment" disabled="{{reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved}}">{{reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '不是同一笔' : '修改同笔判断'}}</button>
-        <button class="sheet-confirm" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '仅保存草稿' : '保存本笔草稿'}}</button>
+        <button class="editor-judgment-btn" bindtap="openEditorRepaymentJudgment" disabled="{{reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.planCreatePending || reviewEditSheet.saved}}">{{reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '不是同一笔' : '修改同笔判断'}}</button>
+        <button class="sheet-confirm" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.planCreatePending ? '确认计划创建结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : reviewEditSheet.editor.repaymentChannel && !reviewEditSheet.editor.repaymentChannel.confirmed ? '仅保存草稿' : '保存本笔草稿'}}</button>
       </view>
-      <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
+      <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.planCreatePending ? '确认计划创建结果' : reviewEditSheet.attributionSelected ? '保存利息归属' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
       <button class="evidence-return editor-cancel" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}">放弃修改</button>
     </view>
   </view>
@@ -62,6 +63,15 @@
         </view>
         <view class="nature-option-check" aria-hidden="true"><image wx:if="{{item.value === reviewEditSheet.draft.economicNature}}" class="nature-option-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
       </view>
+    </view>
+    <!-- 排除不是性质：单独一段，不进单选组，点它是“这一笔本次不入账”的决定。 -->
+    <view wx:if="{{reviewEditSheet.editor.exclude}}" class="nature-exclude" bindtap="excludeEditorEvents"
+      aria-role="button" aria-label="{{reviewEditSheet.editor.exclude.label}}，{{reviewEditSheet.editor.exclude.hint}}">
+      <view class="nature-option-copy">
+        <text class="nature-exclude-label">{{reviewEditSheet.editor.exclude.label}}</text>
+        <text class="nature-exclude-hint">{{reviewEditSheet.editor.exclude.hint}}</text>
+      </view>
+      <text class="nature-exclude-chevron" aria-hidden="true">›</text>
     </view>
     <text wx:if="{{reviewEditSheet.natureHint}}" class="nature-sheet-hint">{{reviewEditSheet.natureHint}}</text>
   </view>

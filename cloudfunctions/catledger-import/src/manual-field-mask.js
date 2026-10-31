@@ -14,7 +14,9 @@ const FIELD_MASK = Object.freeze({
   repaymentOwnership: 1 << 11,
   counterparty: 1 << 12,
   note: 1 << 13,
-  sourceCorrection: 1 << 14
+  sourceCorrection: 1 << 14,
+  // 核对阶段对「这笔分期」的决定：归入已有计划、新建计划或先不挂。
+  installmentPlan: 1 << 15
 })
 
 module.exports = { FIELD_MASK }

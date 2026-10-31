@@ -440,6 +440,77 @@ function context(user, data) {
   return { provider: 'wechat-mini', subjectHash: user.subjectHash, data }
 }
 
+test('MySQL 组合还款目标真实落账户，v40 缺失目标原位重问且明确排除可恢复', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = createFixedClockPool(), objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: { async downloadExact(id, key) { return objects.get(key) }, async remove() { return true } } })
+  try {
+    const user = await createUserLedger(pool, 'target-mapping'), other = await createUserLedger(pool, 'target-other'), debtId = randomUUID()
+    await pool.execute(`INSERT INTO catledger_accounts (uid,account_id,type,nature,name,normalized_name,currency)
+      VALUES (?,?,'credit','liability','合成还款目标','合成还款目标','CNY')`, [user.uid, debtId])
+    await pool.execute(`INSERT INTO catledger_import_account_mappings
+      (uid,mapping_id,source_type,payment_method_key,payment_method_hint,mapping_action,account_id)
+      VALUES (?,?,'alipay',?,'1688先采后付','account',?)`,
+    [user.uid, randomUUID(), buildPaymentMethodKey('alipay', '1688先采后付'), debtId])
+    const content = Buffer.from(['支付宝(中国)网络技术有限公司 电子客户回单',
+      '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+      '2026-09-01 12:00:00,信用借还,1688先采后付,合成组合还款,10.00,支出,测试银行储蓄卡(1234)&账户余额,交易成功,,SYNTHETIC-TARGET,,'
+    ].join('\n'))
+    const file = await prepareSingle(service, context(user, { requestId: randomUUID(), fileName: '合成目标账户.csv', size: content.length }))
+    objects.set(file.cloudPath, content)
+    const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+      fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
+    let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+    const updateId = view.update.updateId, eventId = view.events[0].eventId
+    const targetOf = result => result.issues.find(issue => issue.issueType === 'account_mapping' &&
+      ['open','resolved'].includes(issue.status) && issue.accountContext?.fundsSide === 'payment_target')
+    assert.equal(targetOf(view).status, 'resolved')
+    assert.equal(targetOf(view).accountContext.accountId, debtId)
+    assert.equal(view.events[0].counterpartyLedgerAccountId, debtId)
+
+    // 仅隔离库模拟 v40 的矛盾状态：已解决但事件目标缺失。
+    await pool.execute('UPDATE catledger_economic_events SET counterparty_ledger_account_id=NULL WHERE uid=? AND event_id=?', [user.uid, eventId])
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v40' WHERE uid=? AND update_id=?", [user.uid, updateId])
+    view = await service.financeUpdateGet(context(user, { updateId }))
+    const oldTarget = targetOf(view), request = { requestId: randomUUID(), updateId, version: view.update.version }
+    assert.equal(oldTarget.accountContext.accountId, null)
+    const before = JSON.stringify(view)
+    await assert.rejects(service.financeUpdateOrganize(context(other, request)), { publicCode: 'NOT_FOUND' })
+    const trigger = 'target_upgrade_' + randomUUID().replaceAll('-', '')
+    await pool.query(`CREATE TRIGGER ${trigger} BEFORE UPDATE ON catledger_finance_updates FOR EACH ROW
+      BEGIN IF NEW.uid='${user.uid}' AND NEW.plan_version='${PLAN_VERSION}' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic target rollback'; END IF; END`)
+    try {
+      await assert.rejects(service.financeUpdateOrganize(context(user, request)))
+      assert.equal(JSON.stringify(await service.financeUpdateGet(context(user, { updateId }))), before)
+    } finally { await pool.query(`DROP TRIGGER ${trigger}`) }
+    const [upgraded, replay] = await Promise.all([service.financeUpdateOrganize(context(user, request)), service.financeUpdateOrganize(context(user, request))])
+    assert.deepEqual(replay, upgraded)
+    view = upgraded
+    assert.equal(view.events[0].eventId, eventId)
+    assert.equal(view.events[0].amountMinor, '1000')
+    assert.notEqual(view.events[0].status, 'excluded')
+    assert.equal(targetOf(view).status, 'open')
+    assert.notEqual(targetOf(view).issueId, oldTarget.issueId)
+    const target = targetOf(view)
+    view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId,
+      updateVersion: view.update.version, decisions: [{ issueId: target.issueId, issueVersion: target.version,
+        operation: 'resolve', decision: 'exclude_events' }] }))
+    assert.equal(view.events[0].status, 'excluded')
+    assert.ok(targetOf(view).reasonCodes.includes('account_mapping_excluded'), '读取旧审计决定须还原本组排除')
+    assert.ok(view.issues.filter(issue => issue.issueId !== target.issueId).every(issue => !issue.reasonCodes.includes('account_mapping_excluded')))
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v40' WHERE uid=? AND update_id=?", [user.uid, updateId])
+    view = await service.financeUpdateOrganize(context(user, { requestId: randomUUID(), updateId, version: view.update.version }))
+    assert.equal(targetOf(view).issueId, target.issueId, '本批明确排除不重开')
+    const excluded = targetOf(view)
+    view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId,
+      updateVersion: view.update.version, decisions: [{ issueId: excluded.issueId, issueVersion: excluded.version,
+        operation: 'revise', decision: 'apply_fields', fields: { mappingAccountId: debtId } }] }))
+    assert.equal(targetOf(view).accountContext.accountId, debtId)
+    assert.ok(!targetOf(view).reasonCodes.includes('account_mapping_excluded'))
+    assert.notEqual(view.events[0].status, 'excluded')
+  } finally { await pool.end() }
+})
+
 async function resolveOpenCategoryIssues(service, user, initialView) {
   let view = initialView
   while (true) {
@@ -1219,8 +1290,8 @@ test('支付宝旧账户拆分保留v1分配，不创建第三账户并原子入
   }
 })
 
-test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自动排除且可修改', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig())
+test('FinanceUpdate 仅本次不计入不发布永久规则，旧版永久忽略也不再替新导入排除', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = createFixedClockPool()
   const objects = new Map()
   const storage = {
     async downloadExact(fileID, objectKey) {
@@ -1274,32 +1345,45 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
     assert.equal(Number(formalBeforePost.count), 0)
     assert.deepEqual(draftBeforePost, { mappingAction: 'ignore', accountId: null })
 
+    // 旧版重整可能只留下默认忽略理由，但本批明确决定的映射草稿仍在：升级不能重问。
+    const firstEventIds = view.events.map(event => event.eventId).sort()
+    await pool.execute(`UPDATE catledger_economic_events SET reason_codes_json = '["source_account_ignored_default"]'
+      WHERE uid = ? AND update_id = ?`, [user.uid, view.update.updateId])
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v38' WHERE uid = ? AND update_id = ?",
+      [user.uid, view.update.updateId])
+    view = await service.financeUpdateOrganize(context(user, {
+      requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version
+    }))
+    assert.deepEqual(view.events.map(event => event.eventId).sort(), firstEventIds)
+    assert.ok(view.events.every(event => event.status === 'excluded'), '本批明确忽略在升级后仍保留')
+    assert.equal(view.issues.some(item => item.issueType === 'account_mapping' && item.status === 'open'), false)
+
     const posted = await service.financeUpdatePost(context(user, {
       requestId: randomUUID(), updateId: view.update.updateId,
       version: view.update.version, mode: 'all_ready'
     }))
     assert.equal(posted.update.status, 'posted')
     assert.deepEqual(posted.posting, { createdTransactionCount: 0, reusedTransactionCount: 0 })
-    const [[formalAfterPost]] = await pool.execute(
+    const [formalAfterPost] = await pool.execute(
       `SELECT mapping_action AS mappingAction, account_id AS accountId, disabled_at AS disabledAt
-         FROM catledger_import_account_mappings WHERE uid = ? LIMIT 1`,
+         FROM catledger_import_account_mappings WHERE uid = ?`,
       [user.uid]
     )
-    assert.deepEqual(formalAfterPost, { mappingAction: 'ignore', accountId: null, disabledAt: null })
+    assert.deepEqual(formalAfterPost, [], '「仅本次不计入」在整批入账后也不发布永久规则')
 
-    // 模拟旧版本曾按带平台前缀的原文生成键。原事实必须保留，后续读取
-    // 应从稳定提示派生当前规范键别名，而不是要求用户再次确认。
-    const legacyKey = digestParts('payment-method-v1', 'wechat', '微信零钱')
+    // 旧版本会把「仅本次不计入」写成永久忽略；这里按旧数据直接落一条，验证它在
+    // 重新导入时不再自动排除，而是回到账户确认。
+    const canonicalKey = buildPaymentMethodKey('wechat', '微信零钱')
     await pool.execute(
-      `UPDATE catledger_import_account_mappings
-          SET payment_method_key = ?, payment_method_hint = '微信零钱'
-        WHERE uid = ?`,
-      [legacyKey, user.uid]
+      `INSERT INTO catledger_import_account_mappings
+         (uid, mapping_id, source_type, payment_method_key, payment_method_hint, mapping_action, account_id)
+       VALUES (?, ?, 'wechat', ?, '微信零钱', 'ignore', NULL)`,
+      [user.uid, randomUUID(), canonicalKey]
     )
 
     const laterContent = fixtureWithSequence(601)
     const later = await prepareSingle(service, context(user, {
-      requestId: randomUUID(), fileName: '后续复用永久忽略.csv', size: laterContent.length
+      requestId: randomUUID(), fileName: '旧版永久忽略.csv', size: laterContent.length
     }))
     objects.set(later.cloudPath, laterContent)
     const laterParsed = await service.parseFile(context(user, {
@@ -1309,28 +1393,39 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
     const laterCreated = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [laterParsed.batch.batchId]
     }))
-    const laterView = await service.financeUpdateOrganize(context(user, {
+    let laterView = await service.financeUpdateOrganize(context(user, {
       requestId: randomUUID(), updateId: laterCreated.updateId, version: laterCreated.version
     }))
-    // 「仅本次不计入」不写永久映射，也不替下一批做决定：重新导入要重新确认这个账户。
+    // 已被旧版本写成永久忽略的账户，重新导入时也要重新确认。
     assert.equal(laterView.events.every((event) => event.status !== 'excluded'), true)
     assert.equal(laterView.events.some((event) => event.reasonCodes.includes('source_account_ignored_default')), false)
-    const laterIssue = laterView.issues.find((item) => item.issueType === 'account_mapping' && item.status === 'open')
+    let laterIssue = laterView.issues.find((item) => item.issueType === 'account_mapping' && item.status === 'open')
     assert.ok(laterIssue)
-    // 恢复规范键后，验证自动复用规则的来源证据也能阻止规则被撤回。
-    await pool.execute('UPDATE catledger_import_account_mappings SET payment_method_key = ? WHERE uid = ?',
-      [buildPaymentMethodKey('wechat', '微信零钱'), user.uid])
-    const inheritedImpact = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
-    assert.equal(inheritedImpact.canUndo, true)
-    assert.equal(inheritedImpact.sideEffects.revertedMappingCount, 0)
-    assert.equal(inheritedImpact.sideEffects.retainedMappingCount, 1)
-    await pool.execute('UPDATE catledger_import_account_mappings SET payment_method_key = ? WHERE uid = ?', [legacyKey, user.uid])
+
+    // 隔离库重现旧快照：只有历史规则排除，没有本批决定。原地升级须重开账户事项。
+    const inheritedIssueId = laterIssue.issueId, inheritedEventIds = laterView.events.map(event => event.eventId).sort()
+    await pool.execute(`UPDATE catledger_economic_events SET status = 'excluded', state = 'excluded',
+      reason_codes_json = '["source_account_ignored_default"]' WHERE uid = ? AND update_id = ?`, [user.uid, laterCreated.updateId])
+    await pool.execute(`UPDATE catledger_review_issues SET status = 'resolved', blocking = 0,
+      primary_reason_code = 'payment_reference_ignored_by_history' WHERE uid = ? AND issue_id = ?`, [user.uid, inheritedIssueId])
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v38' WHERE uid = ? AND update_id = ?",
+      [user.uid, laterCreated.updateId])
+    const upgradeRequest = { requestId: randomUUID(), updateId: laterCreated.updateId, version: laterView.update.version }
+    laterView = await service.financeUpdateOrganize(context(user, upgradeRequest))
+    assert.deepEqual(await service.financeUpdateOrganize(context(user, upgradeRequest)), laterView, '重复整理沿用原结果')
+    assert.deepEqual(laterView.events.map(event => event.eventId).sort(), inheritedEventIds, '升级不重建事件身份')
+    assert.ok(laterView.events.every(event => event.status !== 'excluded'))
+    assert.ok(laterView.events.every(event => !event.reasonCodes.includes('source_account_ignored_default')))
+    assert.equal(laterView.update.planVersion, PLAN_VERSION)
+    laterIssue = laterView.issues.find(item => item.issueType === 'account_mapping' && item.status === 'open')
+    assert.ok(laterIssue)
+    assert.notEqual(laterIssue.issueId, inheritedIssueId)
 
     await service.reviewIssueResolveAccountMappings(context(user, {
       requestId: randomUUID(), updateId: laterView.update.updateId,
       decisions: [{
         issueId: laterIssue.issueId,
-        operation: 'revise',
+        operation: 'resolve',
         decision: 'apply_fields',
         fields: { ledgerAccountId: user.accountId }
       }]
@@ -1338,24 +1433,36 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
     const laterResolved = await service.financeUpdateGet(context(user, { updateId: laterView.update.updateId }))
     const categorizedLater = await resolveOpenCategoryIssues(service, user, laterResolved)
     assert.equal(categorizedLater.issues.some((item) => item.status === 'open'), false)
-    await service.financeUpdatePost(context(user, {
+    const laterPosted = await service.financeUpdatePost(context(user, {
       requestId: randomUUID(), updateId: categorizedLater.update.updateId,
       version: categorizedLater.update.version, mode: 'all_ready'
     }))
+    // 重新选账户后，永久忽略被同一付款方式的账户规则覆盖；这里只应剩这一条。
     const [rulesAfterOverride] = await pool.execute(
       `SELECT payment_method_key AS paymentMethodKey, mapping_action AS mappingAction,
               account_id AS accountId
          FROM catledger_import_account_mappings WHERE uid = ? ORDER BY payment_method_key`,
       [user.uid]
     )
-    assert.equal(rulesAfterOverride.length, 2)
-    assert.deepEqual(rulesAfterOverride.find((rule) => rule.paymentMethodKey === legacyKey), {
-      paymentMethodKey: legacyKey, mappingAction: 'ignore', accountId: null
-    })
-    assert.deepEqual(rulesAfterOverride.find((rule) => rule.mappingAction === 'account'), {
-      paymentMethodKey: buildPaymentMethodKey('wechat', '零钱'),
-      mappingAction: 'account', accountId: user.accountId
-    })
+    assert.deepEqual(rulesAfterOverride, [{
+      paymentMethodKey: canonicalKey, mappingAction: 'account', accountId: user.accountId
+    }])
+    // 前一批仍引用同一支付方式，账户规则按现有保守撤销策略保留；本批分类规则可撤回。
+    const inheritedImpact = await service.financeUpdateUndoImpact(context(user, { updateId: laterPosted.update.updateId }))
+    assert.equal(inheritedImpact.canUndo, true)
+    assert.equal(inheritedImpact.sideEffects.revertedMappingCount, 1)
+    assert.equal(inheritedImpact.sideEffects.retainedMappingCount, 1)
+    await service.financeUpdateUndo(context(user, {
+      requestId: randomUUID(), updateId: laterPosted.update.updateId,
+      version: laterPosted.update.version, previewToken: inheritedImpact.previewToken
+    }))
+    const [rulesAfterUndo] = await pool.execute(
+      `SELECT payment_method_key AS paymentMethodKey, mapping_action AS mappingAction,
+              account_id AS accountId
+         FROM catledger_import_account_mappings WHERE uid = ? AND disabled_at IS NULL ORDER BY payment_method_key`,
+      [user.uid]
+    )
+    assert.deepEqual(rulesAfterUndo, rulesAfterOverride, '撤销保留已被另一批引用的账户规则，不恢复旧永久忽略')
   } finally {
     await pool.end()
   }
@@ -1699,13 +1806,24 @@ test('MySQL 人工组合支付覆盖隔离、守恒、原子回滚、重试和�
         resolution.version = 'payment-resolution-v2'
         resolution.allocations.forEach((item, index) => { item.amountMinor = index === activeIndex ? '1000' : '0' })
       }
-      const accountRequest = { requestId: randomUUID(), updateId: view.update.updateId, issueId: issue.issueId,
-        updateVersion: view.update.version, issueVersion: issue.version, decision: 'apply_fields',
-        fields: { paymentAccounts: resolution.allocations.map(({ componentIndex, accountId }) => ({ componentIndex, accountId })) } }
-      const foreignAccounts = JSON.parse(JSON.stringify(accountRequest)); foreignAccounts.requestId = randomUUID(); foreignAccounts.fields.paymentAccounts[1].accountId = other.accountId
-      await assert.rejects(service.reviewIssueResolve(context(user, foreignAccounts)), error => error.publicCode === 'VALIDATION_ERROR')
-      view = await service.reviewIssueResolve(context(user, accountRequest))
-      const accountRetry = await service.reviewIssueResolve(context(user, accountRequest))
+      // 当前计划在首次整理时已按付款成分分组，逐个确认账户后再核对组合金额。
+      const accountGroups = view.issues.filter(item => item.status === 'open' && item.issueType === 'account_mapping')
+      assert.equal(accountGroups.length, 2)
+      const decisions = []
+      for (const group of accountGroups) {
+        const groupDetail = await service.reviewIssueGet(context(user, { issueId: group.issueId }))
+        const member = groupDetail.members.find(item => item.objectId === event.eventId)
+        const componentIndex = Number(member.memberRole.replace('payment_component_', ''))
+        assert.ok([0, 1].includes(componentIndex))
+        decisions.push({ issueId: group.issueId, issueVersion: group.version, operation: 'resolve', decision: 'apply_fields',
+          fields: { ledgerAccountId: resolution.allocations[componentIndex].accountId } })
+      }
+      const accountRequest = { requestId: randomUUID(), updateId: view.update.updateId,
+        updateVersion: view.update.version, decisions }
+      const foreignAccounts = JSON.parse(JSON.stringify(accountRequest)); foreignAccounts.requestId = randomUUID(); foreignAccounts.decisions[1].fields.ledgerAccountId = other.accountId
+      await assert.rejects(service.reviewIssueResolveAccountMappings(context(user, foreignAccounts)), error => error.publicCode === 'VALIDATION_ERROR')
+      view = await service.reviewIssueResolveAccountMappings(context(user, accountRequest))
+      const accountRetry = await service.reviewIssueResolveAccountMappings(context(user, accountRequest))
       assert.equal(accountRetry.update.version, view.update.version)
       view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
       issue = view.issues.find(i => i.status === 'open')
@@ -1769,17 +1887,72 @@ test('MySQL 账户归组允许同一组合事件属于多个账户，识别先�
     const file = prepared.files[0]; objects.set(file.cloudPath, content)
     const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId, fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
     let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
-    assert.equal(view.freshness.requiresAccountGroupRefresh, true)
+    assert.equal(view.freshness.requiresAccountGroupRefresh, false, '首次整理已生成完整的账户成分与还款目标分组')
     const before = view.events.length
-    const legacyIssue = view.issues.find(i => i.issueType === 'account_mapping' && (i.reasonCodes || []).includes('payment_components_ambiguous'))
-    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
-      issueId: legacyIssue.issueId, updateVersion: view.update.version, issueVersion: legacyIssue.version, decision: 'apply_fields',
-      fields: { paymentAccounts: [{ componentIndex: 0, accountId: bankId }, { componentIndex: 1, accountId: user.accountId }] } }))
-    view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    assert.equal(view.issues.filter(i => i.issueType === 'account_mapping' && ['open', 'resolved'].includes(i.status)).length, 3)
+    // 模拟 v39 把单独付款与组合付款分开建项，升级必须在原事件上收敛范围。
+    const stableEvents = view.events.map(event => [event.eventId, event.amountMinor]).sort()
+    const oldIssueIds = [], bankContext = { ...require('../src/account-reference').accountReference('bank', '测试银行储蓄卡(1234)', 'ledger_account'), fundsSide: 'ordinary' }
+    let bankEventId, oldBankIssueId
+    for (const label of ['支付宝账户余额', '测试银行储蓄卡(1234)']) {
+      const old = view.issues.find(issue => issue.issueType === 'account_mapping' && issue.accountContext?.label === label)
+      const singleIssueId = randomUUID()
+      oldIssueIds.push(old.issueId, singleIssueId)
+      await pool.execute(`INSERT INTO catledger_review_issues
+        (uid,issue_id,update_id,issue_key,issue_key_version,issue_type,status,version,blocking,primary_reason_code,
+         member_count,candidate_count,rule_version,reason_codes_json)
+        SELECT uid,?,update_id,?,issue_key_version,issue_type,status,version,blocking,primary_reason_code,
+          1,candidate_count,rule_version,reason_codes_json FROM catledger_review_issues WHERE uid=? AND issue_id=?`,
+      [singleIssueId, digestParts('synthetic-old-single-account', singleIssueId), user.uid, old.issueId])
+      await pool.execute(`UPDATE catledger_review_issue_members SET issue_id=?,sort_order=0
+        WHERE uid=? AND issue_id=? AND member_role='subject'`, [singleIssueId, user.uid, old.issueId])
+      await pool.execute('UPDATE catledger_review_issue_members SET sort_order=0 WHERE uid=? AND issue_id=?', [user.uid, old.issueId])
+      await pool.execute('UPDATE catledger_review_issues SET member_count=1 WHERE uid=? AND issue_id=?', [user.uid, old.issueId])
+      if (label === '测试银行储蓄卡(1234)') {
+        const [[member]] = await pool.execute('SELECT object_id AS eventId FROM catledger_review_issue_members WHERE uid=? AND issue_id=?', [user.uid, singleIssueId])
+        bankEventId = member.eventId; oldBankIssueId = singleIssueId
+        await pool.execute("UPDATE catledger_economic_events SET field_sources_json=JSON_SET(field_sources_json,'$.bankChannelAccountContexts',CAST(? AS JSON)) WHERE uid=? AND event_id=?",
+          [JSON.stringify({ [singleIssueId]: bankContext }), user.uid, bankEventId])
+      }
+    }
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v39' WHERE uid=? AND update_id=?", [user.uid, view.update.updateId])
+    const upgradeRequest = { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version }
+    const beforeContexts = await pool.execute('SELECT field_sources_json AS fields,version FROM catledger_economic_events WHERE uid=? AND event_id=?', [user.uid, bankEventId])
+    const faulty = createImportService({ getPool: () => ({ async getConnection() {
+      const connection = await pool.getConnection(), execute = connection.execute.bind(connection)
+      connection.execute = async (sql, values) => {
+        const result = await execute(sql, values)
+        if (/SET field_sources_json=JSON_SET/.test(sql) && sql.includes('bankChannelAccountContexts')) throw Error('synthetic context rollback')
+        return result
+      }
+      const release = connection.release.bind(connection)
+      connection.release = () => { connection.execute = execute; connection.release = release; release() }
+      return connection
+    } }) })
+    await assert.rejects(faulty.financeUpdateOrganize(context(user, upgradeRequest)), /synthetic context rollback/)
+    const afterRollback = await pool.execute('SELECT field_sources_json AS fields,version FROM catledger_economic_events WHERE uid=? AND event_id=?', [user.uid, bankEventId])
+    assert.deepEqual(afterRollback[0], beforeContexts[0])
+    view = await service.financeUpdateOrganize(context(user, upgradeRequest))
+    assert.deepEqual(await service.financeUpdateOrganize(context(user, upgradeRequest)), view)
+    assert.deepEqual(view.events.map(event => [event.eventId, event.amountMinor]).sort(), stableEvents)
+    assert.equal(view.issues.filter(issue => issue.issueType === 'account_mapping' && ['open', 'resolved'].includes(issue.status)).length, 3)
+    const [[upgrade]] = await pool.execute("SELECT decision_json AS decision FROM catledger_finance_actions WHERE uid=? AND update_id=? AND action_type='semantic_upgrade' ORDER BY created_at DESC LIMIT 1", [user.uid, view.update.updateId])
+    const routes = (typeof upgrade.decision === 'string' ? JSON.parse(upgrade.decision) : upgrade.decision).accountIssueMappings
+    assert.deepEqual(routes.map(route => route.fromIssueId).sort(), oldIssueIds.sort())
+    const newBankIssueId = routes.find(route => route.fromIssueId === oldBankIssueId).toIssueId
+    const [[stored]] = await pool.execute('SELECT field_sources_json AS fields,version FROM catledger_economic_events WHERE uid=? AND event_id=?', [user.uid, bankEventId])
+    const contexts = (typeof stored.fields === 'string' ? JSON.parse(stored.fields) : stored.fields).bankChannelAccountContexts
+    assert.deepEqual(contexts[oldBankIssueId], bankContext)
+    assert.deepEqual(contexts[newBankIssueId], bankContext)
+    const [[versionMismatch]] = await pool.execute(`SELECT COUNT(*) AS count FROM catledger_review_issue_members m
+      JOIN catledger_review_issues i ON i.uid=m.uid AND i.issue_id=m.issue_id
+      WHERE m.uid=? AND m.object_id=? AND i.status IN ('open','resolved') AND m.object_version<>?`, [user.uid, bankEventId, stored.version])
+    assert.equal(Number(versionMismatch.count), 0)
     const request = { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version }
     await assert.rejects(service.reviewIssueRefreshAccountGroups(context(other, { ...request, requestId: randomUUID() })))
     view = await service.reviewIssueRefreshAccountGroups(context(user, request))
     assert.deepEqual(await service.reviewIssueRefreshAccountGroups(context(user, request)), view)
+    assert.equal(view.update.version, request.version, '兼容刷新入口不重复改写已完整分组的计划')
     assert.equal(view.events.length, before)
     const groups = view.issues.filter(i => i.issueType === 'account_mapping' && ['open', 'resolved'].includes(i.status))
     assert.equal(groups.length, 3, JSON.stringify({ events: view.events.length, groups: view.issues.map(i => ({ label: i.accountContext?.label, status: i.status, count: i.memberCount })) }))

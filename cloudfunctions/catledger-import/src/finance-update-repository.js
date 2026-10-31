@@ -222,7 +222,9 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
             r.payment_method_raw AS paymentMethod,
             r.category_evidence_json AS categoryEvidence,
             r.counterparty_raw AS counterparty, r.item_raw AS item, r.note_raw AS sourceNote, r.normalized_direction AS sourceDirection,
-            m.mapping_action AS mappingAction, m.account_id AS mappedAccountId
+            m.mapping_action AS mappingAction, m.account_id AS mappedAccountId,
+            CASE WHEN s.source_type_snapshot='bank' AND JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json,'$.bankMapping.statementKind'))='credit'
+              THEN ${require('./installment-plan-store').postedPlanSql('r')} ELSE NULL END AS existingRegistrationLoanId
        FROM catledger_finance_update_sources s
        JOIN catledger_import_rows r
          ON r.uid = s.uid AND r.batch_id = s.batch_id
@@ -347,8 +349,11 @@ async function restoreDraftPaymentMappings(connection, uid, updateId, events, ma
   function* mappingRows() {
     for (const event of events) {
       const projection = event.fieldSources && event.fieldSources.fundsProjection
+      // 组合付款没有单一付款方式键，恢复只能按成分引用逐条来，否则重新整理后
+      // 每个成分的账户选择都会丢。
       const references = [
         { sourceType: event.sourceType, paymentMethodKey: event.paymentMethodKey, label: '' },
+        ...(event.fieldSources && event.fieldSources.paymentAccountReferences || []),
         projection && projection.from,
         projection && projection.to
       ].filter(Boolean)
@@ -539,6 +544,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
       ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id`,
     [uid, updateId, ...(eventIds || []), uid, updateId, ...(eventIds || [])]
   )
+  await require('./installment-business-read').attachCounts(connection, uid, updateId, rows)
   return rows.map(row => includeFieldSources
     ? { ...publicEvent(row), utcAt: row.utcAt, fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
 }
@@ -559,6 +565,7 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
             issue.member_count AS memberCount,
             issue.candidate_count AS candidateCount,
             issue.reason_codes_json AS reasonCodes,
+            resolved_action.decision_json AS resolvedDecision,
             NULL AS subjectEventIds,
             subject.object_id AS subjectEventId,
             subject.member_role AS subjectMemberRole,
@@ -578,6 +585,9 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
             source_row.item_raw AS subjectItem,
             source_row.counterparty_raw AS subjectCounterparty
        FROM catledger_review_issues issue
+       LEFT JOIN catledger_finance_actions resolved_action
+         ON resolved_action.uid = issue.uid AND resolved_action.update_id = issue.update_id
+        AND resolved_action.action_id = issue.resolved_action_id
        LEFT JOIN catledger_review_issue_members subject FORCE INDEX (idx_catledger_review_issue_members_issue)
          ON subject.uid = issue.uid AND subject.update_id = issue.update_id AND subject.issue_id = issue.issue_id
        AND subject.object_type = 'event' AND ${chronologicalSubject ? `subject.member_id = (
