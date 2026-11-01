@@ -242,6 +242,9 @@
       <text class="step-count money-number">已确认 {{accountStepSummary.confirmed}} / {{accountStepSummary.total}}</text>
     </view>
     <text class="step-copy content-inset">核对建议，不合适可更改</text>
+    <view wx:if="{{accountStepSummary.suggested > 0}}" class="account-batch-row content-inset">
+      <button class="account-batch-action" bindtap="confirmAllAccountMappings" disabled="{{busy || accountStepBusy}}">确认全部建议（{{accountStepSummary.suggested}} 项）</button>
+    </view>
 
     <skeleton-rows wx:if="{{pageLoading && !accountMappings.length}}" rows="{{3}}" />
     <view wx:if="{{accountMappingsIncluded.length}}" class="account-proof-list">
@@ -282,6 +285,7 @@
             <text wx:if="{{item.choiceValue === 'pending'}}" class="account-inline-note">{{item.paymentNeedsReview ? '多账户共同支付，请核对金额与性质。' : '请选择归属账户；信息不足请核对后确认。'}}</text>
             <text wx:if="{{item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或改选已有账户 / 不计入。</text>
             <text wx:if="{{item.suggestedExisting}}" class="account-state-note">已按名称、银行和尾号推荐，请核对。</text>
+            <text wx:if="{{item.canExternal && item.choiceValue !== 'external'}}" class="account-inline-note">不是我的账户？可在上方改选「别人的账户」。</text>
             <text wx:if="{{item.choiceValue === 'ignore'}}" class="account-state-note">保留证据，本次不创建账户与账目。</text>
           </view>
           <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
@@ -575,12 +579,12 @@
       </view>
 
       <view class="account-choice-section account-choice-ignore-section">
-        <text class="account-choice-section-title">其他处理</text>
+        <text class="account-choice-section-title">归属与处理</text>
         <view class="account-choice-ignore-grid">
           <button wx:if="{{accountChoiceSheet.canExternal}}" class="account-choice-ignore-card {{accountChoiceSheet.selectedValue === 'external' ? 'account-choice-selected' : ''}}" data-value="external" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === 'external'}}">
             <view class="account-choice-ignore-content">
-              <text class="account-choice-ignore-title">账本外账户</text>
-              <text class="account-choice-ignore-copy">确认归属，按资金两端判断收支</text>
+              <text class="account-choice-ignore-title">别人的账户</text>
+              <text class="account-choice-ignore-copy">不属于我的账本，按资金两端判断收支</text>
             </view>
           </button>
           <button class="account-choice-ignore-card {{accountChoiceSheet.selectedValue === 'ignore' ? 'account-choice-selected' : ''}}" data-value="ignore" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === 'ignore'}}">
@@ -620,7 +624,6 @@
         <text>{{choicePage.start}}–{{choicePage.end}} / {{choicePage.count}} 项</text>
         <button class="stage-previous" data-direction="1" bindtap="changeChoicePage" disabled="{{!choicePage.hasNext}}">下一页</button>
       </view>
-      <view class="list-pagination"><button class="stage-previous" data-kind="accounts" bindtap="changeChoiceKind">已有账户</button><button class="stage-previous" data-kind="accountDrafts" bindtap="changeChoiceKind">本批新建</button></view>
       <button class="account-choice-create" data-value="create" bindtap="selectAccountChoice"><text class="account-choice-create-plus">＋</text><text>创建新账户</text></button>
     </view>
   </view>

@@ -13,13 +13,13 @@ test('资金两端均由统一模板进入全目录，旧片段表单退出', ()
   assert.doesNotMatch(old, /changeIssueNature|changePaymentRow|changeRepaymentAllocation|editLoanRepayment/)
 })
 
-test('完整目录翻页和搜索后，稳定ID定位两端且选择仅改本笔草稿', async t => {
+test('完整目录一次读完，搜索后稳定ID定位两端且选择仅改本笔草稿', async t => {
   const { h, page, accounts } = await open(t)
   await page.openDirectory(tap({ target: 'reviewAccount' }))
   assert.equal(page.data.directorySheet.title, '选择转出账户')
   assert.equal(page.data.directorySheet.page.count, 25)
-  await page.changeDirectoryPage(tap({ direction: '1' }))
-  page.selectDirectory(tap({ index: 6 }))
+  assert.equal(page.data.directorySheet.page.hasNext, false, '账户目录不再翻页')
+  page.selectDirectory(tap({ index: 18 }))
   assert.equal(draft(page).ledgerAccountId, accounts[18].accountId)
   await page.openDirectory(tap({ target: 'reviewCounterparty' }))
   assert.equal(page.data.directorySheet.title, '选择转入账户')

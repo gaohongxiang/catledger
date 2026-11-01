@@ -49,6 +49,28 @@ test('放弃旧批次后在同一 Page 重新整理，新批次账户确认仍�
   assert.equal(page._draftSession.state.updateId, next.summary.update.updateId)
 })
 
+test('账户步骤按字节预算切页后自动补齐，账户列表不再翻页', async t => {
+  const data = fixture(11, true)
+  data.issues = data.events.map((event, index) => ({ issueId: 'synthetic-account-' + index, issueType: 'account_mapping',
+    status: 'open', version: 1, blocking: true, memberCount: 1, subject: event,
+    accountContext: { recognized: true, sourceType: 'wechat', label: '合成钱包' + index, currency: 'CNY' } }))
+  data.summary.workbench = workbenchSummary(data.events, [], [{ issueType: 'account_mapping', status: 'open', count: 11 }], 0, 0)
+  const h = runtime(data), page = h.page
+  t.after(() => page.onUnload())
+  await until(() => page.data.accountMappings.length === 11)
+  // 服务端每页按 48KB 截断，账户组多时只回 8 项；客户端要续读补足整页。
+  h.intercept = (action, input) => {
+    if (action !== 'reviewIssues.list') return undefined
+    const offset = Number(input.cursor || 0), items = data.issues.slice(offset, offset + 8)
+    return { protocolVersion: 2, viewVersion: h.summary.viewVersion, update: h.summary.update, items,
+      total: data.issues.length, nextCursor: offset + items.length < data.issues.length ? String(offset + items.length) : null }
+  }
+  await page.loadActivePage(true)
+  assert.equal(page.data.accountMappings.length, 11)
+  assert.equal(page.data.reviewPage.end, 11)
+  assert.equal(page.data.reviewPage.hasNext, false)
+})
+
 test('放弃后新选账单不被旧放弃视图覆盖，第一步操作按钮仍可用', async t => {
   const h = runtime(accounts(), { realDraftManager: true }), page = h.page
   t.after(async () => { if (page._draftSession) await page._draftSession.pause(); page.onUnload() })
@@ -155,10 +177,13 @@ test('没有本机保存导致的外部过期仍须重核，不自动绕过版�
   const h = runtime(accounts()), page = h.page
   t.after(() => page.onUnload())
   await until(() => page.data.accountMappings.length === 2)
+  await page.openAccountChoice(tap(h.issues[0].issueId))
+  // 目录进入账户步骤时已一次读完并缓存；换搜索词触发真实读取，模拟外部过期。
   h.intercept = action => {
     if (action === 'financeUpdates.options') throw Object.assign(new Error('整理结果已变化'), { code: 'STALE_VIEW' })
   }
-  await page.openAccountChoice(tap(h.issues[0].issueId))
+  await page.bindAccountChoiceSearch({ currentTarget: { dataset: {} }, detail: { value: '合成' } })
+  await h.flush()
   page.closeAccountChoice()
   const count = h.calls.length
   await page.completeAccountMapping(tap(h.issues[0].issueId))
@@ -274,9 +299,10 @@ test('接续期间批次已结束，不再确认下一项且退出忙碌状态',
 })
 
 test('补查已选账户后收到新问题版本，入队前仍核验原决定而不自动改成修订', async t => {
-  const directory = Array.from({ length: 11 }, (_, index) => ({ accountId: index ? 'synthetic-option-' + index : 'synthetic-account',
+  // 账户目录一次读 100 条；第 101 个账户只能靠补查，才走得到补查后的版本核验。
+  const directory = Array.from({ length: 101 }, (_, index) => ({ accountId: index ? 'synthetic-option-' + index : 'synthetic-account',
     name: '合成账户' + index, type: 'wallet', currency: 'CNY' }))
-  const selectedId = directory[10].accountId
+  const selectedId = directory[100].accountId
   const { h, page, summaryGate, saving, choosing } = await overlappingConfirmation({ directory, secondAccountId: selectedId })
   t.after(() => page.onUnload())
   const loadDirectories = page.loadDirectories

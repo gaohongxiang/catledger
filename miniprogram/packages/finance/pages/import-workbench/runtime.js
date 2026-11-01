@@ -14,6 +14,9 @@ const readCache = require('../../../../services/read-cache')
 const pendingWrites = require('../../../../services/pending-ledger-write')
 const reviewLayout = require('./review-layout')
 
+// 账户步骤的问题组数量有限，一次读满并补齐服务端按字节预算切出的页；
+// 翻页只在超过 100 组时保留。
+const ACCOUNT_STEP_PAGE_SIZE = 100
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const downloadProgress = progress => {
   const total = Number(progress && progress.total), completed = Number(progress && progress.completed)
@@ -871,7 +874,9 @@ module.exports = {
       kind = { completed: 'reviewedEvents', excluded: 'excludedReviewGroups', duplicate: 'duplicateReviewEvents' }[status]
     }
     if (reset || !this._mainPager) this._mainPager = this._viewSession.pager(action,
-      step === 3 ? Object.assign({}, filter, { pageSize: presentation.PAGE_SIZE }) : filter, { fillPage: step === 3 })
+      step === 2 ? Object.assign({}, filter, { pageSize: ACCOUNT_STEP_PAGE_SIZE })
+        : step === 3 ? Object.assign({}, filter, { pageSize: presentation.PAGE_SIZE }) : filter,
+      { fillPage: step === 2 || step === 3 })
     const pager = this._mainPager
     if (!quiet) this.setData({ pageLoading: true, pageError: '' })
     try {

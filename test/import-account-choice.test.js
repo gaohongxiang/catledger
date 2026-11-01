@@ -64,6 +64,29 @@ test('刷新未知来源时保留服务端已经确认的人工归属', () => {
   assert.equal(state.summary.invalid, 0)
 })
 
+test('账户目录一次读完，本批新建并入同一列表，选中一个不丢其它账户', async t => {
+  const h = require('./helpers/paged-workbench').runtime()
+  const page = h.page
+  t.after(() => page.onUnload())
+  const accounts = Array.from({ length: 20 }, (_, index) => ({ accountId: 'synthetic-account-' + String(index).padStart(2, '0'),
+    name: '合成账户' + index, type: 'bank', currency: 'CNY' }))
+  const accountDrafts = [{ accountId: 'synthetic-draft', name: '本批钱包', type: 'wallet', currency: 'CNY' }]
+  h.accounts = accounts
+  h.accountDrafts = accountDrafts
+  page._businessData = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' }, accountIssues: [unknownIssue()], accounts, accountDrafts })
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: 'synthetic-issue' } } })
+  await h.flush()
+  assert.equal(page.data.accountChoiceResults.length, 21, '20 个账户一次读完，本批新建并入同一列表')
+  assert.equal(page.data.accountChoiceResults.filter(row => !row.draft).length, 20)
+  assert.ok(page.data.accountChoiceResults.some(row => row.accountId === 'synthetic-draft' && row.name === '本批钱包（本批新建）'))
+  assert.equal(page.data.choicePage.hasNext, false, '账户不再分页')
+  await page.selectAccountChoice({ currentTarget: { dataset: { value: 'account:synthetic-account-19' } } })
+  assert.equal(page.data.accounts.length, 20, '选中一个账户不能截断其它账户')
+  assert.equal(page.data.accountMappings[0].choiceValue, 'account:synthetic-account-19')
+})
+
 test('账户步骤账本外归属与整批排除独立，确认后仍在账户列表回显', async t => {
   const issue = { ...unknownIssue(), version: 1, subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
   issue.accountContext.fundsSide = 'payment_target'
@@ -385,4 +408,30 @@ test('修改分配金额只更新对应叶字段，不把另一行输入重新�
   assert.equal(editor.draft(page).parts[1].amountInput, '50.')
   assert.ok(patches.some(patch => patch['reviewEditSheet.draft.parts[1].amountInput'] === '50.'))
   assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'reviewEditSheet.draft.parts' || key.includes('parts[0]'))))
+})
+
+test('账户步骤一键确认全部建议，待选择和已修改项保持逐项确认', async t => {
+  const accounts = [
+    { accountId: 'wallet', name: '合成钱包', type: 'wallet', currency: 'CNY' },
+    { accountId: 'bank', name: '合成银行卡', type: 'bank', currency: 'CNY' }
+  ]
+  const issue = (id, label, sourceType) => ({ issueId: id, issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType, label, currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event-' + id, economicNature: 'expense' } })
+  const h = require('./helpers/paged-workbench').runtime(), page = h.page
+  page._businessData = null
+  page._draftSession = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' },
+    accountIssues: [issue('synthetic-wallet', '合成钱包', 'wechat'), issue('synthetic-bank', '合成银行卡', 'bank'), unknownIssue()],
+    accounts })
+  t.after(() => page.onUnload())
+  const state = page.refreshAccountMappings()
+  assert.equal(state.summary.suggested, 2, '只有两项是未改动的建议')
+  await page.confirmAllAccountMappings()
+  const after = page.refreshAccountMappings()
+  assert.equal(after.summary.suggested, 0)
+  assert.equal(after.summary.pending, 1, '未知账户仍需逐项选择')
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-wallet').needsConfirmation, false)
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-bank').needsConfirmation, false)
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-issue').needsConfirmation, true)
 })

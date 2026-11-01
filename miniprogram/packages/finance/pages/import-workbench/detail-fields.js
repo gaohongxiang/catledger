@@ -122,7 +122,7 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
       accountText(row.counterpartyLedgerAccountId, catalogs.accounts), false)
   } else if (repayments.length) add('account', labels.from, accountText(row.ledgerAccountId, catalogs.accounts), false)
   else accountFields(row).forEach(field => add(field.key, field.label,
-    field.ownershipKind === 'external' ? '账本外账户' : accountText(field.accountId, catalogs.accounts), false))
+    field.ownershipKind === 'external' ? '别人的账户' : accountText(field.accountId, catalogs.accounts), false))
   if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还入账户 ' + (index + 1),
     [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
   if (!registration && categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')

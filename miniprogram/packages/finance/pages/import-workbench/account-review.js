@@ -25,6 +25,11 @@ function currentIssueDirectory(page) {
     issue.issueId === token.issueId && issue.version === token.issueVersion && page._issueEvidenceToken === token.issueToken)
 }
 
+// 账户和分类都是有限目录，一次读满协议上限；分页只是超过上限时的兜底。
+const DIRECTORY_PAGE_SIZE = 100
+const ACCOUNT_DIRECTORY_KINDS = ['accounts', 'accountDrafts']
+// 账户目录一次读完；分类、贷款等可能较多的目录仍按小页读取。
+const optionPageSize = kind => ACCOUNT_DIRECTORY_KINDS.includes(kind) ? DIRECTORY_PAGE_SIZE : 12
 const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'cash', label: '现金' },
     { value: 'bank', label: '银行卡' },
@@ -242,7 +247,7 @@ module.exports = {
 
   buildAccountMappingState: function (issues, accounts, accountDrafts, accountMappingDrafts) {
     const self = this
-    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 }
+    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0, suggested: 0 }
     const mappings = issues.map(function (issue) {
         if (issue.issueType !== 'account_mapping') {
           summary.transfer += 1
@@ -312,6 +317,8 @@ module.exports = {
         const needsConfirmation = !ready || ((issue.status === 'open' || missingResolution || draft.dirty) && !draft.localConfirmed)
         if (needsConfirmation) summary.pending += 1
         else summary.confirmed += 1
+        // 一键确认只覆盖页面已经给出建议且用户未改动的项；待选择和已修改项仍逐项确认。
+        if (needsConfirmation && ready && !draft.dirty && !['pending', 'ignore', 'external'].includes(draft.mode)) summary.suggested += 1
         return Object.assign({}, issue, {
             inline: true,
             canExternal,
@@ -340,8 +347,7 @@ module.exports = {
   openAccountChoice: async function (event) {
     showAccountChoice.call(this, event)
     if (!this.data.accountChoiceSheet) return
-    this.setData({ choiceKind: 'accounts' })
-    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: 'accounts', pageSize: 12 })
+    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: 'accounts', pageSize: DIRECTORY_PAGE_SIZE })
     return this.changeChoicePage(event)
   },
 
@@ -357,9 +363,13 @@ module.exports = {
     const selected = (this._choiceRows || []).find(row => row.accountId === id)
     if (selected) {
       const data = this.businessData()
-      const accounts = data.accounts.filter(row => row.accountId !== id).slice(0, 11).concat(selected)
-      data.accounts = accounts
-      this.setData({ accounts })
+      const isDraft = (data.accountDrafts || []).some(row => row.accountId === id)
+      // 选中项可能来自搜索或分页；只补进目录，不截断其它账户，
+      // 否则后面的卡片会丢失可选账户和按名称推荐。
+      if (!isDraft && !(data.accounts || []).some(row => row.accountId === id)) {
+        data.accounts = (data.accounts || []).concat(selected)
+        this.setData({ accounts: data.accounts })
+      }
       const draft = this._accountUiDrafts.get(this.data.accountChoiceSheet.issueId)
       if (draft) draft.accountName = selected.name
     }
@@ -462,6 +472,51 @@ module.exports = {
     this.restoreAccountScroll()
   },
 
+  // 首次导入的旧映射只作建议，确认一次后才可复用；批量确认仍是一次明确的人工决定。
+  confirmAllAccountMappings: async function () {
+    if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
+    this._accountScrollTarget = this._pageScrollTop
+    this.flushAccountDraftSync()
+    const collect = () => this.refreshAccountMappings().mappings.filter(function (item) {
+      return item.inline && item.needsConfirmation && item.canConfirm && !item.dirty &&
+        !['pending', 'ignore', 'external'].includes(item.choiceValue)
+    })
+    let targets = collect()
+    if (!targets.length) return
+    if (this._viewSession && !this._viewSession.active) {
+      const recovered = await recoverAccountConfirmation(this, targets[0].issueId)
+      if (!recovered || !recovered.current()) return
+      targets = collect()
+      if (!targets.length) return
+    }
+    this.setData({ accountStepBusy: true, accountStepError: '', accountStepProgressText: '正在确认 ' + targets.length + ' 项账户…' })
+    try {
+      // 草稿会话一次最多接收 8 项未保存决定；超过时分段入队并等待上一段保存。
+      for (let start = 0; start < targets.length; start += 8) {
+        const chunk = targets.slice(start, start + 8)
+        const changes = chunk.map(mapping => {
+          const draft = this._accountUiDrafts.get(mapping.issueId)
+          return { kind: 'account', issueId: mapping.issueId, issueVersion: mapping.version, revision: draft.revision || 0,
+            decision: this.accountMappingDecision(mapping) }
+        })
+        if (this._draftSession) this._draftSession.enqueue(changes, Object.fromEntries(this._accountUiDrafts))
+        for (const mapping of chunk) {
+          const draft = this._accountUiDrafts.get(mapping.issueId)
+          draft.localConfirmed = true
+          if (this._accountConfirmed) this._accountConfirmed.set(mapping.issueId, { revision: draft.revision || 0 })
+        }
+        if (start + 8 < targets.length && this._draftSession) await this._draftSession.flush()
+      }
+      this.setData({ accountStepError: '' })
+    } catch (error) {
+      this.setData({ accountStepError: publicError(error, '本机草稿未保存，请重试') })
+    } finally {
+      this.setData({ accountStepBusy: false, accountStepProgressText: '' })
+      this.refreshAccountMappings()
+      this.restoreAccountScroll()
+    }
+  },
+
   persistAccountDrafts: function () {
     if (!this._draftSession) return
     try { this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep) }
@@ -493,7 +548,7 @@ module.exports = {
   loadDirectories: async function (events = [], extraIds = [], kinds = ['accounts', 'categories', 'accountDrafts']) {
     const session = this._viewSession
     const pairs = await Promise.all(kinds.map(async kind => {
-          const response = await session.read('financeUpdates.options', { kind, pageSize: 8 })
+          const response = await session.read('financeUpdates.options', { kind, pageSize: DIRECTORY_PAGE_SIZE })
           const key = kind === 'categories' ? 'categoryId' : 'accountId'
           const pins = [...new Set((kind === 'categories' ? events.map(event => event.categoryId).filter(Boolean) : events.flatMap(event => model.eventAccountIds(event)
                   .concat((event.fundsProjection && event.fundsProjection.to && event.fundsProjection.to.candidates || []).map(row => row.accountId))))
@@ -509,17 +564,9 @@ module.exports = {
     if (!this.data.accountChoiceSheet) return
     const query = String(event.detail.value || '').slice(0, 80)
     this.setData({ accountChoiceQuery: query })
-    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.choiceKind, query, pageSize: 12 })
+    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: 'accounts', query, pageSize: DIRECTORY_PAGE_SIZE })
     // bindinput 必须同步结束，不能把异步目录读取返回给原生输入框。
     this.changeChoicePage(event)
-  },
-
-  changeChoiceKind: function (event) {
-    const kind = event.currentTarget.dataset.kind
-    if (!['accounts', 'accountDrafts'].includes(kind)) return
-    this.setData({ choiceKind: kind, accountChoiceQuery: '' })
-    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
-    return this.changeChoicePage(event)
   },
 
   changeChoicePage: async function (event) {
@@ -532,8 +579,12 @@ module.exports = {
     try {
       const response = await pager.load(direction(event))
       if (!active()) return
-      this._choiceRows = response.items
-      this.setData({ accountChoiceResults: model.accountSelectorOptions(this.data.choiceKind === 'accounts' ? response.items : [], this.data.choiceKind === 'accountDrafts' ? response.items : []), choicePage: response.page, choiceLoading: false })
+      // 本批新建账户直接并入同一列表，用后缀区分；不再切换目录。
+      const search = model.normalizePaymentAccountName(this.data.accountChoiceQuery)
+      const drafts = (this.data.accountDrafts || []).filter(account =>
+        !search || model.normalizePaymentAccountName(account.name).includes(search))
+      this._choiceRows = response.items.concat(drafts)
+      this.setData({ accountChoiceResults: model.accountSelectorOptions(response.items, drafts), choicePage: response.page, choiceLoading: false })
     } catch (error) { if (active()) this.setData({ choiceLoading: false, choiceError: errorText(error) }) }
   },
 
@@ -566,7 +617,7 @@ module.exports = {
     const liabilityOnly = false
     this.setData({ directorySheet: { target, kind, ...issueOptions, ...(categoryKind ? { categoryKind } : {}),
       liabilityOnly, selectedId: editorOptions ? editorOptions.selectedId : directorySelection(this.data, target), query: '', items: [], loading: true } })
-    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: 12 })
+    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: optionPageSize(kind) })
     return this.changeDirectoryPage(event)
   },
 
@@ -576,7 +627,7 @@ module.exports = {
     this.setData({ 'directorySheet.query': query })
     const categoryKind = this.data.directorySheet.categoryKind
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind,
-      ...(categoryKind ? { categoryKind } : {}), query, pageSize: 12 })
+      ...(categoryKind ? { categoryKind } : {}), query, pageSize: optionPageSize(this.data.directorySheet.kind) })
     this.changeDirectoryPage(event)
   },
 
@@ -584,7 +635,7 @@ module.exports = {
     const kind = event.currentTarget.dataset.kind
     if (!this.data.directorySheet || !currentIssueDirectory(this) || !['accounts', 'accountDrafts'].includes(this.data.directorySheet.kind) || !['accounts', 'accountDrafts'].includes(kind)) return
     this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
-    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
+    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: optionPageSize(kind) })
     return this.changeDirectoryPage(event)
   },
 
@@ -628,7 +679,9 @@ module.exports = {
       const selected = sheet.kind === 'accountDrafts' ? Object.assign({}, item, { isDraft: true, name: item.name + '（本批新建）' }) : item
       const choices = this.data[property].filter(row => row.isPlaceholder).concat(selected,
         this.data[property].filter(row => row.isCreate))
-      this.setData({ [property]: choices, accounts: this.data.accounts.filter(row => row.accountId !== item.accountId).slice(0, 11).concat(selected) })
+      // 目录保持完整：截断会让后续卡片选不到其它账户，也匹配不到推荐。
+      const accounts = this.data.accounts.some(row => row.accountId === item.accountId) ? this.data.accounts : this.data.accounts.concat(selected)
+      this.setData({ [property]: choices, accounts })
       this[change]({ detail: { value: choices.findIndex(row => row.accountId === item.accountId) } })
       this.closeDirectory()
       return
@@ -647,7 +700,8 @@ module.exports = {
       const kind = nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
       if (item.kind !== kind) { this.setData({ errorMessage: '请选择与当前收支性质一致的分类' }); return }
       const options = [this.data.issueCategories[0], item]
-      this.setData({ issueCategories: options, categories: this.data.categories.filter(row => row.categoryId !== item.categoryId).slice(0, 11).concat(item), 'issueDraft.categoryIndex': 1, issueCategoryCanSave: true })
+      const categories = this.data.categories.some(row => row.categoryId === item.categoryId) ? this.data.categories : this.data.categories.concat(item)
+      this.setData({ issueCategories: options, categories, 'issueDraft.categoryIndex': 1, issueCategoryCanSave: true })
     }
     this.closeDirectory(); this.refreshIssueFieldsDraft()
   },

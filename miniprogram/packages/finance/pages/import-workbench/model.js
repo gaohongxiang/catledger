@@ -63,7 +63,7 @@ function accountChoiceOptions(accounts, accountDrafts, { canExternal = true } = 
     .concat((accountDrafts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name + '（本批新建）' }
     }))
-    .concat(canExternal ? [{ value: 'external', name: '账本外账户' }] : [])
+    .concat(canExternal ? [{ value: 'external', name: '别人的账户' }] : [])
     .concat([{ value: 'ignore', name: '仅本次不计入' }])
 }
 
@@ -462,7 +462,7 @@ function issueView(issue) {
     subjectAmountText: subject ? subject.amountText : '',
     subjectDirectionClass: subject ? subject.directionClass : '',
     decisionText: evidenceReviewOnly ? issueHelp : accountOwnershipRequired
-      ? '请选择资金两端的账本账户；不属于本账本的端点选账本外账户'
+      ? '请选择资金两端的账户；不属于我的账户请选「别人的账户」'
       : paymentNeedsReview
       ? issue.issueType === 'account_mapping' ? '确认这些付款方式对应的账本账户' : '核对各账户实际支付金额，并确认这笔是支出还是还款'
       : issue.issueType === 'refund_relation'

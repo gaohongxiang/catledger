@@ -2676,6 +2676,10 @@ button::after { border: 0; }
 /* 账户摘要与编辑共享列表边界，操作区域保持可点击尺寸。 */
 .account-proof-title-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4rpx 12rpx; min-width: 0; flex: 1; }
 .account-pending-label { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 1.5; }
+.account-batch-row { display: flex; justify-content: flex-end; margin-top: 8rpx; }
+.account-batch-action { min-height: 64rpx; margin: 0; padding: 0 8rpx; background: transparent; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; }
+.account-batch-action::after { border: 0; }
+.account-batch-action[disabled] { opacity: .5; }
 .account-summary-row { display: flex; align-items: center; gap: var(--layout-space-3); min-height: 64rpx; }
 .account-summary-text { flex: 1; min-width: 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; overflow-wrap: anywhere; }
 .account-proof-item .account-change { flex: 0 0 80rpx; width: 80rpx; max-width: 80rpx; min-width: 80rpx; min-height: 64rpx; margin: 0; padding: 0 4rpx; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; background: var(--ui-surface); }
