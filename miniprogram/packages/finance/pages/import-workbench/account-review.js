@@ -250,15 +250,9 @@ module.exports = {
         }
         summary.inline += 1
         if (issue.status === 'open') summary.open += 1
-        const subject = issue.subject || {}, source = subject.fieldSources || {}, facts = subject.editorFacts || {}
-        const canExternal = Boolean(issue.subject && issue.accountContext?.canExternal !== false &&
-          !/^payment_component_/.test(issue.accountContext && issue.accountContext.fundsSide || '') &&
-          !['borrow', 'refund'].includes(subject.economicNature) && !subject.installment && !source.installment &&
-          !subject.disbursement && !source.disbursement && !subject.paymentResolution && !source.paymentResolution &&
-          !(subject.paymentAccounts || source.paymentAccounts || []).length && !(subject.repaymentAllocations || source.repaymentAllocations || []).length &&
-          !subject.repaymentChannel && !facts.repaymentChannel && !source.repaymentChannelResolution && !source.bankChannelResolution &&
-          !subject.loanRepayment && !source.loanRepayment && !facts.incompleteComposition && !facts.incompleteRepayment &&
-          (!facts.composition || facts.composition === 'single'))
+        // 是否允许账本外由服务端／本机按全部成员统一判定；页面不再复制业务规则，
+        // 保存时仍由服务端复核。旧快照缺少该字段时保守地不开放外部选择。
+        const canExternal = Boolean(issue.subject && issue.accountContext?.canExternal === true)
         const choices = model.accountChoiceOptions(accounts, accountDrafts, { canExternal })
         const mappingDraft = (accountMappingDrafts || []).find(function (item) {
           return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&

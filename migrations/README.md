@@ -22,9 +22,9 @@
 
 ## 0038 账户绑定依据与外部端点
 
-[0038_scoped_account_bindings.sql](0038_scoped_account_bindings.sql)为 `catledger_import_account_mappings` 与 `catledger_finance_update_account_mapping_drafts` 追加可空 `binding_json`，扩展两表的动作 CHECK：`account` 必须带 `account_id`，`external`／`ignore` 必须不带。原用户范围唯一约束、外键和已有数据保留，不回填归属或改写原始行、交易与余额。旧历史映射的 NULL 只作候选；本批明确决定仍按原成员与来源范围恢复，不能据此给其他记录补造确认依据。
+[0038_scoped_account_bindings.sql](0038_scoped_account_bindings.sql)为 `catledger_import_account_mappings` 与 `catledger_finance_update_account_mapping_drafts` 追加可空 `binding_json`，扩展两表的动作 CHECK：`account` 必须带 `account_id`，`external`／`ignore` 必须不带。原用户范围唯一约束、外键和已有数据保留，不回填归属或改写原始行、交易与余额。旧历史映射的 NULL 只作候选；本批明确决定仍按原成员与来源范围恢复，不能据此给其他记录补造确认依据。账本外确认只在本批有效，不发布为可复用历史映射。
 
-完整私有导出升为 schemaVersion 38，两表新增 JSON 与已有事件归属决定一同保全；导出清单按实际列顺序包含非空绑定，隔离恢复保留原 ID 和关系。最小权限不扩大：API 复用两表 `SELECT`；import 复用正式映射的 `SELECT, INSERT, UPDATE` 和草稿映射的 `SELECT, INSERT, UPDATE, DELETE`。部署前按[运行权限清单](../scripts/runtime-role-grants.js)核验实际账号，不授予运行时 DDL 或库级权限。结构与权限反例见[绑定迁移测试](../test/account-bindings-db.test.js)、[运行角色测试](../test/runtime-roles-db.test.js)，导出恢复见[data-export](../test/data-export.test.js)。
+完整私有导出升为 schemaVersion 36，两表新增 JSON 与已有事件归属决定一同保全；导出清单按实际列顺序包含非空绑定，隔离恢复保留原 ID 和关系。最小权限不扩大：API 复用两表 `SELECT`；import 复用正式映射的 `SELECT, INSERT, UPDATE` 和草稿映射的 `SELECT, INSERT, UPDATE, DELETE`。部署前按[运行权限清单](../scripts/runtime-role-grants.js)核验实际账号，不授予运行时 DDL 或库级权限。结构与权限反例见[绑定迁移测试](../test/account-bindings-db.test.js)、[运行角色测试](../test/runtime-roles-db.test.js)，导出恢复见[data-export](../test/data-export.test.js)。
 
 发布顺序为取得授权后的安全快照与0001～0037校验和核对 → 执行0038并核对两处列、CHECK、原唯一约束／外键及旧 NULL → 登记原文件校验和并核验最小权限 → 更新兼容的 import／API → 客户端原生及真机验证。依赖新列的导入与导出代码不能先于迁移上线。直连迁移使用同一连接；管理 SQL 仅支持单语句时，先核对原文件的 `information_schema` 守卫，再执行对应 ALTER，全部成功后登记，不跨连接拆用 PREPARE 变量。本轮未执行线上迁移或部署；授权、执行证据与待验收状态只在[实施规划](../docs/招财猫记账本实施规划.md)维护。
 

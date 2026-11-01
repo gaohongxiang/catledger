@@ -8,8 +8,10 @@ function countMemberObjects(members) {
 function canUseExternal(events, members) {
   const items = members.filter(member => member.memberRole !== 'candidate')
   const byId = Array.isArray(events) ? new Map(events.map(event => [event.eventId, event])) : events
+  // 退款必须回到账本内账户，不能把入账端改成账本外。
   return items.length > 0 && items.every(member => member.objectType === 'event' &&
-    byId.has(member.objectId) && require('./account-reference-decision').supported(byId.get(member.objectId), member.memberRole))
+    byId.has(member.objectId) && byId.get(member.objectId).economicNature !== 'refund' &&
+    require('./account-reference-decision').supported(byId.get(member.objectId), member.memberRole))
 }
 
 function memberReference(event, member) {

@@ -229,21 +229,23 @@ async function promoteAccountMappings(connection, uid, updateId) {
     [uid, updateId]
   )
   const audit = []
-  const binding = require('./account-binding'), groups = new Map()
+  const binding = require('./account-binding'), groups = new Map(), batchOnly = new Set()
   for (const row of rows) {
     const proof = binding.bindingFor(row)
-    // 文件内确认与旧弱键只在本批有效；排除永不成为永久规则。
+    // 文件内确认、旧弱键和账本外确认只在本批有效；排除永不成为永久规则。
     if (row.mappingAction === 'ignore' || !proof || !proof.reusable) continue
-    if (!require('./account-mapping-policy').compatibleMapping({ ...row, mappingScope: 'history' }) ||
-        (row.mappingAction === 'account' ? row.eventStatus !== 'posted' : !['posted','excluded'].includes(row.eventStatus))) {
-      throw importError('UNRESOLVED_IMPORT')
-    }
-    const key = row.sourceType + ':' + row.paymentMethodKey, previous = groups.get(key)
-    if (previous && (previous.mappingAction !== row.mappingAction || previous.accountId !== row.accountId ||
+    const key = row.sourceType + ':' + row.paymentMethodKey
+    // 账本外确认不发布为可复用历史；同一引用同时出现账号与账本外决定时保留本批决定。
+    if (row.mappingAction !== 'account') { batchOnly.add(key); continue }
+    const previous = groups.get(key)
+    if (previous && (previous.accountId !== row.accountId ||
         JSON.stringify(binding.bindingFor(previous)) !== JSON.stringify(proof))) throw importError('UNRESOLVED_IMPORT')
     groups.set(key, row)
   }
+  for (const key of batchOnly) groups.delete(key)
   for (const row of groups.values()) {
+    if (!require('./account-mapping-policy').compatibleMapping({ ...row, mappingScope: 'history' }) ||
+        row.eventStatus !== 'posted') throw importError('UNRESOLVED_IMPORT')
     const before = await readMapping(connection, uid, 'account', row)
     await connection.execute(
       `INSERT INTO catledger_import_account_mappings

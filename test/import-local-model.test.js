@@ -167,3 +167,17 @@ test('本机计划候选按同一指纹判断：同名同长期数靠本金和�
   assert.throws(() => reader.read('loans.planCandidates', { accountId: '', totalTerms: 12 }),
     error => error.code === 'VALIDATION_ERROR')
 })
+
+test('账户与分类目录返回副本，页面按路径更新不会改写模型', async () => {
+  const value = await facts({ count: 2 }), model = local.create(value), reader = read.create(model)
+  const account = reader.read('financeUpdates.options', { kind: 'accounts', pageSize: 100 }).items
+    .find(row => row.accountId === value.accounts[0].accountId)
+  const category = reader.read('financeUpdates.options', { kind: 'categories', pageSize: 100 }).items
+    .find(row => row.categoryId === value.categories[0].categoryId)
+  assert.ok(account && category, '目录要包含快照里的账户和分类')
+  // 页面数据与模型共用对象时，按路径 setData 会连带改写模型，账户归属随之串位。
+  account.name = '页面改名'
+  category.name = '页面分类'
+  assert.equal(model.accounts.get(account.accountId).name, value.accounts[0].name)
+  assert.equal(model.categories.get(category.categoryId).name, value.categories[0].name)
+})

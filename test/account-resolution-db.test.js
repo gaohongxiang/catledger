@@ -184,6 +184,21 @@ test('账户归属：真实处理器保持方向、绑定范围、原始来源�
         assert.deepEqual(await sourceRows(c), raw)
       })
 
+      await t.test('完整卡号的账本外确认只在本批有效，下一批重新询问', async () => {
+        const c = await prepare(await setup(), { card: FULL_CARD }, false), raw = await sourceRows(c)
+        assert.equal((await issues(c)).length, 1)
+        await mapAll(c, 'external')
+        const [draft] = await dump(c, 'catledger_finance_update_account_mapping_drafts', 'draft_mapping_id')
+        assert.equal(draft.mapping_action, 'external'); assert.equal(draft.binding_json.reusable, true)
+        await post(c)
+        assert.equal((await dump(c, 'catledger_import_account_mappings', 'mapping_id')).length, 0, '账本外确认不发布历史规则')
+        assert.deepEqual(await sourceRows(c), raw)
+        await prepare(c, { card: FULL_CARD, amount: '880.00', day: '19' }, false)
+        assert.equal((await issues(c)).length, 1, '下一批仍需确认归属')
+        assert.equal((await current(c)).ledgerAccountId, null)
+        assert.equal((await current(c)).status, 'needs_action')
+      })
+
       await t.test('真实组合付款不接受把成分账户直接标为外部，失败保持全部证据和决定', async () => {
         const c = await setup()
         const content = Buffer.from(['微信支付账单明细',

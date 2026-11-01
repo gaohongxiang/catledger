@@ -136,7 +136,9 @@ function create(model) {
       summary()
       let rows=data.kind==='categories'?[...model.categories.values()]:data.kind==='loans'?dataFacts.loans:data.kind==='accountDrafts'||data.kind==='new_accounts'?[...model.drafts.values()]:data.kind==='affected_accounts'?[...summaryIndex.accountCounts.keys()].map(id=>model.accounts.get(id)).filter(Boolean):[...model.accounts.values()].filter(row=>!model.drafts.has(row.accountId))
       rows=rows.filter(row=>!row.archivedAt&&(!data.categoryKind||row.kind===data.categoryKind)&&(!data.id||row[key]===data.id)&&(!data.ids||data.ids.includes(row[key]))&&(!data.query||[row.name,row.parentName].join(' ').includes(data.query))).sort((a,b)=>a[key].localeCompare(b[key]))
-      return page(action,data,rows,key)
+      // 目录项会直接进入页面数据；必须像服务端 JSON 响应一样返回副本，
+      // 否则页面按路径 setData 会改写模型内的账户/分类对象。
+      return page(action,data,rows.map(row=>JSON.parse(JSON.stringify(row))),key)
     }
     if(action==='economicEvents.evidence')return {...page(action,data,model.evidenceFor(data.eventId),'evidenceId',link=>{const row=model.rows.get(link.rowId),source=facts.sources.find(item=>item.batchId===row.batchId);return{...link,sourceType:row.sourceType,rowNumber:row.rowNumber,fileName:source?.fileName,detailRequired:true}}),eventId:data.eventId}
     if(action==='economicEvents.detail'){

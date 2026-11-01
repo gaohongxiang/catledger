@@ -21,7 +21,9 @@ function compatibleMapping(mapping, reference, accountsById = new Map()) {
   const scope = mapping.mappingScope || 'batch'
   if (['inferred', 'history_alias', 'batch_alias'].includes(scope)) return false
   const proof = binding.bindingFor(mapping)
-  if (scope === 'history' && (!bindingKeyValid(mapping, proof) || !proof.reusable || mapping.mappingAction === 'ignore')) return false
+  // 账本外确认只对当批成员有效，即使历史表里出现同键记录也不自动沿用。
+  if (scope === 'history' && (!bindingKeyValid(mapping, proof) || !proof.reusable ||
+    ['ignore', 'external'].includes(mapping.mappingAction))) return false
   if (reference?.binding && !binding.bindingMatches(mapping, reference, { reusable: scope === 'history' })) return false
   if (mapping.mappingAction !== 'account') return !mapping.accountId
   const account = mappingAccount(mapping, accountsById)
@@ -98,38 +100,23 @@ function setMappingDecision(index, reference, mappingAction, accountId, eventId 
 }
 
 function resolveAccountMappings({ references = [], mappings = [], accounts = [] }) {
-  const referencesByKey = new Map(), referencesByLegacy = new Map(), groups = new Map(), accountsById = new Map(accounts.map(account => [account.accountId, account]))
+  const referencesByKey = new Map(), groups = new Map(), accountsById = new Map(accounts.map(account => [account.accountId, account]))
   for (const reference of references) {
     const key = paymentReferenceKey(reference), identity = accountIdentityKeyForReference(reference)
     if (!key || !identity || referencesByKey.has(key)) continue
     referencesByKey.set(key, reference)
-    const legacy = paymentReferenceKey(reference.sourceType, reference.paymentMethodKey)
-    if (!referencesByLegacy.has(legacy)) referencesByLegacy.set(legacy, [])
-    referencesByLegacy.get(legacy).push(reference)
     if (!groups.has(identity)) groups.set(identity, [])
     groups.get(identity).push(reference)
   }
-  const candidatesByKey = new Map(), suggestions = new Map()
+  const candidatesByKey = new Map()
   for (const mapping of mappings) {
     const key = paymentReferenceKey(mapping), reference = referencesByKey.get(key)
     if (reference && compatibleMapping(mapping, reference, accountsById)) {
       if (!candidatesByKey.has(key)) candidatesByKey.set(key, [])
       candidatesByKey.get(key).push(mapping)
     }
-    if (mapping.mappingAction !== 'account') continue
-    const account = mappingAccount(mapping, accountsById)
-    if (!account) continue
-    const candidates = new Set([reference, ...(referencesByLegacy.get(paymentReferenceKey(mapping.sourceType,
-      binding.bindingFor(mapping)?.legacyPaymentMethodKey || mapping.paymentMethodKey)) || [])].filter(Boolean))
-    for (const ref of candidates) {
-      const refKey = paymentReferenceKey(ref)
-      if (mapping.sourceType !== ref.sourceType || !binding.compatibleAccount(ref, account)) continue
-      if (mapping.paymentMethodKey !== ref.paymentMethodKey && key !== refKey) continue
-      if (!suggestions.has(refKey)) suggestions.set(refKey, new Set())
-      suggestions.get(refKey).add(mapping.accountId)
-    }
   }
-  const resolved = [], conflictIdentityKeys = new Set(), ignoredIdentityKeys = new Set(), externalIdentityKeys = new Set()
+  const resolved = [], conflictIdentityKeys = new Set(), ignoredIdentityKeys = new Set()
   for (const [identityKey, groupReferences] of groups) {
     const candidates = groupReferences.flatMap(reference => candidatesByKey.get(paymentReferenceKey(reference)) || [])
     const result = strongest(candidates)
@@ -137,7 +124,6 @@ function resolveAccountMappings({ references = [], mappings = [], accounts = [] 
     const selected = result.selected
     if (!selected) continue
     if (selected.mappingAction === 'ignore') { ignoredIdentityKeys.add(identityKey); continue }
-    if (selected.mappingAction === 'external') externalIdentityKeys.add(identityKey)
     for (const reference of groupReferences) {
       // 不把一份来源的确认扩成另一份弱引用；新引用须逐一有对应依据。
       if (reference.binding && !binding.bindingMatches(selected, reference)) continue
@@ -150,7 +136,7 @@ function resolveAccountMappings({ references = [], mappings = [], accounts = [] 
         propagated: paymentReferenceKey(reference) !== paymentReferenceKey(selected) })
     }
   }
-  return { mappings: resolved, conflictIdentityKeys, ignoredIdentityKeys, externalIdentityKeys, suggestions }
+  return { mappings: resolved, conflictIdentityKeys, ignoredIdentityKeys }
 }
 module.exports = { MAPPING_SCOPE_PRIORITY, accountIdFromIndex, compatibleMapping, createMappingIndex, indexForEvent, mappingPriority,
   resolutionFromIndex, resolveAccountMappings, setMappingDecision }

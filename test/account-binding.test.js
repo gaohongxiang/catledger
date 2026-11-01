@@ -20,6 +20,20 @@ test('different full card numbers sharing a tail remain different account refere
   assert.equal(JSON.stringify(first.binding).includes('9900000000001122'), false)
 })
 
+test('a statement date in a bank label is not a full account number', () => {
+  for (const label of ['招商银行储蓄卡2026-09-01', '招商银行储蓄卡20260901']) {
+    assert.equal(binding.fullAccountNumber('bank', label), null)
+    const ref = binding.scopeReference(ledgerAccountReference('bank', label), {
+      sourceType: 'bank', importId: 'synthetic-file-one', currency: 'CNY'
+    })
+    assert.equal(ref.binding.identityKind, 'source_label')
+    assert.equal(ref.binding.scopeKind, 'file')
+    assert.equal(ref.binding.reusable, false)
+  }
+  // 同一标签同时含卡号和日期时，日期先移除，卡号不能被日期粘连或吞掉。
+  assert.equal(binding.fullAccountNumber('bank', '招商银行储蓄卡6222021234567890 2026-09-01'), '6222021234567890')
+})
+
 test('unknown source holders do not share wallet bindings across files', () => {
   const profile = buildSourceProfile({ sourceType: 'alipay', candidate: { kind: 'missing' } })
   const first = reference('账户余额', { sourceProfileKey: profile.profileKey })
@@ -74,6 +88,16 @@ test('only a scoped confirmed binding auto-selects a compatible ledger account',
   assert.equal(resolve([{ ...saved, binding: null, paymentMethodKey: ref.paymentMethodKey }]).mappings.length, 0)
   assert.equal(resolve([{ ...saved, mappingScope: 'inferred' }]).mappings.length, 0)
   assert.equal(resolveAccountMappings({ references: [ref], mappings: [saved], accounts: [{ ...accounts[0], type: 'cash' }] }).mappings.length, 0)
+})
+
+test('an external confirmation is never reused from history', () => {
+  const { resolveAccountMappings } = require('../cloudfunctions/catledger-import/src/account-mapping-policy')
+  const ref = reference('合成银行信用卡9900000000001122')
+  const saved = { sourceType: 'alipay', paymentMethodKey: ref.bindingKey, mappingAction: 'external',
+    mappingScope: 'history', accountId: null, binding: binding.confirmedBinding(ref) }
+  assert.equal(resolveAccountMappings({ references: [ref], mappings: [saved] }).mappings.length, 0)
+  const batch = { ...saved, mappingScope: 'batch' }
+  assert.equal(resolveAccountMappings({ references: [ref], mappings: [batch] }).mappings.length, 1)
 })
 
 test('equal-priority account conflicts stay unresolved regardless of input order', () => {

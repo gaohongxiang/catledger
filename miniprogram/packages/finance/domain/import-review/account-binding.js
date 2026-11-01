@@ -8,13 +8,17 @@ const SUBJECT_TOOLS = Object.freeze({
 })
 
 // 显示名称可以脱敏，身份依据不能先截成尾号。只接受明确的卡/账户数字，
-// 不把昵称中的长数字当成账户号码；原始账单与来源交易身份均不改写。
+// 不把昵称中的长数字或账单日期当成账户号码；原始账单与来源交易身份均不改写。
+const DATE_LABEL = /(?:19|20)\d{2}\s*[-/.年]\s*(?:0?[1-9]|1[0-2])\s*[-/.月]\s*(?:0?[1-9]|[12]\d|3[01])\s*日?/gu
+const DATE_ONLY = /^(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])$/
 function fullAccountNumber(sourceType, value) {
   const raw = String(value || '').normalize('NFKC').trim().replace(/^'+/, '')
-  const compact = raw.replace(/(\d)[ -]+(?=\d)/g, '$1')
+  // 先移除带分隔符的日期，避免它与相邻卡号在去空格后粘成一个数字；不带分隔符的
+  // 纯日期由下方候选过滤处理。日期不是账户身份，卡号本身仍按原样读取。
+  const compact = raw.replace(DATE_LABEL, ' ').replace(/(\d)[ -]+(?=\d)/g, '$1')
   if (sourceType !== 'bank' && !/银行|信用卡|贷记卡|储蓄卡|借记卡/u.test(compact)) return null
   if (/[*＊•xX]{2,}/u.test(compact)) return null
-  const numbers = compact.match(/\d{8,32}/g) || []
+  const numbers = (compact.match(/\d{8,32}/g) || []).filter(number => !DATE_ONLY.test(number))
   return numbers.length === 1 ? numbers[0] : null
 }
 

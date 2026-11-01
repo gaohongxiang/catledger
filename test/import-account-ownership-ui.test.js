@@ -142,6 +142,15 @@ for (const sourceDirection of ['expense', 'income']) for (const side of ['payer'
   })
 }
 
+test('退款、借款、分期和组合付款不在单笔编辑器里提供归属切换', async t => {
+  for (const row of [{ economicNature: 'refund' }, { economicNature: 'borrow' },
+    { economicNature: 'expense', paymentResolution: { allocations: [] } },
+    { economicNature: 'repayment', installment: { component: 'principal', creditStatement: true } }]) {
+    const { page } = await editor.open(t, row)
+    assert.ok(editor.view(page).routeFields.every(field => !field.ownershipKind), row.economicNature)
+  }
+})
+
 test('从还款业务切成同一实际收支时，保留相关账本端而不是清空账户', () => {
   for (const direction of ['income', 'expense']) for (const nature of ['income', 'expense']) {
     const stored = ownership.apply(repayment(direction), nature === 'income'

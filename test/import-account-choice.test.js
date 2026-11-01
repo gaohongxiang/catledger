@@ -67,6 +67,7 @@ test('刷新未知来源时保留服务端已经确认的人工归属', () => {
 test('账户步骤账本外归属与整批排除独立，确认后仍在账户列表回显', async t => {
   const issue = { ...unknownIssue(), version: 1, subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
   issue.accountContext.fundsSide = 'payment_target'
+  issue.accountContext.canExternal = true
   const page = pageFor(issue)
   t.after(() => page.onUnload())
   page.refreshAccountMappings()
@@ -90,31 +91,43 @@ test('账户步骤账本外归属与整批排除独立，确认后仍在账户�
   assert.equal(refreshed.summary.confirmed, 1)
 })
 
-test('组合、借款、分期及已合并渠道不开放账户外部选择，也不接受迟到选择', async t => {
-  const cases = [
-    { side: 'payment_component_0' },
-    { row: { economicNature: 'borrow' } },
-    { row: { economicNature: 'refund' } },
-    { row: { installment: { creditStatement: true, component: 'principal' } } },
-    { row: { disbursement: { role: 'registration' } } },
-    { row: { paymentResolution: { allocations: [] } } },
-    { row: { repaymentAllocations: [{ accountId: 'synthetic-debt' }] } },
-    { row: { repaymentChannel: { targetAccountId: 'synthetic-debt' } } },
-    { row: { fieldSources: { bankChannelResolution: {} } } },
-    { row: { editorFacts: { incompleteComposition: { parts: [] } } } },
-    { context: { canExternal: false } }
-  ]
-  for (const item of cases) {
-    const issue = { ...unknownIssue(), subject: { eventId: 'synthetic-event', economicNature: 'repayment', ...item.row } }
-    issue.accountContext = { ...issue.accountContext, fundsSide: item.side || 'payment_target', ...item.context }
+test('账户步骤只按统一判定开放外部选择，缺失判定时保守关闭', async t => {
+  for (const [canExternal, expected] of [[true, 'external'], [false, 'pending'], [undefined, 'pending']]) {
+    const issue = { ...unknownIssue(), subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
+    issue.accountContext = { ...issue.accountContext, fundsSide: 'payment_target', canExternal }
     const page = pageFor(issue)
     t.after(() => page.onUnload())
     page.refreshAccountMappings()
     await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
-    assert.equal(page.data.accountChoiceSheet.canExternal, false)
+    assert.equal(page.data.accountChoiceSheet.canExternal, canExternal === true)
     page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
-    assert.equal(page._accountUiDrafts.get(issue.issueId).mode, 'pending')
+    assert.equal(page._accountUiDrafts.get(issue.issueId).mode, expected)
   }
+})
+
+test('统一归属判定按成员结构关闭外部选择', () => {
+  const { canUseExternal } = require('../cloudfunctions/catledger-import/src/account-issue-grouping')
+  const base = { eventId: 'synthetic-event', economicNature: 'repayment', fieldSources: {} }
+  const members = (event, role = 'payment_target') => [{ objectType: 'event', objectId: event.eventId, memberRole: role }]
+  assert.equal(canUseExternal([base], members(base)), true)
+  for (const event of [
+    { ...base, economicNature: 'borrow' },
+    { ...base, economicNature: 'refund' },
+    { ...base, fieldSources: { installment: { creditStatement: true, component: 'principal' } } },
+    { ...base, fieldSources: { disbursement: { role: 'registration' } } },
+    { ...base, fieldSources: { installmentPlan: { action: 'link', loanId: 'synthetic-plan' } } },
+    { ...base, fieldSources: { paymentResolution: { allocations: [] } } },
+    { ...base, fieldSources: { repaymentAllocations: [{ accountId: 'synthetic-debt' }] } },
+    { ...base, fieldSources: { repaymentChannelResolution: { targetAccountId: 'synthetic-debt' } } },
+    { ...base, fieldSources: { bankChannelResolution: {} } },
+    { ...base, fieldSources: { loanRepayment: {} } },
+    { ...base, fieldSources: { editorOverrides: { version: 1, incompleteComposition: { parts: [] } } } },
+    { ...base, fieldSources: { editorOverrides: { version: 1, incompleteRepayment: true } } }
+  ]) assert.equal(canUseExternal([event], members(event)), false, event.economicNature)
+  assert.equal(canUseExternal([base], members(base, 'payment_component_0')), false)
+  assert.equal(canUseExternal([base], []), false)
+  assert.equal(canUseExternal([base, { ...base, eventId: 'synthetic-other', economicNature: 'borrow' }],
+    [...members(base), ...members({ eventId: 'synthetic-other' })]), false)
 })
 
 test('稳定识别的微信零钱仍可推荐唯一已有账户', () => {

@@ -45,6 +45,9 @@ function ownershipKeys(row, nature) {
   return { source: reverse ? 'counterpartyLedgerAccountId' : 'ledgerAccountId',
     destination: reverse ? 'ledgerAccountId' : 'counterpartyLedgerAccountId' }
 }
+// 单笔编辑器直接读取公开行（组合、还款分配等字段在顶层），还要叠加尚未保存的草稿性质
+// 和组成，无法原样调用服务端的 supported(event)。这里保留同一组结构条件作为界面门禁；
+// 保存与入账仍由服务端统一复核，服务端判定变化时须同步此函数。
 function ownershipEditable(row, draft) {
   return draft.composition === 'single' && !repaymentChannelOf(row) && !detail.installmentOf(row) && !disbursementOf(row) &&
     !row.bankChannelResolution && !row.fieldSources?.bankChannelResolution && !row.paymentResolution &&
