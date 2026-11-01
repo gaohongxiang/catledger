@@ -21,6 +21,8 @@ async function measure({ sourceRoot = path.resolve(__dirname, '..'), onResult = 
     let sql = [], stage = null
     const pool = { async getConnection() {
       const connection = await lab.owner.getConnection()
+      // 固定 epoch 仍会受 MySQL 会话时区影响；采集连接和读回连接都显式使用 UTC。
+      await connection.query("SET time_zone = '+00:00'")
       await connection.query('SET timestamp = 1790208000')
       return new Proxy(connection, { get(target, key) {
         if (!['execute', 'query', 'beginTransaction', 'commit', 'rollback'].includes(key)) return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
@@ -100,16 +102,19 @@ async function measure({ sourceRoot = path.resolve(__dirname, '..'), onResult = 
     }
     const nextView = await imp('financeUpdates.summary', { updateId: nextId })
     await sample('post-distinct', () => imp('financeUpdates.post', { requestId: crypto.randomUUID(), updateId: nextId, version: nextView.update.version }))
-    const [tables] = await lab.owner.execute("SELECT TABLE_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND COLUMN_NAME='uid' ORDER BY TABLE_NAME", [lab.database])
     const graph = []
-    for (const { name } of tables) {
-      if (!/^catledger_[a-z_]+$/.test(name)) throw Error('unexpected table')
-      const [keys] = await lab.owner.execute("SELECT COLUMN_NAME AS name FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND INDEX_NAME='PRIMARY' ORDER BY SEQ_IN_INDEX", [lab.database, name])
-      const [rows] = await lab.owner.execute('SELECT * FROM `' + name + '` WHERE uid=? ORDER BY ' + keys.map(k => '`' + k.name + '`').join(','), [uid])
-      onRows(name, rows)
-      // 不删除 ID/外键、金额、业务时间、版本、JSON 或空/非空状态。
-      graph.push({ table: name, rows: rows.length, hash: hash(rows) })
-    }
+    const graphConnection = await pool.getConnection()
+    try {
+      const [tables] = await graphConnection.execute("SELECT TABLE_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND COLUMN_NAME='uid' ORDER BY TABLE_NAME", [lab.database])
+      for (const { name } of tables) {
+        if (!/^catledger_[a-z_]+$/.test(name)) throw Error('unexpected table')
+        const [keys] = await graphConnection.execute("SELECT COLUMN_NAME AS name FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND INDEX_NAME='PRIMARY' ORDER BY SEQ_IN_INDEX", [lab.database, name])
+        const [rows] = await graphConnection.execute('SELECT * FROM `' + name + '` WHERE uid=? ORDER BY ' + keys.map(k => '`' + k.name + '`').join(','), [uid])
+        onRows(name, rows)
+        // 不删除 ID/外键、金额、业务时间、版本、JSON 或空/非空状态。
+        graph.push({ table: name, rows: rows.length, hash: hash(rows) })
+      }
+    } finally { graphConnection.release() }
     return { clock: '2026-09-24T00:00:00Z', uuid: 'fixed sequential UUIDs; no ID elision or remapping', samples: results, graph }
   } finally {
     global.Date = OriginalDate

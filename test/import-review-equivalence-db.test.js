@@ -37,6 +37,9 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 账户余额、5笔交易、4条来源身份及关联完全保持。14阶段查询次数不变，9阶段只补同一对方账户投影；
   // 响应仅计划/视图版本及event-page新增accountOrder:null（共60字节）。不删字段或归一化ID/业务时间。
   // 据此更新完整度量；后续变更仍须同样逐字段解释，不能以重新录制替代账务断言。
+  // 194203bf CI指出测量会话未固定时区：本机UTC+9与CI的UTC导致固定DB时间及派生视图指纹不同。
+  // 显式固定写入/读回连接为UTC后，47表和14阶段全部精确匹配该CI实际值；原分支UTC双跑仍仅上述规则差异。
+  // 这是固定采集环境，不删改结果中的时间字段、账户、金额、ID或SQL；产品时间处理保持。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })
