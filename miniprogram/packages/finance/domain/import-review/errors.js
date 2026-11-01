@@ -1,4 +1,5 @@
 const ERROR_MESSAGES = Object.freeze({
+  ACCOUNT_NAME_CONFLICT: '已有同名账户，请修改名称或明确选择已有账户',
   LOCAL_REVIEW_REQUIRED: '此草稿已切换为本地核对，请使用新版草稿恢复后提交',
   LOCAL_REVIEW_CAPACITY: '草稿资料超过支持容量，原草稿已保留，本次没有入账',
   SNAPSHOT_INCOMPLETE: '草稿资料尚未完整准备，请重试；已保存的草稿不受影响',

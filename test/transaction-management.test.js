@@ -76,7 +76,7 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       assert.equal(await live([expense, transfer]), 2)
     })
     async function posted(prefix) {
-      let update = await prepareSyntheticUpdate(services, 2, prefix)
+      let update = await prepareSyntheticUpdate(services, 2, prefix, '合成银行储蓄卡(9900000000001122)')
       const issues = await imp('reviewIssues.list', { updateId: update.updateId, group: 'accounts' })
       const decisions = issues.items.filter(row => row.status === 'open').map(row => ({ issueId: row.issueId, issueVersion: row.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: bank } }))
       if (decisions.length) update = await imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId, updateVersion: update.appliedVersion, decisions })

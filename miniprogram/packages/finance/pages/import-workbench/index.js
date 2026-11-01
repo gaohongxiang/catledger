@@ -352,6 +352,7 @@ Page(theme.page({
   changeEditorMode: reviewEdit.changeEditorMode,
   addFundsAccount: reviewEdit.addFundsAccount,
   changeFundsAmount: reviewEdit.changeFundsAmount,
+  changeFundsOwnership: reviewEdit.changeFundsOwnership,
   removeFundsAccount: reviewEdit.removeFundsAccount,
   clearEditorChoice: reviewEdit.clearEditorChoice,
   openEditorOriginal: reviewEdit.openEditorOriginal,

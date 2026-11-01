@@ -14,7 +14,8 @@ function accounts(event) {
   else if (['expense', 'fee'].includes(nature)) label = nature === 'fee' ? '记费账户待确认' : '付款账户待确认'
   else if (['internal_transfer', 'borrow', 'repayment'].includes(nature)) {
     const allocated = event.paymentResolution || (event.repaymentAllocations || []).length
-    const reverse = !allocated && event.sourceDirection === 'income'
+    const reverse = !allocated && event.sourceDirection === 'income' && event.accountOrder !== 'actual' &&
+      event.fieldSources?.fundsProjection?.accountOrder !== 'actual'
     const from = reverse ? event.counterpartyLedgerAccountId : event.ledgerAccountId
     const to = reverse ? event.ledgerAccountId : event.counterpartyLedgerAccountId
     const names = nature === 'repayment' ? ['付款账户', '还入账户']
@@ -27,6 +28,7 @@ function accounts(event) {
 }
 
 function reasonStep(reason, event) {
+  if (reason === 'account_ownership_recheck_required') return step('ownership_recheck', '账户归属已保存，资金关系待重核', 55)
   if (reason === 'installment_plan_required') return step('installment_plan', '分期计划待关联', 80)
   if (reason === 'refund_source_conflict') return step('source_conflict', '退款与原订单状态冲突', 0)
   if (['row_status_unknown', 'transaction_status_unknown'].includes(reason)) return step('status', '账单状态待核对', 1)

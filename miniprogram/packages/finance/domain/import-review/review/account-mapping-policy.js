@@ -23,10 +23,41 @@ function assertChannelTarget(event) {
   if (resolution && event.counterpartyLedgerAccountId !== resolution.targetAccountId) throw importError('VALIDATION_ERROR')
 }
 
-function applyMappedAccount(event, memberRole, accountId, mappingIndex, mappingAction = 'account') {
+function reopenChangedComposition(event, role, accountId) {
+  const fields = event.fieldSources || {}, payment = fields.paymentResolution
+  const kind = payment ? 'payment' : fields.repaymentAllocations?.length ? 'repayment' : null
+  if (!kind) return event
+  const original = payment ? payment.allocations : fields.repaymentAllocations
+  let changed = false
+  const parts = original.map((part, index) => {
+    const matches = part.referenceRole === role || kind === 'payment' && (
+      /^payment_component_\d+$/.test(role) && part.componentIndex === Number(role.slice('payment_component_'.length)) ||
+      role === 'subject' && !part.referenceRole && part.accountId === event.ledgerAccountId)
+    if (!matches || part.kind !== 'external' && part.accountId === accountId) return { ...part }
+    changed = true
+    const next = { ...part, accountId }; delete next.kind
+    return next
+  })
+  const targetChanged = kind === 'payment' && ['mapping_to', 'payment_target'].includes(role) &&
+    event.counterpartyLedgerAccountId !== accountId
+  if (!changed && !targetChanged) return event
+  const nextFields = { ...fields, editorOverrides: { ...fields.editorOverrides, version: 1, composition: kind,
+    incompleteComposition: { kind, parts, evidenceNote: payment?.evidenceNote || fields.editorOverrides?.evidenceNote || '' } } }
+  delete nextFields.paymentResolution; delete nextFields.repaymentAllocations; delete nextFields.repaymentAllocationVersion
+  return { ...event, status: 'needs_action', fieldSources: nextFields,
+    reasonCodes: [...new Set((event.reasonCodes || []).concat('editor_composition_incomplete'))] }
+}
+
+function applyMappedAccount(event, memberRole, accountId, mappingIndex, mappingAction = 'account', referenceOverride = null) {
   const decision = require('../account-reference-decision')
-  if (mappingAction === 'external' || event.fieldSources?.accountOwnership) {
-    return decision.apply(event, memberRole, mappingAction === 'external' ? 'external' : 'ledger', accountId)
+  if (mappingAction === 'external') {
+    return decision.apply(event, memberRole, 'external', null, { reference: referenceOverride })
+  }
+  event = require('../account-ownership-recheck').clear(event, memberRole,
+    referenceOverride || require('../account-ownership-recheck').referenceFor(event, memberRole))
+  event = reopenChangedComposition(event, memberRole, accountId)
+  if (event.fieldSources?.accountOwnership && decision.supported(event, memberRole)) {
+    return decision.apply(event, memberRole, 'ledger', accountId, { reference: referenceOverride })
   }
   const resolution = channelResolution(event)
   if (resolution && ['mapping_to', 'payment_target'].includes(memberRole) && accountId !== resolution.targetAccountId) {

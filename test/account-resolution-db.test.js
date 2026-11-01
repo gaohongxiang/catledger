@@ -199,7 +199,7 @@ test('账户归属：真实处理器保持方向、绑定范围、原始来源�
         assert.equal((await current(c)).status, 'needs_action')
       })
 
-      await t.test('真实组合付款不接受把成分账户直接标为外部，失败保持全部证据和决定', async () => {
+      await t.test('真实组合付款先保存外部归属，金额组成重核完成前不入账且保留证据', async () => {
         const c = await setup()
         const content = Buffer.from(['微信支付账单明细',
           '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号',
@@ -209,13 +209,20 @@ test('账户归属：真实处理器保持方向、绑定范围、原始来源�
         const parsed = await c.imp('imports.parseFile', { requestId: randomUUID(), importId: file.importId,
           fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 })
         c.updateId = (await c.imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })).updateId
-        const pending = await issues(c), before = await state(c), raw = await sourceRows(c)
+        const pending = await issues(c), beforeBalances = await balances(c), raw = await sourceRows(c)
         assert.equal(pending.length, 2)
         for (const issue of pending) {
-          await assert.rejects(c.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: c.updateId,
-            updateVersion: (await summary(c)).update.version, decisions: [mappingDecision(issue, 'external')] }), { publicCode: 'VALIDATION_ERROR' })
-          assert.deepEqual(await state(c), before)
+          await c.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: c.updateId,
+            updateVersion: (await summary(c)).update.version, decisions: [mappingDecision(issue, 'external')] })
         }
+        const [event] = await events(c)
+        assert.equal(event.status, 'needs_action')
+        assert.ok(event.reasonCodes.includes('account_ownership_recheck_required'))
+        const beforePost = await state(c)
+        await assert.rejects(post(c), { publicCode: 'UNRESOLVED_IMPORT' })
+        assert.deepEqual(await state(c), beforePost)
+        assert.deepEqual(await balances(c), beforeBalances)
+        assert.equal((await imported(c)).length, 0)
         assert.deepEqual(await sourceRows(c), raw)
       })
 

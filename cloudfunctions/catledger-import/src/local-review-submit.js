@@ -160,6 +160,51 @@ async function applyChoices(connection, uid, state, digest, batch) {
   return actionId
 }
 
+function selectedAccountProblems(state, facts, accounts) {
+  const events = new Map(facts.events.map(event => [event.eventId, event])), pendingDraftIds = new Set()
+  const types = require('./account-type-policy'), { memberReference } = require('./account-reference-context')
+  const unavailable = new Set()
+  for (const item of state.decisions.accounts) for (const key of ['mappingAccountDraft', 'ledgerAccountDraft']) {
+    const draft = item.fields?.[key]
+    if (draft && typeof draft.name === 'string' && typeof draft.type === 'string') {
+      pendingDraftIds.add(require('./local-review-identity').accountId(state.snapshotId, draft.name, draft.type, draft.creationKey))
+    }
+  }
+  const inspect = (eventId, accountId, reference, memberRole) => {
+    const event = events.get(eventId)
+    if (!event || !accountId) return
+    const account = accounts.get(accountId)
+    // 本请求尚未执行到的新建决定不是失效账户；创建及重名仍由原写入校验裁决。
+    if (!account && pendingDraftIds.has(accountId)) return
+    if (!types.compatible(reference || { currency: event.currency }, account,
+      reference ? { event, memberRole } : undefined)) unavailable.add(eventId)
+  }
+  for (const item of state.decisions.accounts) {
+    if (item.decision !== 'apply_fields' || item.paymentRuleAction === 'external') continue
+    const accountId = item.fields?.mappingAccountId || item.fields?.ledgerAccountId
+    if (!accountId) continue
+    const issue = facts.issues.find(issue => issue.issueType === 'account_mapping' &&
+      issue.primaryReasonCode === item.reasonCode && same(issue.subjectEventIds || [], item.eventIds))
+    const members = issue ? facts.members.filter(member => member.issueId === issue.issueId &&
+      member.objectType === 'event' && member.memberRole !== 'candidate') : []
+    for (const eventId of item.eventIds) {
+      const actual = members.filter(member => member.objectId === eventId)
+      if (!actual.length) inspect(eventId, accountId)
+      for (const member of actual) inspect(eventId, accountId, memberReference(events.get(eventId) || {}, member), member.memberRole)
+    }
+  }
+  for (const item of state.decisions.events) {
+    const editor = item.editor || {}, fields = editor.fields || {}
+    const parts = Array.isArray(editor.composition?.parts) ? editor.composition.parts : []
+    for (const id of [fields.ledgerAccountId, fields.counterpartyLedgerAccountId,
+      ...parts.filter(part => part && part.kind !== 'external').map(part => part.accountId),
+      ...Object.values(editor.decisions?.accountOwnership || {}).filter(side => side?.kind === 'ledger').map(side => side.accountId)]) {
+      inspect(item.eventId, id)
+    }
+  }
+  return [...unavailable].map(eventId => ({ eventIds: [eventId], reason: 'account_unavailable', issueType: 'server_recheck' }))
+}
+
 async function recheckFacts(connection, uid, state, code, affected) {
   const facts = await require('./local-review-facts').loadFacts(connection, uid, state.updateId)
   const issues = facts.issues.filter(row => row.status === 'open' && row.blocking)
@@ -173,6 +218,9 @@ async function recheckFacts(connection, uid, state, code, affected) {
     if (event.categoryId && (!categories.has(event.categoryId)||categories.get(event.categoryId).archivedAt)) problems.push({ eventIds:[event.eventId],reason:'category_unavailable',issueType:'server_recheck' })
   }
   if (affected.length) problems.push({ eventIds: affected, reason: code, issueType: 'server_recheck' })
+  // 映射或编辑在应用前已拒绝时，服务端事件仍是旧值；必须核对本请求实际选择。
+  // 只信本用户当前目录与原引用，并让具体原因优先于本机恢复时的一般校验错误。
+  problems.push(...selectedAccountProblems(state, facts, accounts))
   if (!problems.length) problems.push({ eventIds: facts.events.filter(row=>['ready','needs_action'].includes(row.status)).map(row=>row.eventId), reason:code,issueType:'server_recheck' })
   return { protocolVersion: 3, snapshotId: state.snapshotId, updateId: state.updateId, baseVersion: state.baseVersion,
     problems, issues, members: facts.members.filter(member => issues.some(issue => issue.issueId === member.issueId)),
@@ -235,4 +283,4 @@ async function post(context, postInTransaction) {
     } finally { batchState.end(connection) }
   } })
 }
-module.exports = { post, validateChoices, scopes }
+module.exports = { post, validateChoices, scopes, selectedAccountProblems }

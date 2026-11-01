@@ -55,7 +55,11 @@ const ACCOUNT_TYPE_LABELS = Object.freeze({
 })
 
 // 外部是账户引用的归属；排除是本批记录的处理。两者始终是独立选择。
-function accountChoiceOptions(accounts, accountDrafts, { canExternal = true } = {}) {
+function accountChoiceOptions(accounts, accountDrafts, { canExternal = true, context } = {}) {
+  if (context) {
+    accounts = (accounts || []).filter(account => require('../../domain/import-review/account-type-policy').compatible(context, account))
+    accountDrafts = (accountDrafts || []).filter(account => require('../../domain/import-review/account-type-policy').compatible(context, account))
+  }
   return [{ value: 'pending', name: '请选择账户归属' }, { value: 'create', name: '创建新账户' }]
     .concat((accounts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name }
@@ -67,7 +71,11 @@ function accountChoiceOptions(accounts, accountDrafts, { canExternal = true } = 
     .concat([{ value: 'ignore', name: '仅本次不计入' }])
 }
 
-function accountSelectorOptions(accounts, accountDrafts) {
+function accountSelectorOptions(accounts, accountDrafts, context) {
+  if (context) {
+    accounts = (accounts || []).filter(account => require('../../domain/import-review/account-type-policy').compatible(context, account))
+    accountDrafts = (accountDrafts || []).filter(account => require('../../domain/import-review/account-type-policy').compatible(context, account))
+  }
   return (accounts || []).map(function (account) {
     const presentation = accountSelectorPresentation(account)
     return {
@@ -186,9 +194,8 @@ function paymentAccountMatchScore(context, accountName) {
 
 function suggestExistingAccount(context, accounts) {
   if (!context || !context.recognized || !context.label) return null
-  const currency = context.currency || 'CNY'
   const candidates = (accounts || []).filter(function (account) {
-    return account && account.accountId && account.currency === currency
+    return require('../../domain/import-review/account-type-policy').compatible(context, account)
   }).map(function (account) {
     return { account: account, score: paymentAccountMatchScore(context, account.name) }
   }).filter(function (candidate) {

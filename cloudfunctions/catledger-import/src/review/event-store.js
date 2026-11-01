@@ -245,8 +245,10 @@ async function saveEvent(connection, uid, current, next, actionId, { preserveRef
       next.fieldSources?.accountBindingVersion === require('../account-binding').VERSION &&
       !current.fieldSources?.accountOwnership && !current.fieldSources?.repaymentOwnership &&
       !(current.manualFieldMask & FIELD_MASK[key])
+    const bankOrderPreserved = allowAutomaticAccounts && actionSource === 'semantic' &&
+      require('../funds-route').preservesBankProjectionAccounts(current, next)
     const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency'].every(key => current[key] === next[key] ||
-      key !== 'currency' && automaticAccount(key)) &&
+      key !== 'currency' && (automaticAccount(key) || bankOrderPreserved)) &&
       (!categoryChanged || automaticCategory) &&
       ['paymentAccounts', 'paymentResolution', 'repaymentAllocations'].every(key =>
         JSON.stringify(current.fieldSources && current.fieldSources[key]) === JSON.stringify(next.fieldSources && next.fieldSources[key]) ||

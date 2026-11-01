@@ -210,6 +210,8 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
             r.status_raw AS rawStatus, r.transaction_type_raw AS rawTransactionType,
             r.transaction_time_raw AS rawTransactionTime,
             r.semantic_json AS semantic,
+            ${installmentColumn('counterpartyAccount')} AS counterpartyAccount,
+            JSON_EXTRACT(r.observations_json, '$.counterpartyAccount.numberReliable') AS counterpartyAccountNumberReliable,
             JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.bankMapping.statementKind')) AS bankStatementKind,
             JSON_OBJECT('reference', ${installmentColumn('installmentReference')}, 'period', ${installmentColumn('installmentPeriod')},
               'terms', ${installmentColumn('installmentTerms')}, 'component', ${installmentColumn('installmentComponent')}) AS installmentFields,
@@ -276,6 +278,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
       timezoneOffsetMinutes: row.timezoneOffsetMinutes == null ? null : Number(row.timezoneOffsetMinutes),
       amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
       semantic: parseJson(row.semantic, null),
+      counterpartyAccountNumberReliable: parseJson(row.counterpartyAccountNumberReliable, false) === true,
       installmentFields: parseJson(row.installmentFields, {}),
       note: row.sourceNote || '',
       suggestedCategoryId: suggestedCategory(row, indexes)
@@ -639,20 +642,33 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
     }
     for (const row of rows) row.subjectEventIds=byIssue.get(row.issueId)
   }
-  // 账户选择作用于整组；只看代表记录会误放行含分期、组合或渠道成员的组。
+  // 账户选择作用于整组；归属可逐引用保存，类型须满足全部实际资金角色。
   const accountRows = rows.filter(row => row.issueType === 'account_mapping')
-  const supported = new Map(accountRows.map(row => [row.issueId, []]))
+  const accountMembers = new Map(accountRows.map(row => [row.issueId, []])), accountEvents = new Map()
   for (const part of require('./sql-batch').chunks(accountRows.map(row => [row.issueId]))) {
-    const [members] = await connection.execute(`SELECT m.issue_id AS issueId,m.member_role AS memberRole,
+    const [members] = await connection.execute(`SELECT m.issue_id AS issueId,m.member_role AS memberRole,e.event_id AS eventId,
+      e.status,account_source.normalized_direction AS sourceDirection,e.currency,e.ledger_account_id AS ledgerAccountId,
+      e.counterparty_ledger_account_id AS counterpartyLedgerAccountId,
       e.economic_nature AS economicNature,e.field_sources_json AS fieldSources
       FROM catledger_review_issue_members m JOIN catledger_economic_events e
         ON e.uid=m.uid AND e.update_id=m.update_id AND e.event_id=m.object_id
+      LEFT JOIN catledger_event_evidence account_evidence ON account_evidence.uid=e.uid AND account_evidence.update_id=e.update_id
+        AND account_evidence.event_id=e.event_id AND account_evidence.evidence_role='primary'
+      LEFT JOIN catledger_import_rows account_source ON account_source.uid=account_evidence.uid AND account_source.row_id=account_evidence.row_id
       WHERE m.uid=? AND m.update_id=? AND m.object_type='event' AND m.member_role<>'candidate'
         AND m.issue_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
-    for (const member of members) supported.get(member.issueId).push(require('./account-reference-decision').supported(
-      { economicNature: member.economicNature, fieldSources: parseJson(member.fieldSources, {}) }, member.memberRole))
+    for (const member of members) {
+      accountMembers.get(member.issueId).push({ issueId: member.issueId, objectType: 'event', objectId: member.eventId, memberRole: member.memberRole })
+      accountEvents.set(member.eventId, { ...member, fieldSources: parseJson(member.fieldSources, {}) })
+    }
   }
-  for (const row of accountRows) row.canExternal = supported.get(row.issueId).length > 0 && supported.get(row.issueId).every(Boolean)
+  for (const row of accountRows) {
+    row.canExternal = require('./account-issue-grouping').canUseExternal(accountEvents, accountMembers.get(row.issueId))
+    row.allowedAccountTypes = require('./account-type-policy').forMembers(accountMembers.get(row.issueId).map(member => {
+      const event = accountEvents.get(member.objectId)
+      return { event, memberRole: member.memberRole, reference: require('./account-issue-grouping').memberReference(event, member) }
+    }))
+  }
   return rows.map(publicIssue)
 }
 

@@ -35,6 +35,7 @@ function ownershipOf(row = {}) {
 }
 // 交易性质名称的唯一入口：列表各页签、详情和编辑器都按当前事实取名，不能被计划标题或旧展示值覆盖。
 function natureLabel(row) {
+  if (row.economicNature === 'internal_transfer' && row.transferOwnershipPending) return '转账·账户归属待确认'
   // 放款对行不是“性质待确认”：它已经识别为同一笔现金分期的卡内记账行，只是不重复入账。
   const pair = row.disbursement || row.fieldSources && row.fieldSources.disbursement
   if (pair && pair.role === 'offset') return '分期放款对行'
@@ -61,7 +62,8 @@ function accountLabels(row) {
   // 与共享 funds 一致：多账户草稿已按实际付款/收款方向存储；收回 single 后才恢复来源方向。
   const allocated = row.editorComposition ? row.editorComposition !== 'single' : row.paymentResolution || (row.repaymentAllocations || []).length ||
     row.fieldSources && (row.fieldSources.paymentResolution || (row.fieldSources.repaymentAllocations || []).length)
-  const reverse = dual && !allocated && row.sourceDirection === 'income'
+  const reverse = dual && !allocated && row.sourceDirection === 'income' && row.accountOrder !== 'actual' &&
+    row.fieldSources?.fundsProjection?.accountOrder !== 'actual'
   return { from: dual ? (reverse ? to : from) : ['income', 'refund'].includes(nature) ? '收款账户'
       : nature === 'fee' ? '付款账户'
       : nature === 'balance_adjustment' ? '调整账户' : nature === 'expense' ? '付款账户' : '账单所属账户',
@@ -117,14 +119,14 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
   add('party', '交易对方', Object.prototype.hasOwnProperty.call(row, 'counterparty') ? row.counterparty : source.counterparty, true)
   if (allocation && Array.isArray(allocation.allocations)) {
     allocation.allocations.forEach((part, index) => add('payment-' + index, '付款账户 ' + (index + 1),
-      [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
+      [part.kind === 'external' ? '账本外份额' : accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
     if (labels.hasDestination && !repayments.length) add('counterparty', labels.to,
       accountText(row.counterpartyLedgerAccountId, catalogs.accounts), false)
   } else if (repayments.length) add('account', labels.from, accountText(row.ledgerAccountId, catalogs.accounts), false)
   else accountFields(row).forEach(field => add(field.key, field.label,
     field.ownershipKind === 'external' ? '别人的账户' : accountText(field.accountId, catalogs.accounts), false))
   if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还入账户 ' + (index + 1),
-    [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
+    [part.kind === 'external' ? '账本外份额（支出）' : accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
   if (!registration && categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')
   if (row.economicNature === 'refund') {
     const refund = facts.refund
@@ -143,7 +145,9 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
         { expense: '没记过，记一笔', accrued: '记过，只冲抵，不重复支出' }[loan[key + 'Treatment']], false)
     }
   }
-  if (ownershipOf(row).noLedgerImpact) add('ownership-effect', '记账影响', '资金两端均在账本外，对本账本无影响', false)
+  if (ownershipOf(row).noLedgerImpact || allocation?.allocations?.length && allocation.allocations.every(part => part.kind === 'external' || part.amountMinor === '0')) {
+    add('ownership-effect', '记账影响', '本次资金全部在账本外，对本账本无影响', false)
+  }
   if (installment) {
     add('period', '分期期次', installment.periodNumber ? '第 ' + installment.periodNumber + ' 期' +
       (installment.totalTerms ? ' / 共 ' + installment.totalTerms + ' 期' : ' / 总期数待补充') : '', false)

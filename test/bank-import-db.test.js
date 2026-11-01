@@ -28,6 +28,8 @@ test('银行 XLS 经原有最小权限和隔离 MySQL 完成解析、去重、�
     const user = await api('bootstrap')
     const account = (await api('accounts.create', { requestId: randomUUID(), type: 'bank', name: '合成银行账户',
       openingDisplayBalanceMinor: '100000', occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
+    const wallet = (await api('accounts.create', { requestId: randomUUID(), type: 'wallet', name: '合成微信零钱',
+      openingDisplayBalanceMinor: '100000', occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
     const other = localServices({ apiPool, importPool, subject: 'synthetic-bank-other' }); await call(other.api, 'bootstrap')
     async function prepare(content, name = '合成银行.xls') {
       const result = await imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: name, size: content.length }] })
@@ -47,7 +49,8 @@ test('银行 XLS 经原有最小权限和隔离 MySQL 完成解析、去重、�
     async function mapAccounts(update) {
       const issues = await imp('reviewIssues.list', { updateId: update.updateId, group: 'accounts' })
       const decisions = issues.items.filter(row => row.status === 'open').map(row => ({ issueId: row.issueId, issueVersion: row.version,
-        operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: account } }))
+        operation: 'resolve', decision: 'apply_fields',
+        fields: { mappingAccountId: row.accountContext.sourceType === 'wechat' ? wallet : account } }))
       return decisions.length ? imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
         updateVersion: update.appliedVersion, decisions }) : update
     }
@@ -82,8 +85,12 @@ test('银行 XLS 经原有最小权限和隔离 MySQL 完成解析、去重、�
       postedUpdate = await imp('financeUpdates.post', { requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion })
       const rows = await api('transactions.list', { importUpdateId: update.updateId })
       assert.equal(rows.transactions.length, 3)
-      const balance = (await api('accounts.list')).accounts.find(row => row.accountId === account).bookBalanceMinor
-      assert.equal(balance, '97900')
+      assert.equal(rows.transactions.filter(row => row.sourceAccount.accountId === account).length, 2)
+      assert.equal(rows.transactions.filter(row => row.sourceAccount.accountId === wallet).length, 1)
+      const balances = Object.fromEntries((await api('accounts.list')).accounts.map(row => [row.accountId, row.bookBalanceMinor]))
+      assert.equal(balances[account], '98000')
+      assert.equal(balances[wallet], '99900')
+      assert.equal(BigInt(balances[account]) + BigInt(balances[wallet]), 197900n)
     })
     await t.test('同文件再导不重记；同账号同流水不因新文件重记；冲突金额留待人工核对', async () => {
       const duplicate = await parsed(postedContent)

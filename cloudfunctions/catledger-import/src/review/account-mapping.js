@@ -58,11 +58,14 @@ async function runAccountMappingBatch({ decisions, begin, applyDecision, finaliz
   return finalize(batch)
 }
 
-async function materializeAccountMappingChoice(connection, uid, updateId, fields, actionId) {
+async function materializeAccountMappingChoice(connection, uid, updateId, fields, actionId, members, events) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw importError('VALIDATION_ERROR')
+  if (['mappingAccountId', 'ledgerAccountId', 'mappingAccountDraft', 'ledgerAccountDraft']
+    .filter(key => Object.prototype.hasOwnProperty.call(fields, key)).length !== 1) throw importError('VALIDATION_ERROR')
   const draft = fields.mappingAccountDraft || fields.ledgerAccountDraft
   const accountId = draft
-  ? await stageAccountDraft(connection, uid, updateId, draft, actionId)
+  ? await stageAccountDraft(connection, uid, updateId, draft, actionId,
+      { creationKey: require('../local-review-identity').accountCreationKey(members, events) })
   : fields.mappingAccountId || fields.ledgerAccountId
   return validateUuid(accountId)
 }
@@ -79,22 +82,22 @@ function indexEventMembers(eventMembers) {
 async function applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex, revision = false) {
   const membersById = indexEventMembers(eventMembers)
   const references = new Map(events.map(event => [event.eventId, membersById.get(event.eventId).map(member =>
-    ({ role: member.memberRole, reference: mappingReferenceForMember(event, member.memberRole) }))]))
+    ({ role: member.memberRole, reference: require('../account-issue-grouping').memberReference(event, member) }))]))
   for (const event of events) assertChannelTarget(event)
   const external = decision.paymentRuleAction === 'external'
   if (external && (decision.decision !== 'apply_fields' || Object.keys(decision.fields || {}).length)) throw importError('VALIDATION_ERROR')
-  const accountId = decision.decision === 'apply_fields' && !external ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId) : null
+  const accountId = decision.decision === 'apply_fields' && !external ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId, eventMembers, events) : null
   const catalog = accountId ? await loadReferenceCatalog(connection, uid, updateId,
     [{ ledgerAccountId: accountId, fieldSources: {} }]) : null
   const selectedAccount = catalog && (catalog.accounts.get(accountId) || catalog.drafts.get(accountId))
   for (const event of events) for (const { role, reference } of references.get(event.eventId)) {
-    if (external && !require('../account-reference-decision').supported(event, role)) throw importError('VALIDATION_ERROR')
-    if (accountId && (!selectedAccount || reference && !require('../account-binding').compatibleAccount(reference, selectedAccount) ||
+    if (external && !require('../account-reference-decision').canRecord(event, role, reference)) throw importError('VALIDATION_ERROR')
+    if (accountId && (!selectedAccount || !require('../account-type-policy').compatible(reference || { currency: event.currency }, selectedAccount, { event, memberRole: role }) ||
         selectedAccount.currency !== event.currency)) throw importError('VALIDATION_ERROR')
   }
   for (const event of events) {
     const resolution = channelResolution(event)
-    if (resolution && decision.decision === 'apply_fields' &&
+    if (resolution && decision.decision === 'apply_fields' && !external &&
         membersById.get(event.eventId).some(member => ['mapping_to', 'payment_target'].includes(member.memberRole)) && accountId !== resolution.targetAccountId) {
       throw importError('VALIDATION_ERROR')
     }
@@ -133,7 +136,7 @@ async function applyAccountMappingEvents(connection, uid, updateId, events, even
         const base = revision ? { ...event, status: EVENT_STATUS.NEEDS_ACTION,
           reasonCodes: unique(event.reasonCodes.filter(reason => !['manual_exclusion', 'account_mapping_excluded', 'source_account_ignored_default'].includes(reason))) } : event
         next = references.get(event.eventId).reduce((value, { role, reference }) => reference
-          ? applyMappedAccount(value, role, accountId, indexForEvent(mappingIndex, event), mappingAction)
+          ? applyMappedAccount(value, role, accountId, indexForEvent(mappingIndex, event), mappingAction, reference)
           : external ? require('../account-reference-decision').apply(value, role, 'external') : applyFields(value, { ledgerAccountId: accountId }), base)
         if (!revision) next = { ...next, reasonCodes: resolvedReasons('account_mapping', next.reasonCodes) }
       } else next = { ...event, status: EVENT_STATUS.EXCLUDED,
@@ -196,7 +199,8 @@ async function reviseResolvedAccountMapping(
   if (events.length !== eventIds.length || events.some((event) => ['posted', 'corrected'].includes(event.status))) {
     throw importError('CONFLICT')
   }
-  for (const part of require('../local-review-batch').get(connection) ? [] : chunks(eventIds.map(id => [id]))) {
+  // 外部归属先作为待重核事实保存，复杂金额与关系保持原样；旧关系不应阻止如实记录归属。
+  for (const part of require('../local-review-batch').get(connection) || decision.paymentRuleAction === 'external' ? [] : chunks(eventIds.map(id => [id]))) {
     const [[laterResolved]] = await connection.execute(
       `SELECT COUNT(DISTINCT later.issue_id) AS count
        FROM catledger_review_issues later
@@ -410,7 +414,8 @@ async function stageDecisionAccountFields(connection, uid, updateId, fields, act
       uid,
       updateId,
       fields.ledgerAccountDraft,
-      actionId
+      actionId,
+      { creationKey: digestParts('account-field-creation-v1', actionId, 'ledger') }
     )
     fields = { ...fields, ledgerAccountId: draftAccountId }
     delete fields.ledgerAccountDraft
@@ -421,7 +426,8 @@ async function stageDecisionAccountFields(connection, uid, updateId, fields, act
       uid,
       updateId,
       fields.counterpartyLedgerAccountDraft,
-      actionId
+      actionId,
+      { creationKey: digestParts('account-field-creation-v1', actionId, 'counterparty') }
     )
     fields = { ...fields, counterpartyLedgerAccountId: draftAccountId }
     delete fields.counterpartyLedgerAccountDraft

@@ -8,6 +8,7 @@ const { plan } = require('./helpers/loan-charges')
 
 const hasDatabase = ['HOST', 'USER', 'PASSWORD', 'NAME'].every(key => process.env['CATLEDGER_TEST_DB_' + key])
 const parse = value => typeof value === 'string' ? JSON.parse(value) : value
+const paymentMethod = '合成银行储蓄卡(9900000000001122)'
 
 test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小权限', { skip: !hasDatabase, timeout: 120000 }, async t => {
   const lab = await isolatedMysql()
@@ -61,7 +62,7 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
       return c.imp('financeUpdates.post', { requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion })
     }
     async function imported(c, count, prefix) {
-      const update = await mapAccounts(c, await prepareSyntheticUpdate(c.services, count, prefix))
+      const update = await mapAccounts(c, await prepareSyntheticUpdate(c.services, count, prefix, paymentMethod))
       const result = await post(c, update)
       const [items] = await lab.owner.execute(`SELECT t.transaction_id AS transactionId, t.version, l.event_id AS eventId
         FROM catledger_economic_event_transactions l JOIN catledger_transactions t
@@ -70,7 +71,7 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
       return { update, result, items }
     }
     async function historicalCandidate(c, transactionId, prefix) {
-      let update = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, prefix))
+      let update = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, prefix, paymentMethod))
       const issue = (await c.imp('reviewIssues.list', { updateId: update.updateId, status: 'open' })).items
         .find(row => row.primaryReasonCode === 'historical_duplicate_candidate')
       assert.ok(issue, '真实历史核对必须产生候选，不能直接播种决定')
@@ -150,7 +151,7 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
       const history = (await c.imp('financeUpdates.list')).items.find(row => row.updateId === first.update.updateId)
       assert.equal(history.status, 'posted'); assert.equal(history.transactionCount, 1)
       assert.equal((await c.imp('financeUpdates.summary', { updateId: first.update.updateId })).posting.createdTransactionCount, 2)
-      let again = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 2, prefix))
+      let again = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 2, prefix, paymentMethod))
       assert.notEqual(again.updateId, first.update.updateId)
       again = await confirmSyntheticHistoryDistinct(c.services, again)
       assert.equal((await post(c, again)).posting.createdTransactionCount, 1)
@@ -194,7 +195,7 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
       const reused = events.find(row => row.update_id === original.updateId)
       assert.ok(parse(reused.reason_codes_json).includes('reused_transaction_permanently_deleted'))
       assert.equal(parse(reused.reason_codes_json).includes('transaction_permanently_deleted'), false)
-      const next = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, prefix))
+      const next = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, prefix, paymentMethod))
       assert.notEqual(next.updateId, original.updateId)
       assert.equal((await post(c, next)).posting.createdTransactionCount, 1)
       const current = (await c.api('transactions.list', { month: '2026-09' })).transactions
@@ -226,13 +227,11 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
         let update = await c.imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
         const issues = (await c.imp('reviewIssues.list', { updateId: update.updateId, group: 'accounts', status: 'open' })).items
         if (kind === 'payment') {
-          for (const issue of issues) {
-            assert.equal(issue.primaryReasonCode, 'payment_components_ambiguous')
-            update = await c.imp('reviewIssues.resolve', { requestId: randomUUID(), updateId: update.updateId, updateVersion: update.appliedVersion,
-              issueId: issue.issueId, issueVersion: issue.version, decision: 'apply_fields', fields: { paymentAccounts: [
-                { componentIndex: 0, accountId: wallet }, { componentIndex: 1, accountId: c.accountId }
-              ] } })
-          }
+          for (const issue of issues) assert.equal(issue.primaryReasonCode, 'payment_reference_mapping_required')
+          if (issues.length) update = await c.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
+            updateVersion: update.appliedVersion, decisions: issues.map(issue => ({ issueId: issue.issueId,
+              issueVersion: issue.version, operation: 'resolve', decision: 'apply_fields',
+              fields: { mappingAccountId: /零钱/.test(issue.accountContext.label) ? wallet : c.accountId } })) })
         } else update = await mapAccounts(c, update)
         return update
       }

@@ -231,6 +231,6 @@ test('0035维护迁移可重入，新增状态不进入私有账本导出列', {
     assert.equal(columns.length, 4)
     assert.equal(columns.filter(column => column.columnName === 'cleanup_failure_count' && String(column.defaultValue) === '0').length, 2)
     for (const table of manifest) assert.ok(!table.columns.some(column => column.startsWith('cleanup_')))
-    assert.equal(lab.migrations, 36)
+    assert.equal(lab.migrations, 38)
   } finally { await lab.close() }
 })

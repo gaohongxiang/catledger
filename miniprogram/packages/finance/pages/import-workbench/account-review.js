@@ -4,6 +4,8 @@ const model = require('./model')
 const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')
 const readCache = require('../../../../services/read-cache')
+const accountTypes = require('../../domain/import-review/account-type-policy')
+const draftPolicy = require('../../domain/import-review/account-draft-policy')
 
 function currentAccountRecords(page, token) {
   return token && page._viewActive && page._viewEpoch === token.epoch && page._accountEvidenceToken === token &&
@@ -60,18 +62,16 @@ function directoryRows(sheet, items) {
   }).sort((a, b) => Number(a.directoryDisabled) - Number(b.directoryDisabled))
 }
 
-function suggestedAccountTypeIndex(label, sourceType, fundsSide, economicNature) {
-  const value = String(label || '')
-  // A repayment destination and a borrowing source are debt endpoints even
-  // when the statement only says "主卡" without the word "信用卡".
-  if (economicNature === 'repayment' && fundsSide === 'to') return 3
-  if (economicNature === 'borrow' && fundsSide === 'from') return 3
-  if (/信用|贷记卡|花呗|白条|贷|先采后付|主卡/.test(value)) return 3
-  if (/银行|储蓄|借记|卡/.test(value)) return 1
-  if (/现金/.test(value)) return 0
-  if (/余额宝|基金|理财/.test(value)) return 4
-  if (sourceType === 'bank') return 1
-  return 2
+function suggestedAccountTypeIndex(label, sourceType, fundsSide, economicNature, context = {}) {
+  const value = accountTypes.rules({ label, sourceType, fundsSide, ...context }, { event: { economicNature } })
+  return ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === value.defaultAccountType)
+}
+
+function issueAccountContext(issue) {
+  const context = issue.accountContext || {}, subject = issue.subject || {}
+  const event = { ...subject, fieldSources: { accountOwnership: subject.accountOwnership,
+    fundsProjection: subject.fundsProjection, installment: subject.installment, disbursement: subject.disbursement } }
+  return { ...context, ...accountTypes.rules(context, { event }), currency: context.currency || subject.currency || 'CNY' }
 }
 
 function validAccountName(value) {
@@ -164,7 +164,8 @@ function showAccountChoice(event) {
   const draft = issueId && this._accountUiDrafts.get(issueId)
   if (!mapping || !draft) return
   if (mapping.paymentNeedsReview && mapping.status === 'open') return this.openIssue(event)
-  const options = model.accountSelectorOptions(this.data.accounts, this.data.accountDrafts)
+  const context = issueAccountContext(mapping)
+  const options = model.accountSelectorOptions(this.data.accounts, this.data.accountDrafts, context)
   const recommendedAccount = mapping.recommendedAccountId
   ? options.find(function (option) { return option.accountId === mapping.recommendedAccountId }) || null
   : null
@@ -174,6 +175,7 @@ function showAccountChoice(event) {
         issueId: issueId,
         label: mapping.label,
         canExternal: mapping.canExternal,
+        accountContext: context,
         selectedValue: selectedValue,
         recommendedAccount: recommendedAccount
       },
@@ -193,8 +195,12 @@ function applyAccountChoice(event) {
   const draft = sheet && this._accountUiDrafts.get(sheet.issueId)
   if (!sheet || !draft || !value) return
   if (value.indexOf('account:') === 0) {
+    const id = value.slice('account:'.length)
+    const account = (this._choiceRows || []).concat(this.data.accounts || [], this.data.accountDrafts || []).find(row => row.accountId === id)
+    if (!accountTypes.compatible(sheet.accountContext || {}, account)) return
     draft.mode = 'account'
-    draft.accountId = value.slice('account:'.length)
+    draft.accountId = id
+    draft.accountFacts = { accountId: id, type: account.type, currency: account.currency }
     draft.recommendedAccountId = sheet.recommendedAccount &&
     sheet.recommendedAccount.accountId === draft.accountId ? draft.accountId : ''
   } else if (['create', 'ignore'].includes(value) || value === 'external' && sheet.canExternal) {
@@ -258,7 +264,9 @@ module.exports = {
         // 是否允许账本外由服务端／本机按全部成员统一判定；页面不再复制业务规则，
         // 保存时仍由服务端复核。旧快照缺少该字段时保守地不开放外部选择。
         const canExternal = Boolean(issue.subject && issue.accountContext?.canExternal === true)
-        const choices = model.accountChoiceOptions(accounts, accountDrafts, { canExternal })
+        const accountContext = issueAccountContext(issue)
+        const typeOptions = ACCOUNT_TYPE_OPTIONS.filter(option => accountContext.allowedAccountTypes.includes(option.value))
+        const choices = model.accountChoiceOptions(accounts, accountDrafts, { canExternal, context: accountContext })
         const mappingDraft = (accountMappingDrafts || []).find(function (item) {
           return issue.subject && item.eventId === issue.subject.eventId && issue.accountContext &&
             item.sourceType === issue.accountContext.sourceType &&
@@ -280,14 +288,15 @@ module.exports = {
           const suggestedName = issue.accountContext && issue.accountContext.recognized
           ? issue.accountContext.label
           : ''
-          const suggestedAccount = model.suggestExistingAccount(issue.accountContext, accounts)
+          const suggestedAccount = model.suggestExistingAccount(accountContext, accounts)
           draft = {
             mode: resolvedMode || (suggestedAccount ? 'account' : suggestedName ? 'create' : 'pending'),
             accountId: resolvedAccountId || (suggestedAccount ? suggestedAccount.accountId : ''),
+            accountFacts: accounts.concat(accountDrafts).find(account => account.accountId === resolvedAccountId) || suggestedAccount || null,
             recommendedAccountId: suggestedAccount ? suggestedAccount.accountId : '',
             name: suggestedName,
             typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label, issue.accountContext && issue.accountContext.sourceType,
-              issue.accountContext && issue.accountContext.fundsSide, issue.subject && issue.subject.economicNature),
+              issue.accountContext && issue.accountContext.fundsSide, issue.subject && issue.subject.economicNature, accountContext),
             dirty: false,
             localConfirmed: false,
             revision: 0
@@ -296,6 +305,11 @@ module.exports = {
         }
         const confirmed = self._accountConfirmed && self._accountConfirmed.get(issue.issueId)
         if (confirmed && confirmed.revision === (draft.revision || 0)) { draft.localConfirmed = true; draft.dirty = false }
+        if (draft.mode === 'create' && draft.localConfirmed && resolvedAccountId &&
+            accountDrafts.some(row => row.accountId === resolvedAccountId)) draft.createdAccountId = resolvedAccountId
+        if (!draft.dirty && !draft.localConfirmed && !accountContext.allowedAccountTypes.includes(ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.value)) {
+          draft.typeIndex = ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === accountContext.defaultAccountType)
+        }
         const choiceValue = draft.mode === 'account' ? 'account:' + draft.accountId : draft.mode
         let choiceIndex = choices.findIndex(function (choice) { return choice.value === choiceValue })
         if (choiceIndex < 0 && draft.accountId) {
@@ -309,7 +323,14 @@ module.exports = {
           draft.recommendedAccountId = ''
           choiceIndex = 0
         }
-        const ready = draft.mode === 'create' ? validAccountName(draft.name) && Boolean(ACCOUNT_TYPE_OPTIONS[draft.typeIndex]) : draft.mode !== 'pending'
+        const nameValid = validAccountName(draft.name)
+        const nameConflict = draft.mode === 'create' && nameValid && accounts.concat(accountDrafts).some(account =>
+          account.accountId !== draft.createdAccountId && draftPolicy.normalizeName(account.name).normalizedName === draftPolicy.normalizeName(draft.name).normalizedName)
+        const typeValid = accountContext.allowedAccountTypes.includes(ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.value)
+        const selectedAccount = accounts.concat(accountDrafts).find(account => account.accountId === draft.accountId) ||
+          (draft.accountFacts?.accountId === draft.accountId ? draft.accountFacts : null)
+        const ready = draft.mode === 'create' ? nameValid && typeValid && !nameConflict
+          : draft.mode === 'account' ? accountTypes.compatible(accountContext, selectedAccount) : draft.mode !== 'pending'
         if (ready) summary.ready += 1
         else summary.invalid += 1
         if (draft.mode === 'create') summary.create += 1
@@ -321,6 +342,7 @@ module.exports = {
         if (needsConfirmation && ready && !draft.dirty && !['pending', 'ignore', 'external'].includes(draft.mode)) summary.suggested += 1
         return Object.assign({}, issue, {
             inline: true,
+            accountContext,
             canExternal,
             needsConfirmation: needsConfirmation,
             canConfirm: ready,
@@ -337,10 +359,32 @@ module.exports = {
               draft.accountId === draft.recommendedAccountId),
             recommendedAccountId: draft.recommendedAccountId,
             draftName: draft.name,
-            draftNameValid: validAccountName(draft.name),
-            draftTypeIndex: draft.typeIndex
+            draftNameValid: nameValid,
+            draftTypeIndex: draft.typeIndex,
+            typeOptions,
+            draftTypeOptionIndex: Math.max(0, typeOptions.findIndex(option => option.value === ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.value)),
+            draftTypeLabel: ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.label || '请选择类型',
+            validationText: nameConflict ? draftPolicy.NAME_CONFLICT : draft.mode === 'create' && !typeValid ? '账户类型与来源或资金角色不符，请重新选择'
+              : draft.mode === 'account' && !ready ? '所选账户类型或币种不符，请重新选择' : ''
           })
       })
+    const createNames = new Map()
+    for (const mapping of mappings) if (mapping.inline && mapping.choiceValue === 'create' && mapping.draftNameValid) {
+      const key = draftPolicy.normalizeName(mapping.draftName).normalizedName
+      if (!createNames.has(key)) createNames.set(key, [])
+      createNames.get(key).push(mapping)
+    }
+    for (const group of createNames.values()) if (group.length > 1) for (const mapping of group) if (mapping.needsConfirmation) {
+      mapping.canConfirm = false
+      mapping.validationText = '多项新建账户同名，请分别命名，或新建一项后让其余项选择已有账户'
+    }
+    // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
+    for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested']) summary[key] = 0
+    for (const mapping of mappings) if (mapping.inline) {
+      if (mapping.canConfirm) summary.ready++; else { summary.invalid++; mapping.needsConfirmation = true }
+      if (mapping.needsConfirmation) summary.pending++; else summary.confirmed++
+      if (mapping.needsConfirmation && mapping.canConfirm && !mapping.dirty && !['pending', 'ignore', 'external'].includes(mapping.choiceValue)) summary.suggested++
+    }
     return { mappings: mappings, summary: summary }
   },
 
@@ -423,9 +467,13 @@ module.exports = {
   },
 
   changeAccountDraftType: function (event) {
-    const draft = this._accountUiDrafts.get(event.currentTarget.dataset.id)
+    const issueId = event.currentTarget.dataset.id
+    const draft = this._accountUiDrafts.get(issueId)
     if (!draft || this.data.accountStepBusy) return
-    draft.typeIndex = Number(event.detail.value)
+    const mapping = this.mappingState().mappings.find(item => item.issueId === issueId)
+    const selected = mapping?.typeOptions[Number(event.detail.value)]
+    if (!selected) return
+    draft.typeIndex = ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === selected.value)
     draft.dirty = true
     draft.localConfirmed = false
     draft.revision = (draft.revision || 0) + 1
@@ -450,7 +498,7 @@ module.exports = {
       return
     }
     if (!mapping || !mapping.inline || !mapping.canConfirm) {
-      this.setData({ accountStepError: '请选择账户归属；选择新建时，请补全账户名称' })
+      this.setData({ accountStepError: mapping?.validationText || '请选择账户归属；选择新建时，请补全账户名称' })
       return
     }
     const draft = this._accountUiDrafts.get(issueId)
@@ -583,8 +631,9 @@ module.exports = {
       const search = model.normalizePaymentAccountName(this.data.accountChoiceQuery)
       const drafts = (this.data.accountDrafts || []).filter(account =>
         !search || model.normalizePaymentAccountName(account.name).includes(search))
-      this._choiceRows = response.items.concat(drafts)
-      this.setData({ accountChoiceResults: model.accountSelectorOptions(response.items, drafts), choicePage: response.page, choiceLoading: false })
+      const context = this.data.accountChoiceSheet.accountContext
+      this._choiceRows = response.items.concat(drafts).filter(account => accountTypes.compatible(context || {}, account))
+      this.setData({ accountChoiceResults: model.accountSelectorOptions(response.items, drafts, context), choicePage: response.page, choiceLoading: false })
     } catch (error) { if (active()) this.setData({ choiceLoading: false, choiceError: errorText(error) }) }
   },
 

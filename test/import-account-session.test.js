@@ -196,7 +196,8 @@ async function overlappingConfirmation(options = {}) {
   const h = runtime(accounts()), page = h.page, summaryGate = deferred()
   const readDirectory = (action, input) => {
     if (options.directory && action === 'financeUpdates.options' && input.kind === 'accounts') {
-      const rows = input.ids ? options.directory.filter(row => input.ids.includes(row.accountId)) : options.directory
+      const rows = input.ids ? options.directory.filter(row => input.ids.includes(row.accountId))
+        : options.directory.filter(row => !input.query || row.name.includes(input.query))
       return { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: rows.slice(0, input.pageSize), total: rows.length, nextCursor: null }
     }
   }
@@ -205,6 +206,11 @@ async function overlappingConfirmation(options = {}) {
   for (const issue of h.issues) {
     await page.openAccountChoice(tap(issue.issueId))
     const selectedId = issue === h.issues[1] && options.secondAccountId || 'synthetic-account'
+    if (options.directory && !(page._choiceRows || []).some(row => row.accountId === selectedId)) {
+      const selected = options.directory.find(row => row.accountId === selectedId)
+      page.bindAccountChoiceSearch({ currentTarget: { dataset: {} }, detail: { value: selected.name } })
+      await until(() => !page.data.choiceLoading && (page._choiceRows || []).some(row => row.accountId === selectedId))
+    }
     page.selectAccountChoice({ currentTarget: { dataset: { value: 'account:' + selectedId } } })
   }
   let committed = false, writes = 0

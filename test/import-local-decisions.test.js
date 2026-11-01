@@ -127,8 +127,12 @@ test('历史自动忽略释放后待确认，同批本机明确保存的排除�
     assert.equal(current.model.invalid.size, 0)
     assert.equal(current.model.issues.get(plan.issues[0].issueId).status, mode.startsWith('explicit-') ? 'resolved' : 'open')
     assert.equal([...current.model.events.values()].every(event => event.status === 'excluded'), mode === 'explicit-ignore')
-    if (mode === 'explicit-create') assert.ok([...current.model.events.values()].every(event =>
-      event.ledgerAccountId === identity.accountId(next.snapshotId, '合成新账户', 'wallet')))
+    if (mode === 'explicit-create') {
+      const created = [...current.model.drafts.values()][0]
+      assert.ok(created.creationKey, '新确认的创建身份随决定恢复')
+      assert.ok([...current.model.events.values()].every(event =>
+        event.ledgerAccountId === identity.accountId(next.snapshotId, '合成新账户', 'wallet', created.creationKey)))
+    }
     if (!mode.startsWith('explicit-')) assert.equal(current.model.choices.accounts.size, 0)
     if (mode === 'unconfirmed-draft') assert.equal(current.state.drafts[plan.issues[0].issueId].localConfirmed, false)
     assert.equal(JSON.stringify({ old, records }), before, '重整不能改写旧快照和决定日志')

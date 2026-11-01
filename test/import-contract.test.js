@@ -180,7 +180,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /bindinput="bindAccountDraftName"/)
   assert.match(markup, /bindchange="changeAccountDraftType"/)
   assert.match(markup, /bindtap="completeAccountMapping"/)
-  assert.match(source, /model\.suggestExistingAccount\(issue\.accountContext, accounts\)/)
+  assert.match(source, /model\.suggestExistingAccount\(accountContext, accounts\)/)
   assert.doesNotMatch(modelSource, /\\p\{/)
   assert.match(modelSource, /typeof normalized\.normalize === 'function'/)
   assert.match(markup, /建议 · 待确认/)

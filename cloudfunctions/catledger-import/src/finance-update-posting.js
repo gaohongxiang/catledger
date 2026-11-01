@@ -1,4 +1,4 @@
-const { effectiveText, accountRolesValid } = require('./editor-fields')
+const { effectiveText, accountRolesValid, funds } = require('./editor-fields')
 const repaymentChannel = require('./repayment-channel')
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
@@ -164,12 +164,14 @@ async function lockAccountsAndCategories(connection, uid, events) {
     rows.forEach((row) => categories.set(row.categoryId, row))
   }
   for (const event of events) {
-    if (!accounts.has(event.ledgerAccountId) || accounts.get(event.ledgerAccountId).currency !== event.currency) {
+    const plan = eventAllocation(event)
+    const externalPayers = plan.valid && plan.kind === 'payment' && !plan.allocations.length && plan.externalAllocations?.length
+    if (!externalPayers && (!accounts.has(event.ledgerAccountId) || accounts.get(event.ledgerAccountId).currency !== event.currency)) {
       throw importError('UNRESOLVED_IMPORT')
     }
     if (event.counterpartyLedgerAccountId && (!accounts.has(event.counterpartyLedgerAccountId) ||
         accounts.get(event.counterpartyLedgerAccountId).currency !== event.currency)) throw importError('UNRESOLVED_IMPORT')
-    if (!allocationAccountsValid(event, eventAllocation(event), accounts)) throw importError('UNRESOLVED_IMPORT')
+    if (!allocationAccountsValid(event, plan, accounts)) throw importError('UNRESOLVED_IMPORT')
     if (!accountRolesValid(event, accounts)) throw importError('UNRESOLVED_IMPORT')
     const feeCategoryId = repaymentChannel.resolutionFor(event)?.feeCategoryId
     if (feeCategoryId && categories.get(feeCategoryId)?.kind !== 'expense') throw importError('UNRESOLVED_IMPORT')
@@ -409,11 +411,11 @@ function transactionDraft(event, originalTransactionId) {
     }
   }
   if ([ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) {
-    const sourceIsLedger = event.sourceDirection !== 'income'
+    const route = funds(event)
     return {
       type: 'transfer',
-      sourceAccountId: sourceIsLedger ? event.ledgerAccountId : event.counterpartyLedgerAccountId,
-      destinationAccountId: sourceIsLedger ? event.counterpartyLedgerAccountId : event.ledgerAccountId,
+      sourceAccountId: route.sourceAccountId,
+      destinationAccountId: route.destinationAccountId,
       categoryId: null,
       originalTransactionId: null
     }
@@ -422,6 +424,7 @@ function transactionDraft(event, originalTransactionId) {
 }
 
 function transactionDrafts(event, originalTransactionId) {
+  if (require('./account-ownership-review-policy').pending(event).length) throw importError('UNRESOLVED_IMPORT')
   // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
   // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
   if (event.confirmedCreditInstallmentPrincipal === true || event.confirmedInstallmentRegistration === true) return []

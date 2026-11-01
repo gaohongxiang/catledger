@@ -70,8 +70,8 @@ function inferExactAccountMappings(rows, accounts) {
     }
     const projection = projectSourceFunds(row)
     if (projection) {
-      consider(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
-      consider(projection.to.sourceType, projection.to.paymentMethodKey, projection.to.label)
+      if (projection.from) consider(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
+      if (projection.to) consider(projection.to.sourceType, projection.to.paymentMethodKey, projection.to.label)
     }
   })
   return [...inferred.values()]
@@ -89,8 +89,8 @@ function mappingReferenceHints(rows) {
     if (ledgerReference) add(ledgerReference.sourceType, ledgerReference.paymentMethodKey, ledgerReference.label)
     const projection = projectSourceFunds(row)
     if (!projection) return
-    add(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
-    add(projection.to.sourceType, projection.to.paymentMethodKey, projection.to.label)
+    if (projection.from) add(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
+    if (projection.to) add(projection.to.sourceType, projection.to.paymentMethodKey, projection.to.label)
   })
   return hints
 }

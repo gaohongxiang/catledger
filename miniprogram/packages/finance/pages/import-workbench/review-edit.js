@@ -523,13 +523,20 @@ module.exports = {
     if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index]) return
     update(this, 'parts', token.draft.parts.map((part, i) => i === index ? { ...part, amountInput: String(event.detail.value) } : part))
   },
+  changeFundsOwnership(event) {
+    const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index), kind = event.currentTarget.dataset.kind
+    if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index] || !['ledger', 'external'].includes(kind)) return
+    this.closeDirectory()
+    update(this, 'parts', token.draft.parts.map((part, i) => i === index ? { ...part, kind,
+      accountId: kind === 'external' ? '' : part.accountId || '' } : part))
+  },
   // 分摊至少要有两行：删到只剩一行就收回单账户，这一端留剩下的那个账户；
   // 一个账户时总额必然全走它，不再需要金额输入。两端各自的账户都按原样放回。
   removeFundsAccount(event) {
     const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
     if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index]) return
     const parts = token.draft.parts.filter((_, i) => i !== index)
-    if (parts.length > 1) return update(this, 'parts', parts)
+    if (parts.length > 1 || parts.some(part => part.kind === 'external')) return update(this, 'parts', parts)
     const side = event.currentTarget.dataset.endpoint === 'payee' ? 'payee' : 'payer'
     const keep = (parts[0] && parts[0].accountId) || ''
     // composition 回 single 会按「不猜保留哪一端」清空两端；撤回前先记下另一端的账户。
@@ -574,7 +581,7 @@ module.exports = {
       if (/^editorPart\d+$/.test(target)) {
         const index = Number(target.slice(10))
         if (!token.draft.parts[index]) return false
-        update(this, 'parts', token.draft.parts.map((part, i) => i === index ? { ...part, accountId: item.accountId, label: item.name } : part))
+        update(this, 'parts', token.draft.parts.map((part, i) => i === index ? { ...part, kind: 'ledger', accountId: item.accountId, label: item.name } : part))
       } else update(this, target === 'reviewAccount' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId', item.accountId)
     } else if (options.kind === 'categories') {
       if (!item.categoryId || item.archivedAt || item.kind !== options.categoryKind) return false
@@ -905,7 +912,7 @@ module.exports = {
     const payload = token.payload || { updateId: this.data.update.updateId, updateVersion: token.updateVersion,
       eventId: token.eventId, eventVersion: token.row.version, ...token.view.payload }
     const requires = []
-    if (!sheet.pending && token.row.detailFacts?.refund?.status === 'confirmed' && (token.draft.economicNature !== 'refund' || token.draft.refund)) requires.push('refund')
+    if (!sheet.pending && token.row.detailFacts?.refund?.status === 'confirmed' && (token.draft.economicNature !== 'refund' || payload.decisions?.refund)) requires.push('refund')
     if (!sheet.pending && token.row.editorFacts && payload.composition && (token.row.paymentResolution || token.row.repaymentAllocations?.length) &&
       (payload.composition.kind !== token.row.editorFacts.composition || payload.composition.incomplete)) requires.push('composition')
     if (requires.length && !requires.every(key => payload.acknowledgedChanges.includes(key))) {

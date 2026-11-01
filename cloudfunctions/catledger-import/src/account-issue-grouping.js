@@ -1,5 +1,6 @@
 const { digestParts } = require('./portable-digest')
-const { groupKey, referenceForRole, mappedAccount } = require('./payment-account-groups')
+const { groupKey, mappedAccount } = require('./payment-account-groups')
+const { memberReference } = require('./account-reference-context')
 
 function countMemberObjects(members) {
   return new Set(members.map(member => member.objectType + ':' + member.objectId)).size
@@ -8,24 +9,14 @@ function countMemberObjects(members) {
 function canUseExternal(events, members) {
   const items = members.filter(member => member.memberRole !== 'candidate')
   const byId = Array.isArray(events) ? new Map(events.map(event => [event.eventId, event])) : events
-  // 退款必须回到账本内账户，不能把入账端改成账本外。
+  // 归属事实逐引用保存。复杂成员进入重核，不能连带禁止普通成员确认外部。
   return items.length > 0 && items.every(member => member.objectType === 'event' &&
-    byId.has(member.objectId) && byId.get(member.objectId).economicNature !== 'refund' &&
-    require('./account-reference-decision').supported(byId.get(member.objectId), member.memberRole))
-}
-
-function memberReference(event, member) {
-  const sources = event.fieldSources || {}, projection = sources.fundsProjection
-  if (sources.bankChannelAccountContexts && sources.bankChannelAccountContexts[member.issueId]) {
-    return sources.bankChannelAccountContexts[member.issueId]
-  }
-  return referenceForRole(event, member.memberRole) ||
-    (member.memberRole === 'mapping_from' ? projection && projection.from :
-      member.memberRole === 'mapping_to' ? projection && projection.to :
-        member.memberRole === 'subject' ? sources.ledgerAccountReference : null) || null
+    byId.has(member.objectId) && require('./account-reference-decision').canRecord(
+      byId.get(member.objectId), member.memberRole, memberReference(byId.get(member.objectId), member)))
 }
 
 function memberAccount(event, member, reference) {
+  if (require('./account-ownership-recheck').decision(event, member.memberRole, reference)) return null
   if (event.fieldSources?.accountOwnership) {
     const side = require('./account-reference-decision').sideFor(event, member.memberRole)
     if (side) return require('./account-ownership').read(event)[side].accountId
@@ -34,6 +25,8 @@ function memberAccount(event, member, reference) {
   return ['mapping_to', 'payment_target'].includes(member.memberRole) ? event.counterpartyLedgerAccountId : event.ledgerAccountId
 }
 function memberDecision(event, member, reference = memberReference(event, member)) {
+  const recorded = require('./account-ownership-recheck').decision(event, member.memberRole, reference)
+  if (recorded) return recorded
   const side = require('./account-reference-decision').sideFor(event, member.memberRole)
   if (event.fieldSources?.accountOwnership && side) return require('./account-ownership').read(event)[side]
   const accountId = memberAccount(event, member, reference)

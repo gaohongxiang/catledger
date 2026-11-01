@@ -9,7 +9,7 @@ const tap = dataset => ({ currentTarget: { dataset } })
 
 test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async t => {
   const h = await chargeLab()
-  const createAccount = name => h.api('accounts.create', { requestId: randomUUID(), type: 'wallet', name,
+  const createAccount = (name, type = 'wallet') => h.api('accounts.create', { requestId: randomUUID(), type, name,
     openingDisplayBalanceMinor: '100000', occurredLocalAt: '2020-01-01T00:00:00', timezoneOffsetMinutes: -480 })
   const summary = updateId => h.imp('financeUpdates.summary', { updateId })
   const issues = async updateId => (await h.imp('reviewIssues.list', { updateId, status: 'open' })).items
@@ -28,7 +28,15 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
     return { ui, page }
   }
   try {
-    const wallet = await createAccount('支付宝账户余额'), savings = await createAccount('余额宝')
+    const wallet = await createAccount('支付宝账户余额'), savings = await createAccount('余额宝', 'other_asset')
+    // 目录中同名账户只提供建议；每批来源引用先由用户确认，再进入退款关系核对。
+    async function confirmAccounts(updateId) {
+      const pending = (await issues(updateId)).filter(issue => issue.issueType === 'account_mapping')
+      if (pending.length) await h.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId,
+        updateVersion: (await summary(updateId)).update.version, decisions: pending.map(issue => ({ operation: 'resolve',
+          issueId: issue.issueId, issueVersion: issue.version, decision: 'apply_fields',
+          fields: { mappingAccountId: /余额宝/.test(issue.accountContext.label) ? savings.accountId : wallet.accountId } })) })
+    }
     await t.test('关闭或失败原消费不能被普通待关联绕过；Page显示两条来源并可完成排除', async () => {
       const update = await prepare(h, bill())
       const issue = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
@@ -76,6 +84,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
     })
     await t.test('没有可靠同订单冲突的待关联退款保留实际到账', async () => {
       const update = await prepare(h, bill({ prefix: 'SYNTH-PENDING', sameOrder: false, refundAmount: '3.00' }))
+      await confirmAccounts(update.updateId)
       const issue = (await issues(update.updateId)).find(i => i.issueType === 'refund_relation')
       assert.equal(issue.primaryReasonCode, 'refund_relation_required')
       const { page } = await open(update.updateId, issue)
@@ -95,6 +104,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
     })
     await t.test('旧未入账批次升级保留原待关联决定但重新阻断来源矛盾；中途失败整组回滚和原键重放', async () => {
       const update = await prepare(h, bill({ prefix: 'SYNTH-LEGACY' }))
+      await confirmAccounts(update.updateId)
       const issue = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
       const event = (await h.imp('economicEvents.list', { updateId: update.updateId })).items.find(e => e.economicNature === 'refund')
       // 存量夹具仅退回旧版本实际可保存的字段，不构造正式账目。
@@ -103,6 +113,10 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       await h.owner.execute("UPDATE catledger_economic_events SET field_sources_json=JSON_REMOVE(field_sources_json,'$.refundSourceConflict'), reason_codes_json=JSON_ARRAY('refund_relation_required') WHERE uid=? AND event_id=?", [h.uid, event.eventId])
       await h.owner.execute("UPDATE catledger_review_issues SET primary_reason_code='refund_relation_required', reason_codes_json=JSON_ARRAY('refund_relation_required'), member_count=1, candidate_count=0 WHERE uid=? AND issue_id=?", [h.uid, issue.issueId])
       await h.imp('reviewIssues.resolve', await issueRequest(update.updateId, issue, 'mark_refund_pending'))
+      // 来源冲突优先处理时尚未开放账户事项；旧待关联状态形成后，再明确到账账户。
+      await confirmAccounts(update.updateId)
+      assert.equal((await h.imp('economicEvents.list', { updateId: update.updateId })).items
+        .find(row => row.eventId === event.eventId).ledgerAccountId, wallet.accountId)
       await h.owner.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v29' WHERE uid=? AND update_id=?", [h.uid, update.updateId])
       const request = { requestId: randomUUID(), updateId: update.updateId, version: (await summary(update.updateId)).update.version }
       await h.owner.query("CREATE TRIGGER fail_f06_upgrade BEFORE UPDATE ON catledger_economic_events FOR EACH ROW BEGIN IF JSON_CONTAINS(NEW.reason_codes_json, JSON_QUOTE('refund_source_conflict')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic upgrade rollback'; END IF; END")
@@ -113,8 +127,11 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       assert.equal(Number((await h.owner.execute('SELECT COUNT(*) AS n FROM catledger_economic_event_relations WHERE uid=? AND update_id=?', [h.uid, update.updateId]))[0][0].n), 0)
       const result = await h.imp('financeUpdates.organize', request)
       assert.deepEqual(await h.imp('financeUpdates.organize', request), result)
-      const upgraded = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
-      assert.ok(upgraded)
+      const afterUpgradeIssues = await issues(update.updateId)
+      const upgraded = afterUpgradeIssues.find(i => i.primaryReasonCode === 'refund_source_conflict')
+      assert.ok(upgraded, JSON.stringify({ issues: afterUpgradeIssues.map(row => [row.issueType, row.primaryReasonCode, row.reasonCodes]),
+        events: (await h.imp('economicEvents.list', { updateId: update.updateId })).items.map(row =>
+          [row.economicNature, row.status, Boolean(row.ledgerAccountId), row.reasonCodes]) }))
       const [[stored]] = await h.owner.execute('SELECT field_sources_json AS fields FROM catledger_economic_events WHERE uid=? AND event_id=?', [h.uid, event.eventId])
       assert.equal(stored.fields.refundRelation.status, 'pending')
       assert.ok(stored.fields.refundSourceConflict)
@@ -123,10 +140,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
     await t.test('成功原消费和部分退款跨月、跨退款账户分别入账并保留关系；重放和重复来源不重复记账', async () => {
       const content = bill({ prefix: 'SYNTH-SUCCESS', status: '交易成功', refundAmount: '5.00', refundAccount: '余额宝' })
       const update = await prepare(h, content)
-      const accountIssues = (await issues(update.updateId)).filter(i => i.issueType === 'account_mapping')
-      if (accountIssues.length) await h.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
-        updateVersion: (await summary(update.updateId)).update.version, decisions: accountIssues.map(issue => ({ operation: 'resolve',
-          issueId: issue.issueId, issueVersion: issue.version, decision: 'apply_fields', fields: { mappingAccountId: savings.accountId } })) })
+      await confirmAccounts(update.updateId)
       assert.deepEqual((await issues(update.updateId)).filter(i => i.blocking).map(i => ({ reason: i.primaryReasonCode, reasons: i.reasonCodes })), [])
       const request = { requestId: randomUUID(), updateId: update.updateId, version: (await summary(update.updateId)).update.version }
       await h.imp('financeUpdates.post', request); await h.imp('financeUpdates.post', request)
@@ -144,12 +158,14 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
     await t.test('原单已在历史账本时复用其支出，后到全额退款只记到账', async () => {
       const prefix = 'SYNTH-HISTORY'
       const first = await prepare(h, bill({ prefix, status: '交易成功', refund: false }))
+      await confirmAccounts(first.updateId)
       const priorExpenseIds = new Set((await amounts()).filter(row => row.type === 'expense').map(row => row.transactionId))
       const duplicates = (await issues(first.updateId)).filter(issue => issue.primaryReasonCode === 'historical_duplicate_candidate')
       for (const issue of duplicates) await h.imp('reviewIssues.resolve', await issueRequest(first.updateId, issue, 'confirm_distinct'))
       await post(first.updateId)
       const before = await amounts(), prior = before.find(row => row.type === 'expense' && !priorExpenseIds.has(row.transactionId))
       const second = await prepare(h, bill({ prefix, status: '交易关闭' }))
+      await confirmAccounts(second.updateId)
       await post(second.updateId)
       const after = await amounts()
       assert.equal(after.filter(row => row.type === 'expense').length, before.filter(row => row.type === 'expense').length)

@@ -37,11 +37,12 @@ function excludeAction(issue) {
 const flowClass = nature => ['repayment', 'borrow', 'internal_transfer'].includes(nature) ? ''
   : ['income', 'refund'].includes(nature) ? 'row-income' : 'row-expense'
 const repaymentChannelOf = row => row.repaymentChannel || row.editorFacts?.repaymentChannel || null
-const repaymentTargetKey = row => row.sourceDirection === 'income' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
-const repaymentPayerKey = row => row.sourceDirection === 'income' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+const reverseSource = row => row.sourceDirection === 'income' && row.accountOrder !== 'actual' && row.fieldSources?.fundsProjection?.accountOrder !== 'actual'
+const repaymentTargetKey = row => reverseSource(row) ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
+const repaymentPayerKey = row => reverseSource(row) ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
 const OWNERSHIP_KINDS = ['ledger', 'external', 'unknown']
 function ownershipKeys(row, nature) {
-  const reverse = ['income', 'refund'].includes(nature) || MOVEMENTS.includes(nature) && row.sourceDirection === 'income'
+  const reverse = ['income', 'refund'].includes(nature) || MOVEMENTS.includes(nature) && reverseSource(row)
   return { source: reverse ? 'counterpartyLedgerAccountId' : 'ledgerAccountId',
     destination: reverse ? 'ledgerAccountId' : 'counterpartyLedgerAccountId' }
 }
@@ -49,12 +50,14 @@ function ownershipKeys(row, nature) {
 // 和组成，无法原样调用服务端的 supported(event)。这里保留同一组结构条件作为界面门禁；
 // 保存与入账仍由服务端统一复核，服务端判定变化时须同步此函数。
 function ownershipEditable(row, draft) {
+  const singleConfirmed = row.editorFacts?.composition === 'single' || draft.dirty.composition
   return draft.composition === 'single' && !repaymentChannelOf(row) && !detail.installmentOf(row) && !disbursementOf(row) &&
-    !row.bankChannelResolution && !row.fieldSources?.bankChannelResolution && !row.paymentResolution &&
-    !(row.paymentAccounts || []).length && !(row.repaymentAllocations || []).length &&
+    !row.bankChannelResolution && !row.fieldSources?.bankChannelResolution &&
+    (singleConfirmed || !row.paymentResolution && !(row.paymentAccounts || []).length && !(row.repaymentAllocations || []).length) &&
     !row.loanRepayment && !row.editorFacts?.incompleteRepayment && !row.editorFacts?.incompleteComposition &&
-    !['borrow', 'refund'].includes(draft.economicNature) &&
-    (['repayment', 'internal_transfer'].includes(draft.economicNature) || detail.ownershipOf(row).explicit && !draft.dirty.economicNature)
+    draft.economicNature !== 'borrow' && (draft.economicNature !== 'refund' || row.editorFacts?.ownershipRecheck?.action === 'refund') &&
+    (['repayment', 'internal_transfer'].includes(draft.economicNature) || row.editorFacts?.ownershipRecheck ||
+      detail.ownershipOf(row).explicit && !draft.dirty.economicNature)
 }
 function ownershipDecision(row, draft) {
   const keys = ownershipKeys(row, draft.economicNature)
@@ -119,7 +122,13 @@ function create(row) {
     note: (has(row, 'note') ? row.note : source.note || '').slice(0, 200), categoryId: registration ? '' : row.categoryId || '',
     sourceKind: ownership.source.kind, destinationKind: ownership.destination.kind, noLedgerImpact: ownership.noLedgerImpact,
     repaymentDetails: false,
-    composition: facts.composition || 'single', parts: parts.map(part => ({ ...part, accountId: part.accountId || '', amountInput: yuan(part.amountMinor) })),
+    composition: facts.composition || 'single', parts: parts.map((part, index) => {
+      const referenceRole = part.referenceRole || (facts.composition === 'payment' ? 'payment_component_' + (part.componentIndex ?? index) : '')
+      const pending = (facts.ownershipRecheck?.entries || []).find(entry => entry.role === referenceRole ||
+        entry.role === 'subject' && index === 0 && facts.composition === 'payment')
+      return { ...part, ...(pending ? { kind: 'external', referenceRole: pending.role } : referenceRole ? { referenceRole } : {}),
+        accountId: pending || part.kind === 'external' ? '' : part.accountId || '', amountInput: yuan(part.amountMinor) }
+    }),
     evidenceNote: facts.incompleteComposition?.evidenceNote || row.paymentResolution?.evidenceNote || facts.evidenceNote || '',
     periodInput: String(row.installment?.periodNumber || ''), totalTermsInput: String(row.installment?.totalTerms || ''),
     // 计划归属：空表示用户没有改动；只在用户主动选择时才进入 sourceCorrection。
@@ -143,6 +152,9 @@ function create(row) {
   if (ownership.explicit && ownershipEditable(row, draft)) {
     const keys = ownershipKeys(row, draft.economicNature)
     for (const side of ['source', 'destination']) draft[keys[side]] = ownership[side].kind === 'ledger' ? ownership[side].accountId || '' : ''
+  }
+  if (facts.ownershipRecheck?.action === 'refund' && ownershipEditable(row, draft)) {
+    draft.destinationKind = 'external'; draft.ledgerAccountId = ''
   }
   // 端点组一定有账户行：服务端可能声明了多账户组成却还没给任何分配（未完成组成），
   // 旧版本删到 0 条的草稿也是这个形态。留一条空行，端点组就不会只剩标题。
@@ -185,7 +197,7 @@ function change(row, draft, key, value) {
     }
     if (MOVEMENTS.includes(draft.economicNature) && !MOVEMENTS.includes(value)) {
       next.dormant.counterpartyLedgerAccountId = draft.counterpartyLedgerAccountId
-      if (ownershipEditable(row, draft)) {
+      if (draft.composition === 'single') {
         next.dormant.movementAccounts = { ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId }
         const side = ['income', 'refund'].includes(value) ? 'destination' : ['expense', 'fee'].includes(value) ? 'source' : null
         if (side) next.ledgerAccountId = draft[ownershipKeys(row, draft.economicNature)[side]] || ''
@@ -207,10 +219,10 @@ function change(row, draft, key, value) {
     next.dormant[draft.composition + 'Parts'] = draft.parts
     next.dormant[draft.composition + 'Accounts'] = { ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId }
     next.parts = next.dormant[value + 'Parts'] || Array.from({ length: value === 'payment' ? 2 : value === 'repayment' ? 1 : 0 }, (_, index) => ({ accountId: '', amountInput: '', componentIndex: index }))
-    const reverse = draft.composition === 'single' && MOVEMENTS.includes(draft.economicNature) && row.sourceDirection === 'income'
+    const reverse = draft.composition === 'single' && MOVEMENTS.includes(draft.economicNature) && reverseSource(row)
     const from = reverse ? draft.counterpartyLedgerAccountId : draft.ledgerAccountId
     const to = reverse ? draft.ledgerAccountId : draft.counterpartyLedgerAccountId
-    const nextReverse = value === 'single' && MOVEMENTS.includes(draft.economicNature) && row.sourceDirection === 'income'
+    const nextReverse = value === 'single' && MOVEMENTS.includes(draft.economicNature) && reverseSource(row)
     next.ledgerAccountId = nextReverse ? to : value === 'payment' || value === 'single' ? '' : from
     next.counterpartyLedgerAccountId = nextReverse ? '' : value === 'repayment' ? '' : to
     if (next.dormant[value + 'Accounts']) Object.assign(next, next.dormant[value + 'Accounts'])
@@ -251,7 +263,7 @@ function accountFields(row, draft, catalog) {
     const side = keys.source === (field.key === 'account' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId') ? 'source' : 'destination'
     return { ...field, ...(ownership ? { ownershipSide: side, ownershipKind: draft[side + 'Kind'],
       ownershipEditable: ['repayment', 'internal_transfer', 'unknown'].includes(draft.economicNature) ||
-        side === (draft.economicNature === 'income' ? 'destination' : 'source') } : {}),
+        side === (['income', 'refund'].includes(draft.economicNature) ? 'destination' : 'source') } : {}),
       target: readonly ? '' : field.key === 'account' ? 'reviewAccount' : 'reviewCounterparty', allowedTypes, readonly,
       name: account ? account.name : field.accountId ? '账户名称待读取' : '',
       invalid: Boolean(account && (account.archivedAt || account.disabledAt || account.unavailable ||
@@ -401,8 +413,9 @@ function fundsEndpointsOf(draft, fields, accounts, { channel, principal, ownersh
     const multi = side === key
     if (!field && !multi) return null
     const list = multi
-      ? draft.parts.map((part, index) => ({ index, target: 'editorPart' + index, accountId: part.accountId || '',
-        name: part.accountId ? nameOf(part) : '', amountInput: part.amountInput || '', removable: true, readonly: false, invalid: false }))
+      ? draft.parts.map((part, index) => ({ index, target: 'editorPart' + index, accountId: part.accountId || '', kind: part.kind || 'ledger',
+        name: part.kind === 'external' ? '账本外账户' : part.accountId ? nameOf(part) : '',
+        amountInput: part.amountInput || '', removable: true, readonly: false, invalid: false }))
       : [{ index: 0, target: field.target, accountId: field.accountId || '', name: field.name, amountInput: '',
         removable: false, readonly: Boolean(field.readonly), invalid: Boolean(field.invalid) }]
     const kind = field && field.ownershipKind
@@ -410,7 +423,7 @@ function fundsEndpointsOf(draft, fields, accounts, { channel, principal, ownersh
       ...(field && field.ownershipSide ? { ownershipField: field.ownershipEditable ? field.ownershipSide + 'Kind' : '', ownershipKind: kind,
         ownershipOptions: [{ value: 'ledger', label: '我的账户' }, { value: 'external', label: '别人的账户' }, { value: 'unknown', label: '暂不确定' }] } : {}),
       // 真正在分摊才有金额列：只剩一个账户时总额必然全走它，金额和删除都不必出现。
-      split: multi && list.length > 1,
+      split: multi && (list.length > 1 || list.some(part => part.kind === 'external')),
       required: !multi && kind !== 'external' && !list[0].accountId, open,
       // 另一端已经真的拆开时这一端的加号保留位置但不可点，避免两端同时多账户。
       addable: open && (multi ? list.length < 20 : !splitSide) }
@@ -512,7 +525,8 @@ function derive(row, draft, catalogs = {}) {
         if (!snapshotId) invalid('plan', '尚未读取本批账户资料，请重新打开本次导入后再创建计划')
         if (!name || Array.from(name).length > 32 || accountDraft.type !== 'credit' || accountDraft.currency !== 'CNY') {
           invalid('plan', '本批信用卡资料不完整，请先核对账户名称和类型')
-        } else if (snapshotId) importAccountDraft = { snapshotId, name, type: 'credit', currency: 'CNY' }
+        } else if (snapshotId) importAccountDraft = { snapshotId, name, type: 'credit', currency: 'CNY',
+          ...(accountDraft.creationKey ? { creationKey: accountDraft.creationKey } : {}) }
       }
       try { schedule = planSchedule(draft) } catch (error) { invalid('plan', error.message) }
       if (schedule && (!accountDraft || importAccountDraft)) planRequest = { name: planName, terms: planTerms, principalMinor: planPrincipal,
@@ -560,7 +574,7 @@ function derive(row, draft, catalogs = {}) {
     if (draft.repaymentChannelConfirmed === true) decisions.repaymentChannel = { confirmed: true }
     else missing.push('还入账户及手续费确认')
   }
-  const ownershipChanged = ['sourceKind', 'destinationKind', 'noLedgerImpact', 'ledgerAccountId', 'counterpartyLedgerAccountId'].some(key => draft.dirty[key])
+  const ownershipChanged = ['sourceKind', 'destinationKind', 'noLedgerImpact', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'economicNature'].some(key => draft.dirty[key])
   if (ownership && (detail.ownershipOf(row).pendingLegacyTreatment || detail.ownershipOf(row).invalid) && !ownershipChanged) missing.push('确认资金两端归属')
   if (!channel && !principal && detail.ownershipOf(row).explicit && draft.dirty.economicNature) decisions.accountOwnership = null
   if (ownership) {
@@ -573,10 +587,11 @@ function derive(row, draft, catalogs = {}) {
     }
   }
   let composition
+  let compositionEffect = ''
   if (draft.composition !== 'single') {
     let sum = 0n, partial = false
     for (const part of draft.parts) {
-      if (!part.accountId || minor(part.amountInput) == null) partial = true
+      if (part.kind !== 'external' && !part.accountId || minor(part.amountInput) == null) partial = true
       if (part.amountInput && minor(part.amountInput) == null) invalid('composition', '分配金额格式不正确')
       if (draft.composition === 'repayment' && minor(part.amountInput) === '0') invalid('composition', '还入账户分配需大于零')
       if (minor(part.amountInput) != null) sum += BigInt(minor(part.amountInput))
@@ -590,8 +605,19 @@ function derive(row, draft, catalogs = {}) {
     const incomplete = partial || amount == null || sum !== BigInt(amount) || draft.parts.length < (draft.composition === 'payment' ? 2 : 1) ||
       draft.composition === 'payment' && (!draft.evidenceNote.trim() || effectiveNature === 'unknown' || effectiveNature === 'repayment' && !draft.counterpartyLedgerAccountId)
     if (incomplete) missing.push('资金分配')
-    composition = { kind: draft.composition, parts: draft.parts.map(part => ({ accountId: part.accountId || null, amountMinor: minor(part.amountInput) })),
+    composition = { kind: draft.composition, parts: draft.parts.map(part => ({ accountId: part.kind === 'external' ? null : part.accountId || null,
+      amountMinor: minor(part.amountInput), ...(part.kind === 'external' ? { kind: 'external' } : {}),
+      ...(part.referenceRole ? { referenceRole: part.referenceRole } : {}) })),
       evidenceNote: draft.evidenceNote, incomplete: Boolean(incomplete) }
+    if (!incomplete && draft.parts.some(part => part.kind === 'external')) {
+      const outside = draft.parts.filter(part => part.kind === 'external').reduce((sum, part) => sum + BigInt(minor(part.amountInput)), 0n)
+      const inside = sum - outside
+      compositionEffect = draft.composition === 'repayment'
+        ? '本人负债转账 ¥' + yuan(inside) + '；账本外还款支出 ¥' + yuan(outside) + '。'
+        : draft.economicNature === 'repayment' ? '本人付款转账 ¥' + yuan(inside) + '；外部代还收入 ¥' + yuan(outside) + '。'
+          : inside === 0n ? '本次金额全部在账本外，保存后标记为对本账本无影响，不生成账目。'
+            : '仅本人付款 ¥' + yuan(inside) + '计入支出；账本外份额 ¥' + yuan(outside) + '不计入。'
+    }
   } else if (draft.dirty.composition || draft.composition !== original.composition) {
     // 简化成单账户是用户的正当决定：总额不变，只是不再区分各来源分摊。
     // 说明为选填，仅用于留下当时的判断依据，不阻塞保存。
@@ -603,7 +629,8 @@ function derive(row, draft, catalogs = {}) {
   const acknowledgedChanges = clearLegacyRepayment
     ? [...new Set([...(draft.acknowledgedChanges || []), 'repayment'])] : draft.acknowledgedChanges
   if (effectiveNature === 'refund' && draft.refund) decisions.refund = draft.refund
-  if (effectiveNature === 'refund' && !draft.refund && row.detailFacts?.refund?.status !== 'confirmed' && row.detailFacts?.refund?.status !== 'pending') missing.push('退款关联')
+  if (effectiveNature === 'refund' && noLedgerImpact && ownershipChanged) decisions.refund = { mode: 'unlinked' }
+  if (effectiveNature === 'refund' && !noLedgerImpact && !draft.refund && row.detailFacts?.refund?.status !== 'confirmed' && row.detailFacts?.refund?.status !== 'pending') missing.push('退款关联')
   let sourceCorrection
   if (row.installment && (draft.dirty.periodInput || draft.dirty.totalTermsInput || draft.dirty.planLabel)) {
     sourceCorrection = { periodNumber: draft.periodInput ? Number(draft.periodInput) : null, totalTerms: draft.totalTermsInput ? Number(draft.totalTermsInput) : null,
@@ -634,7 +661,7 @@ function derive(row, draft, catalogs = {}) {
   // 本金行仍是还款时保留“分期出账”这个来源角色名；改判成实际收支后显示经济性质。
   const natureLabel = registration || disbursement ? detail.natureLabel({ ...row, economicNature: draft.economicNature }) : principal
     ? draft.economicNature === 'repayment' ? detail.natureLabel({ ...row, economicNature: 'repayment' }) : detail.natureLabel({ economicNature: draft.economicNature })
-    : installmentRole ? detail.natureLabel({ ...row, economicNature: 'repayment' }) : detail.natureLabel({ economicNature: draft.economicNature })
+    : installmentRole ? detail.natureLabel({ ...row, economicNature: 'repayment' }) : detail.natureLabel({ ...row, economicNature: draft.economicNature })
   const evidence = row.primaryEvidence || {}, evidenceTitle = String(evidence.item || '').trim()
   const counterparty = String(draft.counterparty || '').trim()
   return { supported, readonlyReason: facts?.lockedReason || (!facts ? '需更新导入服务后才能编辑' : ''),
@@ -686,6 +713,7 @@ function derive(row, draft, catalogs = {}) {
       auto: row.detailFacts.refund.autoLinked === true
     } : null,
     accountFields: fields, categoryKind: noLedgerImpact ? '' : categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
+    ownershipRecheck: facts?.ownershipRecheck || null, compositionEffect,
     showOwnership: ownership, showLoan: false,
     bothExternal: ownership && draft.sourceKind === 'external' && draft.destinationKind === 'external',
     ownershipEffect: ownership ? noLedgerImpact ? '资金两端均在账本外，不生成账目。'

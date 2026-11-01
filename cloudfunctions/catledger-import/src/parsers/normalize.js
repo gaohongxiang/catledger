@@ -114,6 +114,8 @@ function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = [], so
     status: raw.status,
     paymentMethod: raw.paymentMethod,
     counterparty: raw.counterparty,
+    counterpartyAccount: raw.counterpartyAccount,
+    counterpartyAccountNumberReliable: raw.counterpartyAccountNumberReliable,
     item: raw.item,
     note: raw.note,
     installmentFields: raw.installmentFields,
@@ -175,7 +177,9 @@ function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = [], so
       }),
       paymentMethod: observation('paymentMethod'),
       counterparty: observation('counterparty'),
-      counterpartyAccount: observation('counterpartyAccount'),
+      counterpartyAccount: { ...observation('counterpartyAccount'),
+        ...(sourceType === 'bank' && typeof raw.counterpartyAccountNumberReliable === 'boolean'
+          ? { numberReliable: raw.counterpartyAccountNumberReliable } : {}) },
       item: observation('item'),
       note: observation('note')
     },

@@ -1,54 +1,65 @@
 const { chunks, insertMany } = require('./sql-batch')
-const { randomUUID } = require('node:crypto')
-
 const { importError } = require('./errors')
+const draftPolicy = require('./account-draft-policy')
+const identity = require('./local-review-identity')
+const { digestParts } = require('./portable-digest')
+const ACCOUNT_NATURES = draftPolicy.NATURES
+const normalizeAccountName = draftPolicy.normalizeName
 
-const ACCOUNT_NATURES = Object.freeze({
-  cash: 'asset',
-  bank: 'asset',
-  wallet: 'asset',
-  credit: 'liability',
-  other_asset: 'asset',
-  other_liability: 'liability'
-})
-
-function normalizeAccountName(value) {
-  if (typeof value !== 'string') throw importError('VALIDATION_ERROR')
-  const name = value.normalize('NFKC').trim().replace(/\s+/gu, ' ')
-  const length = Array.from(name).length
-  if (length < 1 || length > 32) throw importError('VALIDATION_ERROR')
-  return { name, normalizedName: name.toLocaleLowerCase('zh-CN') }
-}
-
-async function stageAccountDraft(connection, uid, updateId, value, actionId) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw importError('VALIDATION_ERROR')
-  const type = value.type
-  const nature = ACCOUNT_NATURES[type]
-  if (!nature || value.currency !== 'CNY') throw importError('VALIDATION_ERROR')
-  const accountName = normalizeAccountName(value.name)
-  const [existing] = await connection.execute(
-    `SELECT draft_account_id AS draftAccountId, type, nature, currency
-       FROM catledger_finance_update_account_drafts
-      WHERE uid = ? AND update_id = ? AND normalized_name = ?
-      LIMIT 1 FOR UPDATE`,
-    [uid, updateId, accountName.normalizedName]
-  )
-  if (existing[0]) {
-    if (existing[0].type !== type || existing[0].nature !== nature || existing[0].currency !== value.currency) {
-      throw importError('CONFLICT')
-    }
-    return existing[0].draftAccountId
-  }
+async function stageAccountDraft(connection, uid, updateId, value, actionId, context = {}) {
+  const draft = draftPolicy.validate(value)
+  if (draft.creationKey && draft.creationKey !== context.creationKey) throw importError('VALIDATION_ERROR')
   const batch = require('./local-review-batch').get(connection)
-  const draftAccountId = batch ? require('./local-review-identity').accountId(batch.snapshotId, accountName.name, type) : randomUUID()
-  await connection.execute(
-    `INSERT INTO catledger_finance_update_account_drafts
-       (uid, draft_account_id, update_id, name, normalized_name, type,
-        nature, currency, action_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [uid, draftAccountId, updateId, accountName.name, accountName.normalizedName,
-      type, nature, value.currency, actionId]
+  const creationKey = draft.creationKey || (!batch && (context.creationKey || digestParts('account-action-v1', actionId, draft.normalizedName)))
+  const draftAccountId = identity.accountId(batch ? batch.snapshotId : updateId, draft.name, draft.type, creationKey)
+  // 旧冻结请求保留原来的账户ID，但不能让同批不同创建决定借同名合并。
+  const owner = context.creationKey || actionId
+  if (batch) {
+    batch.accountCreationOwners ||= new Map()
+    if (batch.accountCreationOwners.has(draftAccountId) && batch.accountCreationOwners.get(draftAccountId) !== owner) draftPolicy.conflict()
+  }
+  const [existing] = await connection.execute(
+    `SELECT draft_account_id AS draftAccountId, name, normalized_name AS normalizedName,
+            type, nature, currency, materialized_at AS materializedAt
+       FROM catledger_finance_update_account_drafts
+      WHERE uid = ? AND update_id = ? AND (draft_account_id = ? OR normalized_name = ?)
+      FOR UPDATE`,
+    [uid, updateId, draftAccountId, draft.normalizedName]
   )
+  if (existing.some(row => row.draftAccountId !== draftAccountId)) draftPolicy.conflict()
+  const [namedAccounts] = await connection.execute(`SELECT account_id AS accountId, normalized_name AS normalizedName,
+    type, nature, currency, archived_at AS archivedAt FROM catledger_accounts
+    WHERE uid = ? AND (account_id = ? OR normalized_name = ?) FOR UPDATE`, [uid, draftAccountId, draft.normalizedName])
+  if (namedAccounts.some(row => row.accountId !== draftAccountId)) draftPolicy.conflict()
+  if (namedAccounts.some(row => row.archivedAt != null || ['normalizedName', 'type', 'nature', 'currency']
+    .some(key => row[key] !== draft[key]))) throw importError('CONFLICT')
+  const previous = existing.find(row => row.draftAccountId === draftAccountId)
+  if (previous) {
+    const changed = ['name', 'normalizedName', 'type', 'nature', 'currency'].some(key => previous[key] !== draft[key])
+    if (changed && previous.materializedAt != null) throw importError('CONFLICT')
+    if (changed) await connection.execute(`UPDATE catledger_finance_update_account_drafts
+      SET name = ?, normalized_name = ?, type = ?, nature = ?, currency = ?, action_id = ?, superseded_at = NULL
+      WHERE uid = ? AND update_id = ? AND draft_account_id = ? AND materialized_at IS NULL`,
+    [draft.name, draft.normalizedName, draft.type, draft.nature, draft.currency, actionId, uid, updateId, draftAccountId])
+    else if (previous.materializedAt == null) await connection.execute(`UPDATE catledger_finance_update_account_drafts
+      SET superseded_at = NULL WHERE uid = ? AND update_id = ? AND draft_account_id = ? AND materialized_at IS NULL`,
+    [uid, updateId, draftAccountId])
+  } else {
+    try {
+      await connection.execute(
+        `INSERT INTO catledger_finance_update_account_drafts
+           (uid, draft_account_id, update_id, name, normalized_name, type,
+            nature, currency, action_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uid, draftAccountId, updateId, draft.name, draft.normalizedName,
+          draft.type, draft.nature, draft.currency, actionId]
+      )
+    } catch (error) {
+      if (error?.code === 'ER_DUP_ENTRY') draftPolicy.conflict()
+      throw error
+    }
+  }
+  if (batch) batch.accountCreationOwners.set(draftAccountId, owner)
   return draftAccountId
 }
 
@@ -56,18 +67,15 @@ async function stageAccountDraft(connection, uid, updateId, value, actionId) {
 async function stageRepaymentAllocationDrafts(connection, uid, updateId, allocations, actionId) {
   if (!Array.isArray(allocations) || !allocations.length || allocations.length > 20) throw importError('VALIDATION_ERROR')
   const result = []
-  for (const item of allocations) {
+  for (const [index, item] of allocations.entries()) {
     if (!item || typeof item !== 'object' || Array.isArray(item) ||
         Object.keys(item).some((key) => !['accountId', 'accountDraft', 'amountMinor'].includes(key)) ||
         Boolean(item.accountId) === Boolean(item.accountDraft)) throw importError('VALIDATION_ERROR')
     if (!item.accountDraft) { result.push(item); continue }
     const draft = item.accountDraft
     if (!['credit', 'other_liability'].includes(draft.type) || draft.currency !== 'CNY') throw importError('VALIDATION_ERROR')
-    const name = normalizeAccountName(draft.name)
-    const [existing] = await connection.execute(`SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
-      FROM catledger_accounts WHERE uid = ? AND normalized_name = ? FOR UPDATE`, [uid, name.normalizedName])
-    if (existing.length > 1 || existing.some((account) => account.type !== draft.type || account.currency !== draft.currency || account.archivedAt != null)) throw importError('CONFLICT')
-    const accountId = existing[0] ? existing[0].accountId : await stageAccountDraft(connection, uid, updateId, draft, actionId)
+    const accountId = await stageAccountDraft(connection, uid, updateId, draft, actionId,
+      { creationKey: digestParts('repayment-account-creation-v1', actionId, String(index)) })
     result.push({ accountId, amountMinor: item.amountMinor })
   }
   return result
@@ -101,7 +109,7 @@ async function materializeAccountDrafts(connection, uid, updateId, reachableDraf
       reachable.filter(draft => !existing.has(draft.accountId))
         .map(draft => [uid, draft.accountId, draft.type, draft.nature, draft.name, draft.normalizedName, draft.currency]))
   } catch (error) {
-    if (error && error.code === 'ER_DUP_ENTRY') throw importError('CONFLICT')
+    if (error && error.code === 'ER_DUP_ENTRY') draftPolicy.conflict()
     throw error
   }
   for (const part of chunks(reachable.map(draft => [draft.accountId]))) {

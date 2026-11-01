@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" role="img" aria-labelledby="title desc">
+<title id="title">组合资金：先分清每一份，再统计本人影响</title><desc id="desc">组合支付与组合还款包含外部份额时，金额组成保持守恒，只生成本账本实际资金变化。所有示例均须确认完整组成后入账。</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#89929d"/></marker></defs>
+<g font-family="Noto Sans CJK SC, PingFang SC, Microsoft YaHei, sans-serif">
+<rect x="0" y="0" width="1200" height="860" rx="0" fill="#ffffff" stroke="#ffffff"/>
+<text x="32" y="47" font-size="30" text-anchor="start" fill="#20262d" font-weight="600">组合资金：先分清每一份，再统计本人影响</text>
+<text x="32" y="83" font-size="20" text-anchor="start" fill="#616b77" font-weight="400">有多个资金端时，不能用一个“本次不计入”代替账户归属和金额分配。</text>
+<text x="36" y="138" font-size="24" text-anchor="start" fill="#20262d" font-weight="500">两个本人账户合付</text>
+<rect x="36" y="167" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="155.0" y="196" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的零钱</text>
+<text x="155.0" y="223" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">扣 60 元</text>
+<rect x="346" y="167" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="465.0" y="196" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的银行卡</text>
+<text x="465.0" y="223" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">扣 40 元</text>
+<line x1="155" y1="237" x2="155" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="465" y1="237" x2="465" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="155" y1="265" x2="465" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="310" y1="265" x2="310" y2="293" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="191" y="305" width="238" height="70" rx="10" fill="#f0f1f3" stroke="#d6dee9"/>
+<text x="310.0" y="334" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">商家实收</text>
+<text x="310.0" y="361" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">100 元</text>
+<text x="310" y="414" font-size="22" text-anchor="middle" fill="#20262d" font-weight="500">总支出 100 元</text>
+<text x="310" y="446" font-size="18" text-anchor="middle" fill="#616b77" font-weight="400">各扣实际份额，不分别扣 100 元</text>
+<text x="620" y="138" font-size="24" text-anchor="start" fill="#20262d" font-weight="500">本人和外部共同付款</text>
+<rect x="620" y="167" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="739.0" y="196" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的零钱</text>
+<text x="739.0" y="223" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">扣 60 元</text>
+<rect x="930" y="167" width="238" height="70" rx="10" fill="#f0f1f3" stroke="#d6dee9"/>
+<text x="1049.0" y="196" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">外部付款</text>
+<text x="1049.0" y="223" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">付 40 元</text>
+<line x1="739" y1="237" x2="739" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="1049" y1="237" x2="1049" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="739" y1="265" x2="1049" y2="265" stroke="#89929d" stroke-width="2"/>
+<line x1="894" y1="265" x2="894" y2="293" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="775" y="305" width="238" height="70" rx="10" fill="#f0f1f3" stroke="#d6dee9"/>
+<text x="894.0" y="334" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">商家实收</text>
+<text x="894.0" y="361" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">100 元</text>
+<text x="894" y="414" font-size="22" text-anchor="middle" fill="#20262d" font-weight="500">我的支出 60 元</text>
+<text x="894" y="446" font-size="18" text-anchor="middle" fill="#616b77" font-weight="400">外部的 40 元不进入我的账户余额</text>
+<text x="36" y="524" font-size="24" text-anchor="start" fill="#20262d" font-weight="500">还两张本人信用卡</text>
+<rect x="191" y="553" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="310.0" y="582" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的银行卡</text>
+<text x="310.0" y="609" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">扣 1,000 元</text>
+<line x1="310" y1="623" x2="310" y2="651" stroke="#89929d" stroke-width="2"/>
+<line x1="155" y1="651" x2="465" y2="651" stroke="#89929d" stroke-width="2"/>
+<line x1="155" y1="651" x2="155" y2="679" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="465" y1="651" x2="465" y2="679" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="36" y="691" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="155.0" y="720" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的信用卡 A</text>
+<text x="155.0" y="747" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">欠款减 600 元</text>
+<rect x="346" y="691" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="465.0" y="720" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的信用卡 B</text>
+<text x="465.0" y="747" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">欠款减 400 元</text>
+<text x="310" y="800" font-size="22" text-anchor="middle" fill="#20262d" font-weight="500">转账合计 1,000 元 · 不计收支</text>
+<text x="310" y="832" font-size="18" text-anchor="middle" fill="#616b77" font-weight="400">付款账户合计只扣 1,000 元</text>
+<text x="620" y="524" font-size="24" text-anchor="start" fill="#20262d" font-weight="500">还本人信用卡和外部债务</text>
+<rect x="775" y="553" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="894.0" y="582" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的银行卡</text>
+<text x="894.0" y="609" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">扣 1,000 元</text>
+<line x1="894" y1="623" x2="894" y2="651" stroke="#89929d" stroke-width="2"/>
+<line x1="739" y1="651" x2="1049" y2="651" stroke="#89929d" stroke-width="2"/>
+<line x1="739" y1="651" x2="739" y2="679" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="1049" y1="651" x2="1049" y2="679" stroke="#89929d" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="620" y="691" width="238" height="70" rx="10" fill="#e8effb" stroke="#d6dee9"/>
+<text x="739.0" y="720" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">我的信用卡 A</text>
+<text x="739.0" y="747" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">欠款减 600 元</text>
+<rect x="930" y="691" width="238" height="70" rx="10" fill="#f0f1f3" stroke="#d6dee9"/>
+<text x="1049.0" y="720" font-size="21" text-anchor="middle" fill="#20262d" font-weight="400">外部债务</text>
+<text x="1049.0" y="747" font-size="21" text-anchor="middle" fill="#20262d" font-weight="500">还入 400 元</text>
+<text x="894" y="800" font-size="22" text-anchor="middle" fill="#20262d" font-weight="500">转账 600 元 + 支出 400 元</text>
+<text x="894" y="832" font-size="18" text-anchor="middle" fill="#616b77" font-weight="400">只维护本人账户，不建立外部负债</text>
+</g></svg>

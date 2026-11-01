@@ -100,7 +100,12 @@ function refreshEventSemantic(current, evidenceRows, planReferences = []) {
       if (projections.some(value => JSON.stringify(value) !== JSON.stringify(projection))) {
         next.reasonCodes.push('core_fields_conflict')
       } else if (JSON.stringify(projection) !== JSON.stringify(sources.fundsProjection || null)) {
-        next.fieldSources.fundsProjection = projection
+        const transition = require('./funds-route').bankProjectionUpgrade(current, projection, rows[0].direction)
+        if (transition?.conflict) next.reasonCodes.push('core_fields_conflict')
+        else if (!transition?.preserve) {
+          next.fieldSources.fundsProjection = projection
+          if (transition?.patch) Object.assign(next, transition.patch)
+        }
       }
     }
     next.fieldSources.ledgerAccountReference = ledgerAccountReferenceForRow(rows[0])

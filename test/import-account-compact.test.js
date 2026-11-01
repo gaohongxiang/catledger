@@ -24,7 +24,7 @@ test('三项只改变排版，原账户选择、名称输入、类型及忙碌�
   assert.match(row, /data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{accountStepBusy}}"/)
   assert.match(row, /maxlength="32" value="{{item.draftName}}"/)
   assert.match(row, /bindinput="bindAccountDraftName"[^>]*disabled="{{accountStepBusy}}"/)
-  assert.match(row, /range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}"/)
+  assert.match(row, /range="{{item.typeOptions}}" range-key="label" value="{{item.draftTypeOptionIndex}}"/)
   assert.match(row, /bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}"/)
   assert.match(row, /aria-label="{{item.label}}的新账户名称"/)
   assert.match(row, /aria-label="{{item.label}}的账户类型/)
@@ -44,7 +44,7 @@ test('新建编辑行统一白底，确认按钮独立，已确认项可更改',
 test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触控高度', () => {
   assert.match(style, /\.account-decision-create \.account-mode-control,[\s\S]*?\.account-decision-create \.account-compact-type-control\s*\{[^}]*min-height:\s*88rpx;/)
   assert.match(style, /\.account-decision-create \.account-compact-type-value\s*\{[^}]*white-space:\s*normal;/)
-  assert.match(row, /aria-label="{{item.label}}的账户类型，{{accountTypeOptions\[item.draftTypeIndex\].label}}"/)
-  assert.match(row, /value === 'credit' \? '信用卡\/信贷'/)
+  assert.match(row, /aria-label="{{item.label}}的账户类型，{{item.draftTypeLabel}}"/)
+  assert.match(row, /class="account-compact-type-value">{{item.draftTypeLabel}}<\/text>/)
   assert.doesNotMatch(row, /type="hidden"|hidden="true"/)
 })

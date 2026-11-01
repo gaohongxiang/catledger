@@ -151,8 +151,8 @@ test('新版银行语义可原位升级旧草稿，账户选择、人工性质�
     assert.equal(refreshEventSemantic(closed, [row]), closed)
   }
   const profile = bankProfile('xls')
-  assert.equal(profile.profileVersion, 'bank-profile-v4')
-  assert.equal(profile.policyVersion, 'bank-policy-v4')
-  assert.equal(profile.parserVersion, 'bank-parser-v3')
-  assert.equal(profile.normalizationVersion, 'bank-normalization-v3')
+  assert.equal(profile.profileVersion, 'bank-profile-v5')
+  assert.equal(profile.policyVersion, 'bank-policy-v5')
+  assert.equal(profile.parserVersion, 'bank-parser-v4')
+  assert.equal(profile.normalizationVersion, 'bank-normalization-v4')
 })

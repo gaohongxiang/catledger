@@ -4,6 +4,11 @@ const { buildPaymentMethodKey } = require('./identity')
 const { paymentAccountDetails } = require('./payment-account')
 const { evaluatePostability } = require('./organizer-model')
 const parseJson = (value, fallback) => { if (value == null) return fallback; if (typeof value !== 'string') return value; try { return JSON.parse(value) } catch (_) { return fallback } }
+function transferOwnershipPending(event) {
+  if (event.economicNature !== 'internal_transfer' || event.fieldSources?.fundsProjection?.kind !== 'bank_transfer') return false
+  const value = require('./account-ownership').read(event)
+  return value.source.kind === 'unknown' || value.destination.kind === 'unknown'
+}
 function publicEvent(row) {
   const fieldSources = parseJson(row.fieldSources, {})
   const reasonCodes = parseJson(row.reasonCodes, [])
@@ -19,6 +24,7 @@ function publicEvent(row) {
     version: Number(row.version),
     flowDirection: row.flowDirection,
     economicNature: row.economicNature,
+    ...(transferOwnershipPending({ ...row, fieldSources }) ? { transferOwnershipPending: true } : {}),
     ledgerAccountId: row.ledgerAccountId || null,
     counterpartyLedgerAccountId: row.counterpartyLedgerAccountId || null,
     localAt: row.localAt,
@@ -57,6 +63,7 @@ function publicEvent(row) {
       ...(fieldSources.disbursement.partner ? { partner: fieldSources.disbursement.partner } : {})
     } } : {}),
     sourceDirection: row.sourceDirection || null,
+    accountOrder: fieldSources.fundsProjection?.accountOrder || null,
     ...(fieldSources.accountOwnership || fieldSources.repaymentOwnership ? {
       accountOwnership: require('./account-ownership').read({ ...row, fieldSources })
     } : {}),
@@ -104,7 +111,7 @@ function publicIssue(row) {
     ? paymentAccountDetails(row.subjectSourceType, row.subjectPaymentMethod)
     : null
   const ledgerAccountReference = subjectFieldSources.ledgerAccountReference || null
-  const domainSubject = { economicNature: row.subjectEconomicNature, sourceDirection: row.subjectSourceDirection,
+  const domainSubject = { economicNature: row.subjectEconomicNature, sourceDirection: row.subjectSourceDirection, currency: row.subjectCurrency,
     ledgerAccountId: row.subjectLedgerAccountId, counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId,
     fieldSources: subjectFieldSources }
   const ownership = require('./account-ownership').read(domainSubject)
@@ -151,6 +158,8 @@ function publicIssue(row) {
       account.accountId = ownership[side].accountId
       account.mappingAction = ownership[side].kind === 'external' ? 'external' : account.accountId ? 'account' : null
     }
+    const pending = require('./account-ownership-recheck').decision(domainSubject, row.subjectMemberRole || 'subject', account)
+    if (pending) { account.accountId = null; account.mappingAction = pending.kind === 'external' ? 'external' : null }
   }
   let reasonCodes = parseJson(row.reasonCodes, [])
   // 旧账户决定只写在操作记录中；按当前事项取出决定，不能用代表事件的
@@ -180,6 +189,9 @@ function publicIssue(row) {
       status: row.subjectEventStatus,
       flowDirection: row.subjectFlowDirection,
       economicNature: row.subjectEconomicNature,
+      sourceDirection: row.subjectSourceDirection || null,
+      accountOrder: fundsProjection?.accountOrder || null,
+      ...(transferOwnershipPending(domainSubject) ? { transferOwnershipPending: true } : {}),
       ledgerAccountId: row.subjectLedgerAccountId || null,
       counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId || null,
       ...(subjectFieldSources.accountOwnership || subjectFieldSources.repaymentOwnership ? { accountOwnership: require('./account-ownership').read({ economicNature: row.subjectEconomicNature,
@@ -216,6 +228,10 @@ function publicIssue(row) {
       mappingAction: account.mappingAction || (account.accountId ? 'account' : null),
       canExternal: row.canExternal === true,
       fundsSide: account.fundsSide || '',
+      ...require('./account-type-policy').rules({ ...account,
+        ...(Array.isArray(row.allowedAccountTypes) ? { allowedAccountTypes: row.allowedAccountTypes } : {}) },
+      { event: domainSubject, memberRole: row.subjectMemberRole || 'subject' }),
+      currency: row.subjectCurrency || account.currency || 'CNY',
       accountId: account.accountId || null,
       unresolvedReason: account.unresolvedReason || '',
       item: safeIssueSummary(row.subjectItem),

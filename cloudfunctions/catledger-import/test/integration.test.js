@@ -572,15 +572,29 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
     for (const issue of accountIssues) {
       assert.equal(issue.issueType, 'account_mapping')
     }
+    assert.ok(accountIssues.length > 1, '弱来源账户在两个文件中分别核对')
+    // 先明确创建一次，再在其他文件明确选择该草稿；同名新建不能隐式认领同一账户。
+    const firstAccountIssue = accountIssues[0]
+    await service.reviewIssueResolve(context(user, {
+      requestId: randomUUID(), updateId: view.update.updateId,
+      updateVersion: view.update.version, issueId: firstAccountIssue.issueId,
+      issueVersion: firstAccountIssue.version, decision: 'apply_fields',
+      fields: { ledgerAccountDraft: { name: '多账单新账户', type: 'wallet', currency: 'CNY' } }
+    }))
+    view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    assert.equal(view.accountDrafts.length, 1)
+    const draftAccountId = view.accountDrafts[0].accountId
+    const remainingAccountIssues = view.issues.filter((item) => item.status === 'open' && item.issueType === 'account_mapping')
+    assert.equal(remainingAccountIssues.length, accountIssues.length - 1)
     const versionBeforeAccountBatch = view.update.version
     view = await service.reviewIssueResolveAccountMappings(context(user, {
       requestId: randomUUID(),
       updateId: view.update.updateId,
-      decisions: accountIssues.map((issue) => ({
+      decisions: remainingAccountIssues.map((issue) => ({
         issueId: issue.issueId,
         operation: 'resolve',
         decision: 'apply_fields',
-        fields: { ledgerAccountDraft: { name: '多账单新账户', type: 'wallet', currency: 'CNY' } }
+        fields: { ledgerAccountId: draftAccountId }
       }))
     }))
     assert.equal(view.update.version, versionBeforeAccountBatch + 1)
@@ -593,7 +607,7 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
         WHERE uid = ? AND update_id = ? AND action_type = 'resolve_account_mappings'`,
       [user.uid, view.update.updateId]
     )
-    assert.equal(Number(accountBatchActions.count), 1)
+    assert.equal(Number(accountBatchActions.count), 2, '一次新建决定和一次跨文件显式复用分别留审计动作')
 
     const [[formalMappingsBeforePost]] = await pool.execute(
       `SELECT COUNT(*) AS count FROM catledger_import_account_mappings WHERE uid = ?`,

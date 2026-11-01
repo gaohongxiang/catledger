@@ -268,9 +268,9 @@
             <view class="account-decision-divider"></view>
             <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" data-input-key="bindAccountDraftName-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
             <view class="account-decision-divider"></view>
-            <picker class="account-compact-type" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{accountTypeOptions[item.draftTypeIndex].label}}">
+            <picker class="account-compact-type" mode="selector" range="{{item.typeOptions}}" range-key="label" value="{{item.draftTypeOptionIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{item.draftTypeLabel}}">
               <view class="account-compact-type-control">
-                <text class="account-compact-type-value">{{accountTypeOptions[item.draftTypeIndex].value === 'credit' ? '信用卡/信贷' : accountTypeOptions[item.draftTypeIndex].label}}</text>
+                <text class="account-compact-type-value">{{item.draftTypeLabel}}</text>
                 <view class="account-dropdown-chevron"></view>
               </view>
             </picker>
@@ -284,6 +284,7 @@
           <view class="account-confirm-note">
             <text wx:if="{{item.choiceValue === 'pending'}}" class="account-inline-note">{{item.paymentNeedsReview ? '多账户共同支付，请核对金额与性质。' : '请选择归属账户；信息不足请核对后确认。'}}</text>
             <text wx:if="{{item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或改选已有账户 / 不计入。</text>
+            <text wx:if="{{item.validationText}}" class="account-inline-note">{{item.validationText}}</text>
             <text wx:if="{{item.suggestedExisting}}" class="account-state-note">已按名称、银行和尾号推荐，请核对。</text>
             <text wx:if="{{item.canExternal && item.choiceValue !== 'external'}}" class="account-inline-note">不是我的账户？可在上方改选「别人的账户」。</text>
             <text wx:if="{{item.choiceValue === 'ignore'}}" class="account-state-note">保留证据，本次不创建账户与账目。</text>

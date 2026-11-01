@@ -61,7 +61,7 @@ function read(event = {}) {
 
 function complex(event) {
   const fields = event.fieldSources || {}, editor = overrides(event)
-  return Boolean(fields.paymentResolution || (fields.paymentAccounts || []).length ||
+  return Boolean(fields.paymentResolution || editor.composition !== 'single' && (fields.paymentAccounts || []).length ||
     (fields.repaymentAllocations || []).length || editor.incompleteComposition ||
     fields.repaymentChannelResolution || fields.bankChannelResolution ||
     fields.loanRepayment || editor.incompleteRepayment)

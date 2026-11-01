@@ -55,7 +55,7 @@ test('F01 合同认领依据身份与明确选择，不以同账户旧计划拦�
  })
 })
 
-test('F01 导入明确还款使用只读旧合同权限；同账户无来源身份时建立独立合同',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async()=>{
+test('F01 普通导入还款拒绝旧贷款关联；全额转账不修改只读旧合同',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async()=>{
  const lab=await require('../scripts/isolated-mysql').isolatedMysql(),grants=require('../scripts/runtime-role-grants')
  try{
   const apiPool=await lab.role('api',grants.api),importPool=await lab.role('import',{
@@ -77,7 +77,7 @@ test('F01 导入明确还款使用只读旧合同权限；同账户无来源身�
    '支付宝账户: synth@example.invalid,,,,,,,,,,,',
    '起始日期: [2026-01-01 00:00:00] 终止日期: [2026-01-31 23:59:59],,,,,,,,,,,',
    '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
-   '2026-01-31 13:00:00,信用借还,合成贷款,本期还款,520.00,不计收支,账户余额,还款成功,,SYNTHETIC-F01-REPAYMENT,,'
+   '2026-01-31 13:00:00,信用借还,合成贷款,本期还款,520.00,不计收支,合成银行储蓄卡(9900000000001122),还款成功,,SYNTHETIC-F01-REPAYMENT,,'
   ].join('\n'))
   const {files}=await imp('imports.prepareMany',{requestId:randomUUID(),files:[{fileName:'合成还款权限.csv',size:content.length}]}),file=files[0]
   services.objects.set(file.cloudPath,content)
@@ -92,20 +92,27 @@ test('F01 导入明确还款使用只读旧合同权限；同账户无来源身�
   const {items:[event]}=await imp('economicEvents.list',{updateId:update.updateId})
   assert.equal(event.ledgerAccountId,asset);assert.equal(event.counterpartyLedgerAccountId,debt)
   const repayment={confirmed:true,mode:'associate',loanId:b.loanId,loanVersion:b.version,assetAccountId:asset,liabilityAccountId:debt,principalMinor:'50000',interestMinor:'2000',feeMinor:'0',interestTreatment:'accrued',feeTreatment:'expense',chargeAllocations:[{transactionId:fee.transactionId,component:'interest',amountMinor:'2000'}]}
-  update=await imp('financeUpdates.setRepayment',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:event.version,repayment})
+  // 普通导入只记这笔全额资金转移，旧入口不能再把合同、本息费或期次一并关联。
+  const loanTables=['loans','loan_charge_contracts','loan_charges','loan_payments','loan_period_allocations']
+  const loanState=async()=>Promise.all(loanTables.map(async table=>(await lab.owner.execute('SELECT * FROM catledger_'+table+' WHERE uid=?',[uid]))[0]))
+  const untouched=await loanState()
+  await assert.rejects(imp('financeUpdates.setRepayment',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:event.version,repayment}),{publicCode:'VALIDATION_ERROR'})
+  assert.deepEqual(await loanState(),untouched)
   const [[before]]=await lab.owner.execute("SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=? AND type='expense' AND deleted_at IS NULL",[uid])
+  const balances=async()=>Object.fromEntries((await api('accounts.list')).accounts.map(a=>[a.accountId,BigInt(a.bookBalanceMinor)])),beforeBalances=await balances()
   const post={requestId:randomUUID(),updateId:update.updateId,version:update.appliedVersion},result=await imp('financeUpdates.post',post)
   assert.equal(result.posting.createdTransactionCount,1);assert.deepEqual(await imp('financeUpdates.post',post),result)
-  const current=await api('loans.chargePlan',{loanId:b.loanId})
-  assert.notEqual(current.contract.contractId,old.contract.contractId)
-  assert.equal(current.items[0].transactionId,fee.transactionId);assert.equal(current.items[0].settledMinor,'2000')
+  const {transactions}=await api('transactions.list',{importUpdateId:update.updateId})
+  assert.equal(transactions.length,1);assert.equal(transactions[0].type,'transfer');assert.equal(transactions[0].amountMinor,'52000')
+  assert.equal(transactions[0].sourceAccount.accountId,asset);assert.equal(transactions[0].destinationAccount.accountId,debt)
+  const afterBalances=await balances();assert.equal(afterBalances[asset]-beforeBalances[asset],-52000n);assert.equal(afterBalances[debt]-beforeBalances[debt],52000n)
+  assert.deepEqual(await loanState(),untouched)
   assert.deepEqual((await api('loans.chargePlan',{loanId:a.loanId})).contract,old.contract)
   const [[after]]=await lab.owner.execute("SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=? AND type='expense' AND deleted_at IS NULL",[uid])
   assert.equal(after.count,before.count)
   await assert.rejects(importPool.execute('UPDATE catledger_loan_charge_contracts SET loan_id=loan_id,version=version WHERE uid=? AND contract_id=?',[uid,old.contract.contractId]),{code:'ER_TABLEACCESS_DENIED_ERROR'})
-  // 有 reference 的分期来源只能记在信用卡；普通负债不能获得供旧合同认领的绑定。
-  const source=await prepareBank({services,imp,accountId:debt},{period:2,date:'2026-02-28',reference:'SYNTHETIC-F01-DEBT-SOURCE'})
-  await assert.rejects(postBank({imp},source),{publicCode:'LOAN_SOURCE_MISMATCH'})
+  // 信用卡分期来源在确认账户时即拒绝普通负债，不能留下可供旧合同认领的绑定。
+  await assert.rejects(prepareBank({services,imp,accountId:debt},{period:2,date:'2026-02-28',reference:'SYNTHETIC-F01-DEBT-SOURCE'}),{publicCode:'VALIDATION_ERROR'})
   const [[bindings]]=await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_installment_bindings WHERE uid=? AND account_id=?',[uid,debt])
   assert.equal(Number(bindings.count),0)
  }finally{await lab.close()}

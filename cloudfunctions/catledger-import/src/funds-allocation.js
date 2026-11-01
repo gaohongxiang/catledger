@@ -19,7 +19,7 @@ function allocationAccountsValid(event, plan, accounts) {
   if (!plan.valid) return false
   if (plan.kind === 'none') return true
   const from = plan.kind === 'payment' ? plan.allocations.map((item) => item.accountId) : [event.ledgerAccountId]
-  const to = plan.kind === 'repayment' ? plan.allocations.map((item) => item.accountId)
+  const to = plan.kind === 'repayment' ? plan.allocations.filter(item => item.kind !== 'external').map((item) => item.accountId)
     : event.economicNature === 'repayment' ? [event.counterpartyLedgerAccountId] : []
   return [...from, ...to].every((id) => {
     const account = accounts.get(id)
@@ -29,8 +29,8 @@ function allocationAccountsValid(event, plan, accounts) {
 
 function allocationTransactionDrafts(event, plan) {
   if (!plan.valid || plan.kind === 'none') throw new Error('Invalid allocation plan')
-  return plan.allocations.map((item) => ({
-    type: event.economicNature === 'expense' ? 'expense' : 'transfer',
+  const rows = plan.allocations.map((item) => ({
+    type: event.economicNature === 'expense' || item.kind === 'external' ? 'expense' : 'transfer',
     sourceAccountId: plan.kind === 'payment' ? item.accountId : event.ledgerAccountId,
     destinationAccountId: plan.kind === 'repayment' ? item.accountId
       : event.economicNature === 'repayment' ? event.counterpartyLedgerAccountId : null,
@@ -39,6 +39,21 @@ function allocationTransactionDrafts(event, plan) {
     amountMinor: item.amountMinor,
     role: plan.kind === 'payment' ? 'payment_allocation' : 'repayment_allocation'
   }))
+  // 外部共同付款不影响我的支出；外部替我还款则增加我的负债账户余额，按收入记录。
+  if (plan.kind === 'payment' && event.economicNature === 'repayment') {
+    for (const item of plan.externalAllocations || []) rows.push({ type: 'income', sourceAccountId: null,
+      destinationAccountId: event.counterpartyLedgerAccountId, categoryId: null, originalTransactionId: null,
+      amountMinor: item.amountMinor, role: 'payment_allocation' })
+  }
+  return rows
 }
 
-module.exports = { eventAllocation, allocationAccountsValid, allocationTransactionDrafts }
+function effectAmounts(event) {
+  const plan = eventAllocation(event)
+  if (!plan.valid || plan.kind === 'none') return null
+  const result = { expense: 0n, income: 0n, transfer: 0n }
+  for (const row of allocationTransactionDrafts(event, plan)) result[row.type] += BigInt(row.amountMinor)
+  return result
+}
+
+module.exports = { eventAllocation, allocationAccountsValid, allocationTransactionDrafts, effectAmounts }

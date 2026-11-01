@@ -164,13 +164,15 @@ test('分期业务：最小权限真实 MySQL 合卡、登记、来源防重、�
         }))
         for (const issue of accountIssues) model.mapAccount({ issueId: issue.issueId,
           decision: 'apply_fields', fields: { mappingAccountDraft: draft } })
-        c.accountId = localIdentity.accountId(snapshot.header.objectId, name, 'credit')
+        const savedDraft = [...model.drafts.values()][0]
+        assert.ok(savedDraft.creationKey, '本机新建信用账户保留明确创建身份')
+        c.accountId = localIdentity.accountId(snapshot.header.objectId, name, 'credit', savedDraft.creationKey)
         const main = [...model.events.values()].find(event => ['disbursement', 'registration'].includes(event.fieldSources.disbursement?.role))
         assert.ok(main); assert.equal(main.ledgerAccountId, c.accountId)
         assert.equal(model.drafts.size, 1)
         return { snapshot, model, eventId: main.eventId,
           importOrigin: { updateId: c.updateId, eventId: main.eventId },
-          importAccountDraft: { snapshotId: snapshot.header.objectId, ...draft } }
+          importAccountDraft: { snapshotId: snapshot.header.objectId, ...draft, creationKey: savedDraft.creationKey } }
       }
       async function stageLocal(c, model) {
         const state = model.finalState(), packed = protocol.split(JSON.stringify(state), 'decisions'), uploadId = randomUUID()

@@ -1,7 +1,7 @@
 const FIELD_LABELS = {
   transactionTime: '交易日期', time: '单独的时间列', amount: '交易金额', direction: '收支标记',
   income: '流入账户的金额', expense: '流出账户的金额', currency: '币种', transactionId: '交易流水号',
-  counterparty: '交易对方', item: '用途或摘要', paymentMethod: '本方卡号或账号', status: '交易状态',
+  counterparty: '对方户名或名称', counterpartyAccount: '对方卡号或账号', item: '用途或摘要', paymentMethod: '本方卡号或账号', status: '交易状态',
   transactionType: '交易类型', note: '备注', installmentReference:'分期编号', installmentPeriod:'当前期数',
   installmentTerms:'分期总期数', installmentComponent:'本金 / 利息分项'
 }

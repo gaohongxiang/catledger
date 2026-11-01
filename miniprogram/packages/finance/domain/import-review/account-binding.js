@@ -36,19 +36,30 @@ function scopeFor(row, sourceType, number, subjectTool) {
   return null
 }
 
+function counterpartyRowScope(row) {
+  const file = row.importId || row.batchId || row.fileSha256 || row.contentSha256
+  const locator = row.rowId || row.sourceLocator || row.rowNumber
+  return locator != null ? { kind: 'row', key: digestParts(VERSION, 'bank-counterparty-row', file || '', String(locator)) } : null
+}
+
 function scopeReference(reference, row = {}) {
   if (!reference) return reference
   const sourceType = reference.sourceType || row.sourceType
   const value = reference.value || reference.label || ''
   const details = paymentAccountDetails(sourceType, value)
   let number = fullAccountNumber(sourceType, value)
+  const bankCounterparty = sourceType === 'bank' && reference.role === 'counterparty_account'
   // 银行长数字曾以数值单元格读入时可能已丢精度。旧解析只有通过数字精度
   // 检查才会使用此保护键；不匹配的完整数字仍只作文件内线索。
-  if (number && sourceType === 'bank' && row.paymentMethodKey &&
-      row.paymentMethodKey !== digestParts('bank-payment-v1', digestParts('bank-own-account-v1', number), '')) number = null
+  if (number && sourceType === 'bank' && (bankCounterparty ? reference.numberReliable !== true
+    : row.paymentMethodKey && row.paymentMethodKey !== digestParts('bank-payment-v1', digestParts('bank-own-account-v1', number), ''))) number = null
   const canonical = canonicalInstrument(primaryInstrument(value))
   const subjectTool = Boolean(SUBJECT_TOOLS[sourceType]?.has(canonical) || details.aggregateFamilies?.length)
-  const scope = scopeFor(row, sourceType, number, subjectTool)
+  // 同尾号不足以把本方和对方认成一张卡，也不能把不同交易的对方认成同一人。
+  // 对方只有弱线索时只确认当前来源行；无法定位来源行就保留缺端待办。
+  const scope = bankCounterparty && !number ? counterpartyRowScope(row) : scopeFor(row, sourceType, number, subjectTool)
+  if (!scope && bankCounterparty) return { ...reference, paymentMethodKey: null, bindingKey: null, binding: null, accountIdentityKey: '',
+    unresolvedReason: 'account_locator_scope_missing' }
   if (!scope) return reference
   const identityKind = number ? 'full_number' : subjectTool ? 'subject_tool' : 'source_label'
   const identityKey = digestParts(VERSION, identityKind, number || details.identityMaterial || reference.paymentMethodKey)
@@ -61,7 +72,7 @@ function scopeReference(reference, row = {}) {
   return { ...reference, bindingKey, binding,
     accountIdentityKey: 'account-reference-v3:' + bindingKey,
     expectedAccountType: reference.expectedAccountType ||
-      (sourceType === 'bank' && row.bankStatementKind === 'credit' ? 'credit' : expectedAccountType(sourceType, value)) }
+      (sourceType === 'bank' && !bankCounterparty && row.bankStatementKind === 'credit' ? 'credit' : expectedAccountType(sourceType, value)) }
 }
 
 function scopeSemantic(semantic, row) {
@@ -91,10 +102,8 @@ function bindingMatches(mapping, reference, { reusable = false } = {}) {
     ['scopeKind', 'scopeKey', 'identityKind', 'identityKey', 'currency'].every(key => binding[key] === expected[key]))
 }
 
-function compatibleAccount(reference, account) {
-  if (!account || !account.accountId || account.archivedAt != null || account.disabledAt != null || account.supersededAt != null) return false
-  const expected = reference.expectedAccountType || expectedAccountType(reference.sourceType, reference.value || reference.label)
-  return account.currency === (reference.binding?.currency || reference.currency || 'CNY') && (!expected || account.type === expected)
+function compatibleAccount(reference, account, context) {
+  return require('./account-type-policy').compatible(reference, account, context)
 }
 
 module.exports = { VERSION, bindingFor, bindingMatches, compatibleAccount, confirmedBinding, fullAccountNumber,

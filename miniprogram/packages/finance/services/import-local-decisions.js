@@ -32,8 +32,7 @@ function accountDraft(choice) { return choice.fields?.mappingAccountDraft || cho
 function target(choice, facts) {
   const draft = accountDraft(choice)
   if (!draft) return choice.fields?.mappingAccountId || choice.fields?.ledgerAccountId || null
-  return (facts.accountDrafts || []).find(row => nameKey(row.name) === nameKey(draft.name))?.accountId ||
-    identity.accountId(facts.snapshotId, draft.name, draft.type)
+  return identity.accountId(facts.snapshotId, draft.name, draft.type, draft.creationKey)
 }
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -119,7 +118,9 @@ function rebase(records, oldFacts, newFacts) {
       const ids = (choice.eventIds || []).filter(id => scope.eventIds.includes(id))
       return !oldFacts || same(sourceIds(oldIndex, ids), sourceIds(newIndex, ids))
     })
-    const needsRecheck = fingerprints.size !== 1 || !complete || !evidenceUnchanged || choices.some(choice => choice.needsRecheck)
+    const creationUnchanged = choices.every(choice => !accountDraft(choice)?.creationKey ||
+      accountDraft(choice).creationKey === identity.accountCreationKey(members(newIndex, issueId), newFacts.events))
+    const needsRecheck = fingerprints.size !== 1 || !complete || !evidenceUnchanged || !creationUnchanged || choices.some(choice => choice.needsRecheck)
     const value = { ...choices[0], ...scope }
     if (needsRecheck) { value.needsRecheck = true; value.previousChoices = choices.map(clone) }
     else { delete value.needsRecheck; delete value.previousChoices }

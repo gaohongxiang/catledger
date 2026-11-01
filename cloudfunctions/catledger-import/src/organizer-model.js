@@ -74,6 +74,7 @@ function hasPendingRefundRelation(event) {
 const HARD_BLOCKING_REASONS = new Set([
   ...SEMANTIC_HARD_BLOCKERS,
   'account_mapping_conflict',
+  'account_ownership_recheck_required',
   'blocking_issue_open',
   'core_fields_conflict',
   'identity_conflict',
@@ -114,6 +115,13 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   const reasons = unique(effectiveSemanticReasons(event, [...(event.reasonCodes || []),
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
+  // 归属已确认不等于旧组成/关系仍有效；重核状态从事实重新推导，不能删原因码绕过。
+  const ownershipRecheck = require('./account-ownership-recheck')
+  const ownershipReview = require('./account-ownership-review-policy')
+  const recheckIndex = reasons.indexOf(ownershipRecheck.REASON)
+  if (recheckIndex !== -1 && !ownershipReview.pending(event).length &&
+      !require('./account-ownership').read(event).pendingLegacyTreatment) reasons.splice(recheckIndex, 1)
+  if (ownershipReview.pending(event).length) reasons.push(ownershipRecheck.REASON)
   if (event.fieldSources && event.fieldSources.refundSourceConflict) reasons.push('refund_source_conflict')
   if (event.fieldSources && event.fieldSources.repaymentChannelResolution) {
     const channel = require('./repayment-channel')
@@ -137,7 +145,8 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
     reasons.push('core_fields_missing')
   }
-  if (!event.ledgerAccountId) reasons.push('ledger_account_required')
+  const paymentPlan = paymentResolutionForEvent(event)
+  if (!event.ledgerAccountId && !(paymentPlan.valid && paymentPlan.externalAllocations?.length)) reasons.push('ledger_account_required')
   if (require('./installment-business').isRegistration(event)) {
     // 登记只是来源与计划的关系，不借用还款本金期次，也不能通过改性质变成资金流水。
     if (event.economicNature !== ECONOMIC_NATURE.UNKNOWN || event.flowDirection !== FLOW_DIRECTION.NEUTRAL ||

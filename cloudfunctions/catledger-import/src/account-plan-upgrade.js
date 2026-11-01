@@ -12,11 +12,21 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
   const after = new Map(events.map(event => [event.eventId, event]))
   const issueById = new Map(issues.filter(issue => issue.issueType === 'account_mapping' && ['open', 'resolved'].includes(issue.status))
     .map(issue => [issue.issueId, issue]))
+  const bankProjections = events.filter(event => before.has(event.eventId) &&
+    require('./funds-route').preservesBankProjectionAccounts(before.get(event.eventId), event))
+  const bankProjectionIds = new Set(bankProjections.map(event => event.eventId))
   const descriptors = [], affected = new Set()
-  for (const member of members) {
+  for (const originalMember of members) {
+    let member = originalMember
     const issue = issueById.get(member.issueId), event = after.get(member.objectId), previous = before.get(member.objectId)
     if (!issue || member.objectType !== 'event' || !event || !previous || ['posted', 'corrected'].includes(event.status)) continue
-    const reference = memberReference(event, member), oldReference = memberReference(previous, member)
+    // 旧 subject 指向账单观察端。账户列已经精确搬到实际资金端后，事项角色也必须
+    // 同步搬动；否则已选收款账户会被当成尚未确认的付款账户。
+    if (member.memberRole === 'subject' && bankProjectionIds.has(event.eventId)) {
+      member = { ...member, memberRole: event.sourceDirection === 'income' ? 'mapping_to' : 'mapping_from' }
+      affected.add(issue.issueId)
+    }
+    const reference = memberReference(event, member), oldReference = memberReference(previous, originalMember)
     const key = referenceGroup(event, member, reference)
     descriptors.push({ member, issue, event, reference, key })
     // 旧规则造成的排除已在语义升级里恢复成待确认；这条事项必须跟着重建，
@@ -30,7 +40,21 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
         !(event.manualFieldMask & (FIELD_MASK.economicNature | FIELD_MASK.counterpartyLedgerAccountId)) &&
         ['ready', 'needs_action'].includes(event.status) &&
         !memberAccount(event, member, reference)) affected.add(issue.issueId)
-    if (reference?.paymentMethodKey && oldReference?.paymentMethodKey && key !== referenceGroup(previous, member, oldReference)) affected.add(issue.issueId)
+    if (reference?.paymentMethodKey && oldReference?.paymentMethodKey && key !== referenceGroup(previous, originalMember, oldReference)) affected.add(issue.issueId)
+  }
+  // 新银行双端可能多出一个从未有过的引用。复用首次整理的缺端判定，和迁移中
+  // 的旧卡一起归组；临时候选没有旧事项身份，不产生伪造的决定承接或 superseded。
+  const knownRoles = new Set(descriptors.map(item => item.event.eventId + ':' + item.member.memberRole))
+  const additions = require('./organizer-plan-policy').buildReviewIssues(updateId, bankProjections, [], [], idFactory)
+  const addedIssues = new Map(additions.issues.filter(issue => issue.issueType === 'account_mapping')
+    .map(issue => [issue.issueId, { ...issue, migrationOnly: true }]))
+  for (const member of additions.members) {
+    const issue = addedIssues.get(member.issueId), event = after.get(member.objectId)
+    if (!issue || !['mapping_from', 'mapping_to'].includes(member.memberRole) ||
+        knownRoles.has(member.objectId + ':' + member.memberRole)) continue
+    const reference = memberReference(event, member), key = referenceGroup(event, member, reference)
+    descriptors.push({ member, issue, event, reference, key })
+    affected.add(issue.issueId)
   }
   // 一个旧事项可包含多个角色；扩展到相交的完整事项，避免一半成员留在旧组。
   const groups = new Map()
@@ -66,7 +90,7 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
     const reason = resolved ? ignored ? 'payment_reference_ignored_by_history' : 'account_mapping_confirmed'
       : distinct.size > 1 ? 'account_mapping_conflict' : 'payment_reference_mapping_required'
     const issueId = idFactory(), uniqueMembers = new Map()
-    const predecessorIds = [...new Set(group.map(item => item.issue.issueId))].sort()
+    const predecessorIds = [...new Set(group.filter(item => !item.issue.migrationOnly).map(item => item.issue.issueId))].sort()
     for (const item of group) uniqueMembers.set(item.event.eventId + ':' + item.member.memberRole, item)
     // 银行与平台确认同笔后，银行引用按旧事项保存；新事项必须继续指向该引用，
     // 不能退回主事件的平台别名。保留旧键供历史与拆分恢复使用。
@@ -95,7 +119,7 @@ function planAccountIssueUpgrade({ updateId, previousEvents, events, issues, mem
     for (const fromIssueId of predecessorIds) accountIssueMappings.push({ fromIssueId, toIssueId: issueId })
   }
   for (const member of nextMembers) if (contextUpdates.has(member.objectId)) member.objectVersion++
-  return { issues: nextIssues, members: nextMembers, supersededIssueIds: [...affected].sort(), accountIssueMappings,
+  return { issues: nextIssues, members: nextMembers, supersededIssueIds: [...affected].filter(id => issueById.has(id)).sort(), accountIssueMappings,
     contextUpdates: [...contextUpdates.values()] }
 }
 
@@ -103,7 +127,6 @@ async function prepareAccountIssueUpgrade(connection, uid, updateId, previousEve
   const { selectDomainEvents } = require('./review/event-store')
   const [issues] = await connection.execute(`SELECT issue_id AS issueId, issue_type AS issueType, status
     FROM catledger_review_issues WHERE uid=? AND update_id=? AND issue_type='account_mapping' AND status IN ('open','resolved')`, [uid, updateId])
-  if (!issues.length) return { issues: [], members: [], supersededIssueIds: [], accountIssueMappings: [] }
   const [members] = await connection.execute(`SELECT m.issue_id AS issueId,m.object_type AS objectType,m.object_id AS objectId,m.member_role AS memberRole
     FROM catledger_review_issue_members m JOIN catledger_review_issues i ON i.uid=m.uid AND i.issue_id=m.issue_id
     WHERE m.uid=? AND m.update_id=? AND i.issue_type='account_mapping' AND i.status IN ('open','resolved')`, [uid, updateId])

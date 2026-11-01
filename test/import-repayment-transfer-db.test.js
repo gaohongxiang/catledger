@@ -60,7 +60,7 @@ test('普通导入还款：全额转账、计划隔离、旧决定升级及幂�
         assert.ok(preview.bankPreview)
         const p = preview.bankPreview
         const parsed = await c.imp('imports.parseFile', { requestId: randomUUID(), ...input, bankMapping: {
-          ...p.suggested, statementKind: incoming ? 'credit' : 'standard', schemaVersion: 1,
+          ...p.suggested, statementKind: incoming && target === 'credit' ? 'credit' : 'standard', schemaVersion: 1,
           sheetIndex: p.sheetIndex, headerRow: p.headerRow, headerToken: p.headerToken
         } })
         c.updateId = (await c.imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })).updateId

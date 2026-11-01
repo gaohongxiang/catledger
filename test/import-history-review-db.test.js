@@ -10,6 +10,9 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer)
     const logs = []
+    const bankNumber = '9900000000001122'
+    const wechatBankBill = (rows, prefix) => Buffer.from(syntheticBill(rows, prefix).toString('utf8')
+      .replaceAll(',微信零钱,', ',合成银行储蓄卡(' + bankNumber + '),'))
     async function context(accountType = 'bank') {
       const services = localServices({ apiPool, importPool, subject: 'synthetic-history-' + randomUUID(),
         logger: { warn(value) { logs.push(value) }, error(value) { logs.push(value) } } })
@@ -30,8 +33,16 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
         updateVersion: update.appliedVersion, decisions })
       return update.updateId
     }
+    async function wechatBank(c, rows, prefix) {
+      const content = wechatBankBill(rows, prefix)
+      const { files } = await c.imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成微信银行卡.csv', size: content.length }] })
+      c.services.objects.set(files[0].cloudPath, content)
+      const parsed = await c.imp('imports.parseFile', { requestId: randomUUID(), importId: files[0].importId,
+        fileID: 'cloud://synthetic.bucket/' + files[0].cloudPath, timezoneOffsetMinutes: -480 })
+      return c.imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
+    }
     async function bank(c, extra = '', nature = '消费') {
-      const content = Buffer.from('交易日期,交易金额,收支,交易类型,摘要\n2026-09-01 12:00,1.00,支出,' + nature + ',合成银行消费' + extra)
+      const content = Buffer.from('交易日期,交易金额,收支,交易类型,摘要,本方账号\n2026-09-01 12:00,1.00,支出,' + nature + ',合成银行消费' + extra + ',' + bankNumber)
       const prepared = await c.imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成信用卡.csv', size: content.length }] })
       const file = prepared.files[0]; c.services.objects.set(file.cloudPath, content)
       const input = { importId: file.importId, fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }
@@ -54,9 +65,11 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
     }
     await t.test('微信已入账后导银行，候选可分页；选择同一笔不重复写钱且重试幂等', async () => {
       const c = await context()
-      const first = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, 'SYNTHETIC-HISTORY-WECHAT'))
+      const first = await mapAccounts(c, await wechatBank(c, 1, 'SYNTHETIC-HISTORY-WECHAT'))
       await post(c, first)
+      assert.equal((await c.api('transactions.list', { importUpdateId: first })).transactions[0].sourceAccount.accountId, c.accountId)
       const updateId = await bank(c)
+      assert.equal((await c.imp('economicEvents.list', { updateId })).items[0].ledgerAccountId, c.accountId)
       const [issue] = await issues(c, updateId)
       assert.ok(issue); assert.equal(issue.candidateCount, 1)
       await assert.rejects(post(c, updateId), { publicCode: 'UNRESOLVED_IMPORT' })
@@ -73,15 +86,17 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
       assert.equal(counts.duplicateCount, 1); assert.equal(counts.excludedCount, 0); assert.equal(counts.totalCount, 1)
       assert.equal((await c.imp('economicEvents.list', { updateId, status: 'duplicate' })).items.length, 1)
     })
-    await t.test('已有账户映射的单平台新来源在首次整理就产生历史核对，不等待再次整理或账户提交', async () => {
+    await t.test('无可靠主体的钱包新文件先确认账户，确认后仍须核对历史来源', async () => {
       const c = await context('wallet')
       const first = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, 'SYNTHETIC-HISTORY-FIRST'))
       await post(c, first)
       const next = await prepareSyntheticUpdate(c.services, 1, 'SYNTHETIC-HISTORY-OTHER-SOURCE')
       const pending = (await c.imp('reviewIssues.list', { updateId: next.updateId, status: 'open' })).items
-      assert.equal(pending.filter(row => row.issueType === 'account_mapping').length, 0)
-      const historical = pending.find(row => row.primaryReasonCode === 'historical_duplicate_candidate')
-      assert.ok(historical, '已有映射不能跳过首次整理的历史候选生成')
+      assert.equal(pending.filter(row => row.issueType === 'account_mapping').length, 1)
+      await assert.rejects(post(c, next.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
+      await mapAccounts(c, next)
+      const [historical] = await issues(c, next.updateId)
+      assert.ok(historical, '确认账户不能跳过历史候选核对')
       assert.equal(historical.candidateCount, 1)
       assert.equal(await count(c), 1)
       await assert.rejects(post(c, next.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
@@ -167,10 +182,10 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
     })
     await t.test('自动同来源排除草稿在永久删除后重新核对；已有未删交易仍复用', async () => {
       const c = await context(), prefix = 'SYNTHETIC-DELETE-AUTO'
-      const first = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 2, prefix))
+      const first = await mapAccounts(c, await wechatBank(c, 2, prefix))
       await post(c, first)
       // 不同字节文件含相同稳定来源身份，使第二份在第一份已入账时形成排除草稿。
-      const content = Buffer.concat([syntheticBill(2, prefix), Buffer.from('\n')])
+      const content = Buffer.concat([wechatBankBill(2, prefix), Buffer.from('\n')])
       const { files } = await c.imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成同来源.csv', size: content.length }] })
       c.services.objects.set(files[0].cloudPath, content)
       const parsed = await c.imp('imports.parseFile', { requestId: randomUUID(), importId: files[0].importId,
@@ -204,6 +219,6 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
       await resolve(c, pending, issue, 'link_existing_transaction', { transactionId: page.items[0].objectId })
       await post(c, pending); assert.equal(await count(c), 1)
     })
-    assert.doesNotMatch(JSON.stringify(logs), /合成银行消费|sourceAccountName|transactionVersion|bindings|password/)
+    assert.doesNotMatch(JSON.stringify(logs), /9900000000001122|合成银行消费|sourceAccountName|transactionVersion|bindings|password/)
   } finally { await lab.close() }
 })

@@ -23,10 +23,10 @@ function localServices({ apiPool, importPool, now = Date.now, objects = new Map(
     import: moduleFor('import', 'handler').createHandler({ getWxContext, services: moduleFor('import', 'action-registry').createActionHandlers(importer), logger })
   }
 }
-function syntheticBill(rows, prefix = 'SYNTHETIC-LOCAL') {
+function syntheticBill(rows, prefix = 'SYNTHETIC-LOCAL', paymentMethod = '微信零钱') {
   return Buffer.from(['微信支付账单明细,,,,,,,,,,,',
     '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
-    ...Array.from({ length: rows }, (_, i) => `2026-09-01 12:00:00,商户消费,合成商户,合成商品,支出,1.00,微信零钱,支付成功,${prefix}-${i},,,`)
+    ...Array.from({ length: rows }, (_, i) => `2026-09-01 12:00:00,商户消费,合成商户,合成商品,支出,1.00,${paymentMethod},支付成功,${prefix}-${i},,,`)
   ].join('\n'))
 }
 async function call(service, action, data = {}) {
@@ -34,8 +34,8 @@ async function call(service, action, data = {}) {
   if (!result.ok) throw Object.assign(new Error(action + ': ' + result.error.code), { publicCode: result.error.code })
   return result.data
 }
-async function prepareSyntheticUpdate(services, rows, prefix) {
-  const { randomUUID } = require('node:crypto'), content = syntheticBill(rows, prefix)
+async function prepareSyntheticUpdate(services, rows, prefix, paymentMethod) {
+  const { randomUUID } = require('node:crypto'), content = syntheticBill(rows, prefix, paymentMethod)
   const files = await call(services.import, 'imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成原生验证.csv', size: content.length }] })
   const file = files.files[0]; services.objects.set(file.cloudPath, content)
   const parsed = await call(services.import, 'imports.parseFile', { requestId: randomUUID(), importId: file.importId,

@@ -14,6 +14,7 @@ const ALIASES = Object.freeze({
   currency: ['币种', '货币', 'currency'],
   transactionId: ['交易流水号', '流水号', '交易号', '交易序号', '凭证号', 'reference', 'reference number'],
   counterparty: ['交易对方', '对方户名', '对方名称', '收款人', '付款人', '商户名称', 'transaction description', 'description'],
+  counterpartyAccount: ['对方账号', '对方帐号', '对方账户', '对方卡号', '对手账号', '对手帐号', '对手卡号', '交易对手账号', 'counterparty account', 'counterparty account number'],
   item: ['商品说明', '商品名称', '交易用途', '用途', '摘要', '交易摘要', '交易描述', 'tran description', 'memo'],
   paymentMethod: ['本方账号', '本方卡号', '账号', '账户', '卡号', '尾号4位', 'card no', 'card no.', 'card number', 'account number'],
   status: ['交易状态', '状态', 'status'],
@@ -233,10 +234,14 @@ function parseBank(sheets, { content, extension, timezoneOffsetMinutes, bankMapp
     if (values.slice(header.values.length).some(clean)) error('row_extra_columns', 'row')
     const raw = { transactionTime: at('transactionTime'), amount: rawAmount, direction: at('direction'),
       status: at('status'), transactionType: at('transactionType'), counterparty: at('counterparty'),
-      counterpartyAccount: '', item: at('item'), paymentMethod: at('paymentMethod'), note: at('note'),
+      counterpartyAccount: at('counterpartyAccount'), item: at('item'), paymentMethod: at('paymentMethod'), note: at('note'),
       bankStatementKind:mapping.statementKind,
       installmentFields: { reference:at('installmentReference'),period:at('installmentPeriod'),terms:at('installmentTerms'),component:at('installmentComponent') } }
-    const normalized = normalizeRow('bank', { ...raw,
+    // 对方户名与账号独立采集；数值单元格的长账号可能已被 Excel 舍入，不能成为跨文件身份。
+    const counterpartyAccountNumberReliable = mapping.columns.counterpartyAccount != null &&
+      !((record.numericColumns || []).includes(mapping.columns.counterpartyAccount) &&
+        clean(raw.counterpartyAccount).replace(/^'+/, '').length > 15)
+    const normalized = normalizeRow('bank', { ...raw, counterpartyAccountNumberReliable,
       transactionTime: bankTime(raw.transactionTime, at('time'), sheet.date1904),
       amount: amount ? amount.absolute : '', direction: direction === 'income' ? '收入' : direction === 'expense' ? '支出' : ''
     }, timezoneOffsetMinutes, rowIssues, descriptor.sourceFormat, new Set(Object.keys(mapping.columns)))
@@ -252,10 +257,15 @@ function parseBank(sheets, { content, extension, timezoneOffsetMinutes, bankMapp
     const bankPaymentKey = normalized.semantic.ledgerAccountRef
       ? digestParts('bank-payment-v1', bankAccountIdentity || contentHash, bankAccountIdentity ? '' : clean(raw.paymentMethod)) : null
     if (bankPaymentKey) {
+      const ownReference = reference => reference && reference.role !== 'counterparty_account'
+        ? { ...reference, paymentMethodKey: bankPaymentKey, accountIdentityKey: digestParts('bank-account-group-v1', bankPaymentKey) }
+        : reference
       for (const field of ['ledgerAccountRef', 'fromAccountRef', 'toAccountRef']) {
-        const reference = normalized.semantic[field]
-        if (reference) normalized.semantic[field] = { ...reference, paymentMethodKey: bankPaymentKey,
-          accountIdentityKey: digestParts('bank-account-group-v1', bankPaymentKey) }
+        normalized.semantic[field] = ownReference(normalized.semantic[field])
+      }
+      if (normalized.semantic.fundsProjection) normalized.semantic.fundsProjection = {
+        ...normalized.semantic.fundsProjection, from: ownReference(normalized.semantic.fundsProjection.from),
+        to: ownReference(normalized.semantic.fundsProjection.to)
       }
     }
     rows.push({ rowNumber: rows.length + 1, sourceLocator: captured('data').sourceLocator, raw,

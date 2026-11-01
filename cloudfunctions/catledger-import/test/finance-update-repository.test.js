@@ -134,6 +134,7 @@ test('账户问题列表返回安全且可读的支付账户标题', function ()
   assert.doesNotMatch(issue.accountContext.label, /6225881234567890/)
   assert.deepEqual(issue.subject, {
     eventId: 'event-1', status: 'needs_action', flowDirection: 'outflow', economicNature: 'expense',
+    sourceDirection: null, accountOrder: null,
     ledgerAccountId: 'account-1', counterpartyLedgerAccountId: null, fundsProjection: null,
     repaymentAllocations: [], paymentComponents: [], paymentResolution: null, paymentAccounts: null,
     localAt: '2026-08-01 12:00:00.000', amountMinor: '1234', currency: 'CNY',

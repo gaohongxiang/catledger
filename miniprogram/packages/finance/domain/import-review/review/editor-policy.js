@@ -25,6 +25,7 @@ function capability(event) {
     natures: registration ? ['unknown'] : principal ? [...PRINCIPAL_NATURES] : source.repaymentChannelResolution ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
     ...(source.repaymentChannelResolution ? { repaymentChannel: require('../repayment-channel').publicResolution(event) } : {}),
     ownership: source.repaymentOwnership || null, accountOwnership: require('../account-ownership').read(event),
+    ownershipRecheck: require('../account-ownership-review-policy').publicState(event),
     composition: principal ? 'single' : composition.sourceKind(event),
     incompleteComposition: editor.incompleteComposition || null, evidenceNote: editor.evidenceNote || '',
     sourceCorrection: editor.sourceCorrection || null, incompleteRepayment: editor.incompleteRepayment || null,
@@ -138,6 +139,12 @@ function prepare(event, data) {
     if (decisions.accountOwnership != null) {
       next = require('../account-ownership').apply(next, decisions.accountOwnership)
       delete next.fieldSources.editorOverrides.ownershipCleared
+      const facts = require('../account-ownership-recheck'), decision = require('../account-reference-decision')
+      for (const entry of facts.entries(next)) {
+        if (decisions.accountOwnership[entry.side || decision.sideFor(next, entry.role)]?.kind === 'ledger') {
+          next = facts.clear(next, entry.role, facts.referenceFor(next, entry.role))
+        }
+      }
     }
   }
   // 归属决定可能把还款派生为收支；同次选定的分类按最终性质核验，不能按旧性质丢弃。
@@ -155,6 +162,8 @@ function prepare(event, data) {
     object(decisions.refund, ['mode', 'kind', 'id', 'version'])
     if (!['link', 'pending', 'unlinked'].includes(decisions.refund.mode) || next.economicNature !== 'refund') fail()
   }
+  if (next.economicNature === 'refund' && next.status === 'excluded' &&
+      require('../account-ownership').read(next).noLedgerImpact && decisions.refund?.mode !== 'unlinked') fail()
   if (next.ledgerAccountId && next.ledgerAccountId === next.counterpartyLedgerAccountId) fail()
   if (before.repaymentChannelResolution && (!require('../repayment-channel').relationValid(next) ||
       has(data, 'sourceCorrection') || has(data, 'composition') || Object.keys(decisions).some(key => key !== 'repaymentChannel'))) fail()

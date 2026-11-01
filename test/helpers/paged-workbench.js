@@ -51,7 +51,7 @@ function runtime(data = fixture(), options = {}) {
       const issue = h.issues.find(item => item.issueId === input.issueId)
       rows = input.memberKind === 'relation' ? [] : h.events.map(event => ({ objectType: 'event', objectId: event.eventId, event, objectVersion: 1, memberRole: 'subject' }))
       extra = { issue, subject: h.events[0] }
-    } else if (action === 'financeUpdates.options') rows = input.kind === 'accounts' ? h.accounts || [{ accountId: 'synthetic-account', name: '合成钱包', type: 'wallet' }]
+    } else if (action === 'financeUpdates.options') rows = input.kind === 'accounts' ? h.accounts || [{ accountId: 'synthetic-account', name: '合成钱包', type: 'wallet', currency: 'CNY' }]
       : input.kind === 'categories' ? h.categories || [{ categoryId: 'synthetic-category', name: '合成分类', kind: 'expense' }]
       : input.kind === 'loans' ? h.loans || [] : input.kind === 'accountDrafts' ? h.accountDrafts || [] : []
     else if (action === 'economicEvents.refundCandidates') {

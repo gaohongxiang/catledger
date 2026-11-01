@@ -58,7 +58,7 @@ test('刷新未知来源时保留服务端已经确认的人工归属', () => {
   const issue = unknownIssue()
   issue.status = 'resolved'
   issue.accountContext.accountId = 'wallet'
-  const state = pageFor(issue, [{ accountId: 'wallet', name: '测试钱包' }]).refreshAccountMappings()
+  const state = pageFor(issue, [{ accountId: 'wallet', name: '测试钱包', type: 'wallet', currency: 'CNY' }]).refreshAccountMappings()
   assert.equal(state.mappings[0].choiceValue, 'account:wallet')
   assert.equal(state.summary.confirmed, 1)
   assert.equal(state.summary.invalid, 0)
@@ -128,9 +128,9 @@ test('账户步骤只按统一判定开放外部选择，缺失判定时保守�
   }
 })
 
-test('统一归属判定按成员结构关闭外部选择', () => {
+test('复杂成员也能记录外部事实，无有效资金角色或已入账时不开放', () => {
   const { canUseExternal } = require('../cloudfunctions/catledger-import/src/account-issue-grouping')
-  const base = { eventId: 'synthetic-event', economicNature: 'repayment', fieldSources: {} }
+  const base = { eventId: 'synthetic-event', status: 'needs_action', economicNature: 'repayment', fieldSources: {} }
   const members = (event, role = 'payment_target') => [{ objectType: 'event', objectId: event.eventId, memberRole: role }]
   assert.equal(canUseExternal([base], members(base)), true)
   for (const event of [
@@ -146,17 +146,18 @@ test('统一归属判定按成员结构关闭外部选择', () => {
     { ...base, fieldSources: { loanRepayment: {} } },
     { ...base, fieldSources: { editorOverrides: { version: 1, incompleteComposition: { parts: [] } } } },
     { ...base, fieldSources: { editorOverrides: { version: 1, incompleteRepayment: true } } }
-  ]) assert.equal(canUseExternal([event], members(event)), false, event.economicNature)
+  ]) assert.equal(canUseExternal([event], members(event)), true, event.economicNature)
   assert.equal(canUseExternal([base], members(base, 'payment_component_0')), false)
   assert.equal(canUseExternal([base], []), false)
+  assert.equal(canUseExternal([{ ...base, status: 'posted' }], members(base)), false)
   assert.equal(canUseExternal([base, { ...base, eventId: 'synthetic-other', economicNature: 'borrow' }],
-    [...members(base), ...members({ eventId: 'synthetic-other' })]), false)
+    [...members(base), ...members({ eventId: 'synthetic-other' })]), true)
 })
 
 test('稳定识别的微信零钱仍可推荐唯一已有账户', () => {
   const issue = unknownIssue()
   issue.accountContext = { recognized: true, sourceType: 'wechat', label: '微信零钱', currency: 'CNY' }
-  const state = pageFor(issue, [{ accountId: 'wallet', name: '微信零钱', currency: 'CNY' }]).refreshAccountMappings()
+  const state = pageFor(issue, [{ accountId: 'wallet', name: '微信零钱', type: 'wallet', currency: 'CNY' }]).refreshAccountMappings()
   assert.equal(state.mappings[0].choiceValue, 'account:wallet')
   assert.equal(state.mappings[0].suggestedExisting, true)
 })
@@ -224,8 +225,8 @@ test('整理阶段组合支付按金额与说明区分完整和待核对草稿',
 
 test('组合支付预填唯一来源账户和明确还款性质，歧义与未知保持未选', () => {
   const accounts = [
-    { accountId: 'bank', name: '测试银行储蓄卡(1234)', currency: 'CNY' },
-    { accountId: 'wallet', name: '支付宝账户余额', currency: 'CNY' }
+    { accountId: 'bank', name: '测试银行储蓄卡(1234)', type: 'bank', currency: 'CNY' },
+    { accountId: 'wallet', name: '支付宝账户余额', type: 'wallet', currency: 'CNY' }
   ]
   const event = { currency: 'CNY', economicNature: 'unknown',
     primaryEvidence: { sourceType: 'alipay', item: '先采后付账单付款' },

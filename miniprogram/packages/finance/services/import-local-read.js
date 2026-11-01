@@ -40,9 +40,19 @@ function create(model) {
   }
   function issueView(issue) {
     const ids=issue.subjectEventIds.filter(id=>model.events.has(id)),subject=ids.length?model.publicRow(ids[0]):null
+    const members = model.members.get(issue.issueId) || [], group = require('../domain/import-review/account-issue-grouping')
+    const first = members.find(member => member.objectType === 'event' && member.memberRole !== 'candidate')
+    const event = first && model.events.get(first.objectId), reference = event && group.memberReference(event, first)
+    const types = require('../domain/import-review/account-type-policy')
     return {...issue,subject,memberCount:ids.length,localAt:subject?.localAt,sortLocalAt:subject?.localAt,
       accountContext:issue.accountContext?{...issue.accountContext,
-        canExternal: require('../domain/import-review/account-issue-grouping').canUseExternal(model.events, model.members.get(issue.issueId) || [])}:null}
+        ...types.rules({ ...(reference || issue.accountContext), allowedAccountTypes: types.forMembers(members
+          .filter(member => member.objectType === 'event' && member.memberRole !== 'candidate').map(member => {
+            const event = model.events.get(member.objectId)
+            return { event, memberRole: member.memberRole, reference: event && group.memberReference(event, member) }
+          })) },
+          { event: event || {}, memberRole: first?.memberRole }),
+        canExternal: group.canUseExternal(model.events, members)}:null}
   }
   function obsoletePaymentTarget(issue) {
     if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved' ||
