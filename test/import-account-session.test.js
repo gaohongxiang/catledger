@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const path = require('node:path')
 const { fixture, runtime, flush } = require('./helpers/paged-workbench')
 const { workbenchSummary } = require('../cloudfunctions/catledger-import/src/workbench-summary')
 
@@ -86,6 +87,25 @@ test('放弃后新选账单不被旧放弃视图覆盖，第一步操作按钮�
   assert.equal(page.data.phase, 'selected')
   assert.equal(page.data.currentStep, 1)
   assert.equal(page.data.files.length, 1)
+})
+
+test('放弃本批后刷新入口与首页待核对进度一起清掉', async t => {
+  const h = runtime(accounts(), { realDraftManager: true }), page = h.page
+  t.after(async () => { if (page._draftSession) await page._draftSession.pause(); page.onUnload() })
+  await until(() => page.data.accountMappings.length === 2)
+  // 首页按本机草稿进度显示「待核对 / 待分类」；上一次保存失败还会在导入页留下刷新入口。
+  const drafts = h.load(path.join(__dirname, '../miniprogram/services/import-draft-session.js'))
+  drafts.rememberProgress('synthetic-update', { pending: 2, categories: 1 })
+  assert.ok(drafts.savedProgress(), '首页此刻有进度可显示')
+  page.setData({ refreshRequired: true, pageError: '明细待刷新', errorMessage: '操作已保存，明细待刷新' })
+  h.intercept = action => action === 'financeUpdates.abandon' ? { update: { ...h.summary.update, status: 'abandoned' } } : undefined
+  await page.performAbandonUpdate()
+  assert.equal(page.data.phase, 'idle')
+  // 放弃之后这一批已经不存在，刷新按钮和红色错误条都不该继续留着。
+  assert.equal(page.data.refreshRequired, false)
+  assert.equal(page.data.pageError, '')
+  assert.equal(page.data.errorMessage, '')
+  assert.equal(drafts.savedProgress(), null, '首页提醒随草稿一起消失')
 })
 
 test('放弃本批请求在途时按钮显示处理中，完成后复位', async t => {
@@ -332,4 +352,49 @@ test('补查已选账户后收到新问题版本，入队前仍核验原决定�
   assert.equal(page._accountUiDrafts.get(h.issues[1].issueId).accountId, selectedId)
   assert.equal(page._accountUiDrafts.get(h.issues[1].issueId).localConfirmed, false)
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.resolveAccountMappings').length, 1)
+})
+
+function createOnly(label = '不存在的卡') {
+  const data = fixture(1, true)
+  data.issues = [{ issueId: 'create-issue', issueType: 'account_mapping', status: 'open', version: 1, blocking: true,
+    memberCount: 40, subject: data.events[0],
+    accountContext: { recognized: true, sourceType: 'wechat', label, currency: 'CNY' } }]
+  data.summary.workbench = workbenchSummary(data.events, [], [{ issueType: 'account_mapping', status: 'open', count: 1 }], 0, 0)
+  return data
+}
+
+test('确认按钮说明本批会新建账户，并带上这些账户吃下的笔数', async t => {
+  const h = runtime(createOnly()), page = h.page
+  t.after(() => page.onUnload())
+  await until(() => page.data.accountMappings.length === 1)
+  assert.equal(page.data.accountMappings[0].choiceValue, 'create')
+  assert.equal(page.data.accountStepSummary.plannedCreate, 1)
+  assert.equal(page.data.accountStepSummary.batchNote, '本批将新建 1 个账户')
+  // 这一项已经确认过、不用再点，但按钮仍要说明它会被建出来——新建是入账后果，不是待办。
+  page._accountConfirmed.set('create-issue', { revision: 0 })
+  page.refreshAccountMappings()
+  assert.equal(page.data.accountStepSummary.batchable, 0)
+  assert.equal(page.data.accountStepSummary.plannedCreate, 1)
+  assert.equal(page.data.accountStepSummary.batchNote, '本批将新建 1 个账户')
+  // 改选「不计入」后不再宣称新建，改口径为排除。
+  page._accountConfirmed.delete('create-issue')
+  const draft = page._accountUiDrafts.get('create-issue')
+  draft.mode = 'ignore'; draft.dirty = true; draft.revision = 1; draft.localConfirmed = false
+  page.refreshAccountMappings()
+  assert.equal(page.data.accountStepSummary.plannedCreate, 0)
+  assert.equal(page.data.accountStepSummary.batchNote, '1 项不计入')
+})
+
+test('来源名缺失时留空，不拿问题类型名冒充来源', async t => {
+  const data = accounts()
+  data.issues = [{ ...data.issues[0], issueId: 'no-source',
+    accountContext: { recognized: false, sourceType: 'wechat', currency: 'CNY' } }]
+  data.summary.workbench = workbenchSummary(data.events.slice(0, 1), [], [{ issueType: 'account_mapping', status: 'open', count: 1 }], 0, 0)
+  const h = runtime(data), page = h.page
+  t.after(() => page.onUnload())
+  await until(() => page.data.accountMappings.length === 1)
+  const mapping = page.data.accountMappings[0]
+  assert.equal(mapping.label, '确认账户归属', '标题仍要有可读的兜底')
+  assert.equal(mapping.sourceLabel, '', '但来源不能复用这个兜底')
+  assert.equal(page.data.accountMappingsIncluded.map(row => row.sourceLabel).join(','), '')
 })

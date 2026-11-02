@@ -119,7 +119,7 @@ test('真实 Page 全部建议：联合卡只计1项新建，取消不改原决�
   assert.equal(page.data.accountStepSummary.suggestedCreate, 2)
   h.wx.showModal = options => { h.modal = options; options.success({ confirm: false }) }
   await page.confirmAllAccountMappings()
-  assert.equal(h.modal.content, '将确认 2 项建议，其中新建 2 个账户。')
+  assert.equal(h.modal.content, '将确认 2 项账户，其中新建 2 个账户。')
   assert.equal(h.local.model.choices.accounts.size, 0)
   assert.equal([...h.local.model.accounts.values()].filter(row => row.isDraft).length, 0)
   h.wx.showModal = options => options.success({ confirm: true })

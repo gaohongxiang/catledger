@@ -91,11 +91,15 @@ function ownershipRecheckNote(subject) {
     ? '已记录归属，资金关系还要在整理页补齐。' : ''
 }
 
-function confirmSuggestedBatch(count, creates) {
+function confirmSuggestedBatch(count, creates, ignores) {
   return new Promise(function (resolve) {
+    const extras = [
+      creates ? '新建 ' + creates + ' 个账户' : '',
+      ignores ? '不计入 ' + ignores + ' 项' : ''
+    ].filter(Boolean)
     wx.showModal({
-      title: '确认建议',
-      content: '将确认 ' + count + ' 项建议' + (creates ? '，其中新建 ' + creates + ' 个账户' : '') + '。',
+      title: '确认账户',
+      content: '将确认 ' + count + ' 项账户' + (extras.length ? '，其中' + extras.join('、') : '') + '。',
       confirmText: '确认',
       cancelText: '取消',
       success: function (result) { resolve(Boolean(result.confirm)) },
@@ -470,6 +474,12 @@ module.exports = {
             choiceIndex: choiceIndex,
             choiceValue: choices[choiceIndex].value,
             choiceName: choiceName,
+            // 来源是账单侧的事实；服务端没下发账户上下文时这里是空的。
+            // 不能拿 label 兜底（那是问题类型名），否则卡片会写成「来源：确认账户归属」。
+            sourceLabel: String(accountContext.label || '').trim(),
+            // 真没有来源名时，至少把交易对方带出来，否则两张卡长得一模一样。
+            sourceHint: String((issue.subject && issue.subject.primaryEvidence &&
+              (issue.subject.primaryEvidence.counterparty || issue.subject.primaryEvidence.item)) || '').trim(),
             suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' &&
               draft.accountId === draft.recommendedAccountId),
             recommendedAccountId: draft.recommendedAccountId,
@@ -519,7 +529,9 @@ module.exports = {
       anchor.restoreBlocked = !members.every(member => member.status !== 'resolved' && !member.dirty)
     }
     // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
-    for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate', 'displayConfirmed', 'displayPending']) summary[key] = 0
+    for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate',
+      'batchable', 'batchableCreate', 'batchableIgnore', 'unselected', 'displayConfirmed', 'displayPending',
+      'plannedCreate']) summary[key] = 0
     for (const mapping of mappings) if (mapping.inline) {
       if (mapping.canConfirm) summary.ready++; else { summary.invalid++; mapping.needsConfirmation = true }
       if (mapping.needsConfirmation) summary.pending++; else summary.confirmed++
@@ -527,11 +539,27 @@ module.exports = {
     summary.displayTotal = visible.length
     for (const mapping of visible) if (mapping.inline) {
       if (!mapping.needsConfirmation) summary.displayConfirmed++; else summary.displayPending++
+      // 只要已经选好且可确认，就都可以交给底部一次确认；改选、新建、不计入不再逼用户逐项点。
+      if (mapping.needsConfirmation && mapping.canConfirm) {
+        summary.batchable++
+        if (mapping.choiceValue === 'create') summary.batchableCreate++
+        if (mapping.choiceValue === 'ignore') summary.batchableIgnore++
+      }
+      if (mapping.needsConfirmation && !mapping.canConfirm) summary.unselected++
       if (mapping.needsConfirmation && mapping.canConfirm && !mapping.dirty && !['pending', 'ignore', 'external'].includes(mapping.choiceValue)) {
         summary.suggested++
         if (mapping.choiceValue === 'create') summary.suggestedCreate++
       }
     }
+    // 底部按钮要说清这批发下去会不会建账户。新建是入账后的副作用，
+    // 跟这一项有没有确认过无关，所以按「可确认的新建项」算，不看 needsConfirmation。
+    for (const mapping of visible) if (mapping.inline && mapping.canConfirm && mapping.choiceValue === 'create') {
+      summary.plannedCreate++
+    }
+    const notes = []
+    if (summary.plannedCreate > 0) notes.push('本批将新建 ' + summary.plannedCreate + ' 个账户')
+    if (summary.batchableIgnore > 0) notes.push(summary.batchableIgnore + ' 项不计入')
+    summary.batchNote = notes.join(' · ')
     const visiblePending = summary.pending
     summary.pending = accountPending.count(self, summary.pending)
     summary.pendingOutside = summary.pending > visiblePending
@@ -688,8 +716,7 @@ module.exports = {
     this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
     const collect = () => this.refreshAccountMappings().mappings.filter(function (item) {
-      return item.inline && item.needsConfirmation && item.canConfirm && !item.dirty &&
-        !['pending', 'ignore', 'external'].includes(item.choiceValue)
+      return item.inline && item.needsConfirmation && item.canConfirm
     })
     let targets = collect()
     if (!targets.length) return
@@ -700,10 +727,11 @@ module.exports = {
       targets = collect()
       if (!targets.length) return
     }
-    // 一键确认可能同时建出几个正式账户，按实际待确认项再问一次。
+    // 一键确认可能同时建出几个正式账户／排除几组记录，按实际待确认项再问一次。
     const creates = targets.filter(item => item.choiceValue === 'create').length
+    const ignores = targets.filter(item => item.choiceValue === 'ignore').length
     const unchanged = freezeSelection(this, targets)
-    if (!await confirmSuggestedBatch(targets.length, creates)) return
+    if (!await confirmSuggestedBatch(targets.length, creates, ignores)) return
     if (!unchanged()) { this.setData({ accountStepError: '账户选择或对应记录已变化，请核对后再次确认' }); return }
     const current = currentAccountOperation(this)
     this.setData({ accountStepBusy: true, accountStepError: '', accountStepProgressText: '正在确认 ' + targets.length + ' 项账户…' })

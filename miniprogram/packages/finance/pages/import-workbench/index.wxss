@@ -563,8 +563,9 @@ button::after { border: 0; }
 .account-dropdown-chevron {
   width: 10rpx;
   height: 10rpx;
-  margin: 0 0 5rpx 12rpx;
+  margin: 0 0 0 12rpx;
   flex: 0 0 10rpx;
+  align-self: center;
   color: var(--ui-subtle);
   border-right: 3rpx solid currentColor;
   border-bottom: 3rpx solid currentColor;
@@ -2679,7 +2680,7 @@ button::after { border: 0; }
 .account-title-trigger { display: inline-flex; align-items: baseline; justify-content: flex-start; flex: 0 0 auto; width: auto; max-width: 100%; min-width: 0; margin: 0; padding: 0; color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1.5; text-align: left; background: transparent; }
 .account-title-trigger:active { opacity: .72; }
 .account-title-trigger .account-proof-title { min-width: 0; }
-.account-title-trigger .account-dropdown-chevron { flex: 0 0 10rpx; margin: 0 2rpx 3rpx 10rpx; }
+.account-title-trigger .account-dropdown-chevron { flex: 0 0 10rpx; margin: 0 0 0 10rpx; align-self: center; }
 .account-recheck-note { margin-top: var(--layout-space-2); color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.6; }
 .account-group-note { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: var(--layout-space-2); }
 .account-group-chips { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; gap: 8rpx; }
@@ -2699,6 +2700,12 @@ button::after { border: 0; }
 .account-proof-item .account-change { flex: 0 0 80rpx; width: 80rpx; max-width: 80rpx; min-width: 80rpx; min-height: 64rpx; margin: 0; padding: 0 4rpx; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; background: var(--ui-surface); }
 .account-decision-row, .account-mode-trigger { background: var(--ui-surface); }
 .account-mode-trigger-create .account-mode-value, .account-mode-trigger-pending .account-mode-value { color: var(--ui-ink); }
+.account-source-line { margin-top: 4rpx; }
+.account-source-text { color: var(--ui-subtle); font-size: var(--font-caption, 24rpx); line-height: 1.5; overflow-wrap: anywhere; }
+.account-state-tag { flex: none; padding: 2rpx 12rpx; border-radius: 999rpx; font-size: 22rpx; line-height: 1.5; }
+.account-state-tag-pending { color: var(--ui-accent-strong); background: var(--ui-accent-soft); }
+.account-state-tag-done { color: var(--ui-muted); background: var(--ui-surface-muted); }
+.account-confirm-note { display: block; margin-top: var(--layout-space-1); }
 .account-confirm-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); min-height: 76rpx; margin-top: var(--layout-space-1); }
 .account-proof-item .account-confirm { flex: 0 0 auto; width: auto; min-width: 160rpx; min-height: 64rpx; margin: 0; padding: 0 20rpx; color: var(--ui-on-accent); font-size: var(--font-caption); line-height: 64rpx; background: var(--ui-accent-strong); border-radius: var(--theme-radius-small, 12rpx); }
 .account-proof-item .account-confirm[disabled] { color: var(--ui-muted); background: var(--ui-line); }
@@ -2879,3 +2886,16 @@ button::after { border: 0; }
 .detail-fact-row .mapping-label { flex: 0 0 164rpx; }
 .detail-fact-row .mapping-value { min-width: 0; white-space: normal; overflow: visible; text-overflow: clip; word-break: break-all; }
 .detail-original-title { display: block; margin: 24rpx 0 12rpx; font-weight: 600; }
+
+/* 新建账户：选择、名称、类型、状态挤在同一行，笔数让给来源行，别再另起一行。 */
+.account-create-line { width: 100%; margin-top: 0; align-self: stretch; align-items: stretch; }
+.account-create-line .account-create-trigger { flex: 0 0 auto; align-self: center; padding: 0 10rpx 0 14rpx; }
+.account-create-line .account-create-trigger .account-proof-title { min-width: 0; font-size: var(--font-caption, 24rpx); font-weight: 500; white-space: nowrap; }
+.account-create-line .account-compact-name { flex: 1 1 0; width: 0; }
+/* 「信用卡 / 消费信贷」是最长的类型名，单行不换行要留够宽度。 */
+.account-create-line .account-compact-type { flex: 0 0 236rpx; width: 236rpx; }
+.account-create-line .account-compact-type-value { font-size: var(--font-caption, 24rpx); white-space: nowrap; }
+.account-create-line .account-state-tag { flex: 0 0 auto; align-self: center; margin: 0 12rpx 0 6rpx; }
+.account-source-line-create { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.account-source-line-create .account-source-text { flex: 1; min-width: 0; }
+.account-source-line-create .account-evidence-trigger { min-height: 0; padding: 6rpx 0; }
