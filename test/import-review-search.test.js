@@ -122,7 +122,7 @@ for (const kind of ['accountChoice', 'directory']) {
     h.intercept = (action, query) => action !== 'financeUpdates.options' ? undefined : query.query === '旧词'
       ? new Promise(resolve => { release = resolve })
       : { protocolVersion: 2, viewVersion: 'v1', items: query.query ? [matching] : [], total: query.query ? 1 : 0, nextCursor: null }
-    if (kind === 'accountChoice') page.setData({ accountChoiceSheet: { issueId: 'synthetic-issue' }, choiceKind: 'accounts' })
+    if (kind === 'accountChoice') page.setData({ accountChoiceSheet: { issueId: 'synthetic-issue' } })
     else await page.openDirectory({ currentTarget: { dataset: { target: 'category' } } })
     await enter(page, handler, '旧词')
     for (const value of ['合', '合成', '合', '']) {

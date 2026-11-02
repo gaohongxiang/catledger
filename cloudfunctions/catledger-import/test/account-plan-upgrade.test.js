@@ -27,6 +27,48 @@ test('账户族统一仅合并事项，一致旧决定直接继承且两个事�
     { fromIssueId: 'issue-1', toIssueId: plan.issues[0].issueId }])
   assert.equal(JSON.stringify(input), before, '计划不改写事件、金额、账户或旧决定')
 })
+
+test('升级后的成员数按交易计数，同一目标的全部资金角色和旧选择关系保留', () => {
+  const reference = { sourceType: 'alipay', paymentMethodKey: 'target-key', accountIdentityKey: 'target-identity' }
+  const event = { eventId: 'event', currency: 'CNY', version: 7, status: 'ready', reasonCodes: [],
+    counterpartyLedgerAccountId: 'credit', fieldSources: { fundsProjection: { to: reference },
+      paymentAccountReferences: [{ ...reference, memberRole: 'payment_target' }] } }
+  const issues = ['projection', 'payment'].map(issueId => ({ issueId, issueType: 'account_mapping', status: 'resolved' }))
+  const members = ['mapping_to', 'payment_target'].map((memberRole, index) => ({
+    issueId: issues[index].issueId, objectType: 'event', objectId: event.eventId, memberRole }))
+  const input = { updateId: 'update', previousEvents: [event], events: [event], issues, members }, before = JSON.stringify(input)
+  const plan = planAccountIssueUpgrade(input)
+  assert.equal(plan.issues.length, 1)
+  assert.equal(plan.issues[0].memberCount, 1)
+  assert.equal(plan.issues[0].status, 'resolved')
+  assert.deepEqual(plan.members.map(member => member.memberRole).sort(), ['mapping_to', 'payment_target'])
+  assert.deepEqual(plan.accountIssueMappings.map(mapping => mapping.fromIssueId).sort(), ['payment', 'projection'])
+  assert.equal(JSON.stringify(input), before)
+})
+
+test('同规则反复升级回同一账户组时不复用旧事项键，前代事项保持可追溯', () => {
+  let input = fixture(), firstKey
+  const keys = new Set(), retained = []
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = JSON.stringify(input), plan = planAccountIssueUpgrade(input)
+    assert.equal(plan.issues.length, 1)
+    const issue = plan.issues[0]
+    assert.equal(keys.has(issue.issueKey), false)
+    if (attempt === 0) firstKey = issue.issueKey
+    keys.add(issue.issueKey)
+    assert.deepEqual(plan.supersededIssueIds, input.issues.map(prior => prior.issueId).sort())
+    assert.deepEqual(plan.accountIssueMappings.map(mapping => mapping.fromIssueId).sort(), input.issues.map(prior => prior.issueId).sort())
+    assert.equal(JSON.stringify(input), before)
+    retained.push(...input.issues.map(prior => ({ ...prior, status: 'superseded' })))
+    input = { ...input, previousEvents: input.events,
+      events: input.events.map(event => ({ ...event, version: event.version + 1, fieldSources: {
+        ledgerAccountReference: { ...event.fieldSources.ledgerAccountReference,
+          accountIdentityKey: attempt === 0 ? 'intermediate-family' : unified } } })),
+      issues: plan.issues, members: plan.members }
+  }
+  assert.ok(retained.some(issue => issue.issueKey === firstKey))
+  assert.equal(new Set(retained.map(issue => issue.issueId)).size, retained.length)
+})
 test('冲突或不完整的旧决定保留为一个待核对事项，不按成员顺序覆盖', () => {
   for (const input of [fixture(['account-a', 'account-b']), fixture(['account-a', null], ['resolved', 'open']), fixture([null, null], ['open', 'open'])]) {
     for (const reverse of [false, true]) {

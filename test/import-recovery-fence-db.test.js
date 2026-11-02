@@ -9,8 +9,13 @@ async function setup(lab) {
   const subject = 'recovery-fence-' + randomUUID(), objects = new Map()
   const services = localServices({ apiPool: lab.owner, importPool: lab.owner, subject, objects })
   const { uid } = await call(services.api, 'bootstrap')
-  await call(services.api, 'accounts.create', { requestId: randomUUID(), name: '微信零钱', type: 'wallet' })
-  const update = await prepareSyntheticUpdate(services, 1, randomUUID())
+  const account = await call(services.api, 'accounts.create', { requestId: randomUUID(), name: '微信零钱', type: 'wallet' })
+  let update = await prepareSyntheticUpdate(services, 1, randomUUID())
+  const issues = (await call(services.import, 'reviewIssues.list', { updateId: update.updateId, group: 'accounts', status: 'open' })).items
+  assert.ok(issues.length, '同名钱包只是候选，版本栅栏夹具须先显式确认账户')
+  update = await call(services.import, 'reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
+    updateVersion: update.appliedVersion, decisions: issues.map(issue => ({ issueId: issue.issueId, issueVersion: issue.version,
+      operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: account.accountId } })) })
   const prepared = await call(services.import, 'financeUpdates.prepareSnapshot', { requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion })
   const state = { protocolVersion: 3, snapshotId: prepared.snapshot.objectId, updateId: update.updateId,
     baseVersion: prepared.snapshot.baseVersion, ruleVersion: prepared.snapshot.ruleVersion,

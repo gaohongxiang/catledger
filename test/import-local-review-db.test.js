@@ -104,6 +104,14 @@ async function postLocal(services, model) {
   if (result.outcome === 'recheck') return { ...result, supplement: (await download(services, result.recheck.objectId)).facts }
   return result
 }
+function accountChoices(model, accountId) {
+  const issues = [...model.issues.values()].filter(issue => issue.issueType === 'account_mapping' && issue.status === 'open')
+  assert.ok(issues.length, '同名钱包仅提供候选，当前文件须显式确认账户')
+  return issues.map(issue => ({ issueId: issue.issueId, decision: 'apply_fields', fields: { mappingAccountId: accountId } }))
+}
+function confirmLocalAccount(model, accountId) {
+  for (const choice of accountChoices(model, accountId)) model.mapAccount(choice)
+}
 
 test('银行候选容量边界：100×100候选完整下发与本地分页，保持既有上限', {skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:180000},async t=>{
   const lab=await isolatedMysql()
@@ -139,6 +147,7 @@ test('当前状态裁决：无关账务允许提交，停用账户精确退回�
       const {uid,categories}=await api('bootstrap'),categoryId=categories.find(row=>row.kind==='expense').id
       const account=await api('accounts.create',{requestId:randomUUID(),name:'微信零钱',type:'wallet'}),prefix=randomUUID()
       const prepared=await prepareSyntheticUpdate(services,2,prefix),{model}=await prepareLocal(services,prepared.updateId)
+      confirmLocalAccount(model,account.accountId)
       for(const event of model.events.values())model.edit({eventId:event.eventId,editorVersion:1,fields:{categoryId,note:'保留核对'}})
       if(scenario==='unrelated')await api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:account.accountId,amountMinor:'9900',categoryId,occurredLocalAt:'2026-08-01T12:00:00',timezoneOffsetMinutes:-480})
       if(scenario==='archived')await api('accounts.archive',{requestId:randomUUID(),accountId:account.accountId,version:account.version})
@@ -149,6 +158,7 @@ test('当前状态裁决：无关账务允许提交，停用账户精确退回�
         const parsed=await call(services.import,'imports.parseFile',{requestId:randomUUID(),importId:file.importId,fileID:'cloud://synthetic.bucket/'+file.cloudPath,timezoneOffsetMinutes:-480})
         const other=await call(services.import,'financeUpdates.prepare',{requestId:randomUUID(),batchIds:[parsed.batch.batchId]}),second=await prepareLocal(services,other.updateId)
         assert.notEqual(other.updateId,prepared.updateId)
+        confirmLocalAccount(second.model,account.accountId)
         for(const event of second.model.events.values())second.model.edit({eventId:event.eventId,editorVersion:1,fields:{categoryId}})
         assert.equal((await postLocal(services,second.model)).status,'posted')
       }
@@ -157,6 +167,7 @@ test('当前状态裁决：无关账务允许提交，停用账户精确退回�
         assert.equal(result.outcome,'recheck');assert.ok(result.supplement.problems.some(row=>row.reason==='account_unavailable'&&row.eventIds.length))
         model.applySupplement(result.supplement)
         assert.equal(model.choices.events.size,2);assert.equal(model.invalid.size,2)
+        assert.ok([...model.invalid.values()].every(reason=>reason==='account_unavailable'),'本机恢复保留具体账户失效原因，不被一般校验错误覆盖')
       }else if(scenario==='unrelated')assert.equal(result.status,'posted',JSON.stringify(result.supplement?.problems))
       const [[total]]=await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid=?',[uid])
       assert.equal(Number(total.count),scenario==='unrelated'?3:scenario==='same-source'?2:0)
@@ -175,6 +186,7 @@ test('历史退款额度被占用后整批退回，补充当前可退额并保�
     const [event]= (await call(services.import,'economicEvents.list',{updateId:update.updateId})).items
     update=await call(services.import,'financeUpdates.setReview',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:event.version,editorVersion:1,fields:{economicNature:'refund',amountMinor:'6000'}})
     const {model}=await prepareLocal(services,update.updateId)
+    confirmLocalAccount(model,account.accountId)
     const refund=model.events.get(event.eventId),candidate=model.refundCandidates(refund,'transaction').find(row=>row.id===original.transactionId)
     assert.ok(candidate)
     model.edit({eventId:event.eventId,editorVersion:1,decisions:{refund:{mode:'link',kind:'transaction',id:candidate.id,version:candidate.version}}})
@@ -228,7 +240,7 @@ test('真实 Page/API 配对与拆分保持零网络；最终仍使用同一整�
   }finally{await lab.close()}
 })
 
-test('v3 单事务故障注入：新账户、交易、退款、贷款、映射、成功回执全部回滚；原请求可恢复', {skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:240000},async t=>{
+test('v3 单事务故障注入：新账户、交易、退款、映射、清理、成功回执全部回滚；普通还款不改贷款计划', {skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:240000},async t=>{
   const lab=await isolatedMysql()
   try{
     const grants=require('../scripts/runtime-role-grants'),apiPool=await lab.role('api',grants.api),pool=await lab.role('import',grants.importer)
@@ -244,45 +256,41 @@ test('v3 单事务故障注入：新账户、交易、退款、贷款、映射�
     const loan=await api('loans.create',{...plan,requestId:randomUUID(),accountId:debt,baselinePrincipalMinor:'1080000',repaymentMinor:'98000',feeUpfrontMinor:'2000',installmentSetup:{...plan.installmentSetup,originalPrincipalMinor:'1080000',recordType:'bank_loan'}})
     await api('loans.configureCharges',{...authorization,requestId:randomUUID(),loanId:loan.loanId,version:loan.version,interestCategoryId:categoryId,feeCategoryId:categoryId,upfrontChargeDate:'2026-01-01'})
     await api('loans.syncCharges',{requestId:randomUUID(),loanId:loan.loanId})
-    const update=await prepareSyntheticUpdate(services,3,randomUUID()),{model,snapshot}=await prepareLocal(services,update.updateId)
-    for(const issue of snapshot.facts.issues.filter(row=>row.issueType==='account_mapping'&&row.status==='open'))model.mapAccount({issueId:issue.issueId,decision:'apply_fields',fields:{mappingAccountDraft:{name:'整批新建钱包',type:'wallet',currency:'CNY'}}})
-    const ids=[...model.events.keys()],wallet=model.events.get(ids[0]).ledgerAccountId
+    // 完整合成卡号提供可复用绑定，确保“映射记忆”故障点确实写入；无主体钱包只在本文件有效。
+    const content=Buffer.from(require('./helpers/local-services').syntheticBill(3,randomUUID()).toString().replaceAll(',微信零钱,',',合成银行卡(9900000000000011),'))
+    const uploaded=await call(services.import,'imports.prepareMany',{requestId:randomUUID(),files:[{fileName:'合成原子入账.csv',size:content.length}]})
+    const file=uploaded.files[0];services.objects.set(file.cloudPath,content)
+    const parsed=await call(services.import,'imports.parseFile',{requestId:randomUUID(),importId:file.importId,fileID:'cloud://synthetic.bucket/'+file.cloudPath,timezoneOffsetMinutes:-480})
+    const update=await call(services.import,'financeUpdates.prepare',{requestId:randomUUID(),batchIds:[parsed.batch.batchId]}),{model,snapshot}=await prepareLocal(services,update.updateId)
+    for(const issue of snapshot.facts.issues.filter(row=>row.issueType==='account_mapping'&&row.status==='open'))model.mapAccount({issueId:issue.issueId,decision:'apply_fields',fields:{mappingAccountDraft:{name:'整批新建银行卡',type:'bank',currency:'CNY'}}})
+    const ids=[...model.events.keys()]
     model.edit({eventId:ids[0],editorVersion:1,fields:{categoryId,amountMinor:'10000'}})
     model.edit({eventId:ids[1],editorVersion:1,fields:{economicNature:'refund',amountMinor:'4000',occurredLocalAt:'2026-09-02 12:00:00',timezoneOffsetMinutes:-480},decisions:{refund:{mode:'link',kind:'event',id:ids[0],version:model.events.get(ids[0]).version}}})
-    const interest=snapshot.facts.charges.find(row=>row.chargeKey==='period:1:interest'),fee=snapshot.facts.charges.find(row=>row.chargeKey==='upfront:fee'),current=snapshot.facts.loans.find(row=>row.loanId===loan.loanId)
-    model.edit({eventId:ids[2],editorVersion:1,fields:{economicNature:'repayment',amountMinor:'100000',counterpartyLedgerAccountId:debt},decisions:{repayment:{confirmed:true,mode:'associate',loanId:loan.loanId,loanVersion:current.version,assetAccountId:wallet,liabilityAccountId:debt,principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',interestTreatment:'accrued',feeTreatment:'accrued',chargeAllocations:[{chargeId:interest.chargeId,component:'interest',amountMinor:'8000'},{chargeId:fee.chargeId,component:'fee',amountMinor:'2000'}]}}})
+    const interest=snapshot.facts.charges.find(row=>row.chargeKey==='period:1:interest')
+    model.edit({eventId:ids[2],editorVersion:1,fields:{economicNature:'repayment',amountMinor:'100000',counterpartyLedgerAccountId:debt},decisions:{ownership:{owner:'self'}}})
     const request=await stage(services,model.finalState())
-    const tables=['accounts','transactions','loans','loan_payments','loan_repayment_details','loan_payment_allocations','loan_payment_transactions','loan_charge_allocations','loan_charges','import_account_mappings','finance_update_account_drafts','finance_update_account_mapping_drafts','finance_updates','economic_events','economic_event_relations','economic_event_transactions','review_issues','review_issue_members','finance_actions','mutation_receipts','users','import_review_objects','import_review_chunks']
+    const tables=['accounts','transactions','loans','loan_periods','loan_payments','loan_repayment_details','loan_payment_allocations','loan_payment_transactions','loan_payment_sources','loan_charge_allocations','loan_charges','import_account_mappings','finance_update_account_drafts','finance_update_account_mapping_drafts','finance_updates','economic_events','economic_event_relations','economic_event_transactions','review_issues','review_issue_members','finance_actions','mutation_receipts','users','import_review_objects','import_review_chunks']
     async function dump(){const result={};for(const table of tables){const [rows]=await lab.owner.execute('SELECT * FROM catledger_'+table+' WHERE uid=?',[uid]);result[table]=rows.map(row=>JSON.stringify(row)).sort()}return result}
     const before=await dump()
-    for(const [label,pattern]of [['账户创建',/INSERT INTO catledger_accounts\s/],['交易写入',/INSERT INTO catledger_transactions\s/],['退款关系',/INSERT INTO catledger_economic_event_relations\s/],['贷款收费清偿',/INSERT INTO catledger_loan_charge_allocations/],['映射记忆',/INSERT INTO catledger_import_account_mappings/],['临时对象清理',/DELETE FROM catledger_import_review_objects/],['成功回执',/UPDATE catledger_mutation_receipts/]])await t.test(label,async()=>{
+    for(const [label,pattern]of [['账户创建',/INSERT INTO catledger_accounts\s/],['交易写入',/INSERT INTO catledger_transactions\s/],['退款关系',/INSERT INTO catledger_economic_event_relations\s/],['映射记忆',/INSERT INTO catledger_import_account_mappings/],['临时对象清理',/DELETE FROM catledger_import_review_objects/],['成功回执',/UPDATE catledger_mutation_receipts/]])await t.test(label,async()=>{
       failure=pattern;hits=0
       await assert.rejects(call(services.import,'financeUpdates.post',request),{publicCode:'INTERNAL_ERROR'})
       failure=null;assert.ok(hits>0,'必须真正命中指定写入阶段')
       assert.deepEqual(await dump(),before,label+'不得留下任何正式或草稿部分写入')
     })
     failure=null
-    await t.test('贷款版本与收费项变化保留其他决定',async()=>{
+    await t.test('贷款版本与收费项变化不阻断普通全额还款，导入不改任何计划资料',async()=>{
       await lab.owner.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
-      const changed=await call(services.import,'financeUpdates.post',{...request,requestId:randomUUID()})
-      assert.equal(changed.outcome,'recheck')
-      const fresh=(await download(services,changed.recheck.objectId)).facts
-      assert.ok(fresh.problems.some(row=>row.eventIds.includes(ids[2])))
-      assert.equal(fresh.loans.find(row=>row.loanId===loan.loanId).version,current.version+1)
-      await lab.owner.execute('UPDATE catledger_loans SET version=? WHERE uid=? AND loan_id=?',[current.version,uid,loan.loanId])
       await lab.owner.execute('UPDATE catledger_loan_charges SET historical_settled_minor=amount_minor,version=version+1 WHERE uid=? AND charge_id=?',[uid,interest.chargeId])
-      const chargeChanged=await call(services.import,'financeUpdates.post',{...request,requestId:randomUUID()})
-      assert.equal(chargeChanged.outcome,'recheck')
-      const updated=(await download(services,chargeChanged.recheck.objectId)).facts
-      assert.ok(updated.problems.some(row=>row.eventIds.includes(ids[2])))
-      assert.equal(updated.charges.find(row=>row.chargeId===interest.chargeId).outstandingMinor,'0')
-      await lab.owner.execute('UPDATE catledger_loan_charges SET historical_settled_minor=0,version=? WHERE uid=? AND charge_id=?',[interest.version,uid,interest.chargeId])
+      const loanBefore=await dump()
+      const results=await Promise.all([call(services.import,'financeUpdates.post',request),call(services.import,'financeUpdates.post',request)])
+      assert.equal(results[0].status,'posted',JSON.stringify(results[0]));assert.deepEqual(results[1],results[0])
+      assert.equal(results[0].posting.createdTransactionCount,3)
+      const after=await dump()
+      for(const table of tables.filter(name=>name.startsWith('loan')))assert.deepEqual(after[table],loanBefore[table],table+'不得被普通还款改写')
+      assert.equal((await api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'1080000')
+      const [[accounts]]=await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_accounts WHERE uid=?',[uid]);assert.equal(Number(accounts.count),2)
     })
-    const results=await Promise.all([call(services.import,'financeUpdates.post',request),call(services.import,'financeUpdates.post',request)])
-    assert.equal(results[0].status,'posted',JSON.stringify(results[0]));assert.deepEqual(results[1],results[0])
-    assert.equal(results[0].posting.createdTransactionCount,3)
-    assert.equal((await api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'990000')
-    const [[accounts]]=await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_accounts WHERE uid=?',[uid]);assert.equal(Number(accounts.count),2)
   }finally{await lab.close()}
 })
 
@@ -341,6 +349,7 @@ test('快照外历史退回：冷恢复后使用新请求提交，成功事务�
     const create = () => session.create({ files: store, restored: store.restore(), requestId: randomUUID,
       callNetwork, saveReceipt() {}, cleanup() {}, queueAbandon() {} })
     let current = create()
+    current.call('reviewIssues.resolveAccountMappings', { decisions: accountChoices(current.model, account.accountId) })
     const categoryId = snapshot.facts.categories.find(row => row.kind === 'expense').categoryId
     assert.equal(snapshot.facts.history.length, 0)
     const ids = [...current.model.events.keys()]

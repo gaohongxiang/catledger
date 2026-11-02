@@ -1,5 +1,6 @@
 // 只汇总金额与数量，原始证据、事件和成员始终从版本分页读取。
 const active = event => ['ready', 'needs_action', 'posted'].includes(event.status)
+const { effectAmounts } = require('./funds-allocation')
 const categoryRequired = event => !require('./installment-business').isRegistration(event) && ['income', 'expense', 'fee', 'unknown'].includes(event.economicNature)
 function accountIds(event) {
   const fields = event.fieldSources || {}
@@ -9,6 +10,8 @@ function accountIds(event) {
 }
 const money = value => { const n = String(value || '0').padStart(3, '0'); return '¥' + n.slice(0, -2) + '.' + n.slice(-2) }
 function repaymentExpense(event) {
+  const allocation = effectAmounts(event)
+  if (allocation && event.economicNature === 'repayment') return allocation.expense
   const channel = event.repaymentChannel || event.fieldSources && event.fieldSources.repaymentChannelResolution
   if (channel) return (event.repaymentChannel ? channel.confirmed === true : channel.repaymentConfirmed === true)
     ? BigInt(channel.feeMinor || '0') : 0n
@@ -29,7 +32,10 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
   const excluded = events.filter(row => row.status === 'excluded' && !historical(row)).length
   duplicateCount += events.filter(historical).length
   const ready = events.filter(row => row.status === 'ready')
-  const sum = natures => ready.filter(row => natures.includes(row.economicNature)).reduce((n, row) => n + BigInt(row.amountMinor), 0n)
+  const sum = natures => ready.filter(row => natures.includes(row.economicNature)).reduce((n, row) => {
+    const allocated = effectAmounts(row)
+    return n + (allocated && row.economicNature === 'expense' ? allocated.expense : BigInt(row.amountMinor))
+  }, 0n)
   const count = natures => ready.filter(row => natures.includes(row.economicNature)).length
   const countIssues = (type, status) => issueCounts.filter(row => row.issueType === type && row.status === status).reduce((n, row) => n + Number(row.count), 0)
   const accountOpen = countIssues('account_mapping', 'open'), accountResolved = countIssues('account_mapping', 'resolved')
@@ -42,14 +48,17 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
     categoryStatusTabs: [{ value: 'pending', label: '待分类', count: categoryPending }, { value: 'completed', label: '已分类', count: categoryComplete },
       { value: 'none', label: '无需分类', count: rows.filter(row => !categoryRequired(row)).length }],
     categoryEventCount: categoryPending, categorizedEventCount: categoryComplete,
-    finalSummary: { expenseCount: count(['expense', 'fee']) + ready.filter(e=>repaymentExpense(e)>0n).length, incomeCount: count(['income']), refundCount: count(['refund']),
-      expenseText: money(sum(['expense', 'fee']) + ready.reduce((sum,e)=>sum+repaymentExpense(e),0n)), incomeText: money(sum(['income'])), refundText: money(sum(['refund'])),
-      transferCount: count(['internal_transfer', 'repayment', 'borrow']), categoryCount, categorizedCount,
+    finalSummary: { expenseCount: count(['expense', 'fee']) + ready.filter(e=>repaymentExpense(e)>0n).length,
+      incomeCount: count(['income']) + ready.filter(e => (effectAmounts(e)?.income || 0n) > 0n).length, refundCount: count(['refund']),
+      expenseText: money(sum(['expense', 'fee']) + ready.reduce((sum,e)=>sum+repaymentExpense(e),0n)),
+      incomeText: money(sum(['income']) + ready.reduce((sum,e)=>sum+(effectAmounts(e)?.income || 0n),0n)), refundText: money(sum(['refund'])),
+      transferCount: ready.filter(e => ['internal_transfer', 'repayment', 'borrow'].includes(e.economicNature) &&
+        (!effectAmounts(e) || effectAmounts(e).transfer > 0n)).length, categoryCount, categorizedCount,
       categoryCoverageText: categoryCount ? categorizedCount + ' / ' + categoryCount : '无需分类', categoryComplete: categoryCount === categorizedCount,
       newAccountCount: draftCount, affectedAccountCount: new Set(ready.flatMap(accountIds)).size },
     fundsFlowGroups: [['internal_transfer', '内部转账'], ['borrow', '借款'], ['repayment', '还款']].map(([nature, label]) =>
       ({ nature, label, count: count([nature]), amountText: money(ready.filter(row => row.economicNature === nature)
-        .reduce((total, row) => total + BigInt(row.fieldSources?.repaymentChannelResolution?.repaymentMinor || row.amountMinor), 0n)), records: [] }))
+        .reduce((total, row) => total + (effectAmounts(row)?.transfer ?? BigInt(row.fieldSources?.repaymentChannelResolution?.repaymentMinor || row.amountMinor)), 0n)), records: [] }))
   }
 }
 module.exports = { workbenchSummary, accountIds, repaymentExpense, categoryRequired }

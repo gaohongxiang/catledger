@@ -20,7 +20,7 @@ async function compositeRepaymentFacts(count = 1) {
   return { value, accountId, target: value.issues.find(issue => issue.accountContext?.fundsSide === 'payment_target') }
 }
 
-test('真实账户页：重新上传的组合还款目标沿用账户，不能误显为本次不计入', async t => {
+test('真实账户页：组合还款目标沿用本批确认账户，不能误显为本次不计入', async t => {
   const { value, accountId, target } = await compositeRepaymentFacts()
   const h = await localWorkbench(t, value), page = h.page
   await page.setStep({ currentStep: 2 })
@@ -29,7 +29,7 @@ test('真实账户页：重新上传的组合还款目标沿用账户，不能�
   assert.equal(mapping.choiceValue, 'account:' + accountId)
   assert.equal(mapping.needsConfirmation, false)
   assert.equal(h.local.model.events.get(value.events[0].eventId).counterpartyLedgerAccountId, accountId)
-  assert.equal(h.local.model.choices.accounts.size, 0, '历史沿用不能伪造本批人工决定')
+  assert.equal(h.local.model.choices.accounts.size, 0, '已下载的确认不能伪造一次新的本机决定')
   assert.equal(h.network.length, 0)
 })
 

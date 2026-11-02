@@ -206,7 +206,7 @@ test('最多五份文件可并行上传解析且全部任务都会收口', async
   assert.deepEqual(completed.sort(), [1, 2, 3, 4, 5])
 })
 
-test('支付工具唯一匹配已有账户时默认沿用，兼容标点、银行主体和尾号', function () {
+test('支付工具唯一匹配兼容账户时仅推荐，兼容标点、银行主体和尾号', function () {
   assert.equal(model.normalizePaymentAccountName(' 光大银行-信用卡（2690） '), '光大银行信用卡2690')
   assert.equal(model.normalizePaymentAccountName('ＡＢＣ Wallet 123'), 'abcwallet123')
   const nativeNormalize = String.prototype.normalize
@@ -217,9 +217,9 @@ test('支付工具唯一匹配已有账户时默认沿用，兼容标点、银�
     String.prototype.normalize = nativeNormalize
   }
   const accounts = [
-    { accountId: 'everbright', name: '光大银行信用卡(2690)', currency: 'CNY' },
-    { accountId: 'xingye', name: '兴业信用卡 6106', currency: 'CNY' },
-    { accountId: 'xingye-usd', name: '兴业银行信用卡6106', currency: 'USD' }
+    { accountId: 'everbright', name: '光大银行信用卡(2690)', type: 'credit', currency: 'CNY' },
+    { accountId: 'xingye', name: '兴业信用卡 6106', type: 'credit', currency: 'CNY' },
+    { accountId: 'xingye-usd', name: '兴业银行信用卡6106', type: 'credit', currency: 'USD' }
   ]
   assert.equal(model.suggestExistingAccount({
     label: '光大银行信用卡（2690）', sourceType: 'wechat', recognized: true
@@ -232,19 +232,19 @@ test('支付工具唯一匹配已有账户时默认沿用，兼容标点、银�
 test('平台余额别名可推荐已有账户，但不同银行同尾号和并列候选不猜测', function () {
   assert.equal(model.suggestExistingAccount({
     label: '支付宝账户余额', sourceType: 'alipay', recognized: true
-  }, [{ accountId: 'alipay', name: '支付宝余额', currency: 'CNY' }]).accountId, 'alipay')
+  }, [{ accountId: 'alipay', name: '支付宝余额', type: 'wallet', currency: 'CNY' }]).accountId, 'alipay')
   assert.equal(model.suggestExistingAccount({
     label: '光大银行信用卡(2690)', sourceType: 'wechat', recognized: true
-  }, [{ accountId: 'other', name: '其他银行信用卡(2690)', currency: 'CNY' }]), null)
+  }, [{ accountId: 'other', name: '其他银行信用卡(2690)', type: 'credit', currency: 'CNY' }]), null)
   assert.equal(model.suggestExistingAccount({
     label: '兴业银行信用卡(6106)', sourceType: 'wechat', recognized: true
   }, [
-    { accountId: 'a', name: '兴业信用卡6106', currency: 'CNY' },
-    { accountId: 'b', name: '兴业银行贷记卡6106', currency: 'CNY' }
+    { accountId: 'a', name: '兴业信用卡6106', type: 'credit', currency: 'CNY' },
+    { accountId: 'b', name: '兴业银行贷记卡6106', type: 'credit', currency: 'CNY' }
   ]), null)
   assert.equal(model.suggestExistingAccount({
     label: '银行卡', sourceType: 'wechat', recognized: false
-  }, [{ accountId: 'generic', name: '银行卡', currency: 'CNY' }]), null)
+  }, [{ accountId: 'generic', name: '银行卡', type: 'bank', currency: 'CNY' }]), null)
 })
 
 test('账户问题与其他整理问题分步展示，门禁按未解决问题推进', function () {

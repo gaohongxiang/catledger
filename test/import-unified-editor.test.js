@@ -76,15 +76,15 @@ test('保存普通字段不能清除来源/身份/同笔冲突；未知不等于
   }
   assert.equal(model.create(publicRow(base('unknown'))).economicNature, 'unknown')
 })
-test('模式往返保留 ID，隐藏账户/分类/分配不提交', () => {
+test('账本外端点往返保留账户 ID，隐藏账户不提交', () => {
   const row = base('repayment', { counterpartyLedgerAccountId:credit.accountId })
   let draft = model.create(publicRow(row))
-  draft = model.change(publicRow(row), draft, 'owner','other')
-  draft = model.change(publicRow(row), draft, 'otherTreatment','expense')
+  draft = model.change(publicRow(row), draft, 'destinationKind', 'external')
   let view = model.derive(publicRow(row), draft, catalog)
-  assert.equal(view.routeFields.length,1); assert.equal(view.routeFields[0].accountId,wallet.accountId)
-  assert.equal(view.payload.fields.counterpartyLedgerAccountId,null)
-  draft = model.change(publicRow(row),draft,'owner','self')
+  assert.equal(view.routeFields.length, 2); assert.equal(view.routeFields[0].accountId, wallet.accountId)
+  assert.deepEqual(view.payload.decisions.accountOwnership.destination, { kind: 'external' })
+  assert.equal(view.payload.fields.counterpartyLedgerAccountId, undefined)
+  draft = model.change(publicRow(row), draft, 'destinationKind', 'ledger')
   view = model.derive(publicRow(row),draft,catalog)
   assert.equal(view.routeFields[1].accountId,credit.accountId)
   draft = model.change(publicRow(row),draft,'economicNature','income')
@@ -160,7 +160,7 @@ for (const target of [credit, debt]) for (const sourceDirection of ['expense', '
     assert.equal(view.showLoan, false)
     assert.equal(view.loanFields, undefined)
     assert.equal(view.chargeRows, undefined)
-    assert.equal(view.payload.decisions.repayment, undefined)
+    assert.equal(view.payload.decisions?.repayment, undefined)
     assert.equal(view.complete, true)
     assert.equal(view.canSave, true)
     const next = prepare(row, view.payload)
@@ -383,10 +383,10 @@ test('普通还款缺账户和未完成多账户组成仍可保存，始终不�
   assert.equal(split.showLoan, false)
   assert.ok(split.accountFields.find(field => field.label === '还入账户').allowedTypes.includes('credit'))
   assert.equal(split.payload.composition.incomplete, true)
-  assert.equal(split.payload.decisions.repayment, undefined)
+  assert.equal(split.payload.decisions?.repayment, undefined)
 })
 
-test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前单端', () => {
+test('UE24 资金结构往返保留各自账户和分配；多账户不接受外部端点切换', () => {
   const row = publicRow(base('repayment', { counterpartyLedgerAccountId: credit.accountId }))
   let draft = model.create(row)
   draft = model.change(row, draft, 'composition', 'payment')
@@ -396,12 +396,12 @@ test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前
   assert.equal(draft.ledgerAccountId, wallet.accountId); assert.equal(draft.counterpartyLedgerAccountId, credit.accountId)
   draft = model.change(row, draft, 'composition', 'payment')
   assert.deepEqual(draft.parts.map(part => part.amountInput), ['30','70'])
-  draft = model.change(row, draft, 'owner', 'other')
-  draft = model.change(row, draft, 'otherTreatment', 'expense')
-  const other = model.derive(row, draft, catalog)
-  assert.ok(other.fundsEndpoints.every(endpoint => !endpoint.multi)); assert.equal(other.payload.composition?.parts, undefined)
-  assert.equal(other.payload.decisions.repayment, undefined)
-  draft = model.change(row, draft, 'owner', 'self')
+  const before = draft
+  draft = model.change(row, draft, 'destinationKind', 'external')
+  assert.equal(draft, before)
+  const current = model.derive(row, draft, catalog)
+  assert.equal(current.payload.decisions?.accountOwnership, undefined)
+  assert.equal(current.payload.decisions?.repayment, undefined)
   assert.equal(draft.composition, 'payment'); assert.equal(draft.parts[1].accountId, bank.accountId)
 })
 
@@ -559,13 +559,14 @@ test('金额方向色按有效性质派生，与服务端 flowDirection 重算�
   }
 })
 
-test('切换性质后方向色同步变化；代还记为支出按支出着色', () => {
+test('切换性质后方向色同步变化；旧代还草稿按有效资金方向着色', () => {
   assert.equal(change(base('repayment'), [['economicNature', 'expense']]).directionClass, 'row-expense')
   assert.equal(change(base('income'), [['economicNature', 'expense']]).directionClass, 'row-expense')
   assert.equal(change(base('expense'), [['economicNature', 'income']]).directionClass, 'row-income')
-  const other = change(base('repayment', { repaymentOwnership: { owner: 'other', treatment: 'expense' } }), [])
+  const legacy = { version: 'repayment-ownership-v2', confirmedBy: 'user', owner: 'other', treatment: 'expense' }
+  const other = change(base('expense', { fieldSources: { repaymentOwnership: legacy } }), [])
   assert.equal(other.directionClass, 'row-expense')
-  const keep = change(base('repayment', { repaymentOwnership: { owner: 'other', treatment: 'pending' } }), [])
+  const keep = change(base('unknown', { fieldSources: { repaymentOwnership: { ...legacy, treatment: 'pending' } } }), [])
   assert.equal(keep.directionClass, 'row-expense')
 })
 

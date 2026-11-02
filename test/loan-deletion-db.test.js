@@ -107,7 +107,7 @@ test('贷款整组删除：真实接口、来源认领、重建、幂等及事�
   assert.equal((await removal(h,next)).impact.counts.fees,1)
  })
  await scenario('导入原账更正后保留正确分项与来源；解除旧占用后新计划原位关联',async h=>{
-  const l=await h.create(),update=await prepareSyntheticUpdate(h.services,1,'SYNTHETIC-DELETE-IMPORT')
+  const l=await h.create(),update=await prepareSyntheticUpdate(h.services,1,'SYNTHETIC-DELETE-IMPORT','合成银行储蓄卡(9900000000001122)')
   const issue=(await h.imp('reviewIssues.list',{updateId:update.updateId,group:'accounts'})).items[0]
   const mapped=await h.imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,decisions:[{issueId:issue.issueId,issueVersion:issue.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:h.assetAccountId}}]})
   await h.imp('financeUpdates.post',{requestId:randomUUID(),updateId:update.updateId,version:mapped.appliedVersion})

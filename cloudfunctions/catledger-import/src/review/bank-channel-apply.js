@@ -70,7 +70,7 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
     ON r.uid = m.uid AND r.relation_id = m.object_id SET m.object_version = r.version
     WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'relation'`, [uid, updateId])
   await connection.execute(`UPDATE catledger_review_issues i SET member_count =
-    (SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid = i.uid AND m.issue_id = i.issue_id)
+    (SELECT COUNT(DISTINCT m.object_type,m.object_id) FROM catledger_review_issue_members m WHERE m.uid = i.uid AND m.issue_id = i.issue_id)
     WHERE i.uid = ? AND i.update_id = ? AND i.status = 'superseded' AND i.resolved_action_id = ?`, [uid, updateId, actionId])
   // 相同账户的来源映射、引用校验、事件版本和后续问题各批量完成一次。
   const byAccount = new Map()

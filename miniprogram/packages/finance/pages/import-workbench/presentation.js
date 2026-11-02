@@ -442,6 +442,7 @@ function evidencePartFields(part, page) {
 }
 
 const ERROR_MESSAGES = Object.freeze({
+  ACCOUNT_NAME_CONFLICT: '已有同名账户，请修改名称或明确选择已有账户',
   CONFLICT: '整理状态已经变化，请刷新后重试',
   CSV_COLUMN_LIMIT_EXCEEDED: '账单列结构异常，请重新从支付平台导出',
   CSV_RECORD_LIMIT_EXCEEDED: '单个账单超过 5000 条，请缩短导出时间范围',

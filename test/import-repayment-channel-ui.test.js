@@ -146,11 +146,18 @@ test('还款渠道模型固定金额、时间、归属和目标，两种方向�
     const payer = direction === 'income' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
     const original = model.create(row)
     for (const [key, value] of Object.entries({ amountInput: '999.00', economicNature: 'expense', date: '2026-09-02', time: '10:00:00',
-      owner: 'other', composition: 'payment', repaymentDetails: true, [target]: 'synthetic-other-card', parts: [{ accountId: bank.accountId, amountInput: '999.00' }] })) {
+      sourceKind: 'external', destinationKind: 'external', noLedgerImpact: true, composition: 'payment', repaymentDetails: true,
+      [target]: 'synthetic-other-card', parts: [{ accountId: bank.accountId, amountInput: '999.00' }] })) {
       assert.equal(model.change(row, original, key, value), original, key)
       const forged = model.derive(row, { ...original, [key]: value }, { accounts: [credit, bank] })
       assert.equal(forged.canSave, false, '旧输入不能改写固定事实：' + key)
       assert.match(forged.fieldErrors.repaymentChannel, /修改同笔判断/)
+    }
+    for (const [key, value] of [['owner', 'other'], ['otherTreatment', 'expense']]) {
+      assert.equal(model.change(row, original, key, value), original, '旧归属控件不改渠道事实')
+      const ignored = model.derive(row, { ...original, [key]: value }, { accounts: [credit, bank] })
+      assert.equal(ignored.canSave, false)
+      assert.equal(ignored.payload.decisions, undefined, '旧控件字段不产生任何归属决定')
     }
     let updated = model.change(row, original, payer, bank.accountId)
     updated = model.change(row, updated, 'note', '合成补充说明')
@@ -267,6 +274,9 @@ test('真实 Page 隐藏固定编辑入口，旧控件事件不改渠道事实�
   edit(page, 'amountInput', '100.00')
   edit(page, 'date', '2026-10-01')
   mode(page, 'owner', 'other')
+  mode(page, 'sourceKind', 'external')
+  mode(page, 'destinationKind', 'external')
+  mode(page, 'noLedgerImpact', true)
   page.addFundsAccount(tap({ endpoint: 'payer' }))
   assert.equal(page.toggleRepaymentDetails, undefined)
   assert.equal(select(page, 'reviewCounterparty', { ...credit, accountId: 'synthetic-other-credit' }), false)

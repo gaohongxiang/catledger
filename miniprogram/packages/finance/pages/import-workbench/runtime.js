@@ -13,7 +13,11 @@ const importPerformance = require('../../services/import-performance')
 const readCache = require('../../../../services/read-cache')
 const pendingWrites = require('../../../../services/pending-ledger-write')
 const reviewLayout = require('./review-layout')
+const accountPending = require('./account-pending')
 
+// 账户步骤的问题组数量有限，一次读满并补齐服务端按字节预算切出的页；
+// 翻页只在超过 100 组时保留。
+const ACCOUNT_STEP_PAGE_SIZE = 100
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const downloadProgress = progress => {
   const total = Number(progress && progress.total), completed = Number(progress && progress.completed)
@@ -30,11 +34,30 @@ function boundedSetData(page) {
   page.setData = function (patch, callback) {
     let part = {}, size = 2
     const chunks = []
-    for (const key of Object.keys(patch)) {
-      const entry = { [key]: patch[key] }, next = bytes(entry)
+    function append(key, value) {
+      const next = bytes({ [key]: value })
       if (next > 64 * 1024) throw new Error('当前展示项超过预算，请通过详情分页查看')
-      if (size + next > 60 * 1024) { chunks.push(part); part = {}; size = 2 }
-      part[key] = patch[key]; size += next
+      if (size + next > 60 * 1024 && Object.keys(part).length) { chunks.push(part); part = {}; size = 2 }
+      part[key] = value; size += next
+    }
+    for (const key of Object.keys(patch)) {
+      const value = patch[key]
+      if (Array.isArray(value) && bytes({ [key]: value }) > 64 * 1024) {
+        // 卡片已分页，但100张短卡的数组仍可能超单次桥接预算。
+        // 先替换一个有界前缀（同时截掉上一页尾部），再按索引补齐；
+        // 所有分块先验证完再发送，单张过大仍按原保护明确报错。
+        let count = 0, prefixBytes = bytes({ [key]: [] })
+        while (count < value.length) {
+          const next = bytes(value[count]) + 1
+          if (count && prefixBytes + next > 48 * 1024) break
+          if (prefixBytes + next > 64 * 1024) throw new Error('当前展示项超过预算，请通过详情分页查看')
+          prefixBytes += next; count++
+        }
+        append(key, value.slice(0, count))
+        // 父数组和子路径分开发送，避免原生 setData 对同批父子路径的覆盖顺序产生歧义。
+        chunks.push(part); part = {}; size = 2
+        for (let index = count; index < value.length; index++) append(key + '[' + index + ']', value[index])
+      } else append(key, value)
     }
     if (Object.keys(part).length) chunks.push(part)
     chunks.forEach((chunk, index) => send(chunk, index === chunks.length - 1 ? function () {
@@ -44,7 +67,7 @@ function boundedSetData(page) {
   }
 }
 
-function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
+function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return require('./account-display-groups').compact(Object.assign(visible, { evidencePreview: Boolean(evidencePreview) })) }
 
 function createViewSession(page, view) {
   const session = viewSession.create(api.callImport, view, { onStale() {
@@ -628,7 +651,7 @@ module.exports = {
 
   finishDraftStep: async function (step) {
     if (this.data.busy || !this._draftSession) return
-    if (this.data.accountStepSummary.pending > 0 || (step === 4 && this.data.reviewStatusTabs[0].count > 0)) return
+    if (accountPending.count(this, this.data.accountStepSummary.pending) > 0 || (step === 4 && this.data.reviewStatusTabs[0].count > 0)) return
     this.setData({ busy: true, errorMessage: '' })
     try {
       const session = this._draftSession
@@ -636,8 +659,9 @@ module.exports = {
       const checked = session.isLocal ? session.view : await this.request('financeUpdates.organize', { requestId: api.createRequestId(),
           updateId: session.view.update.updateId, version: session.view.update.version })
       this.applyUpdateView(checked, true)
-      if (this.data.accountStepSummary.pending > 0 || (step === 4 && (this.data.openIssueCount || !this.data.coverage.selectedEventsReadyToPost))) {
-        this.setStep({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
+      const pendingAccounts = accountPending.count(this, this.data.accountStepSummary.pending)
+      if (pendingAccounts > 0 || (step === 4 && (this.data.openIssueCount || !this.data.coverage.selectedEventsReadyToPost))) {
+        this.setStep({ currentStep: pendingAccounts ? 2 : 3,
             errorMessage: '整理结果已更新，请完成剩余核对后继续' })
         return
       }
@@ -756,7 +780,8 @@ module.exports = {
     if (!same) { if (this._viewSession) this._viewSession.close(); this._viewSession = createViewSession(this, view) }
     else this._viewSession.accept(view)
     if (changed) { this._mainPager = null; this._businessData = null }
-    const workbench = view.workbench
+    const workbench = Object.assign({}, view.workbench, { accountStepSummary: Object.assign({}, view.workbench.accountStepSummary,
+      { pending: accountPending.count(this, view.workbench.accountStepSummary.pending, view.update.updateId) }) })
     const open = view.coverage.openBlockingIssues
     const workflow = view.update.status !== 'review' ? 4 : workbench.accountStepSummary.pending ? 2 : workbench.reviewStatusTabs[0].count ? 3 : 4
     const current = this.data.currentStep
@@ -860,7 +885,10 @@ module.exports = {
     this._loadedStep = step
     if (![2, 3].includes(step)) { setChangedData(this, Object.assign({}, this.stepPatch(step), { pageLoading: false, pageError: '' })); return }
     let action = 'reviewIssues.list', filter = {}, kind = 'accountMappings'
-    if (step === 2) filter = { group: 'accounts' }
+    if (step === 2) filter = this._draftSession?.isLocal && this._draftSession.accountConfirmationDetails
+      ? { group: 'accounts', view: 'account_confirmations', separateIssueIds: [...this._accountUiDrafts]
+        .filter(([, draft]) => draft.confirmationSeparate).map(([id]) => id).sort() }
+      : { group: 'accounts' }
     else if (this.data.activeReviewTab === 'category') {
       const status = this.data.activeCategoryStatus
       if (status === 'pending') { action = 'economicEvents.list'; filter = { view: 'category_pending', query: this.data.categoryQuery }; kind = 'categoryCards' }
@@ -871,24 +899,37 @@ module.exports = {
       kind = { completed: 'reviewedEvents', excluded: 'excludedReviewGroups', duplicate: 'duplicateReviewEvents' }[status]
     }
     if (reset || !this._mainPager) this._mainPager = this._viewSession.pager(action,
-      step === 3 ? Object.assign({}, filter, { pageSize: presentation.PAGE_SIZE }) : filter, { fillPage: step === 3 })
+      step === 2 ? Object.assign({}, filter, { pageSize: ACCOUNT_STEP_PAGE_SIZE })
+        : step === 3 ? Object.assign({}, filter, { pageSize: presentation.PAGE_SIZE }) : filter,
+      { fillPage: step === 2 || step === 3 })
     const pager = this._mainPager
     if (!quiet) this.setData({ pageLoading: true, pageError: '' })
     try {
       const response = await pager.load(direction)
       if (!active() || pager !== this._mainPager) return
-      const directory = step === 2 ? await this.loadDirectories(response.items.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
-      if (!active()) return
       const events = action === 'economicEvents.list' && kind !== 'excludedReviewGroups' ? response.items : []
-      const issues = action === 'reviewIssues.list' ? response.items :
+      let issues = action === 'reviewIssues.list' ? response.items :
         Array.from(new Map(events.filter(event => event.pendingIssue).map(event => [event.pendingIssue.issueId,
           Object.assign({}, event.pendingIssue, { subject: event })])).values())
-      this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
+      let accountDisplayGroups = []
+      if (step === 2 && filter.view === 'account_confirmations') {
+        const details = this._draftSession.accountConfirmationDetails({ viewVersion: response.viewVersion,
+          separateIssueIds: filter.separateIssueIds, groupIds: response.items.map(issue => issue.accountConfirmationGroupId).filter(Boolean) })
+        const originals = new Map(details.issues.map(issue => [issue.issueId, issue]))
+        accountDisplayGroups = details.groups
+        const groups = new Map(details.groups.map(group => [group.groupId, group]))
+        issues = response.items.flatMap(issue => issue.accountConfirmationGroupId
+          ? groups.get(issue.accountConfirmationGroupId).issueIds.map(id => originals.get(id)) : [issue])
+      }
+      const directory = step === 2 ? await this.loadDirectories(issues.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
+      if (!active()) return
+      this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountDisplayGroups, accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
-        for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
+        for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed &&
+          !draft.confirmationSeparate && !draft.separated) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         const state = this.mappingState()
         const mappings = state.mappings.map(compactMapping)

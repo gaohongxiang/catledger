@@ -2,6 +2,7 @@ const protocol = require('../domain/import-review/local-review-protocol')
 const { sha256 } = require('../domain/import-review/portable-digest')
 const posting = require('./import-local-posting')
 const modelFactory = require('./import-local-model'), readerFactory = require('./import-local-read')
+const creationFacts = require('../domain/import-review/account-creation-facts')
 const clone = modelFactory.clone
 const mutations = new Set(['financeUpdates.setReview','financeUpdates.setCategory','financeUpdates.setRepayment','financeUpdates.reviseDuplicate',
   'reviewIssues.resolve','reviewIssues.resolveAccountMappings','reviewIssues.reviseAccountMapping','reviewIssues.resolvePairings'])
@@ -9,12 +10,15 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   const facts = restored.facts, final = Object.fromEntries(['accounts','events','pairings','reviews','duplicates'].map(kind=>[kind,new Map()]))
   const state = { schema:3,updateId:facts.update.updateId,entries:[],drafts:{},pairingDrafts:{},pairingResults:{},step:2,flight:null,postFlight:null,postRejection:null }
   const receipts = new Map(), listeners = new Set()
+  const accountCreations = new Map()
   let compactReceiptSaved=false
   let model, reader, closed=false, paused=false, errorMessage='', running=null, supplement=null, awaitingEdits=false
   function guard() { if(closed||!alive())throw Object.assign(new Error('登录状态已改变，草稿操作已停止'),{code:'SESSION_CHANGED'}) }
   function mutable() {guard();if(state.postFlight||paused)throw Object.assign(new Error('上次入账结果尚未核实，请继续原请求'),{code:'OPERATION_UNCONFIRMED'})}
   function applyRecord(changes) {
     for(const change of changes){
+      if(change.kind==='accountCreation'){if(change.value===null)accountCreations.delete(change.key);else accountCreations.set(change.key,clone(change.value))}
+      if(change.kind==='accounts'&&creationFacts.draftOf(change.value)){try{const fact=creationFacts.fromChoice(change.value,facts);if(fact)accountCreations.set(fact.key,fact)}catch(_){}}
       if(final[change.kind]){if(change.value===null)final[change.kind].delete(change.key);else final[change.kind].set(change.key,clone(change.value))}
       else if(change.kind==='ui'){if(change.value===null)delete state[change.key];else state[change.key]=clone(change.value)}
       else if(change.kind==='draft'){if(change.value===null)delete state.drafts[change.key];else state.drafts[change.key]=clone(change.value)}
@@ -45,6 +49,9 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
       throw Object.assign(new Error('还款现按全额转账，请重新确认账户和金额'),{code:'LOCAL_RECHECK_REQUIRED'})
     }
     for(const choice of final.duplicates.values())attempt(choice,()=>model.reviseDuplicate({...choice,eventVersion:undefined}))
+    const used=creationFacts.referencedIds(Object.fromEntries(Object.entries(final).map(([kind,values])=>[kind,[...values.values()]])),facts.snapshotId)
+    for(const fact of accountCreations.values())if(used.has(creationFacts.accountId(fact,facts.snapshotId)))attempt(
+      {...fact,eventIds:[...new Set(fact.members.map(member=>member.objectId))]},()=>model.restoreAccountCreation(fact))
     for(const choice of final.accounts.values())attempt(choice,()=>model.mapAccount(choice))
     const banks=new Set([...final.pairings.values()].filter(row=>row.decision==='same').map(row=>row.bankEventId)), memberEditors=new Map()
     for(const pair of final.pairings.values())for(const [id,value]of Object.entries(pair.memberEditors||{}))memberEditors.set(id,{eventId:id,editor:value})
@@ -68,7 +75,8 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     if(action==='financeUpdates.setCategory')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,fields:{categoryId:data.categoryId}})
     if(action==='financeUpdates.setRepayment')return model.edit({eventId:data.eventId,eventVersion:data.eventVersion,editorVersion:1,decisions:{repayment:data.repayment},acknowledgedChanges:['repayment']})
     if(action==='financeUpdates.reviseDuplicate')return model.reviseDuplicate(data)
-    if(action==='reviewIssues.resolveAccountMappings')return data.decisions.flatMap(choice=>model.mapAccount(choice))
+    if(action==='reviewIssues.resolveAccountMappings')return data.groups
+      ?model.mapAccountGroups(data.groups,data.decisions||[]):data.decisions.flatMap(choice=>model.mapAccount(choice))
     if(action==='reviewIssues.reviseAccountMapping')return model.mapAccount(data)
     if(action==='reviewIssues.resolve')return model.issues.get(data.issueId)?.issueType==='account_mapping'?model.mapAccount(data):model.review(data)
     if(action==='reviewIssues.resolvePairings'){
@@ -87,9 +95,22 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     const prior=receipts.get(key)
     if(prior){if(prior.digest!==digest)throw Object.assign(new Error('同一请求的内容不能更换'),{code:'IDEMPOTENCY_CONFLICT'});return prior.receipt}
     try{
-      const changes=operation(action,data),view=reader.summary()
+      const applied=operation(action,data),changes=Array.isArray(applied)?applied:applied.changes,view=reader.summary()
       const receipt={protocolVersion:2,kind:'operation-receipt',receiptId:key,action,updateId:state.updateId,appliedVersion:facts.update.version,
         update:view.update,status:'review',posting:null,local:true,...data.eventId?{event:{eventId:data.eventId,version:model.events.get(data.eventId)?.version,status:model.events.get(data.eventId)?.status}}:{}}
+      if(applied.accountGroups){
+        receipt.accountGroups=applied.accountGroups
+        const drafts=clone(data.drafts||state.drafts)
+        for(const [index,group]of applied.accountGroups.entries())for(const issueId of group.issueIds){
+          const choice=data.groups[index].decision,account=group.accountId&&model.accounts.get(group.accountId)
+          const creator=group.creatorIssueId===issueId
+          drafts[issueId]={...drafts[issueId],mode:choice.decision==='exclude_events'?'ignore':choice.paymentRuleAction==='external'?'external':creator?'create':'account',
+            accountId:group.accountId||'',localConfirmed:true,dirty:false,
+            ...(account?{name:account.name,accountFacts:{accountId:account.accountId,name:account.name,type:account.type,currency:account.currency}}:{accountFacts:null}),
+            createdAccountId:creator?group.createdAccountId:'',creatorIssueId:group.creatorIssueId||''}
+        }
+        for(const draftKey of new Set(Object.keys(drafts).concat(Object.keys(state.drafts))))if(JSON.stringify(drafts[draftKey])!==JSON.stringify(state.drafts[draftKey]))changes.push({kind:'draft',key:draftKey,value:drafts[draftKey]||null})
+      }
       if(action==='reviewIssues.resolvePairings')receipt.pairing={savedCount:changes.filter(row=>row.kind==='pairings').length,totalCount:changes.filter(row=>row.kind==='pairings').length,remainingCount:0,batchSavedCount:changes.filter(row=>row.kind==='pairings').length,continuationToken:null}
       changes.push({kind:'receipt',key,value:{digest,receipt}},{kind:'awaitingEdits',value:false})
       persist(changes);errorMessage='';emit();return receipt
@@ -99,6 +120,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     guard()
     if(state.postRejection)throw posting.reorganizationError()
     if(!state.postFlight){
+      if(Object.values(state.drafts).some(draft=>draft?.dirty&&!draft.localConfirmed))throw Object.assign(new Error('账户输入尚未确认，已保留，请先确认后再入账'),{code:'LOCAL_RECHECK_REQUIRED'})
       if(awaitingEdits||model.invalid.size)throw Object.assign(new Error('请先重新确认受影响的事项，其他选择已保留'),{code:'LOCAL_RECHECK_REQUIRED'})
       const value=model.finalState(),packed=protocol.split(JSON.stringify(value),'decisions'),id=requestId(),uploadId=requestId()
       const payload={protocolVersion:3,requestId:id,updateId:state.updateId,version:value.baseVersion,snapshotId:value.snapshotId,uploadId,payloadDigest:packed.digest}
@@ -146,6 +168,9 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
       if(action==='financeUpdates.organize'||action==='reviewIssues.refreshAccountGroups')return reader.summary()
       return mutations.has(action)?command(action,data):reader.read(action,data)},
     hasEvent:id=>model.events.has(id),hasIssue:id=>model.issues.has(id),hasReceipt:id=>receipts.has(id),
+    accountConfirmationDetails(data){guard();return reader.accountConfirmationDetails(data)},
+    confirmAccountGroups(data){return command('reviewIssues.resolveAccountMappings',{...data,groups:data.groups,decisions:data.decisions||[]})},
+    confirmAccountGroup({issueIds,decision,...data}){return session.confirmAccountGroups({...data,groups:[{issueIds,decision}]})},
     enqueue(entries,drafts){mutable();for(const entry of entries){const action=entry.kind==='account'?'reviewIssues.resolveAccountMappings':'reviewIssues.resolve';command(action,entry.kind==='account'?{requestId:requestId(),decisions:[{...entry.decision,issueId:entry.issueId}]}:{requestId:requestId(),issueId:entry.issueId,...entry.decision})}if(drafts)session.saveDrafts(drafts,state.step)},
     saveDrafts(drafts,step){mutable();const changes=[];for(const key of new Set(Object.keys(drafts).concat(Object.keys(state.drafts))))if(JSON.stringify(drafts[key])!==JSON.stringify(state.drafts[key]))changes.push({kind:'draft',key,value:drafts[key]||null});if(step&&step!==state.step)changes.push({kind:'ui',key:'step',value:step});if(changes.length)persist(changes)},
     savePairingDraft(key,value){mutable();persist([{kind:'pairingDraft',key,value}]);emit()},pairingTask:key=>state.pairingResults[key]||null,

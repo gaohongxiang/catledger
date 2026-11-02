@@ -1,8 +1,20 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { buildOrganizePlan } = require('../src/organizer-planner')
+const { buildOrganizePlan, inferExactAccountMappings } = require('../src/organizer-planner')
 const { buildPaymentMethodKey } = require('../src/identity')
+const { confirmedBatchMappings, confirmedNamedAccounts } = require('../../../test/helpers/account-bindings')
+const openIssues = plan => plan.issues.filter(issue => issue.status === 'open')
+
+// 分类、同笔和退款用例以已确认的钱包为前提；原始行的旧 mapping 字段本身不是确认依据。
+function confirmedRowPlan(options) {
+  const mappings = options.rows.filter(item => item.mappingAction === 'account' && item.mappedAccountId)
+    .map(item => ({ sourceType: item.sourceType, paymentMethodKey: item.paymentMethodKey,
+      paymentMethodHint: item.paymentMethod, mappingAction: 'account', accountId: item.mappedAccountId,
+      accountType: 'wallet', accountCurrency: item.currency }))
+  return buildOrganizePlan({ ...options, paymentMappings: confirmedBatchMappings(options.rows, mappings)
+    .concat(options.paymentMappings || []) })
+}
 
 function ids() {
   let value = 1
@@ -81,7 +93,7 @@ test('桥接分组保留同身份重叠证据，同时拒绝时间窗口传递�
 })
 
 test('收入支出没有分类时保留分类建议且允许入账', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000090',
     idFactory: ids(),
     rows: [row({ suggestedCategoryId: null })]
@@ -89,13 +101,13 @@ test('收入支出没有分类时保留分类建议且允许入账', () => {
 
   assert.equal(plan.events[0].status, 'ready')
   assert.ok(plan.events[0].reasonCodes.includes('category_required'))
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'category_assignment')
-  assert.equal(plan.issues[0].blocking, false)
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'category_assignment')
+  assert.equal(openIssues(plan)[0].blocking, false)
 })
 
 test('同一分类证据的多笔交易合并成一个分类决定组', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000091',
     idFactory: ids(),
     rows: [
@@ -113,9 +125,9 @@ test('同一分类证据的多笔交易合并成一个分类决定组', () => {
   })
 
   assert.equal(plan.events.length, 2)
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'category_assignment')
-  assert.equal(plan.issues[0].memberCount, 2)
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'category_assignment')
+  assert.equal(openIssues(plan)[0].memberCount, 2)
 })
 
 test('同身份证据合并为一个事件并保留 duplicate Evidence', () => {
@@ -141,7 +153,7 @@ test('同身份证据合并为一个事件并保留 duplicate Evidence', () => {
 })
 
 test('同额近时文本相似只生成 same_event 候选，不自动合并', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000002',
     idFactory: ids(),
     rows: [
@@ -162,12 +174,12 @@ test('同额近时文本相似只生成 same_event 候选，不自动合并', ()
 
   assert.equal(plan.events.length, 2)
   assert.equal(plan.events.every((event) => event.status === 'needs_action'), true)
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'same_event')
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'same_event')
 })
 
 test('跨来源共享稳定流水号且核心字段一致时才自动合并', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000003',
     idFactory: ids(),
     rows: [
@@ -203,18 +215,20 @@ test('账户未归属只投影 account_mapping，客户端不能把事件设为 
 test('余额宝转出到余额且两端已映射时直接 ready，不再人工确认', () => {
   const yuEBaoId = '51000000-0000-4000-8000-000000000001'
   const balanceId = '51000000-0000-4000-8000-000000000002'
+  const rows = [row({
+    sourceType: 'alipay', transactionType: 'transfer', rawTransactionType: '余额宝-转出到余额',
+    item: '余额宝转出', paymentMethod: '账户余额',
+    paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: null, mappedAccountId: null
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000018',
-    idFactory: ids(),
-    paymentMappings: [
-      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '余额宝'), mappingAction: 'account', accountId: yuEBaoId },
-      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId }
-    ],
-    rows: [row({
-      sourceType: 'alipay', transactionType: 'transfer', rawTransactionType: '余额宝-转出到余额',
-      item: '余额宝转出', paymentMethod: '账户余额',
-      paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', mappedAccountId: balanceId
-    })]
+    idFactory: ids(), rows,
+    paymentMappings: confirmedBatchMappings(rows, [
+      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '余额宝'), mappingAction: 'account', accountId: yuEBaoId,
+        accountType: 'other_asset', accountCurrency: 'CNY' },
+      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId,
+        accountType: 'wallet', accountCurrency: 'CNY' }
+    ])
   })
   assert.equal(plan.events[0].economicNature, 'internal_transfer')
   assert.equal(plan.events[0].ledgerAccountId, yuEBaoId)
@@ -262,17 +276,18 @@ test('微信零钱提现未映射时银行卡支付方式不得冒充转出账�
 
 test('支付宝提现只在银行卡未知时生成转入账户待确认', () => {
   const balanceId = '51000000-0000-4000-8000-000000000003'
+  const rows = [row({
+    sourceType: 'alipay', transactionType: 'withdrawal', rawTransactionType: '提现-实时提现',
+    item: '提现', paymentMethod: '浙江农商联合银行',
+    paymentMethodKey: buildPaymentMethodKey('alipay', '浙江农商联合银行'), mappingAction: null, mappedAccountId: null
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000019',
-    idFactory: ids(),
-    paymentMappings: [
-      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId }
-    ],
-    rows: [row({
-      sourceType: 'alipay', transactionType: 'withdrawal', rawTransactionType: '提现-实时提现',
-      item: '提现', paymentMethod: '浙江农商联合银行',
-      paymentMethodKey: buildPaymentMethodKey('alipay', '浙江农商联合银行'), mappingAction: null, mappedAccountId: null
-    })]
+    idFactory: ids(), rows,
+    paymentMappings: confirmedBatchMappings(rows, [
+      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId,
+        accountType: 'wallet', accountCurrency: 'CNY' }
+    ])
   })
   assert.equal(plan.events[0].ledgerAccountId, balanceId)
   assert.equal(plan.events[0].counterpartyLedgerAccountId, null)
@@ -282,17 +297,18 @@ test('支付宝提现只在银行卡未知时生成转入账户待确认', () =>
 
 test('支付宝提现的支付方式为余额、银行在交易对方时仍只缺转入端', () => {
   const balanceId = '51000000-0000-4000-8000-000000000030'
+  const rows = [row({
+    sourceType: 'alipay', transactionType: 'withdrawal', rawTransactionType: '账户存取',
+    item: '提现-实时提现', counterparty: '浙江农商联合银行', paymentMethod: '余额',
+    paymentMethodKey: buildPaymentMethodKey('alipay', '余额'), mappingAction: null, mappedAccountId: null
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000030',
-    idFactory: ids(),
-    paymentMappings: [
-      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId }
-    ],
-    rows: [row({
-      sourceType: 'alipay', transactionType: 'withdrawal', rawTransactionType: '账户存取',
-      item: '提现-实时提现', counterparty: '浙江农商联合银行', paymentMethod: '余额',
-      paymentMethodKey: buildPaymentMethodKey('alipay', '余额'), mappingAction: 'account', mappedAccountId: balanceId
-    })]
+    idFactory: ids(), rows,
+    paymentMappings: confirmedBatchMappings(rows, [
+      { sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', '账户余额'), mappingAction: 'account', accountId: balanceId,
+        accountType: 'wallet', accountCurrency: 'CNY' }
+    ])
   })
   assert.equal(plan.events[0].economicNature, 'internal_transfer')
   assert.equal(plan.events[0].ledgerAccountId, balanceId)
@@ -321,40 +337,56 @@ test('微信零钱还信用卡先确认零钱归属，无尾号信用卡留到�
   assert.equal(plan.issues[0].issueType, 'account_mapping')
 })
 
-test('支付宝提现唯一精确命中已有平台账户时只确认未知银行端', () => {
+test('支付宝提现名称唯一命中仍需确认钱包，确认后只缺未知银行端', () => {
   const balanceId = '51000000-0000-4000-8000-000000000004'
-  const plan = buildOrganizePlan({
+  const options = {
     updateId: '60000000-0000-4000-8000-000000000021',
-    idFactory: ids(),
     accounts: [
-      { accountId: balanceId, name: '支付宝账户余额', currency: 'CNY' }
+      { accountId: balanceId, name: '支付宝账户余额', type: 'wallet', currency: 'CNY' }
     ],
     rows: [row({
       sourceType: 'alipay', transactionType: 'withdrawal', rawTransactionType: '提现-实时提现',
       item: '提现', paymentMethod: '浙江农商联合银行',
       paymentMethodKey: buildPaymentMethodKey('alipay', '浙江农商联合银行'), mappingAction: null, mappedAccountId: null
     })]
-  })
+  }
+  const suggested = buildOrganizePlan({ ...options, idFactory: ids() })
+  assert.equal(inferExactAccountMappings(options.rows, options.accounts)[0].accountId, balanceId)
+  assert.equal(suggested.events[0].ledgerAccountId, null, '名称候选不是账户确认')
+  assert.equal(suggested.events[0].counterpartyLedgerAccountId, null)
+  assert.equal(suggested.events[0].status, 'needs_action')
+  assert.equal(openIssues(suggested).length, 1)
+  assert.equal(openIssues(suggested)[0].issueType, 'account_mapping')
+  const plan = buildOrganizePlan({ ...options, idFactory: ids(),
+    paymentMappings: confirmedNamedAccounts(options.rows, options.accounts) })
   assert.equal(plan.events[0].ledgerAccountId, balanceId)
   assert.equal(plan.events[0].counterpartyLedgerAccountId, null)
-  const openIssues = plan.issues.filter((issue) => issue.status === 'open')
-  assert.equal(openIssues.length, 1)
-  assert.equal(openIssues[0].issueType, 'transfer_accounts')
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'transfer_accounts')
   assert.equal(plan.events[0].fieldSources.fundsProjection.to.label, '浙江农商联合银行')
 })
 
-test('普通支付工具唯一精确命中已有账户时直接沿用', () => {
+test('普通支付工具唯一名称命中仅建议，明确绑定后才沿用且可修改', () => {
   const accountId = '51000000-0000-4000-8000-000000000005'
-  const plan = buildOrganizePlan({
+  const options = {
     updateId: '60000000-0000-4000-8000-000000000022',
-    idFactory: ids(),
-    accounts: [{ accountId, name: '光大银行信用卡(2690)', currency: 'CNY' }],
+    accounts: [{ accountId, name: '光大银行信用卡(2690)', type: 'credit', currency: 'CNY' }],
     rows: [row({
       sourceType: 'wechat', paymentMethod: '光大银行信用卡(2690)',
       paymentMethodKey: buildPaymentMethodKey('wechat', '光大银行信用卡(2690)'),
       mappingAction: null, mappedAccountId: null
     })]
-  })
+  }
+  const suggested = buildOrganizePlan({ ...options, idFactory: ids() })
+  assert.equal(inferExactAccountMappings(options.rows, options.accounts)[0].accountId, accountId)
+  assert.equal(suggested.events[0].ledgerAccountId, null)
+  assert.equal(suggested.events[0].status, 'needs_action')
+  assert.equal(suggested.issues.length, 1)
+  assert.equal(suggested.issues[0].issueType, 'account_mapping')
+  assert.equal(suggested.issues[0].status, 'open')
+  assert.equal(suggested.issues[0].blocking, true)
+  const plan = buildOrganizePlan({ ...options, idFactory: ids(),
+    paymentMappings: confirmedNamedAccounts(options.rows, options.accounts) })
   assert.equal(plan.events[0].ledgerAccountId, accountId)
   assert.equal(plan.events[0].status, 'ready')
   assert.equal(plan.issues.length, 1)
@@ -368,16 +400,17 @@ test('本批账户选择必须覆盖旧的永久映射', () => {
   const oldAccountId = '51000000-0000-4000-8000-000000000031'
   const draftAccountId = '51000000-0000-4000-8000-000000000032'
   const paymentMethodKey = buildPaymentMethodKey('alipay', '余额')
+  const rows = [row({
+    sourceType: 'alipay', paymentMethod: '余额', paymentMethodKey,
+    mappingAction: 'account', mappedAccountId: oldAccountId
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000031',
-    idFactory: ids(),
-    paymentMappings: [
-      { sourceType: 'alipay', paymentMethodKey, mappingAction: 'account', accountId: draftAccountId }
-    ],
-    rows: [row({
-      sourceType: 'alipay', paymentMethod: '余额', paymentMethodKey,
-      mappingAction: 'account', mappedAccountId: oldAccountId
-    })]
+    idFactory: ids(), rows,
+    paymentMappings: confirmedBatchMappings(rows, [
+      { sourceType: 'alipay', paymentMethodKey, mappingAction: 'account', accountId: draftAccountId,
+        accountType: 'wallet', accountCurrency: 'CNY' }
+    ])
   })
   assert.equal(plan.events[0].ledgerAccountId, draftAccountId)
 })
@@ -417,6 +450,10 @@ test('支付宝余额错误历史映射到现金账户时不得隐藏并沿用',
 test('有效历史映射也必须作为可修改账户项展示', () => {
   const walletAccountId = '51000000-0000-4000-8000-000000000034'
   const paymentMethodKey = buildPaymentMethodKey('wechat', '零钱')
+  const rows = [row({
+    sourceProfileKey: 'e'.repeat(64), paymentMethod: '零钱', paymentMethodKey,
+    mappingAction: null, mappedAccountId: null
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000034',
     idFactory: ids(),
@@ -427,15 +464,12 @@ test('有效历史映射也必须作为可修改账户项展示', () => {
       nature: 'asset',
       currency: 'CNY'
     }],
-    paymentMappings: [{
+    paymentMappings: confirmedBatchMappings(rows, [{
       sourceType: 'wechat', paymentMethodKey,
       mappingAction: 'account', accountId: walletAccountId,
       mappingScope: 'history'
-    }],
-    rows: [row({
-      paymentMethod: '零钱', paymentMethodKey,
-      mappingAction: 'account', mappedAccountId: walletAccountId
-    })]
+    }]).map(mapping => ({ ...mapping, mappingScope: 'history' })),
+    rows
   })
 
   assert.equal(plan.events[0].ledgerAccountId, walletAccountId)
@@ -451,8 +485,8 @@ test('同名账户不唯一时不得自动猜测', () => {
     updateId: '60000000-0000-4000-8000-000000000023',
     idFactory: ids(),
     accounts: [
-      { accountId: '51000000-0000-4000-8000-000000000006', name: '支付宝花呗', currency: 'CNY' },
-      { accountId: '51000000-0000-4000-8000-000000000007', name: '支付宝花呗', currency: 'CNY' }
+      { accountId: '51000000-0000-4000-8000-000000000006', name: '支付宝花呗', type: 'credit', currency: 'CNY' },
+      { accountId: '51000000-0000-4000-8000-000000000007', name: '支付宝花呗', type: 'credit', currency: 'CNY' }
     ],
     rows: [row({
       sourceType: 'alipay', paymentMethod: '花呗',
@@ -464,7 +498,7 @@ test('同名账户不唯一时不得自动猜测', () => {
 })
 
 test('普通微信转账按外部收支处理，不制造第二个自有账户', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000020',
     idFactory: ids(),
     rows: [row({
@@ -475,11 +509,11 @@ test('普通微信转账按外部收支处理，不制造第二个自有账户',
   assert.equal(plan.events[0].economicNature, 'expense')
   assert.equal(plan.events[0].status, 'ready')
   assert.equal(plan.events[0].counterpartyLedgerAccountId, null)
-  assert.equal(plan.issues.length, 0)
+  assert.equal(openIssues(plan).length, 0)
 })
 
 test('相同证据上下文的共同字段问题恢复为一张可批量处理卡片', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000015',
     idFactory: ids(),
     rows: [
@@ -498,13 +532,13 @@ test('相同证据上下文的共同字段问题恢复为一张可批量处理�
   })
 
   assert.equal(plan.events.length, 2)
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'shared_fields')
-  assert.equal(plan.issues[0].memberCount, 2)
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'shared_fields')
+  assert.equal(openIssues(plan)[0].memberCount, 2)
 })
 
 test('不同支付账户的共同字段问题不得误批量', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000016',
     idFactory: ids(),
     rows: [
@@ -520,12 +554,12 @@ test('不同支付账户的共同字段问题不得误批量', () => {
     ]
   })
 
-  assert.equal(plan.issues.length, 2)
-  assert.equal(plan.issues.every((issue) => issue.issueType === 'shared_fields'), true)
+  assert.equal(openIssues(plan).length, 2)
+  assert.equal(openIssues(plan).every((issue) => issue.issueType === 'shared_fields'), true)
 })
 
 test('多笔退款仍保持逐笔问题，绝不批量套用同一原消费', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000017',
     idFactory: ids(),
     rows: [
@@ -567,12 +601,13 @@ test('旧版本发布的永久忽略不再替新导入排除，只回到账户�
 })
 
 test('本批自己选定的仅本次不计入仍排除并保留可修改账户项', () => {
+  const rows = [row({ mappingAction: null, mappedAccountId: null })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000015',
     idFactory: ids(),
-    rows: [row({ mappingAction: null, mappedAccountId: null })],
-    paymentMappings: [{ sourceType: 'wechat', paymentMethodKey: 'a'.repeat(64), paymentMethodHint: '微信零钱',
-      mappingAction: 'ignore', accountId: null, mappingScope: 'batch' }]
+    rows,
+    paymentMappings: confirmedBatchMappings(rows, [{ sourceType: 'wechat', paymentMethodKey: 'a'.repeat(64), paymentMethodHint: '微信零钱',
+      mappingAction: 'ignore', accountId: null, mappingScope: 'batch' }])
   })
 
   assert.equal(plan.events[0].status, 'excluded')
@@ -649,15 +684,20 @@ test('历史保存的忽略规则不再替新批次排除，只回到账户确�
   assert.equal(reimported.issues.some(issue => issue.issueType === 'account_mapping' && issue.status === 'open'), true)
 
   const exactAccount = '50000000-0000-4000-8000-000000000140'
-  const overridden = buildOrganizePlan({
+  const historyAccount = {
+    sourceType: 'alipay', paymentMethodKey: currentKey, paymentMethodHint: label,
+    mappingAction: 'account', accountId: exactAccount, accountType: 'wallet', accountCurrency: 'CNY', mappingScope: 'history'
+  }
+  const options = {
     updateId: '60000000-0000-4000-8000-000000000141', idFactory: ids(),
     rows: [baseRow],
-    paymentMappings: [legacyIgnore, {
-      sourceType: 'alipay', paymentMethodKey: currentKey, paymentMethodHint: label,
-      mappingAction: 'account', accountId: exactAccount, accountType: 'wallet', mappingScope: 'history'
-    }],
     accounts: [{ accountId: exactAccount, name: label, type: 'wallet', currency: 'CNY' }]
-  })
+  }
+  const suggested = buildOrganizePlan({ ...options, paymentMappings: [legacyIgnore, historyAccount] })
+  assert.equal(suggested.events[0].ledgerAccountId, null, '旧名称映射与永久忽略都不是本批确认')
+  assert.equal(openIssues(suggested)[0].issueType, 'account_mapping')
+  const overridden = buildOrganizePlan({ ...options, idFactory: ids(),
+    paymentMappings: [legacyIgnore, ...confirmedBatchMappings([baseRow], [historyAccount])] })
   assert.equal(overridden.events[0].ledgerAccountId, exactAccount)
   assert.notEqual(overridden.events[0].status, 'excluded')
 })
@@ -665,17 +705,18 @@ test('历史保存的忽略规则不再替新批次排除，只回到账户确�
 test('微信已存入零钱直接使用微信零钱映射而不生成斜杠账户问题', () => {
   const changeKey = buildPaymentMethodKey('wechat', '零钱')
   const changeAccount = '50000000-0000-4000-8000-000000000150'
+  const rows = [row({
+    sourceProfileKey: 'e'.repeat(64), direction: 'income', transactionType: 'transfer', rawTransactionType: '转账',
+    rawStatus: '已存入零钱', paymentMethod: '/', paymentMethodKey: null,
+    mappingAction: null, mappedAccountId: null
+  })]
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000150', idFactory: ids(),
-    rows: [row({
-      direction: 'income', transactionType: 'transfer', rawTransactionType: '转账',
-      rawStatus: '已存入零钱', paymentMethod: '/', paymentMethodKey: null,
-      mappingAction: null, mappedAccountId: null
-    })],
-    paymentMappings: [{
+    rows,
+    paymentMappings: confirmedBatchMappings(rows, [{
       sourceType: 'wechat', paymentMethodKey: changeKey, paymentMethodHint: '微信零钱',
       mappingAction: 'account', accountId: changeAccount, accountType: 'wallet', mappingScope: 'history'
-    }],
+    }]).map(mapping => ({ ...mapping, mappingScope: 'history' })),
     accounts: [{ accountId: changeAccount, name: '微信零钱', type: 'wallet', currency: 'CNY' }]
   })
   assert.equal(plan.events[0].ledgerAccountId, changeAccount)
@@ -725,7 +766,7 @@ test('支付宝非资金规则必须同时满足零金额、中性方向、信�
   })
 })
 
-test('同一银行卡跨微信和支付宝只生成一个账户归属问题', () => {
+test('同银行同尾号跨微信和支付宝仍各自确认，不能凭名称合组', () => {
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000008',
     idFactory: ids(),
@@ -757,12 +798,14 @@ test('同一银行卡跨微信和支付宝只生成一个账户归属问题', ()
   })
 
   assert.equal(plan.events.length, 2)
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'account_mapping')
-  assert.equal(plan.issues[0].memberCount, 2)
+  assert.deepEqual(plan.events.map(event => event.ledgerAccountId), [null, null])
+  assert.equal(plan.issues.length, 2)
+  assert.ok(plan.issues.every(issue => issue.issueType === 'account_mapping' && issue.status === 'open' && issue.memberCount === 1))
+  assert.equal(new Set(plan.issues.map(issue => issue.issueKey)).size, 2)
+  assert.equal(new Set(plan.members.map(member => member.objectId)).size, 2)
 })
 
-test('同一银行卡跨三种账单已匹配时仍只显示一个已确认账户', () => {
+test('同尾号跨三种账单分别确认后才能共用账本账户，各引用仍可独立修改', () => {
   const accountId = '50000000-0000-4000-8000-000000000099'
   const makeCardRow = (sourceType, suffix, key) => row({
     rowId: `10000000-0000-4000-8000-${suffix}`,
@@ -778,48 +821,61 @@ test('同一银行卡跨三种账单已匹配时仍只显示一个已确认账�
     mappingAction: null,
     mappedAccountId: null
   })
-  const plan = buildOrganizePlan({
+  const options = {
     updateId: '60000000-0000-4000-8000-000000000099',
-    idFactory: ids(),
     accounts: [{ accountId, name: '光大银行信用卡(2690)', type: 'credit', currency: 'CNY' }],
     rows: [
       makeCardRow('wechat', '000000000091', 'a'),
       makeCardRow('alipay', '000000000092', 'b'),
       makeCardRow('bank', '000000000093', 'c')
     ]
-  })
+  }
+  const suggested = buildOrganizePlan({ ...options, idFactory: ids() })
+  assert.equal(suggested.events.length, 3)
+  assert.ok(suggested.events.every(event => !event.ledgerAccountId && event.status === 'needs_action'))
+  assert.equal(openIssues(suggested).length, 3)
+  assert.ok(openIssues(suggested).every(issue => issue.issueType === 'account_mapping' && issue.memberCount === 1))
+  const bindings = confirmedNamedAccounts(options.rows, options.accounts)
+  assert.equal(bindings.length, 3)
+  assert.equal(new Set(bindings.map(mapping => mapping.paymentMethodKey)).size, 3)
+  const plan = buildOrganizePlan({ ...options, idFactory: ids(), paymentMappings: bindings })
 
   const accountIssues = plan.issues.filter((issue) => issue.issueType === 'account_mapping')
-  assert.equal(accountIssues.length, 1)
-  assert.equal(accountIssues[0].status, 'resolved')
-  assert.equal(accountIssues[0].memberCount, 3)
+  assert.equal(plan.events.length, 3, '确认同一账户不合并三笔交易')
+  assert.ok(plan.events.every(event => event.ledgerAccountId === accountId))
+  assert.equal(accountIssues.length, 3)
+  assert.ok(accountIssues.every(issue => issue.status === 'resolved' && issue.memberCount === 1 && !issue.blocking))
+  assert.equal(plan.issues.filter(issue => issue.issueType === 'same_event' && issue.status === 'open').length, 1,
+    '账户确认不替用户决定同额近时的两条记录是否同笔')
 })
 
 test('映射优先级不受输入数组顺序影响，本批选择始终覆盖历史映射', () => {
   const historyId = '50000000-0000-4000-8000-000000000081'
   const batchId = '50000000-0000-4000-8000-000000000082'
-  const paymentMethodKey = 'e'.repeat(64)
+  const paymentMethod = '光大银行信用卡(6222000000000081)'
+  const paymentMethodKey = buildPaymentMethodKey('wechat', paymentMethod)
+  const rows = [row({ paymentMethod, paymentMethodKey, mappingAction: null, mappedAccountId: null })]
   const mappings = [
     {
-      sourceType: 'wechat', paymentMethodKey, paymentMethodHint: '光大银行信用卡(2690)',
-      mappingAction: 'account', accountId: historyId, accountType: 'credit', mappingScope: 'history'
+      sourceType: 'wechat', paymentMethodKey, paymentMethodHint: paymentMethod,
+      mappingAction: 'account', accountId: historyId, accountType: 'credit', accountCurrency: 'CNY', mappingScope: 'history'
     },
     {
-      sourceType: 'wechat', paymentMethodKey, paymentMethodHint: '光大银行信用卡(2690)',
-      mappingAction: 'account', accountId: batchId, accountType: 'credit', mappingScope: 'batch'
+      sourceType: 'wechat', paymentMethodKey, paymentMethodHint: paymentMethod,
+      mappingAction: 'account', accountId: batchId, accountType: 'credit', accountCurrency: 'CNY', mappingScope: 'batch'
     }
-  ]
+  ].map(mapping => ({ ...confirmedBatchMappings(rows, [mapping])[0], mappingScope: mapping.mappingScope }))
+  assert.ok(mappings.every(mapping => mapping.binding.reusable), '历史前提需要完整账户号产生可复用确认')
   const build = (paymentMappings) => buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000081',
-    idFactory: ids(), paymentMappings,
-    rows: [row({ paymentMethod: '光大银行信用卡(2690)', paymentMethodKey, mappingAction: null, mappedAccountId: null })]
+    idFactory: ids(), paymentMappings, rows
   })
 
   assert.equal(build(mappings).events[0].ledgerAccountId, batchId)
   assert.equal(build([...mappings].reverse()).events[0].ledgerAccountId, batchId)
 })
 
-test('同一物理账户的同级映射冲突必须回退为一个账户问题', () => {
+test('同尾号跨来源的旧映射不能合并裁决，各自确认不同账户也不互相覆盖', () => {
   const rows = [
     row({
       paymentMethod: '光大银行信用卡(2690)', paymentMethodKey: 'f'.repeat(64),
@@ -836,28 +892,54 @@ test('同一物理账户的同级映射冲突必须回退为一个账户问题',
       mappingAction: null, mappedAccountId: null
     })
   ]
-  const plan = buildOrganizePlan({
-    updateId: '60000000-0000-4000-8000-000000000083',
-    idFactory: ids(), rows,
-    paymentMappings: [
+  const mappings = [
       {
         sourceType: 'wechat', paymentMethodKey: 'f'.repeat(64), paymentMethodHint: '光大银行信用卡(2690)',
         mappingAction: 'account', accountId: '50000000-0000-4000-8000-000000000083',
-        accountType: 'credit', mappingScope: 'history'
+        accountType: 'credit', accountCurrency: 'CNY', mappingScope: 'history'
       },
       {
         sourceType: 'alipay', paymentMethodKey: '1'.repeat(64), paymentMethodHint: '光大银行信用卡(2690)',
         mappingAction: 'account', accountId: '50000000-0000-4000-8000-000000000084',
-        accountType: 'credit', mappingScope: 'history'
+        accountType: 'credit', accountCurrency: 'CNY', mappingScope: 'history'
       }
     ]
+  const options = { updateId: '60000000-0000-4000-8000-000000000083', rows }
+  const plan = buildOrganizePlan({
+    ...options, idFactory: ids(), paymentMappings: mappings
   })
 
   assert.deepEqual(plan.events.map((event) => event.ledgerAccountId), [null, null])
   const accountIssues = plan.issues.filter((issue) => issue.issueType === 'account_mapping')
-  assert.equal(accountIssues.length, 1)
-  assert.equal(accountIssues[0].status, 'open')
-  assert.equal(accountIssues[0].memberCount, 2)
+  assert.equal(accountIssues.length, 2)
+  assert.ok(accountIssues.every(issue => issue.status === 'open' && issue.memberCount === 1))
+  for (const input of [mappings, [...mappings].reverse()]) {
+    const confirmed = buildOrganizePlan({ ...options, idFactory: ids(), paymentMappings: confirmedBatchMappings(rows, input) })
+    assert.deepEqual(confirmed.events.map(event => event.ledgerAccountId), mappings.map(mapping => mapping.accountId))
+    const confirmedAccounts = confirmed.issues.filter(issue => issue.issueType === 'account_mapping')
+    assert.equal(confirmedAccounts.length, 2)
+    assert.ok(confirmedAccounts.every(issue => issue.status === 'resolved' && issue.memberCount === 1))
+    assert.equal(confirmed.events.length, 2)
+    assert.equal(confirmed.issues.filter(issue => issue.issueType === 'same_event' && issue.status === 'open').length, 1)
+  }
+})
+
+test('同一来源引用的同级明确绑定冲突回退为一个账户问题，不按顺序覆盖', () => {
+  const paymentMethod = '光大银行信用卡(2690)', paymentMethodKey = buildPaymentMethodKey('wechat', paymentMethod)
+  const first = row({ paymentMethod, paymentMethodKey, mappingAction: null, mappedAccountId: null })
+  const rows = [first, { ...first, rowId: 'row-second', identityId: 'identity-second', sourceTransactionId: 'WX-SECOND',
+    localDate: '2026-08-03', localAt: '2026-08-03 12:00:00.000', utcAt: '2026-08-03 04:00:00.000' }]
+  const mappings = confirmedBatchMappings(rows, ['synthetic-account-a', 'synthetic-account-b'].map(accountId => ({
+    sourceType: 'wechat', paymentMethodKey, mappingAction: 'account', accountId, accountType: 'credit', accountCurrency: 'CNY'
+  })))
+  for (const input of [mappings, [...mappings].reverse()]) {
+    const plan = buildOrganizePlan({ updateId: 'update-conflicting-binding', idFactory: ids(), rows, paymentMappings: input })
+    assert.deepEqual(plan.events.map(event => event.ledgerAccountId), [null, null])
+    const accountIssues = plan.issues.filter(issue => issue.issueType === 'account_mapping')
+    assert.equal(accountIssues.length, 1)
+    assert.equal(accountIssues[0].status, 'open')
+    assert.equal(accountIssues[0].memberCount, 2)
+  }
 })
 
 test('余额宝收益按收入处理，不生成资金流转问题', () => {
@@ -895,7 +977,7 @@ test('失败来源记录保留为 excluded 事件而不是伪装成用户跳过'
 })
 
 test('只有商户、账户与金额匹配的部分退款仍需人工确认', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000006',
     idFactory: ids(),
     rows: [
@@ -923,7 +1005,7 @@ test('只有商户、账户与金额匹配的部分退款仍需人工确认', ()
 })
 
 test('唯一稳定订单号匹配压制同商户弱候选并自动确认', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000016',
     idFactory: ids(),
     rows: [
@@ -963,7 +1045,7 @@ test('唯一稳定订单号匹配压制同商户弱候选并自动确认', () =>
 })
 
 test('原消费行标记已退款时仍保持支出，只把退款入账行识别为退款', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000010',
     idFactory: ids(),
     rows: [
@@ -987,7 +1069,7 @@ test('原消费行标记已退款时仍保持支出，只把退款入账行识�
   assert.deepEqual(plan.events.map((event) => event.economicNature).sort(), ['expense', 'refund'])
   assert.equal(plan.relations.length, 1)
   assert.equal(plan.relations[0].status, 'confirmed')
-  assert.equal(plan.issues.length, 0)
+  assert.equal(openIssues(plan).length, 0)
 })
 
 test('支付宝明确退款记录即使原始收支为不计收支也投影为退款流入', () => {
@@ -1010,7 +1092,7 @@ test('支付宝明确退款记录即使原始收支为不计收支也投影为�
 })
 
 test('只有金额和账户相同但商户不同，不再抓最近五笔支出充当退款候选', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000011',
     idFactory: ids(),
     rows: [
@@ -1032,13 +1114,13 @@ test('只有金额和账户相同但商户不同，不再抓最近五笔支出�
   })
 
   assert.equal(plan.relations.length, 0)
-  assert.equal(plan.issues.length, 1)
-  assert.equal(plan.issues[0].issueType, 'refund_relation')
-  assert.equal(plan.issues[0].candidateCount, 0)
+  assert.equal(openIssues(plan).length, 1)
+  assert.equal(openIssues(plan)[0].issueType, 'refund_relation')
+  assert.equal(openIssues(plan)[0].candidateCount, 0)
 })
 
 test('平台商户名不同但规范化商品标题相同的退款保留人工候选', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000019',
     idFactory: ids(),
     rows: [
@@ -1068,7 +1150,7 @@ test('平台商户名不同但规范化商品标题相同的退款保留人工�
 })
 
 test('退款存在多个同商户证据候选时保留人工选择并准确返回候选数', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000012',
     idFactory: ids(),
     rows: [
@@ -1106,7 +1188,7 @@ test('退款存在多个同商户证据候选时保留人工选择并准确返�
 })
 
 test('同商户但相隔超过退款窗口时不得自动关联', () => {
-  const plan = buildOrganizePlan({
+  const plan = confirmedRowPlan({
     updateId: '60000000-0000-4000-8000-000000000014',
     idFactory: ids(),
     rows: [
@@ -1140,13 +1222,10 @@ test('花呗信用购合并还款指向同一族账户，不拆成两笔负债',
     ['江苏银行信用购', familyId]
   ].map(([paymentMethod, accountId]) => ({
     sourceType: 'alipay', paymentMethodKey: buildPaymentMethodKey('alipay', paymentMethod),
-    paymentMethodHint: paymentMethod, mappingAction: 'account', accountId
+    paymentMethodHint: paymentMethod, mappingAction: 'account', accountId,
+    accountType: accountId === bankId ? 'bank' : 'credit', accountCurrency: 'CNY'
   }))
-  const plan = buildOrganizePlan({
-    updateId: '60000000-0000-4000-8000-000000000101',
-    idFactory: ids(),
-    paymentMappings: mappings,
-    rows: [
+  const rows = [
       row({
         rowId: '10000000-0000-4000-8000-000000000101', identityId: '40000000-0000-4000-8000-000000000101',
         sourceTransactionId: 'ALI-HUABEI-000101', sourceType: 'alipay', rowNumber: 1,
@@ -1172,6 +1251,9 @@ test('花呗信用购合并还款指向同一族账户，不拆成两笔负债',
         amountMinor: '1036610', mappingAction: null, mappedAccountId: null
       })
     ]
+  const plan = buildOrganizePlan({
+    updateId: '60000000-0000-4000-8000-000000000101',
+    idFactory: ids(), rows, paymentMappings: confirmedBatchMappings(rows, mappings)
   })
 
   const repayment = plan.events.find((event) => event.amountMinor === '1036610')

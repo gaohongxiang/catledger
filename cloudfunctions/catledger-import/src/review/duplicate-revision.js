@@ -153,6 +153,9 @@ async function split(connection, uid, data, requestDigest, values) {
     planned.reasonCodes = resolvedReasons('same_event', planned.reasonCodes)
     planned.status = 'needs_action'
   }
+  const rechecked = require('../account-ownership-review-policy').restoreAfterSplit(event, plan.events, eventId)
+  // 继续复用 plan 中的对象身份；primary、evidence 和 relation 引用仍指向同一组事件。
+  plan.events.forEach((planned, index) => Object.assign(planned, rechecked[index]))
   const fresh = plan.events.filter(item => item !== primary)
   // 新记录只建领域事件，原文通过原 evidence_id 移动，不复制账单或身份。
   await persistPlan(connection, uid, updateId, { ...plan, events: fresh, evidence: [], relations: [], issues: [], members: [] })
@@ -196,7 +199,7 @@ async function split(connection, uid, data, requestDigest, values) {
   for (const issueId of new Set(Object.keys(event.fieldSources.bankChannelAccountContexts || {}).concat(channel?.bankAccountIssueIds || []))) {
     await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?
       AND object_type='event' AND object_id = ?`, [uid, updateId, issueId, eventId])
-    await connection.execute(`UPDATE catledger_review_issues SET member_count=(SELECT COUNT(*) FROM catledger_review_issue_members WHERE uid=? AND issue_id=?),
+    await connection.execute(`UPDATE catledger_review_issues SET member_count=(SELECT COUNT(DISTINCT object_type,object_id) FROM catledger_review_issue_members WHERE uid=? AND issue_id=?),
       status=IF(member_count=0,'superseded',status),blocking=IF(member_count=0,0,blocking),version=version+1
       WHERE uid=? AND update_id=? AND issue_id=?`, [uid, issueId, uid, updateId, issueId])
   }

@@ -94,8 +94,9 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         FROM catledger_transactions WHERE uid = ? AND origin = 'import' AND deleted_at IS NULL ORDER BY type, transaction_id`, [c.uid]))[0]
         .map(row => ({ ...row, amountMinor: String(row.amountMinor) }))
       c.drafts = async () => (await lab.owner.execute(`SELECT source_type AS sourceType, payment_method_key AS referenceKey,
-        account_id AS accountId, event_id AS eventId FROM catledger_finance_update_account_mapping_drafts
+        account_id AS accountId, event_id AS eventId, binding_json AS binding FROM catledger_finance_update_account_mapping_drafts
         WHERE uid = ? AND update_id = ? ORDER BY source_type, payment_method_key, event_id`, [c.uid, c.updateId]))[0]
+        .map(row => ({ ...row, binding: parseJson(row.binding, null) }))
       c.balance = async id => (await api('accounts.list')).accounts.find(row => row.accountId === id).bookBalanceMinor
       c.same = async (pairIndex = 0) => {
         const page = await c.pairings(), pair = page.items[pairIndex]
@@ -164,6 +165,8 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         '银行到账只产生一组自身账户映射，不重复要求 payment_target')
       const targetIssue = accountIssues.find(issue => issue.accountContext?.sourceType === 'alipay' && issue.accountContext?.fundsSide === 'to')
       assert.ok(targetIssue); assert.equal(targetIssue.status, 'open')
+      const targetBindingKey = targetIssue.accountContext.bindingKey
+      assert.ok(targetBindingKey, '目标账户引用应具有独立的范围绑定键')
       assert.deepEqual(pair.repayment, { version: 1, totalMinor: '50050', repaymentMinor: '50000', feeMinor: '50',
         targetAccountId: c.creditId, targetAccountName: '合成银行信用卡1234', targetConfirmed: false })
       assert.equal((await c.pairings({ mode: 'suggested' })).total, 1)
@@ -183,7 +186,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.equal(pending.reasons.includes('core_fields_conflict'), false)
       assert.equal(pending.sources.repaymentChannelResolution.repaymentConfirmed, false)
       assert.equal(pending.sources.repaymentChannelResolution.feeCategoryId, null)
-      assert.equal((await c.drafts()).some(row => row.referenceKey === targetIssue.accountContext.paymentMethodKey), false)
+      assert.equal((await c.drafts()).some(row => row.referenceKey === targetBindingKey), false)
       assert.deepEqual((await c.drafts()).filter(row => row.accountId === c.creditId).map(row => row.sourceType), ['bank'])
       const [[pendingTarget]] = await lab.owner.execute(`SELECT status,member_count AS count FROM catledger_review_issues
         WHERE uid=? AND issue_id=?`, [c.uid, targetIssue.issueId])
@@ -209,7 +212,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.deepEqual(stable.sources.repaymentChannelResolution, pending.sources.repaymentChannelResolution)
       assert.equal(stable.reasons.includes('core_fields_conflict'), false)
       assert.equal((await c.pairings()).total, 0)
-      assert.equal((await c.drafts()).some(row => row.referenceKey === targetIssue.accountContext.paymentMethodKey), false,
+      assert.equal((await c.drafts()).some(row => row.referenceKey === targetBindingKey), false,
         '待补明细期间改备注和重整均不能提前写入平台目标引用')
       assert.equal((await c.transactions()).length, 0)
       assert.equal(await c.balance(c.payerId), '100000')
@@ -225,8 +228,11 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       const drafts = await c.drafts(), targets = drafts.filter(row => row.accountId === c.creditId)
       assert.deepEqual(targets.map(row => row.sourceType), ['alipay', 'bank'])
       assert.ok(drafts.every(row => row.eventId === merged.eventId))
-      assert.equal(drafts.find(row => row.referenceKey === targetIssue.accountContext.paymentMethodKey).accountId, c.creditId,
+      const platformTarget = drafts.find(row => row.referenceKey === targetBindingKey)
+      assert.equal(platformTarget.accountId, c.creditId,
         '原支付宝目标引用与银行到账引用均应保存到还入信用卡')
+      assert.equal(platformTarget.binding.legacyPaymentMethodKey, targetIssue.accountContext.paymentMethodKey,
+        '范围绑定保留原始来源引用键，不改写账单引用语义')
       const [[completedTarget]] = await lab.owner.execute(`SELECT status, member_count AS count, blocking
         FROM catledger_review_issues WHERE uid = ? AND issue_id = ?`, [c.uid, targetIssue.issueId])
       assert.equal(completedTarget.status, 'resolved'); assert.equal(Number(completedTarget.count), 0)
@@ -260,11 +266,15 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       const pair = await c.confirm()
       const [[remaining]] = await lab.owner.execute(`SELECT status, member_count AS count, blocking
         FROM catledger_review_issues WHERE uid = ? AND issue_id = ?`, [c.uid, targetIssue.issueId])
-      const [members] = await lab.owner.execute(`SELECT object_id AS eventId FROM catledger_review_issue_members
+      const [members] = await lab.owner.execute(`SELECT DISTINCT object_id AS eventId FROM catledger_review_issue_members
         WHERE uid = ? AND issue_id = ? AND object_type = 'event'`, [c.uid, targetIssue.issueId])
       assert.equal(remaining.status, 'open'); assert.equal(Number(remaining.count), 1)
       assert.equal(Number(remaining.blocking), 1); assert.equal(members.length, 1)
       assert.notEqual(members[0].eventId, pair.platform.eventId)
+      const [roles] = await lab.owner.execute(`SELECT member_role AS role FROM catledger_review_issue_members
+        WHERE uid = ? AND issue_id = ? AND object_type = 'event' AND object_id = ? ORDER BY member_role`,
+      [c.uid, targetIssue.issueId, members[0].eventId])
+      assert.deepEqual(roles.map(member => member.role), ['mapping_to', 'payment_target'])
       assert.equal((await c.events()).find(event => event.eventId === members[0].eventId).amountMinor, '20000')
       await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
       assert.equal((await c.transactions()).length, 0)
@@ -405,6 +415,8 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.equal((await c.pairings()).total, 1)
       await c.same()
       const [merged] = await c.events()
+      const [priorAccountIssues] = await lab.owner.execute(`SELECT issue_id AS issueId, issue_key AS issueKey FROM catledger_review_issues
+        WHERE uid = ? AND update_id = ? AND issue_type = 'account_mapping'`, [c.uid, c.updateId])
       for (let attempt = 0; attempt < 2; attempt++) {
         await lab.owner.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v33' WHERE uid = ? AND update_id = ?", [c.uid, c.updateId])
         await c.recheck()
@@ -418,6 +430,10 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         assert.equal(events[0].status, 'needs_action')
         assert.equal(events[0].reasons.includes('core_fields_conflict'), false)
         assert.equal((await c.pairings()).total, 0)
+        const [accountIssues] = await lab.owner.execute(`SELECT issue_id AS issueId, issue_key AS issueKey FROM catledger_review_issues
+          WHERE uid = ? AND update_id = ? AND issue_type = 'account_mapping'`, [c.uid, c.updateId])
+        assert.ok(priorAccountIssues.every(prior => accountIssues.some(issue => issue.issueId === prior.issueId && issue.issueKey === prior.issueKey)),
+          '再次升级保留旧账户事项与原键，不通过删除历史行避开唯一约束')
       }
       await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
       await c.details()

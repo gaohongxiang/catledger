@@ -1,6 +1,7 @@
 const { getRowSemantic, SOURCE_ACTION } = require('./row-semantic-resolver')
 const { accountReference, unresolvedAccountReference } = require('./account-reference')
 const { paymentComponents, accountIdentityKeyForReference, paymentReferenceKey } = require('./payment-account')
+const { scopeReference } = require('./account-binding')
 
 const VERSION = 'payment-account-groups-v1'
 function referencesForRows(rows) {
@@ -9,13 +10,12 @@ function referencesForRows(rows) {
     // 取原始付款串的独立金融成分，不能把合成串当作一个账户。
     const financial = paymentComponents(row.paymentMethod).map((part, componentIndex) => ({ ...part, componentIndex })).filter((part) => part.kind === 'financial')
     const result = financial.length > 1 ? financial.map((part) => {
-      const reference = accountReference(row.sourceType, part.value, 'payment_method') || unresolvedAccountReference(row.sourceType, part.value, 'payment_method', 'account_identity_missing')
+      const reference = scopeReference(accountReference(row.sourceType, part.value, 'payment_method') || unresolvedAccountReference(row.sourceType, part.value, 'payment_method', 'account_identity_missing'), row)
       return reference && { ...reference, memberRole: 'payment_component_' + part.componentIndex, componentIndex: part.componentIndex }
     }).filter(Boolean) : []
     const semantic = getRowSemantic(row)
     if (semantic.sourceAction === SOURCE_ACTION.REPAYMENT && semantic.toAccountRef?.paymentMethodKey &&
-        (semantic.toAccountRef.sourceType !== semantic.ledgerAccountRef?.sourceType ||
-          semantic.toAccountRef.paymentMethodKey !== semantic.ledgerAccountRef?.paymentMethodKey)) {
+        paymentReferenceKey(semantic.toAccountRef) !== paymentReferenceKey(semantic.ledgerAccountRef)) {
       result.push({ ...semantic.toAccountRef, memberRole: 'payment_target' })
     }
     return result

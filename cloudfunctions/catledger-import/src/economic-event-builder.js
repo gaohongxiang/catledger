@@ -5,7 +5,8 @@ const { getRowSemantic } = require('./row-semantic-resolver')
 const { semanticBlockers } = require('./semantic-policy')
 const { isNonFinancialSourceRecord } = require('./source-action')
 const { accountGroupingKey, accountIdentityKeyForReference } = require('./payment-account')
-const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates, resolveSourceFunds, resolvePaymentMethod } = require('./source-funds')
+const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates, resolveSourceFunds, resolveReference } = require('./source-funds')
+const { paymentReferenceKey } = require('./payment-account')
 const { EVENT_STATUS, EVIDENCE_ROLE, economicNatureForRow, evaluatePostability, flowDirectionForRow } = require('./organizer-model')
 const { ECONOMIC_NATURE, FLOW_DIRECTION, unique } = require('./organizer-values')
 const { compatibleCore, STRONG_REFERENCE_WINDOW_MS, stableReferences, scopedStableReferences } = require('./evidence-matching')
@@ -26,8 +27,8 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   const projection = projections[0] || null
   const projectionConflict = projections.some((candidate) => (
     !projection || candidate.kind !== projection.kind ||
-    candidate.from.paymentMethodKey !== projection.from.paymentMethodKey ||
-    candidate.to.paymentMethodKey !== projection.to.paymentMethodKey
+    paymentReferenceKey(candidate.from) !== paymentReferenceKey(projection.from) ||
+    paymentReferenceKey(candidate.to) !== paymentReferenceKey(projection.to)
   ))
   const resolvedFunds = projection && !projectionConflict ? resolveSourceFunds(projection, mappingIndex) : null
   const nature = projection && !projectionConflict
@@ -44,7 +45,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     // mappingIndex 已按“本批决定最后写入”汇总，不能再从原始 planning row
     // 直取旧永久映射，否则本批刚选的账户会被旧值反向覆盖。
     const reference = ledgerAccountReferenceForRow(row)
-    return reference ? resolvePaymentMethod(reference.sourceType, reference.paymentMethodKey, mappingIndex) : null
+    return reference ? resolveReference(reference, mappingIndex) : null
   }))
   const accountConflict = accountIds.length > 1
   const coreConflict = group.some((row) => !compatibleCore(primary, row, STRONG_REFERENCE_WINDOW_MS))
@@ -58,7 +59,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     return Boolean(reference && mappingResolution.ignoredIdentityKeys.has(accountIdentityKeyForReference(reference)))
   })
   const accountMappingConflict = group.some((row) => (
-    mappingResolution.conflictIdentityKeys.has(accountGroupingKey(row.sourceType, row.paymentMethod))
+    mappingResolution.conflictIdentityKeys.has(accountIdentityKeyForReference(ledgerAccountReferenceForRow(row)))
   )) || [projection && projection.from, projection && projection.to].filter(Boolean).some((reference) => (
     mappingResolution.conflictIdentityKeys.has(accountIdentityKeyForReference(reference))
   ))
@@ -117,6 +118,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
       : null,
     manualFieldMask: 0,
     fieldSources: {
+      accountBindingVersion: require('./account-binding').VERSION,
       semanticBlockers: rowBlockers,
       ...(primarySemantic.relationHints && primarySemantic.relationHints.installment ? { installment:primarySemantic.relationHints.installment } : {}),
       ...(primarySemantic.relationHints && primarySemantic.relationHints.disbursement ? { disbursement: primarySemantic.relationHints.disbursement } : {}),
@@ -139,6 +141,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     paymentMethodKey: primaryLedgerReference ? primaryLedgerReference.paymentMethodKey : null,
     accountGroupingKey: primaryLedgerReference ? accountIdentityKeyForReference(primaryLedgerReference) : '',
     sourceType: primary.sourceType,
+    sourceDirection: primary.direction,
     display: {
       counterparty: primary.counterparty || '',
       item: primary.item || '',
@@ -152,7 +155,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
         ...bankChannelEvidenceForRow(row),
         sourceType: row.sourceType,
         sourceProfileId: row.sourceProfileId || '',
-        accountGroupingKey: accountGroupingKey(row.sourceType, row.paymentMethod),
+        accountGroupingKey: accountIdentityKeyForReference(ledgerAccountReferenceForRow(row)),
         transactionType: row.transactionType || '',
         sourceAction: row.semantic.sourceAction,
         relationHints: row.semantic.relationHints,
@@ -166,6 +169,17 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
         paymentMethod: row.paymentMethod || '',
         moneyEffect: row.semantic.moneyEffect
       }))
+    }
+  }
+  if (event.status !== EVENT_STATUS.EXCLUDED) {
+    const { resolutionFromIndex } = require('./account-mapping-policy')
+    const decision = require('./account-reference-decision')
+    const endpoints = projection ? [['mapping_from', projection.from], ['mapping_to', projection.to]]
+      : [['subject', primaryLedgerReference]]
+    for (const [role, reference] of endpoints) {
+      if (resolutionFromIndex(mappingIndex, reference).kind === 'external' && decision.supported(event, role)) {
+        Object.assign(event, decision.apply(event, role, 'external'), { manualFieldMask: 0 })
+      }
     }
   }
   if (event.status !== EVENT_STATUS.EXCLUDED) {

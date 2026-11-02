@@ -5,6 +5,7 @@ const { importError } = require('./errors')
 
 const VERSION = 'repayment-channel-v1'
 const ALLOWED_REASONS = new Set(['category_required', 'ledger_account_required', 'repayment_account_required',
+  'account_source_required', 'account_destination_required',
   'repayment_ownership_required', 'source_account_endpoint_unknown', 'strong_same_event', 'account_mapping_confirmed',
   'same_event_candidate', 'relation_ambiguous', 'bank_channel_same_event_candidate'])
 const ASSETS = new Set(['cash', 'bank', 'wallet', 'other_asset'])
@@ -55,6 +56,9 @@ function sourceEligible(event) {
   if (!['ready', 'needs_action'].includes(event.status) || event.economicNature !== 'repayment' ||
       event.flowDirection !== 'neutral' || event.currency !== 'CNY' || !positive(event.amountMinor)) return false
   const fields = event.fieldSources || {}
+  const ownership = require('./account-ownership').read(event)
+  if (ownership.invalid || ownership.pendingLegacyTreatment || ownership.explicit &&
+      [ownership.source.kind, ownership.destination.kind].includes('external')) return false
   if (fields.installment || fields.loanRepayment || fields.paymentResolution || fields.repaymentChannelResolution ||
       fields.repaymentAllocations || fields.repaymentAllocationVersion || fields.refundSourceConflict || fields.evidenceGroupConflictKey ||
       fields.editorOverrides && fields.editorOverrides.composition && fields.editorOverrides.composition !== 'single' ||

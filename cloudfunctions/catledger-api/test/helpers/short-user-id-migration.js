@@ -15,7 +15,9 @@ const { objectKeyFromFileId } = require('../../../catledger-import/src/storage-g
 const { digestParts } = require('../../../catledger-import/src/digest')
 
 const migration = fs.readFileSync(path.resolve(__dirname, '../../../../migrations/0011_short_user_ids.sql'), 'utf8')
-const content = fs.readFileSync(path.resolve(__dirname, '../../../catledger-import/test/fixtures/wechat-pay.csv'))
+// 0011 的映射历史表必须有真实可发布的合成绑定；昵称与零钱仅能绑定当前文件。
+const content = Buffer.from(fs.readFileSync(path.resolve(__dirname, '../../../catledger-import/test/fixtures/wechat-pay.csv'), 'utf8')
+  .replaceAll(',零钱,', ',合成银行储蓄卡(9900000000001122),'))
 const context = (user, data) => ({ provider: 'wechat-mini', subjectHash: user.subjectHash, data })
 
 
@@ -77,6 +79,7 @@ function withMigratedUids(before, mapping) {
 
 async function applyUidMigration(pool, source = migration) {
   const connection = await pool.getConnection()
+  const [[identity]] = await connection.query('SELECT CONNECTION_ID() AS connectionId')
   let report
   try {
     if (process.env.CATLEDGER_TEST_NATIVE_UID_MIGRATION === '1') {
@@ -91,7 +94,8 @@ async function applyUidMigration(pool, source = migration) {
     const [[state]] = await connection.query(`SELECT @@SESSION.foreign_key_checks AS foreignKeys,
       IS_USED_LOCK('catledger:schema-migrations') AS lockOwner`)
     assert.equal(Number(state.foreignKeys), 1)
-    assert.equal(state.lockOwner, null)
+    // 其他隔离库可以随后获得同名服务器锁；当前连接必须已经完整释放。
+    assert.notEqual(String(state.lockOwner), String(identity.connectionId))
     await assert.rejects(connection.query('SELECT * FROM catledger_uid_migration_map'), { code: 'ER_NO_SUCH_TABLE' })
     await connection.query('DROP PROCEDURE IF EXISTS catledger_migrate_short_user_ids')
     connection.release()
@@ -136,7 +140,7 @@ async function seedImportsCurrent(pool, user) {
   const issues = view.issues.filter(issue => issue.status === 'open' && issue.issueType === 'account_mapping')
   view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
     decisions: issues.map(issue => ({ issueId: issue.issueId, operation: 'resolve', decision: 'apply_fields',
-      fields: { ledgerAccountDraft: { name: '合成迁移导入账户', type: 'wallet', currency: 'CNY' } } })) }))
+      fields: { ledgerAccountDraft: { name: '合成迁移导入账户', type: 'bank', currency: 'CNY' } } })) }))
   while (view.issues.some(issue => issue.status === 'open' && issue.issueType === 'category_assignment')) {
     const issue = view.issues.find(issue => issue.status === 'open' && issue.issueType === 'category_assignment')
     await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
@@ -300,6 +304,7 @@ function registerShortUserIdMigrationTests({ getPool, hasDatabase }) {
     await started
     let finished = false
     const migrating = applyUidMigration(pool).then(result => { finished = true; return result })
+    const pending = Promise.allSettled([write, migrating])
     try {
       for (let attempt = 0; attempt < 100; attempt += 1) {
         const [[waiting]] = await pool.query('SELECT COUNT(*) AS count FROM performance_schema.data_lock_waits')
@@ -308,7 +313,11 @@ function registerShortUserIdMigrationTests({ getPool, hasDatabase }) {
         await new Promise(resolve => setTimeout(resolve, 10))
       }
       assert.equal(finished, false)
-    } finally { release() }
+    } finally {
+      release()
+      // 观察查询或等待断言失败也先排空写入与迁移，避免清理 DDL 遮盖原始错误。
+      await pending
+    }
     await write
     await migrating
     const replay = await executeIdempotentMutation({ ...request, operation: async () => assert.fail('旧requestId不应再次写入') })

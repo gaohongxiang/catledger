@@ -60,8 +60,8 @@ function aggregateFamilyDisplayName(family) {
 
 function safeDisplayName(raw) {
   const compact = normalizeText(raw).replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
-  return compact.replace(/\d{8,}/g, function (digits) {
-    return '****' + digits.slice(-4)
+  return compact.replace(/(?:\d[ -]?){7,}\d/g, function (digits) {
+    return '****' + digits.replace(/\D/g, '').slice(-4)
   }).slice(0, 128)
 }
 
@@ -176,7 +176,7 @@ function paymentReferenceKey(sourceTypeOrReference, paymentMethodKey) {
     ? sourceTypeOrReference.sourceType
     : sourceTypeOrReference
   const key = typeof sourceTypeOrReference === 'object' && sourceTypeOrReference
-    ? sourceTypeOrReference.paymentMethodKey
+    ? sourceTypeOrReference.bindingKey || sourceTypeOrReference.paymentMethodKey
     : paymentMethodKey
   return sourceType && key ? `${sourceType}:${key}` : ''
 }
@@ -220,5 +220,6 @@ module.exports = {
   paymentAccountDetails,
   paymentComponents,
   paymentReferenceKey,
-  primaryInstrument
+  primaryInstrument,
+  safeDisplayName
 }

@@ -10,6 +10,10 @@ const { publicEvent } = require('../domain/import-review/review-presentation')
 const historyPolicy = require('../domain/import-review/historical-match-policy')
 const attribution = require('../domain/import-review/installment-plan')
 const business = require('../domain/import-review/installment-business')
+const draftPolicy = require('../domain/import-review/account-draft-policy')
+const accountTypes = require('../domain/import-review/account-type-policy')
+const accountGrouping = require('../domain/import-review/account-issue-grouping')
+const creationFacts = require('../domain/import-review/account-creation-facts')
 const clone = value => JSON.parse(JSON.stringify(value))
 const fail = message => { throw Object.assign(new Error(message || '这项选择需重新核对'), { code: 'LOCAL_RECHECK_REQUIRED' }) }
 const active = event => event && ['ready','needs_action'].includes(event.status)
@@ -23,9 +27,11 @@ function create(facts) {
   const events = new Map(base), rows = new Map(facts.rows.map(row => [row.rowId, row]))
   const evidence = new Map(facts.evidence.map(row => [row.evidenceId, { ...row }]))
   const byEvent = new Map(), baseEvidence = new Map(), issueEvents = new Map(), relations = new Map(facts.relations.map(row => [row.relationId, { ...row }]))
-  const issues = new Map(facts.issues.map(row => [row.issueId, clone(row)])), members = new Map()
+  const issues = new Map(facts.issues.map(row => [row.issueId, clone(row)])), members = new Map(), originalMembersByIssue = new Map()
   const accounts = new Map(facts.accounts.concat(facts.accountDrafts).map(row => [row.accountId, { ...row }]))
   const drafts = new Map(facts.accountDrafts.map(row => [row.accountId, row]))
+  const creationOwners = new Map()
+  const accountCreations = new Map()
   const categories = new Map(facts.categories.map(row => [row.categoryId, row]))
   const choices = Object.fromEntries(KINDS.map(kind => [kind, new Map()]))
   const links = facts.links.map(row => ({ ...row })), needsCheck = new Set(), invalid = new Map()
@@ -100,6 +106,8 @@ function create(facts) {
     if (!members.has(row.issueId)) members.set(row.issueId, [])
     members.get(row.issueId).push({ ...row })
     if (row.objectType === 'event' && row.memberRole !== 'candidate') {
+      if (!originalMembersByIssue.has(row.issueId)) originalMembersByIssue.set(row.issueId, [])
+      originalMembersByIssue.get(row.issueId).push(row)
       if (!issueEvents.has(row.objectId)) issueEvents.set(row.objectId, new Set())
       issueEvents.get(row.objectId).add(row.issueId)
     }
@@ -275,7 +283,9 @@ function create(facts) {
   }
   function validateReferences(event) {
     const references = require('../domain/import-review/workbench-summary').accountIds(event)
-    for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
+    for (const id of references) { const value = accounts.get(id); if (!value || value.archivedAt || value.supersededAt || value.currency !== event.currency) fail('账户不可用，请重新选择') }
+    if (event.fieldSources.accountOwnership && require('../domain/import-review/account-ownership').resolve(event, { accounts }).reasons
+      .some(reason => ['account_ownership_invalid','account_ownership_business_required'].includes(reason))) fail('账户归属与资金方向不一致，请重新选择')
     if (!require('../domain/import-review/editor-fields').accountRolesValid(event, accounts)) {
       if (event.economicNature === 'repayment') fail('还款的还入账户需是信用卡或负债账户')
       if (event.economicNature === 'borrow') fail('借款的账户类型与资金方向不匹配')
@@ -411,7 +421,9 @@ function create(facts) {
     return sourceConflict ? { allowed: false, reason: 'source_conflict' } : { allowed: true, reason: '' }
   }
   function applyRefund(current, next, data) {
-    const choice = data.decisions?.refund
+    const choice = next.economicNature === 'refund' && next.status === 'excluded' &&
+      require('../domain/import-review/account-ownership').read(next).noLedgerImpact === true
+      ? { mode: 'unlinked' } : data.decisions?.refund
     if (choice || next.economicNature !== 'refund') {
       for (const relation of related(next.eventId)) if (relation.sourceEventId === next.eventId && relation.relationType === 'refund_of') relation.status = 'rejected'
       for (let i = links.length - 1; i >= 0; i--) if (links[i].eventId === next.eventId && links[i].role === 'refund_original') links.splice(i, 1)
@@ -561,25 +573,84 @@ function create(facts) {
     finish([current.eventId])
     return [{ kind: 'events', key: decision.key, value: decision },...historyDiscarded.splice(0)]
   }
-  function mapAccount(input) {
-    if(input.paymentRuleAction || input.fields?.paymentRuleAction) fail('本次导入只能排除当前范围，不能设置永久忽略')
-    const issue = issues.get(input.issueId); if (!issue || issue.issueType !== 'account_mapping') fail()
-    const decision = { ...scope(issue), decision: input.decision, fields: clone(input.fields || {}) }
-    const value = input.fields?.mappingAccountDraft || input.fields?.ledgerAccountDraft
-    let id = input.fields?.mappingAccountId || input.fields?.ledgerAccountId
-    if (value) {
-      id = [...drafts.values()].find(row => row.name.normalize('NFKC').trim() === value.name.normalize('NFKC').trim())?.accountId || identity.accountId(facts.snapshotId, value.name, value.type)
-      const account = { ...value, accountId: id, nature: ['credit','other_liability'].includes(value.type) ? 'liability' : 'asset', isDraft: true }
-      accounts.set(id, account); drafts.set(id, account)
+  function restoreAccountCreation(value) {
+    if (value.origin?.snapshotId === facts.snapshotId) creationFacts.validateOrigin(value, facts)
+    const fact = creationFacts.validate(value, { events, members: [...members.values()].flat(), evidence: [...evidence.values()] })
+    const normalized = draftPolicy.validate(fact.draft), id = creationFacts.accountId(fact, facts.snapshotId)
+    if (creationOwners.has(id) && creationOwners.get(id) !== fact.key) draftPolicy.conflict()
+    if ([...accounts.values()].some(row => row.accountId !== id &&
+        draftPolicy.normalizeName(row.name).normalizedName === normalized.normalizedName)) draftPolicy.conflict()
+    const prior = accounts.get(id)
+    if (prior && !drafts.has(id)) {
+      if (prior.archived || prior.archivedAt != null || prior.disabledAt != null || prior.unavailable ||
+          draftPolicy.normalizeName(prior.name).normalizedName !== normalized.normalizedName ||
+          prior.type !== normalized.type || prior.currency !== normalized.currency) draftPolicy.conflict()
+      // 合法计划接口可能已物化相同创建 ID；沿用目录，不能覆盖正式账户或重造草稿。
+      accountCreations.set(fact.key, fact); creationOwners.set(id, fact.key)
+      return id
     }
-    const index = createMappingIndex(facts.paymentMappings || []), affected = []
-    for (const member of members.get(issue.issueId) || []) if (member.objectType === 'event' && member.memberRole !== 'candidate') {
+    const account = { ...normalized, accountId: id, isDraft: true }
+    accounts.set(id, account); drafts.set(id, account); creationOwners.set(id, fact.key); accountCreations.set(fact.key, fact)
+    return id
+  }
+  function mapAccount(input) {
+    const external = input.paymentRuleAction === 'external'
+    if (input.fields?.paymentRuleAction || input.paymentRuleAction && !external ||
+        external && (input.decision !== 'apply_fields' || Object.keys(input.fields || {}).length)) fail('账户选择无效')
+    const issue = issues.get(input.issueId); if (!issue || issue.issueType !== 'account_mapping') fail()
+    const issueMembers = (members.get(issue.issueId) || []).filter(member => member.objectType === 'event' && member.memberRole !== 'candidate')
+    if (external && !accountGrouping.canUseExternal(events, issueMembers)) {
+      fail('此账户引用已变化，请重新核对')
+    }
+    const originalMembers = originalMembersByIssue.get(issue.issueId) || []
+    const originalIds = distinct(originalMembers.map(member => member.objectId))
+    const locallyMerged = [...choices.pairings.values()].some(pair => pair.decision === 'same' && originalIds.includes(pair.bankEventId))
+    const choiceScope = locallyMerged ? { ...scope(issue), eventIds: originalIds,
+      sourceIds: distinct(facts.evidence.filter(link => originalIds.includes(link.eventId) && link.evidenceRole !== 'discarded').map(link => link.rowId)).sort() } : scope(issue)
+    const decision = { ...choiceScope, decision: input.decision, fields: clone(input.fields || {}),
+      ...(external ? { paymentRuleAction: 'external' } : {}) }
+    if (!external && input.decision === 'apply_fields' && ['mappingAccountId', 'ledgerAccountId', 'mappingAccountDraft', 'ledgerAccountDraft']
+      .filter(key => Object.prototype.hasOwnProperty.call(decision.fields, key)).length !== 1) fail('新建账户与选择已有账户需明确选择一项')
+    const value = decision.fields.mappingAccountDraft || decision.fields.ledgerAccountDraft
+    let id = input.fields?.mappingAccountId || input.fields?.ledgerAccountId
+    let account = null, owner = null, creation = null
+    if (value) {
+      if (id) fail('新建账户与选择已有账户不能同时提交')
+      owner = locallyMerged ? identity.accountCreationKey(originalMembers, base) : identity.accountCreationKey(issueMembers, events)
+      // 已落盘的旧决定原样重放；新的决定保存独立创建身份，改名不改变账户ID。
+      if (!value.creationKey && !(input.key && Array.isArray(input.sourceIds))) value.creationKey = owner
+      const normalized = draftPolicy.validate(value)
+      if (normalized.creationKey && normalized.creationKey !== owner) fail('此新建账户对应的记录已变化，请重新确认')
+      id = identity.accountId(facts.snapshotId, normalized.name, normalized.type, normalized.creationKey)
+      if (creationOwners.has(id) && creationOwners.get(id) !== owner) draftPolicy.conflict()
+      if ([...accounts.values()].some(row => row.accountId !== id &&
+          draftPolicy.normalizeName(row.name).normalizedName === normalized.normalizedName)) draftPolicy.conflict()
+      const prior = accounts.get(id)
+      if (prior && !drafts.has(id)) draftPolicy.conflict()
+      account = { ...normalized, accountId: id, isDraft: true }
+      Object.assign(value, { name: normalized.name, type: normalized.type, currency: normalized.currency })
+      creation = creationFacts.fromChoice(decision, facts, locallyMerged ? originalMembers : issueMembers, locallyMerged ? base : events)
+    }
+    const selected = account || accounts.get(id)
+    for (const member of issueMembers) {
       const current = events.get(member.objectId); if (!current) continue
-      const ref = accountPolicy.mappingReferenceForMember(current, member.memberRole)
-      if (ref) index.set(paymentReferenceKey(ref), id)
+      const reference = accountGrouping.memberReference(current, member)
+      if (!external && input.decision === 'apply_fields' &&
+          !accountTypes.compatible(reference || { currency: current.currency }, selected, { event: current, memberRole: member.memberRole })) {
+        fail('账户类型或币种与来源不符')
+      }
+    }
+    if (account) { accounts.set(id, account); drafts.set(id, account); creationOwners.set(id, owner); accountCreations.set(creation.key, creation) }
+    const index = createMappingIndex(facts.paymentMappings || [], { accounts: [...accounts.values()] }), affected = []
+    const mappingPolicy = require('../domain/import-review/account-mapping-policy')
+    for (const member of issueMembers) {
+      const current = events.get(member.objectId); if (!current) continue
+      const ref = accountGrouping.memberReference(current, member)
+      if (ref) mappingPolicy.setMappingDecision(index, ref, external ? 'external' : 'account', id, current.eventId)
       const next = input.decision === 'exclude_events' ? { ...current, status: 'excluded', reasonCodes: distinct([...current.reasonCodes,'manual_exclusion','account_mapping_excluded']) }
         : accountPolicy.applyMappedAccount({ ...current, status: 'needs_action', reasonCodes: policy.resolvedReasons('account_mapping', current.reasonCodes)
-          .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) }, member.memberRole, id, index)
+          .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) },
+          member.memberRole, id, mappingPolicy.indexForEvent(index, current), external ? 'external' : 'account', ref)
       if (input.decision !== 'exclude_events') validateReferences(next)
       next.version = current.version + 1; events.set(current.eventId, next); affected.push(current.eventId)
       invalid.delete(current.eventId)
@@ -587,9 +658,45 @@ function create(facts) {
     issue.status = 'resolved'; issue.blocking = false; issue.version++
     issue.reasonCodes = (issue.reasonCodes || []).filter(code => !['account_mapping_excluded','source_account_ignored_default'].includes(code))
     if (input.decision === 'exclude_events') issue.reasonCodes.push('account_mapping_excluded')
-    if (issue.accountContext) issue.accountContext.accountId = id || null
+    if (issue.accountContext) Object.assign(issue.accountContext, { accountId: id || null,
+      mappingAction: external ? 'external' : id ? 'account' : null })
     choices.accounts.set(decision.key, decision); finish(affected)
-    return [{ kind: 'accounts', key: decision.key, value: decision },...historyDiscarded.splice(0)]
+    return [{ kind: 'accounts', key: decision.key, value: decision },
+      ...(creation ? [{ kind: 'accountCreation', key: creation.key, value: creation }] : []), ...historyDiscarded.splice(0)]
+  }
+  function mapAccountGroups(groups, singleDecisions = []) {
+    if (!Array.isArray(groups) || !Array.isArray(singleDecisions) || !groups.length && !singleDecisions.length) fail()
+    const used = new Set()
+    for (const group of groups) {
+      if (!group || !Array.isArray(group.issueIds) || !group.issueIds.length || !group.decision) fail()
+      for (const id of group.issueIds) {
+        if (typeof id !== 'string' || used.has(id) || issues.get(id)?.issueType !== 'account_mapping') fail('账户范围已变化，请重新核对')
+        used.add(id)
+      }
+    }
+    for (const choice of singleDecisions) {
+      if (used.has(choice.issueId) || issues.get(choice.issueId)?.issueType !== 'account_mapping') fail('账户范围已变化，请重新核对')
+      used.add(choice.issueId)
+    }
+    const changes = [], results = []
+    for (const group of groups) {
+      const ids = [...group.issueIds].sort(), decision = clone(group.decision)
+      const value = creationFacts.draftOf(decision)
+      let id = decision.fields?.mappingAccountId || decision.fields?.ledgerAccountId || null, creatorIssueId = null
+      if (value) {
+        // 联合确认仍沿一个真实原事项创建；拆开后的另一事项新建有自己的身份。
+        creatorIssueId = ids.find(issueId => creationFacts.draftOf(choices.accounts.get(issueId))) ||
+          ids.find(issueId => [...accountCreations.values()].some(fact => fact.members.every(member => member.issueId === issueId))) || ids[0]
+        changes.push(...mapAccount({ ...decision, issueId: creatorIssueId }))
+        const created = choices.accounts.get(creatorIssueId), draft = creationFacts.draftOf(created)
+        id = identity.accountId(facts.snapshotId, draft.name, draft.type, draft.creationKey)
+      }
+      for (const issueId of ids) if (issueId !== creatorIssueId) changes.push(...mapAccount({ ...decision, issueId,
+        ...(value ? { fields: { mappingAccountId: id } } : {}) }))
+      results.push({ issueIds: ids, accountId: id, ...(value ? { createdAccountId: id, creatorIssueId } : {}) })
+    }
+    for (const choice of singleDecisions) changes.push(...mapAccount(choice))
+    return { changes, accountGroups: results }
   }
   function pair(input) {
     const candidate = pairs.get(input.pairKey || input.key); if (!candidate) fail('配对条件已变化，请重新核对')
@@ -603,8 +710,18 @@ function create(facts) {
         fieldSources: { ...current.fieldSources, bankChannelDistinctPairs: distinct([...(current.fieldSources.bankChannelDistinctPairs || []), candidate.pairKey]) } })
     } else if (input.decision === 'same') {
       const hydrated = { ...candidate, bank: hydrate(bank), platform: hydrate(platform) }
+      const bankIssues = eventIssues(bank.eventId).filter(issue => issue.issueType === 'account_mapping')
+      const accountContexts = { ...platform.fieldSources.bankChannelAccountContexts }
+      for (const issue of bankIssues) {
+        const member = (members.get(issue.issueId) || []).find(member => member.objectId === bank.eventId && member.memberRole !== 'candidate')
+        const reference = member && accountGrouping.memberReference(bank, member)
+        if (reference) accountContexts[issue.issueId] = { ...reference, fundsSide: candidate.pairKind === 'repayment' ? 'to' : 'ordinary' }
+      }
       const primary = candidate.pairKind === 'repayment' ? require('../domain/import-review/review/pair-primary-policy').repaymentPrimary(hydrated, 'local')
-        : require('../domain/import-review/review/pair-primary-policy').ordinaryPrimary([hydrated.bank,hydrated.platform], platform.eventId, 'local')
+        : require('../domain/import-review/review/pair-primary-policy').ordinaryPrimary([hydrated.bank,hydrated.platform], platform.eventId, 'local', accountContexts)
+      if (primary.fieldSources.repaymentChannelResolution) {
+        primary.fieldSources.repaymentChannelResolution.bankAccountIssueIds = bankIssues.map(issue => issue.issueId).sort()
+      }
       if (decision.repaymentConfirmed && primary.fieldSources.repaymentChannelResolution) {
         primary.fieldSources.repaymentChannelResolution.repaymentConfirmed = true
         primary.fieldSources.repaymentChannelResolution.feeCategoryId = [...categories.values()].find(row => row.systemKey === 'finance__service' && !row.archivedAt)?.categoryId || null
@@ -624,7 +741,10 @@ function create(facts) {
         issue.subjectEventIds = distinct(issue.subjectEventIds.map(id => id === bank.eventId ? platform.eventId : id))
         if (!issueEvents.has(platform.eventId)) issueEvents.set(platform.eventId, new Set())
         issueEvents.get(platform.eventId).add(issue.issueId)
-        for (const member of members.get(issue.issueId) || []) if (member.objectId === bank.eventId) member.objectId = platform.eventId
+        for (const member of members.get(issue.issueId) || []) if (member.objectId === bank.eventId) {
+          member.objectId = platform.eventId
+          if (candidate.pairKind === 'repayment' && issue.issueType === 'account_mapping') member.memberRole = 'mapping_to'
+        }
       }
       if (choices.events.has(platform.eventId)) choices.events.get(platform.eventId).sourceIds = decision.sourceIds
     } else fail()
@@ -708,6 +828,7 @@ function create(facts) {
     const attention = require('../domain/import-review/review-attention').reviewAttention(result, eventIssues(id))
     const reason = invalid.get(id)
     const conflict = reason && ({ account_unavailable: '账户已停用或不可用，请重新选择',
+      ACCOUNT_NAME_CONFLICT: draftPolicy.NAME_CONFLICT,
       category_unavailable: '分类已停用或不可用，请重新选择',
       REFUND_AMOUNT_EXCEEDED: '可退金额已变化，请重新核对退款关系',
       LOAN_SOURCE_MISMATCH: '贷款来源已变化，请重新核对',
@@ -762,7 +883,8 @@ function create(facts) {
     for (const origin of origins) {
       const id = origin.event.eventId, old = origin.event
       let restored = { ...old, status: 'needs_action', version: (events.get(id)?.version || old.version || 1) + 1,
-        fieldSources: { ...old.fieldSources, mergeOrigins: undefined, bankChannelResolution: undefined, repaymentChannelResolution: undefined, bankChannelCandidate: undefined },
+        fieldSources: { ...old.fieldSources, mergeOrigins: undefined, bankChannelResolution: undefined, repaymentChannelResolution: undefined, bankChannelCandidate: undefined,
+          bankChannelAccountContexts: undefined },
         reasonCodes: policy.resolvedReasons('same_event', old.reasonCodes || []) }
       const choice = choices.events.get(id)
       if (choice) {
@@ -774,6 +896,41 @@ function create(facts) {
       grouped.forEach((row,i) => { row.eventId = id; row.evidenceRole = i ? 'supporting' : 'primary' })
       byEvent.set(id,grouped); ids.push(id)
       if (choice && choices.events.has(id)) { choice.sourceIds = origin.rowIds; changes.push({kind:'events',key:id,value:choice}) }
+    }
+    for (const restored of require('../domain/import-review/account-ownership-review-policy').restoreAfterSplit(event, ids.map(id => events.get(id)), event.eventId)) {
+      events.set(restored.eventId, restored)
+    }
+    // 合并时移入主记录的银行引用回到其原始来源，后续修改不能误作用于平台账户。
+    const contextIssues = new Set(Object.keys(event.fieldSources.bankChannelAccountContexts || {})
+      .concat(event.fieldSources.repaymentChannelResolution?.bankAccountIssueIds || []))
+    for (const issueId of contextIssues) {
+      const issue = issues.get(issueId); if (!issue) continue
+      const group = members.get(issueId) || []
+      for (const member of group) if (member.objectId === event.eventId && member.memberRole !== 'candidate') {
+        const reference = accountGrouping.memberReference(event, member), key = paymentReferenceKey(reference)
+        const matches = ids.flatMap(id => {
+          const origin = events.get(id), roles = distinct(['subject', 'mapping_from', 'mapping_to', 'payment_target',
+            ...(origin.fieldSources.paymentAccountReferences || []).map(ref => ref.memberRole)])
+          return roles.filter(role => key && paymentReferenceKey(accountGrouping.memberReference(origin, { ...member, memberRole: role })) === key)
+            .map(role => ({ id, role }))
+        })
+        const match = matches[0]
+        if (!match || matches.some(other => other.id !== match.id)) {
+          invalid.set(event.eventId, '拆分后的账户引用待重新核对'); continue
+        }
+        member.objectId = match.id; member.memberRole = match.role
+      }
+      issue.subjectEventIds = distinct(group.filter(member => member.objectType === 'event' && member.memberRole !== 'candidate').map(member => member.objectId))
+      for (const id of ids) {
+        if (issue.subjectEventIds.includes(id)) { if (!issueEvents.has(id)) issueEvents.set(id, new Set()); issueEvents.get(id).add(issueId) }
+        else issueEvents.get(id)?.delete(issueId)
+      }
+      dirtyIssues.add(issueId)
+      const choice = choices.accounts.get(issueId)
+      if (choice) {
+        Object.assign(choice, scope(issue))
+        changes.push({ kind: 'accounts', key: issueId, value: choice })
+      }
     }
     for (const relation of related(event.eventId)) relation.status = 'proposed'
     const candidates = matching.bankChannelEdges(ids.map(id => hydrate(events.get(id))))
@@ -801,16 +958,30 @@ function create(facts) {
     finish(distinct(value.problems.flatMap(problem => problem.eventIds || [])))
   }
   function finalState() {
+    const represented = new Set([...choices.accounts.values()].filter(choice => creationFacts.draftOf(choice)).map(choice => {
+      const draft = creationFacts.draftOf(choice)
+      return identity.accountId(facts.snapshotId, draft.name, draft.type, draft.creationKey)
+    }))
+    const used = new Set([...events.values()].filter(active).flatMap(event => require('../domain/import-review/workbench-summary').accountIds(event)))
+    for (const choice of choices.accounts.values()) {
+      const id = choice.fields?.mappingAccountId || choice.fields?.ledgerAccountId
+      if (id && choice.decision === 'apply_fields' && choice.paymentRuleAction !== 'external') used.add(id)
+    }
+    const retainedCreations = [...accountCreations.values()].filter(fact => {
+      const id = creationFacts.accountId(fact, facts.snapshotId)
+      return used.has(id) && !represented.has(id) && (!accounts.has(id) || drafts.has(id))
+    })
     return { protocolVersion: 3, snapshotId: facts.snapshotId, updateId: facts.update.updateId,
       baseVersion: facts.update.version, ruleVersion: facts.ruleVersion,
+      ...(retainedCreations.length ? { accountCreations: clone(retainedCreations) } : {}),
       decisions: Object.fromEntries(KINDS.map(kind => [kind,[...choices[kind].values()]])) }
   }
   for (const event of events.values()) indexEvent(event)
   rebuildPairs([...events.keys()])
-  return { facts, base, events, rows, evidence, byEvent, baseEvidence, relations, issues, members, issueEvents, accounts, drafts, categories,
+  return { facts, base, events, rows, evidence, byEvent, baseEvidence, relations, issues, members, issueEvents, accounts, drafts, accountCreations, categories,
     choices, links, needsCheck, invalid, sourceIds, hydrate, context, eventIssues, publicRow, refundCandidates, hiddenOffset, evidenceFor,
     dirtyEvents, dirtyIssues, dirtyRows,
-    edit, mapAccount, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState,
+    edit, mapAccount, mapAccountGroups, restoreAccountCreation, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState,
     get pairs() { return pairs }, get revision() { return revision }, get supplemental() { return supplemental },
     get suggestedCount() { return suggestedPairs.size },
     get summaryCache() { return summaryCache }, set summaryCache(value) { summaryCache = value } }

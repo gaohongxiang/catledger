@@ -22,6 +22,11 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
   if (issue.updateId !== updateId || update.status !== 'review' || Number(update.version) !== updateVersion ||
     issue.status !== 'open' || Number(issue.version) !== issueVersion) throw importError('CONFLICT')
   assertDecisionMatchesIssue(issue, decision)
+  if (issue.issueType === 'account_mapping' && data.selection == null) {
+    return require('./account-mapping').resolveAccountMappings(connection, uid, data, requestDigest,
+      { updateId, decisions: [{ issueId, issueVersion, operation: 'resolve', decision,
+        fields: data.fields, paymentRuleAction: data.paymentRuleAction }] }, data)
+  }
   if (data.selection != null && !['exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
   const paymentRuleAction = data.paymentRuleAction == null ? null : data.paymentRuleAction
   if (paymentRuleAction != null &&

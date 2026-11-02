@@ -68,7 +68,7 @@ async function loadFacts(connection, uid, updateId) {
   const [accounts] = await connection.execute(`SELECT account_id AS accountId,name,type,nature,currency,version,archived_at AS archivedAt
     FROM catledger_accounts WHERE uid=?`, [uid])
   const [accountDrafts] = await connection.execute(`SELECT draft_account_id AS accountId,name,type,nature,currency
-    FROM catledger_finance_update_account_drafts WHERE uid=? AND update_id=? AND materialized_at IS NULL`, [uid, updateId])
+    FROM catledger_finance_update_account_drafts WHERE uid=? AND update_id=? AND materialized_at IS NULL AND superseded_at IS NULL`, [uid, updateId])
   const [categories] = await connection.execute(`SELECT c.category_id AS categoryId,c.name,c.kind,c.system_key AS systemKey,
     c.parent_id AS parentId,p.name AS parentName,c.sort_order AS sortOrder,c.version,c.archived_at AS archivedAt
     FROM catledger_categories c LEFT JOIN catledger_categories p ON p.uid=c.uid AND p.category_id=c.parent_id WHERE c.uid=?`, [uid])

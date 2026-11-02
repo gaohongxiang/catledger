@@ -159,14 +159,18 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 3)
       c.updateId = await c.prepare(); await c.map()
       assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 3)
-      // 将这批来源的账户草稿按现有正式映射结构预置，模拟以前已入账确认过的账户。
+      // 预置旧式无绑定证明的历史映射；弱尾号不能借此跨新文件自动确认账户。
       await lab.owner.execute(`INSERT INTO catledger_import_account_mappings
         (mapping_id, uid, source_type, payment_method_key, account_id, version)
         SELECT MIN(draft_mapping_id), uid, source_type, payment_method_key, account_id, 1
         FROM catledger_finance_update_account_mapping_drafts WHERE uid=? AND update_id=?
         GROUP BY uid, source_type, payment_method_key, account_id`, [c.uid, c.updateId])
       c.updateId = await c.prepare()
-      assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 3, '已有账户映射时重导不需再map也不重开拒绝边')
+      assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 0, '新文件账户待确认时暂不开放配对候选')
+      const accountIssues = await c.imp('reviewIssues.list', { updateId: c.updateId, group: 'accounts', pageSize: 100 })
+      assert.ok(accountIssues.items.some(issue => issue.status === 'open'), '无证明历史映射不能替代新文件账户确认')
+      await c.map()
+      assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 3, '确认新文件账户后仍复用可靠来源的拒绝决定，不重开该边')
     })
     await t.test('具体可靠同笔决定跨临时事件身份重导复用；金额实质变化不复用', async () => {
       const c = await setup({ apiPool, importPool, count: 1 })

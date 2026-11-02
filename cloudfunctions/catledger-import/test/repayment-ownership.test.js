@@ -19,7 +19,7 @@ function repayment() {
 test('银行还款线索不能证明目标属于本人', () => {
   const event = repayment()
   const evaluated = evaluatePostability(event, {})
-  assert.ok(evaluated.reasonCodes.includes('repayment_ownership_required'))
+  assert.ok(evaluated.reasonCodes.includes('account_destination_required'))
   assert.equal(classifyReviewIssue({ ...event, reasonCodes: evaluated.reasonCodes }).issueType, 'transfer_accounts')
 })
 
@@ -35,7 +35,7 @@ test('本人确认必须同时选择目标，决定仅写入当前事件', () =>
   assert.equal(event.fieldSources.repaymentOwnership, undefined)
 })
 
-test('替他人还款明确无需收回才记支出，清空目标并待分类', () => {
+test('兼容旧替他人还款决定：记支出，清空目标并待分类', () => {
   const next = applyFields(repayment(), { repaymentOwnership: { owner: 'other', treatment: 'expense' } })
   assert.equal(next.counterpartyLedgerAccountId, null)
   assert.equal(next.economicNature, 'expense')
@@ -47,13 +47,13 @@ test('替他人还款明确无需收回才记支出，清空目标并待分类',
   assert.equal(classifyReviewIssue({ ...next, ...evaluated }).issueType, 'category_assignment')
 })
 
-test('代垫或未定只保存归属，仍阻止整批入账', () => {
+test('旧代垫待定决定要求重核，仍阻止整批入账', () => {
   const next = applyFields(repayment(), { repaymentOwnership: { owner: 'other', treatment: 'pending' } })
   const evaluated = evaluatePostability(next, {})
   assert.equal(next.economicNature, 'unknown')
   assert.equal(next.counterpartyLedgerAccountId, null)
   assert.equal(evaluated.status, 'needs_action')
-  assert.ok(evaluated.reasonCodes.includes('repayment_other_treatment_required'))
+  assert.ok(evaluated.reasonCodes.includes('account_ownership_recheck_required'))
   assert.equal(classifyReviewIssue({ ...next, ...evaluated }).issueType, 'transfer_accounts')
 })
 

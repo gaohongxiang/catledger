@@ -81,7 +81,7 @@ test('贷款已有交易关联与整组更正保留来源、版本和一次付�
       return imp('financeUpdates.prepare',{requestId:randomUUID(),batchIds:[parsed.batch.batchId]})
     }
     async function postedExpense(prefix, repeat=false) {
-      let update=await prepareContent(Buffer.concat([syntheticBill(1,prefix),Buffer.from(repeat?'\n':'')]))
+      let update=await prepareContent(Buffer.concat([syntheticBill(1,prefix,'合成银行储蓄卡(9900000000001122)'),Buffer.from(repeat?'\n':'')]))
       const issues=await imp('reviewIssues.list',{updateId:update.updateId,group:'accounts'})
       const decisions=issues.items.filter(i=>i.status==='open').map(i=>({issueId:i.issueId,issueVersion:i.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:assetAccountId}}))
       if(decisions.length) update=await imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,decisions})

@@ -115,7 +115,8 @@ test('0036 交易形状约束保留旧账、外键与原子性，失败和中断
       await assert.rejects(runMigrations({ pool: interruptedPool, migrationsDirectory }), /synthetic connection interruption/)
       await assertUnregistered(pool)
       assert.equal((await checks(pool)).length, 3)
-      assert.deepEqual(await runMigrations({ pool, migrationsDirectory }), [migration])
+      assert.deepEqual(await runMigrations({ pool, migrationsDirectory }), [migration,
+        '0037_installment_source_plan_label.sql', '0038_scoped_account_bindings.sql'])
       assert.deepEqual(await runMigrations({ pool, migrationsDirectory }), [])
       const connection = await pool.getConnection()
       try { for (const statement of splitSqlStatements(await fs.readFile(path.join(migrationsDirectory, migration), 'utf8'))) await connection.query(statement) }

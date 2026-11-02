@@ -68,7 +68,7 @@ test('转账要求两个不同账户，背景更新保留选择并阻止旧版�
   page.onUnload()
 })
 
-test('已核对流入还款的付款端显示在上，目录选择与保存仍对应原字段', async () => {
+test('已核对流入还款的付款端显示在上，目录选择与归属保存仍对应实际付款端', async () => {
   const h = await setup(), page = h.page
   Object.assign(h.events[0], { economicNature: 'repayment', sourceDirection: 'income', counterpartyLedgerAccountId: 'original-payer' })
   const eventId = h.events[0].eventId, receiver = h.events[0].ledgerAccountId
@@ -82,9 +82,11 @@ test('已核对流入还款的付款端显示在上，目录选择与保存仍�
     page.selectReviewedAccount({ accountId: 'changed-payer', name: '合成付款卡', type: 'bank' }, 'reviewCounterparty')
     assert.equal(page.data.reviewEditSheet.ledgerAccountId, receiver)
     await page.saveReviewEdit()
-    assert.deepEqual(h.calls.find(call => call.action === 'financeUpdates.setReview').input.fields,
-      { counterpartyLedgerAccountId: 'changed-payer', categoryId: null })
-    assert.equal(h.calls.find(call => call.action === 'financeUpdates.setReview').input.editorVersion, 1)
+    const saved = h.calls.find(call => call.action === 'financeUpdates.setReview').input
+    assert.deepEqual(saved.fields, { categoryId: null })
+    assert.deepEqual(saved.decisions.accountOwnership,
+      { source: { kind: 'ledger', accountId: 'changed-payer' }, destination: { kind: 'ledger', accountId: receiver } })
+    assert.equal(saved.editorVersion, 1)
   } finally { page.onUnload() }
 })
 

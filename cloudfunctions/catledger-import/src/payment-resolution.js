@@ -1,6 +1,7 @@
 const { FIELD_MASK } = require('./manual-field-mask')
 const PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v2'
 const EDITOR_PAYMENT_VERSION = 'payment-resolution-v3'
+const EXTERNAL_PAYMENT_VERSION = 'payment-resolution-v4'
 const LEGACY_PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v1'
 const NONNEGATIVE_MINOR = /^(?:0|[1-9]\d{0,18})$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -39,7 +40,7 @@ function inspectPaymentAccounts(event, value, { partial = false } = {}) {
 function inspectPaymentResolution(event, value) {
   const invalid = (reason = 'payment_resolution_required') => ({ valid: false, reason, allocations: [] })
   const fields = event.fieldSources || {}
-  const manual = value && value.version === EDITOR_PAYMENT_VERSION && fields.editorOverrides &&
+  const manual = value && [EDITOR_PAYMENT_VERSION, EXTERNAL_PAYMENT_VERSION].includes(value.version) && fields.editorOverrides &&
     fields.editorOverrides.version === 1 && fields.editorOverrides.composition === 'payment'
   const components = manual && Array.isArray(value.allocations)
     ? value.allocations.map(() => ({ componentKind: 'financial' })) : fields.paymentComponents || []
@@ -49,7 +50,7 @@ function inspectPaymentResolution(event, value) {
   if (financial.length < 2 || financial.length > 20 || components.some((item) =>
     !['financial', 'certified_discount'].includes(item.componentKind)) ||
     !manual && (!fields.semanticBlockers || !fields.semanticBlockers.includes('payment_components_ambiguous'))) return invalid('payment_resolution_not_supported')
-  if (!value || ![PAYMENT_RESOLUTION_VERSION, LEGACY_PAYMENT_RESOLUTION_VERSION, ...(manual ? [EDITOR_PAYMENT_VERSION] : [])].includes(value.version) || value.confirmedFromDetails !== true ||
+  if (!value || ![PAYMENT_RESOLUTION_VERSION, LEGACY_PAYMENT_RESOLUTION_VERSION, ...(manual ? [EDITOR_PAYMENT_VERSION, EXTERNAL_PAYMENT_VERSION] : [])].includes(value.version) || value.confirmedFromDetails !== true ||
     !['expense', 'repayment'].includes(value.nature) || typeof value.evidenceNote !== 'string' ||
     !value.evidenceNote.trim() || value.evidenceNote.length > 300 || !MINOR.test(String(event.amountMinor || '')) ||
     !Array.isArray(value.allocations) || value.allocations.length !== financial.length) return invalid()
@@ -58,16 +59,22 @@ function inspectPaymentResolution(event, value) {
   let total = 0n
   const allocations = []
   for (const item of value.allocations) {
+    const external = value.version === EXTERNAL_PAYMENT_VERSION && item?.kind === 'external'
     if (!item || !Number.isInteger(item.componentIndex) || !financial.some((part) => part.componentIndex === item.componentIndex) ||
-      seen.has(item.componentIndex) || !UUID.test(item.accountId || '') || ids.has(item.accountId) ||
-      item.accountId === value.targetAccountId || typeof item.amountMinor !== 'string' || !(value.version !== LEGACY_PAYMENT_RESOLUTION_VERSION ? NONNEGATIVE_MINOR : MINOR).test(item.amountMinor)) return invalid('payment_resolution_component_invalid')
-    seen.add(item.componentIndex); ids.add(item.accountId)
+      seen.has(item.componentIndex) || (external ? item.accountId != null : !UUID.test(item.accountId || '') || ids.has(item.accountId) ||
+      item.accountId === value.targetAccountId) || item.kind != null && !['ledger', 'external'].includes(item.kind) ||
+      item.kind === 'external' && !external || item.referenceRole != null && !require('./account-ownership-recheck').roleValid(item.referenceRole) ||
+      typeof item.amountMinor !== 'string' || !(value.version !== LEGACY_PAYMENT_RESOLUTION_VERSION ? NONNEGATIVE_MINOR : MINOR).test(item.amountMinor) ||
+      BigInt(item.amountMinor) > 9223372036854775807n) return invalid('payment_resolution_component_invalid')
+    seen.add(item.componentIndex); if (!external) ids.add(item.accountId)
     total += BigInt(item.amountMinor)
-    allocations.push({ componentIndex: item.componentIndex, accountId: item.accountId, amountMinor: item.amountMinor })
+    allocations.push({ componentIndex: item.componentIndex, accountId: external ? null : item.accountId, amountMinor: item.amountMinor,
+      ...(external ? { kind: 'external' } : {}), ...(item.referenceRole ? { referenceRole: item.referenceRole } : {}) })
   }
   if (total !== BigInt(event.amountMinor)) return invalid('payment_resolution_amount_mismatch')
   allocations.sort((a, b) => a.componentIndex - b.componentIndex)
-  return { valid: true, reason: '', allocations: allocations.filter((item) => item.amountMinor !== '0'), resolution: {
+  return { valid: true, reason: '', allocations: allocations.filter((item) => item.amountMinor !== '0' && item.kind !== 'external'),
+    externalAllocations: allocations.filter(item => item.amountMinor !== '0' && item.kind === 'external'), resolution: {
     version: value.version, nature: value.nature, allocations,
     targetAccountId: value.targetAccountId || null, evidenceNote: value.evidenceNote.trim(), confirmedFromDetails: true
   } }
@@ -77,7 +84,7 @@ function paymentResolutionForEvent(event) {
   const result = inspectPaymentResolution(event, event.fieldSources && event.fieldSources.paymentResolution)
   if (!result.valid) return result
   const value = result.resolution
-  if (event.economicNature !== value.nature || event.ledgerAccountId !== result.allocations[0].accountId ||
+  if (event.economicNature !== value.nature || (event.ledgerAccountId || null) !== (result.allocations[0]?.accountId || null) ||
     (event.counterpartyLedgerAccountId || null) !== value.targetAccountId ||
     event.flowDirection !== (value.nature === 'expense' ? 'outflow' : 'neutral')) return { valid: false, reason: 'payment_resolution_changed', allocations: [] }
   return result
@@ -97,4 +104,4 @@ function effectiveSemanticReasons(event, reasons) {
     !(natureConfirmed && reason === 'row_transaction_type_unknown'))
 }
 
-module.exports = { EDITOR_PAYMENT_VERSION, inspectPaymentAccounts, paymentEvidenceFields, PAYMENT_RESOLUTION_VERSION, inspectPaymentResolution, paymentResolutionForEvent, effectiveSemanticReasons }
+module.exports = { EDITOR_PAYMENT_VERSION, EXTERNAL_PAYMENT_VERSION, inspectPaymentAccounts, paymentEvidenceFields, PAYMENT_RESOLUTION_VERSION, inspectPaymentResolution, paymentResolutionForEvent, effectiveSemanticReasons }

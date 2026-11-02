@@ -1,4 +1,5 @@
 const identity = require('../domain/import-review/local-review-identity')
+const creationFacts = require('../domain/import-review/account-creation-facts')
 const clone = value => JSON.parse(JSON.stringify(value))
 const kinds = new Set(['accounts','events','pairings','reviews','duplicates','draft','pairingDraft'])
 const unique = values => [...new Set(values)].sort()
@@ -32,8 +33,7 @@ function accountDraft(choice) { return choice.fields?.mappingAccountDraft || cho
 function target(choice, facts) {
   const draft = accountDraft(choice)
   if (!draft) return choice.fields?.mappingAccountId || choice.fields?.ledgerAccountId || null
-  return (facts.accountDrafts || []).find(row => nameKey(row.name) === nameKey(draft.name))?.accountId ||
-    identity.accountId(facts.snapshotId, draft.name, draft.type)
+  return identity.accountId(facts.snapshotId, draft.name, draft.type, draft.creationKey)
 }
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -55,6 +55,8 @@ function replaceAccountIds(value, aliases, key = '') {
 // 账户范围只按服务端迁移关系和完整成员集合继承，不能由标签或行序猜测。
 function rebase(records, oldFacts, newFacts) {
   const oldIndex = indexFacts(oldFacts), newIndex = indexFacts(newFacts)
+  const creations = creationFacts.collect(records, oldFacts || {})
+  const movedCreations = new Map([...creations].map(([key, value]) => [key, creationFacts.rebase(value, newFacts)]))
   const final = new Map()
   for (const record of records || []) for (const change of record.changes || []) {
     if (!kinds.has(change.kind) && !(change.kind === 'ui' && change.key === 'step')) continue
@@ -63,10 +65,25 @@ function rebase(records, oldFacts, newFacts) {
     else final.set(key, clone(change))
   }
   const aliases = new Map()
+  if (oldFacts) for (const fact of creations.values()) aliases.set(
+    creationFacts.accountId(fact, oldFacts.snapshotId), creationFacts.accountId(fact, newFacts.snapshotId))
   if (oldFacts) for (const { kind, value } of final.values()) if (kind === 'accounts' && accountDraft(value)) {
     aliases.set(target(value, oldFacts), target(value, newFacts))
   }
-  const changes = [...final.values()].map(change => ({ ...change, value: replaceAccountIds(change.value, aliases) }))
+  const changes = [...final.values()].map(change => {
+    const value = replaceAccountIds(change.value, aliases)
+    if (change.kind === 'accounts' && accountDraft(value) && Array.isArray(newFacts.events)) {
+      let fact
+      try { fact = creationFacts.fromChoice(change.value, oldFacts || {}) } catch (_) {}
+      // 创建事实独立迁移，最终归属只保留明确复用；组扩大不改变原创建身份。
+      if (fact && !movedCreations.get(fact.key)?.needsRecheck) {
+        const fields = { ...value.fields }; delete fields.mappingAccountDraft; delete fields.ledgerAccountDraft
+        fields.mappingAccountId = creationFacts.accountId(fact, newFacts.snapshotId)
+        value.fields = fields
+      }
+    }
+    return { ...change, value }
+  })
   const routes = new Map()
   for (const action of newFacts.actions || []) if (action.actionType === 'semantic_upgrade') {
     for (const pair of action.decision?.accountIssueMappings || []) {
@@ -119,7 +136,9 @@ function rebase(records, oldFacts, newFacts) {
       const ids = (choice.eventIds || []).filter(id => scope.eventIds.includes(id))
       return !oldFacts || same(sourceIds(oldIndex, ids), sourceIds(newIndex, ids))
     })
-    const needsRecheck = fingerprints.size !== 1 || !complete || !evidenceUnchanged || choices.some(choice => choice.needsRecheck)
+    const creationUnchanged = choices.every(choice => !accountDraft(choice)?.creationKey ||
+      accountDraft(choice).creationKey === identity.accountCreationKey(members(newIndex, issueId), newFacts.events))
+    const needsRecheck = fingerprints.size !== 1 || !complete || !evidenceUnchanged || !creationUnchanged || choices.some(choice => choice.needsRecheck)
     const value = { ...choices[0], ...scope }
     if (needsRecheck) { value.needsRecheck = true; value.previousChoices = choices.map(clone) }
     else { delete value.needsRecheck; delete value.previousChoices }
@@ -149,6 +168,7 @@ function rebase(records, oldFacts, newFacts) {
     }
     result.push({ kind: 'draft', key: issueId, value })
   }
+  for (const [key, value] of movedCreations) result.push({ kind: 'accountCreation', key, value })
   return result
 }
 module.exports = { rebase }

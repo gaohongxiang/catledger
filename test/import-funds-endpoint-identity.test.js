@@ -8,12 +8,14 @@ test('拆开某一端的加号不改变两端的收付身份，原账户留在�
   const { page } = await editor.open(t, { economicNature: 'repayment', sourceDirection: 'income',
     ledgerAccountId: 'account-1', counterpartyLedgerAccountId: 'account-2' })
   const before = editor.view(page).fundsEndpoints.map(item => [item.key, item.label])
+  const originalPayer = editor.view(page).fundsEndpoints.find(item => item.key === 'payer').accounts[0].accountId
+  assert.equal(originalPayer, 'account-2', '流入还款的原账单账户是还入端，付款端在对端字段')
   page.addFundsAccount(editor.tap({ endpoint: 'payer' }))
   const endpoints = editor.view(page).fundsEndpoints
   assert.deepEqual(endpoints.map(item => [item.key, item.label]), before, '拆开后两端标题不应互换')
   const payer = endpoints.find(item => item.key === 'payer')
   assert.equal(payer.split, true, '拆开后这一端应进入分摊')
-  assert.equal(payer.accounts[0].accountId, 'account-1', '原账户应留在第一行')
+  assert.equal(payer.accounts[0].accountId, originalPayer, '原付款账户应留在第一行')
   assert.equal(payer.accounts[1].accountId, '', '新加的一行应是待选')
 })
 

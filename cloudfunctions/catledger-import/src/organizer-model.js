@@ -74,6 +74,7 @@ function hasPendingRefundRelation(event) {
 const HARD_BLOCKING_REASONS = new Set([
   ...SEMANTIC_HARD_BLOCKERS,
   'account_mapping_conflict',
+  'account_ownership_recheck_required',
   'blocking_issue_open',
   'core_fields_conflict',
   'identity_conflict',
@@ -114,6 +115,13 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   const reasons = unique(effectiveSemanticReasons(event, [...(event.reasonCodes || []),
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
+  // 归属已确认不等于旧组成/关系仍有效；重核状态从事实重新推导，不能删原因码绕过。
+  const ownershipRecheck = require('./account-ownership-recheck')
+  const ownershipReview = require('./account-ownership-review-policy')
+  const recheckIndex = reasons.indexOf(ownershipRecheck.REASON)
+  if (recheckIndex !== -1 && !ownershipReview.pending(event).length &&
+      !require('./account-ownership').read(event).pendingLegacyTreatment) reasons.splice(recheckIndex, 1)
+  if (ownershipReview.pending(event).length) reasons.push(ownershipRecheck.REASON)
   if (event.fieldSources && event.fieldSources.refundSourceConflict) reasons.push('refund_source_conflict')
   if (event.fieldSources && event.fieldSources.repaymentChannelResolution) {
     const channel = require('./repayment-channel')
@@ -137,7 +145,8 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
     reasons.push('core_fields_missing')
   }
-  if (!event.ledgerAccountId) reasons.push('ledger_account_required')
+  const paymentPlan = paymentResolutionForEvent(event)
+  if (!event.ledgerAccountId && !(paymentPlan.valid && paymentPlan.externalAllocations?.length)) reasons.push('ledger_account_required')
   if (require('./installment-business').isRegistration(event)) {
     // 登记只是来源与计划的关系，不借用还款本金期次，也不能通过改性质变成资金流水。
     if (event.economicNature !== ECONOMIC_NATURE.UNKNOWN || event.flowDirection !== FLOW_DIRECTION.NEUTRAL ||
@@ -153,7 +162,9 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
       (!INSTALLMENT_PRINCIPAL_NATURES.has(event.economicNature) || event.counterpartyLedgerAccountId ||
         event.fieldSources.loanRepayment || event.fieldSources.paymentResolution ||
         (event.fieldSources.repaymentAllocations || []).length)) reasons.push('core_fields_conflict')
-  reasons.push(...repaymentOwnership.reasonsFor(event))
+  const ownership = require('./account-ownership').resolve(event)
+  if (require('./account-reference-decision').supported(event) &&
+      (ownership.explicit || ownership.businessNature === 'repayment')) reasons.push(...ownership.reasons)
   if (needsCategory(event)) {
     reasons.push('category_required')
   }
@@ -264,10 +275,10 @@ function classifyReviewIssue(event) {
   if (reasons.has('ledger_account_required') && (require('./installment-business').isPlanSource(event) || ACCOUNT_FIRST_NATURES.has(event.economicNature) || bankRepaymentAccount || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
-  if (reasons.has('repayment_other_treatment_required') || reasons.has('repayment_ownership_invalid') ||
-      (reasons.has('repayment_ownership_required') && event.ledgerAccountId)) {
-    return { issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS, primaryReason: reasons.has('repayment_other_treatment_required')
-      ? 'repayment_other_treatment_required' : 'repayment_ownership_required' }
+  if (['account_ownership_invalid','account_ownership_recheck_required','account_ownership_business_required',
+    'external_no_ledger_effect_required'].some(reason => reasons.has(reason))) {
+    return { issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS,
+      primaryReason: [...reasons].find(reason => reason.startsWith('account_ownership_')) || 'external_no_ledger_effect_required' }
   }
   if ((event.status === EVENT_STATUS.READY || reasons.size === 1) && reasons.has('category_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT, primaryReason: 'category_required' }
@@ -288,9 +299,10 @@ function classifyReviewIssue(event) {
   // 先在账户步骤确认它。确认后再生成只询问另一端的资金流转问题。
   // 这样“微信零钱还信用卡”不会在整理页把已知的零钱端和未知信用卡端
   // 混成双端选择，也不会为没有稳定键的银行泛称提前创建账户。
+  const ownershipView = require('./account-ownership').read(event)
   if (fundsProjection && (
-    (!event.ledgerAccountId && fundsProjection.from && fundsProjection.from.paymentMethodKey) ||
-    (!event.counterpartyLedgerAccountId && fundsProjection.to && fundsProjection.to.paymentMethodKey)
+    (ownershipView.source.kind !== 'external' && !ownershipView.source.accountId && fundsProjection.from && fundsProjection.from.paymentMethodKey) ||
+    (ownershipView.destination.kind !== 'external' && !ownershipView.destination.accountId && fundsProjection.to && fundsProjection.to.paymentMethodKey)
   )) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
@@ -299,6 +311,7 @@ function classifyReviewIssue(event) {
   const missingTransferAccount = !event.ledgerAccountId || !event.counterpartyLedgerAccountId || event.ledgerAccountId === event.counterpartyLedgerAccountId
   if ((!installmentPrincipal && missingTransferAccount && [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) ||
       reasons.has('transfer_account_required') || reasons.has('repayment_account_required') || reasons.has('borrow_account_required') ||
+      reasons.has('account_source_required') || reasons.has('account_destination_required') ||
       [...reasons].some((reason) => reason.startsWith('repayment_allocation_'))) {
     return {
       issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS,

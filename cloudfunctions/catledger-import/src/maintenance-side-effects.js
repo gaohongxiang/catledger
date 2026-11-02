@@ -4,7 +4,7 @@ const { MAINTENANCE_POLICY_VERSION } = require('./maintenance-policy')
 // 表名和列名只由本模块的封闭枚举选择，值始终参数绑定。
 const CONFIG = Object.freeze({
   account: { table: 'catledger_import_account_mappings', key: 'payment_method_key', property: 'paymentMethodKey',
-    fields: 'mapping_action AS mappingAction, account_id AS accountId' },
+    fields: 'mapping_action AS mappingAction, account_id AS accountId, binding_json AS binding' },
   category: { table: 'catledger_import_category_mappings', key: 'alias_key', property: 'aliasKey',
     fields: 'category_id AS categoryId' }
 })
@@ -84,8 +84,10 @@ async function revertSideEffects(connection, uid, effects) {
   for (const item of effects.mappings.filter((row) => row.revert)) {
     const config = CONFIG[item.kind]
     const previous = item.before && item.restoreValid ? item.before : null
-    const fields = item.kind === 'account' ? 'mapping_action = ?, account_id = ?,' : 'category_id = ?,'
-    const values = item.kind === 'account' ? [previous ? previous.mappingAction : item.after.mappingAction, previous ? previous.accountId : item.after.accountId] :
+    const fields = item.kind === 'account' ? 'mapping_action = ?, account_id = ?, binding_json = ?,' : 'category_id = ?,'
+    const proof = (previous || item.after).binding
+    const values = item.kind === 'account' ? [previous ? previous.mappingAction : item.after.mappingAction, previous ? previous.accountId : item.after.accountId,
+      typeof proof === 'string' ? proof : proof ? JSON.stringify(proof) : null] :
       [previous ? previous.categoryId : item.after.categoryId]
     const [result] = await connection.execute(`UPDATE ${config.table} SET ${fields}
       disabled_at = ${previous && !previous.disabledAt ? 'NULL' : 'CURRENT_TIMESTAMP(3)'}, version = version + 1

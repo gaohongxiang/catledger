@@ -58,16 +58,106 @@ test('刷新未知来源时保留服务端已经确认的人工归属', () => {
   const issue = unknownIssue()
   issue.status = 'resolved'
   issue.accountContext.accountId = 'wallet'
-  const state = pageFor(issue, [{ accountId: 'wallet', name: '测试钱包' }]).refreshAccountMappings()
+  const state = pageFor(issue, [{ accountId: 'wallet', name: '测试钱包', type: 'wallet', currency: 'CNY' }]).refreshAccountMappings()
   assert.equal(state.mappings[0].choiceValue, 'account:wallet')
   assert.equal(state.summary.confirmed, 1)
   assert.equal(state.summary.invalid, 0)
 })
 
+test('账户目录一次读完，本批新建并入同一列表，选中一个不丢其它账户', async t => {
+  const h = require('./helpers/paged-workbench').runtime()
+  const page = h.page
+  t.after(() => page.onUnload())
+  const accounts = Array.from({ length: 20 }, (_, index) => ({ accountId: 'synthetic-account-' + String(index).padStart(2, '0'),
+    name: '合成账户' + index, type: 'bank', currency: 'CNY' }))
+  const accountDrafts = [{ accountId: 'synthetic-draft', name: '本批钱包', type: 'wallet', currency: 'CNY' }]
+  h.accounts = accounts
+  h.accountDrafts = accountDrafts
+  page._businessData = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' }, accountIssues: [unknownIssue()], accounts, accountDrafts })
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: 'synthetic-issue' } } })
+  await h.flush()
+  assert.equal(page.data.accountChoiceResults.length, 21, '20 个账户一次读完，本批新建并入同一列表')
+  assert.equal(page.data.accountChoiceResults.filter(row => !row.draft).length, 20)
+  assert.ok(page.data.accountChoiceResults.some(row => row.accountId === 'synthetic-draft' && row.name === '本批钱包（本批新建）'))
+  assert.equal(page.data.choicePage.hasNext, false, '账户不再分页')
+  await page.selectAccountChoice({ currentTarget: { dataset: { value: 'account:synthetic-account-19' } } })
+  assert.equal(page.data.accounts.length, 20, '选中一个账户不能截断其它账户')
+  assert.equal(page.data.accountMappings[0].choiceValue, 'account:synthetic-account-19')
+})
+
+test('账户步骤账本外归属与整批排除独立，确认后仍在账户列表回显', async t => {
+  const issue = { ...unknownIssue(), version: 1, subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
+  issue.accountContext.fundsSide = 'payment_target'
+  issue.accountContext.canExternal = true
+  const page = pageFor(issue)
+  t.after(() => page.onUnload())
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+  assert.equal(page.data.accountChoiceSheet.canExternal, true)
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  const mapping = page.refreshAccountMappings().mappings[0]
+  assert.equal(mapping.choiceValue, 'external')
+  assert.equal(mapping.canConfirm, true)
+  assert.deepEqual(editor.plain(page.accountMappingDecision(mapping)), { issueId: issue.issueId, issueVersion: 1,
+    operation: 'resolve', decision: 'apply_fields', paymentRuleAction: 'external', fields: {} })
+  await page.completeAccountMapping({ currentTarget: { dataset: { id: issue.issueId } } })
+  assert.equal(page.data.accountMappingsExcluded.length, 0)
+  assert.equal(page.data.accountMappingsIncluded[0].choiceValue, 'external')
+  assert.equal(page.data.accountMappingsIncluded[0].needsConfirmation, false)
+  const resolved = { ...issue, status: 'resolved', accountContext: { ...issue.accountContext, mappingAction: 'external' } }
+  const reopened = pageFor(resolved)
+  t.after(() => reopened.onUnload())
+  const refreshed = reopened.refreshAccountMappings()
+  assert.equal(refreshed.mappings[0].choiceValue, 'external')
+  assert.equal(refreshed.summary.confirmed, 1)
+})
+
+test('账户步骤只按统一判定开放外部选择，缺失判定时保守关闭', async t => {
+  for (const [canExternal, expected] of [[true, 'external'], [false, 'pending'], [undefined, 'pending']]) {
+    const issue = { ...unknownIssue(), subject: { eventId: 'synthetic-event', economicNature: 'repayment' } }
+    issue.accountContext = { ...issue.accountContext, fundsSide: 'payment_target', canExternal }
+    const page = pageFor(issue)
+    t.after(() => page.onUnload())
+    page.refreshAccountMappings()
+    await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+    assert.equal(page.data.accountChoiceSheet.canExternal, canExternal === true)
+    page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+    assert.equal(page._accountUiDrafts.get(issue.issueId).mode, expected)
+  }
+})
+
+test('复杂成员也能记录外部事实，无有效资金角色或已入账时不开放', () => {
+  const { canUseExternal } = require('../cloudfunctions/catledger-import/src/account-issue-grouping')
+  const base = { eventId: 'synthetic-event', status: 'needs_action', economicNature: 'repayment', fieldSources: {} }
+  const members = (event, role = 'payment_target') => [{ objectType: 'event', objectId: event.eventId, memberRole: role }]
+  assert.equal(canUseExternal([base], members(base)), true)
+  for (const event of [
+    { ...base, economicNature: 'borrow' },
+    { ...base, economicNature: 'refund' },
+    { ...base, fieldSources: { installment: { creditStatement: true, component: 'principal' } } },
+    { ...base, fieldSources: { disbursement: { role: 'registration' } } },
+    { ...base, fieldSources: { installmentPlan: { action: 'link', loanId: 'synthetic-plan' } } },
+    { ...base, fieldSources: { paymentResolution: { allocations: [] } } },
+    { ...base, fieldSources: { repaymentAllocations: [{ accountId: 'synthetic-debt' }] } },
+    { ...base, fieldSources: { repaymentChannelResolution: { targetAccountId: 'synthetic-debt' } } },
+    { ...base, fieldSources: { bankChannelResolution: {} } },
+    { ...base, fieldSources: { loanRepayment: {} } },
+    { ...base, fieldSources: { editorOverrides: { version: 1, incompleteComposition: { parts: [] } } } },
+    { ...base, fieldSources: { editorOverrides: { version: 1, incompleteRepayment: true } } }
+  ]) assert.equal(canUseExternal([event], members(event)), true, event.economicNature)
+  assert.equal(canUseExternal([base], members(base, 'payment_component_0')), false)
+  assert.equal(canUseExternal([base], []), false)
+  assert.equal(canUseExternal([{ ...base, status: 'posted' }], members(base)), false)
+  assert.equal(canUseExternal([base, { ...base, eventId: 'synthetic-other', economicNature: 'borrow' }],
+    [...members(base), ...members({ eventId: 'synthetic-other' })]), true)
+})
+
 test('稳定识别的微信零钱仍可推荐唯一已有账户', () => {
   const issue = unknownIssue()
   issue.accountContext = { recognized: true, sourceType: 'wechat', label: '微信零钱', currency: 'CNY' }
-  const state = pageFor(issue, [{ accountId: 'wallet', name: '微信零钱', currency: 'CNY' }]).refreshAccountMappings()
+  const state = pageFor(issue, [{ accountId: 'wallet', name: '微信零钱', type: 'wallet', currency: 'CNY' }]).refreshAccountMappings()
   assert.equal(state.mappings[0].choiceValue, 'account:wallet')
   assert.equal(state.mappings[0].suggestedExisting, true)
 })
@@ -135,8 +225,8 @@ test('整理阶段组合支付按金额与说明区分完整和待核对草稿',
 
 test('组合支付预填唯一来源账户和明确还款性质，歧义与未知保持未选', () => {
   const accounts = [
-    { accountId: 'bank', name: '测试银行储蓄卡(1234)', currency: 'CNY' },
-    { accountId: 'wallet', name: '支付宝账户余额', currency: 'CNY' }
+    { accountId: 'bank', name: '测试银行储蓄卡(1234)', type: 'bank', currency: 'CNY' },
+    { accountId: 'wallet', name: '支付宝账户余额', type: 'wallet', currency: 'CNY' }
   ]
   const event = { currency: 'CNY', economicNature: 'unknown',
     primaryEvidence: { sourceType: 'alipay', item: '先采后付账单付款' },
@@ -319,4 +409,99 @@ test('修改分配金额只更新对应叶字段，不把另一行输入重新�
   assert.equal(editor.draft(page).parts[1].amountInput, '50.')
   assert.ok(patches.some(patch => patch['reviewEditSheet.draft.parts[1].amountInput'] === '50.'))
   assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'reviewEditSheet.draft.parts' || key.includes('parts[0]'))))
+})
+
+test('账户步骤一键确认全部建议，待选择和已修改项保持逐项确认', async t => {
+  const accounts = [
+    { accountId: 'wallet', name: '合成钱包', type: 'wallet', currency: 'CNY' },
+    { accountId: 'bank', name: '合成银行卡', type: 'bank', currency: 'CNY' }
+  ]
+  const issue = (id, label, sourceType) => ({ issueId: id, issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType, label, currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event-' + id, economicNature: 'expense' } })
+  const h = require('./helpers/paged-workbench').runtime(), page = h.page
+  page._businessData = null
+  page._draftSession = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' },
+    accountIssues: [issue('synthetic-wallet', '合成钱包', 'wechat'), issue('synthetic-bank', '合成银行卡', 'bank'), unknownIssue()],
+    accounts })
+  t.after(() => page.onUnload())
+  const state = page.refreshAccountMappings()
+  assert.equal(state.summary.suggested, 2, '只有两项是未改动的建议')
+  await page.confirmAllAccountMappings()
+  const after = page.refreshAccountMappings()
+  assert.equal(after.summary.suggested, 0)
+  assert.equal(after.summary.pending, 1, '未知账户仍需逐项选择')
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-wallet').needsConfirmation, false)
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-bank').needsConfirmation, false)
+  assert.equal(after.mappings.find(item => item.issueId === 'synthetic-issue').needsConfirmation, true)
+})
+
+function batchPage(t, issues, accounts = []) {
+  const h = require('./helpers/paged-workbench').runtime(), page = h.page
+  page._businessData = null
+  page._draftSession = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' }, accountIssues: issues, accounts })
+  t.after(() => page.onUnload())
+  return { h, page }
+}
+
+test('一键确认先说清项数和会新建的账户，取消后一项也不确认', async t => {
+  const issue = (id, label) => ({ issueId: id, issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType: 'bank', label, currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event-' + id, economicNature: 'expense' } })
+  const { h, page } = batchPage(t, [issue('synthetic-wallet', '合成钱包'), issue('synthetic-card', '合成信用卡')])
+  const asked = []
+  h.wx.showModal = options => { asked.push(options.content); options.success({ confirm: false }) }
+  assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 2, '两项都按建议名新建')
+  await page.confirmAllAccountMappings()
+  assert.equal(asked.length, 1)
+  assert.match(asked[0], /将确认 2 项建议，其中新建 2 个账户/u)
+  const after = page.refreshAccountMappings()
+  assert.equal(after.summary.suggested, 2, '取消后建议项保持待确认')
+  assert.equal(after.summary.confirmed, 0)
+})
+
+test('确认建议时按已有账户与新建分别计数，只有已有账户的批次不提新建', async t => {
+  const accounts = [{ accountId: 'wallet', name: '合成钱包', type: 'wallet', currency: 'CNY' }]
+  const issue = { issueId: 'synthetic-wallet', issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType: 'wechat', label: '合成钱包', currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event', economicNature: 'expense' } }
+  const { h, page } = batchPage(t, [issue], accounts)
+  const asked = []
+  h.wx.showModal = options => { asked.push(options.content); options.success({ confirm: true }) }
+  assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 0, '命中已有账户不算新建')
+  await page.confirmAllAccountMappings()
+  assert.match(asked[0], /将确认 1 项建议。/u)
+  assert.equal(page.refreshAccountMappings().summary.confirmed, 1)
+})
+
+test('组合支付与还款分配选了账本外，提示还要去整理页补齐资金关系', async t => {
+  const base = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext, fundsSide: 'payment_target', canExternal: true } }
+  const { page } = batchPage(t, [{ ...base, subject: { eventId: 'synthetic-event', economicNature: 'repayment',
+    repaymentAllocations: [{ amountMinor: '100' }] } }])
+  page.refreshAccountMappings()
+  assert.equal(page.data.accountMappings[0].ownershipNote, '', '选之前不预先提示')
+  await page.openAccountChoice({ currentTarget: { dataset: { id: base.issueId } } })
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  assert.match(page.data.accountMappings[0].ownershipNote, /资金关系还要在整理页补齐/u)
+})
+
+test('普通收支选账本外不追加补齐提示，页面不复制配对与渠道规则', async t => {
+  const issue = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext, canExternal: true },
+    subject: { eventId: 'synthetic-event', economicNature: 'expense' } }
+  const { page } = batchPage(t, [issue])
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  assert.equal(page.data.accountMappings[0].ownershipNote, '')
+})
+
+test('账户类型只剩一种时锁定下拉，多类型仍可改', () => {
+  const single = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext,
+    recognized: true, label: '合成信用卡', sourceType: 'credit', allowedAccountTypes: ['credit'] } }
+  const locked = pageFor(single)
+  assert.equal(locked.refreshAccountMappings().mappings[0].typeLocked, true)
+  const open = pageFor(unknownIssue())
+  assert.equal(open.refreshAccountMappings().mappings[0].typeLocked, false)
 })

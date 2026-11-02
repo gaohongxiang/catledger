@@ -6,6 +6,7 @@ const drafts = require('../../../../services/import-draft-session')
 const readCache = require('../../../../services/read-cache')
 const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
 const tabRouter = require('../../../../shell/router')
+const accountPending = require('./account-pending')
 
 module.exports = {
   viewTransactions: function () {
@@ -132,6 +133,11 @@ module.exports = {
 
   postUpdate: async function () {
     if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy || !this._draftSession) return
+    if (!this._draftSession.state.postFlight && accountPending.count(this, this.data.accountStepSummary?.pending) > 0) {
+      this.flushAccountDraftSync()
+      await this.setStep({ currentStep: 2, errorMessage: '请先确认保留的账户选择，再入账' })
+      return
+    }
     const reviewPending = this.pendingReviewEdit()
     if (reviewPending) {
       await this.openReviewEdit({ currentTarget: { dataset: { id: reviewPending.payload.eventId } } })

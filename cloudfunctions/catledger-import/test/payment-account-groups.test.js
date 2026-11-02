@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { referencesForRows } = require('../src/payment-account-groups')
+const { confirmedBatchMappings } = require('../../../test/helpers/account-bindings')
 const base = { sourceType: 'alipay', sourceFormat: 'alipay_app_csv', rawStatus: '交易成功', amountMinor: '1000', direction: 'expense', rawTransactionType: '信用借还', counterparty: '1688先采后付', item: '先采后付账单付款', paymentMethod: '测试银行储蓄卡(1234)&账户余额' }
 test('账户引用独立于组合金额，目标只按明确平台产品及信用借还识别', () => {
   assert.deepEqual(referencesForRows([base]).map(x => x.label), ['测试银行储蓄卡(1234)', '支付宝账户余额', '1688先采后付'])
@@ -85,17 +86,37 @@ test('普通付款与组合付款共用账户时只确认一次，每组保留�
       ['payment_component_1', 'subject'])
     assert.equal(bank.memberCount, 1)
     assert.equal(plan.members.find(member => member.issueId === bank.issueId).memberRole, 'payment_component_0')
-    assert.equal(wallet.status, accounts.length ? 'resolved' : 'open')
+    assert.equal(wallet.status, 'open', '账本名称相同仅提供候选，未确认前不自动沿用')
     assert.deepEqual(plan.events.map(event => event.amountMinor).sort(), ['1000', '200'])
     assert.equal(JSON.stringify(input), before)
   }
 })
 
-test('组合付款按成分沿用历史账户决定，只问还没定过的成分', () => {
-  const plan = organizeComposite([planningRow('账户余额&测试银行储蓄卡(1234)')], [{
+test('同一还款目标的多种资金角色只计一笔交易，独立还款仍逐笔计数', () => {
+  for (const count of [1, 2]) {
+    const rows = Array.from({ length: count }, (_, index) => ({
+      ...planningRow('账户余额', { counterparty: '合成银行信用卡(1234)' }),
+      rowId: 'row-' + index, identityId: 'identity-' + index, sourceTransactionId: 'SYNTHETIC-REPAYMENT-' + index
+    }))
+    const plan = organizeComposite(rows, [], [])
+    const targetMember = plan.members.find(member => member.memberRole === 'payment_target')
+    const target = plan.issues.find(issue => issue.issueId === targetMember.issueId)
+    const members = plan.members.filter(member => member.issueId === target.issueId)
+    assert.equal(target.memberCount, count)
+    assert.equal(new Set(members.map(member => member.objectId)).size, count)
+    for (const eventId of new Set(members.map(member => member.objectId))) {
+      assert.deepEqual(members.filter(member => member.objectId === eventId).map(member => member.memberRole).sort(),
+        ['mapping_to', 'payment_target'], '归组不删除后续写入所需的任一资金角色')
+    }
+  }
+})
+
+test('组合付款按成分沿用本批已确认账户决定，只问还没定过的成分', () => {
+  const rows = [planningRow('账户余额&测试银行储蓄卡(1234)')]
+  const plan = organizeComposite(rows, confirmedBatchMappings(rows, [{
     sourceType: 'alipay', paymentMethodKey: componentKey('支付宝账户余额'), paymentMethodHint: '账户余额',
     mappingAction: 'account', accountId: 'acct-wallet', mappingScope: 'batch'
-  }])
+  }]))
   const issues = plan.issues.filter(issue => issue.issueType === 'account_mapping')
   assert.deepEqual(issues.map(issue => issue.primaryReasonCode).sort(),
     ['payment_reference_mapping_confirmed', 'payment_reference_mapping_required', 'payment_reference_mapping_required'])
@@ -104,13 +125,16 @@ test('组合付款按成分沿用历史账户决定，只问还没定过的成�
 
 test('新导入的组合还款目标沿用账户时写入事件，不能出现已确认却没有账户的事项', () => {
   const { publicIssue } = require('../src/review-presentation')
-  const row = planningRow('测试银行储蓄卡(1234)&账户余额')
+  const row = { ...planningRow('测试银行储蓄卡(1234)&账户余额'), sourceProfileKey: 'b'.repeat(64) }
   const reference = referencesForRows([row]).find(item => item.memberRole === 'payment_target')
-  for (const scope of ['history', 'batch']) for (const action of ['account', 'ignore']) {
+  for (const { scope, confirmed } of [
+    { scope: 'history', confirmed: false }, { scope: 'history', confirmed: true }, { scope: 'batch', confirmed: true }
+  ]) for (const action of ['account', 'ignore']) {
     const mapping = { sourceType: reference.sourceType, paymentMethodKey: reference.paymentMethodKey,
       paymentMethodHint: reference.label, mappingScope: scope, mappingAction: action,
       accountId: action === 'account' ? 'acct-target' : null }
-    const plan = organizeComposite([row], [mapping], COMPOSITE_ACCOUNTS.concat({
+    const mappings = confirmed ? confirmedBatchMappings([row], [mapping]).map(item => ({ ...item, mappingScope: scope })) : [mapping]
+    const plan = organizeComposite([row], mappings, COMPOSITE_ACCOUNTS.concat({
       accountId: 'acct-target', name: '合成还款目标', type: 'credit', currency: 'CNY' }))
     const event = plan.events[0], member = plan.members.find(item => item.memberRole === 'payment_target')
     const issue = plan.issues.find(item => item.issueId === member.issueId)
@@ -119,8 +143,8 @@ test('新导入的组合还款目标沿用账户时写入事件，不能出现�
       subjectCounterpartyLedgerAccountId: event.counterpartyLedgerAccountId,
       subjectSourceType: row.sourceType, subjectPaymentMethod: row.paymentMethod })
     assert.notEqual(event.status, 'excluded')
-    assert.equal(issue.status, action === 'account' ? 'resolved' : 'open')
-    assert.equal(event.counterpartyLedgerAccountId, action === 'account' ? 'acct-target' : null)
+    assert.equal(issue.status, confirmed && action === 'account' ? 'resolved' : 'open')
+    assert.equal(event.counterpartyLedgerAccountId, confirmed && action === 'account' ? 'acct-target' : null)
     assert.equal(shown.accountContext.accountId, event.counterpartyLedgerAccountId)
     assert.equal(shown.accountContext.defaultIgnored, false)
   }

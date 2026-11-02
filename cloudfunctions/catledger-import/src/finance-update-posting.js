@@ -1,4 +1,4 @@
-const { effectiveText, accountRolesValid } = require('./editor-fields')
+const { effectiveText, accountRolesValid, funds } = require('./editor-fields')
 const repaymentChannel = require('./repayment-channel')
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
@@ -164,12 +164,14 @@ async function lockAccountsAndCategories(connection, uid, events) {
     rows.forEach((row) => categories.set(row.categoryId, row))
   }
   for (const event of events) {
-    if (!accounts.has(event.ledgerAccountId) || accounts.get(event.ledgerAccountId).currency !== event.currency) {
+    const plan = eventAllocation(event)
+    const externalPayers = plan.valid && plan.kind === 'payment' && !plan.allocations.length && plan.externalAllocations?.length
+    if (!externalPayers && (!accounts.has(event.ledgerAccountId) || accounts.get(event.ledgerAccountId).currency !== event.currency)) {
       throw importError('UNRESOLVED_IMPORT')
     }
     if (event.counterpartyLedgerAccountId && (!accounts.has(event.counterpartyLedgerAccountId) ||
         accounts.get(event.counterpartyLedgerAccountId).currency !== event.currency)) throw importError('UNRESOLVED_IMPORT')
-    if (!allocationAccountsValid(event, eventAllocation(event), accounts)) throw importError('UNRESOLVED_IMPORT')
+    if (!allocationAccountsValid(event, plan, accounts)) throw importError('UNRESOLVED_IMPORT')
     if (!accountRolesValid(event, accounts)) throw importError('UNRESOLVED_IMPORT')
     const feeCategoryId = repaymentChannel.resolutionFor(event)?.feeCategoryId
     if (feeCategoryId && categories.get(feeCategoryId)?.kind !== 'expense') throw importError('UNRESOLVED_IMPORT')
@@ -214,51 +216,50 @@ async function promoteAccountMappings(connection, uid, updateId) {
   const [rows] = await connection.execute(
     `SELECT draft.source_type AS sourceType,
             draft.payment_method_key AS paymentMethodKey,
-            MAX(draft.payment_method_hint) AS paymentMethodHint,
-            MIN(draft.mapping_action) AS mappingAction,
-            COUNT(DISTINCT draft.mapping_action) AS actionCount,
-            MIN(draft.account_id) AS accountId,
-            COUNT(DISTINCT draft.account_id) AS accountCount,
-            MIN(event_row.status) AS minimumEventStatus,
-            MAX(event_row.status) AS maximumEventStatus
+            draft.payment_method_hint AS paymentMethodHint,
+            draft.mapping_action AS mappingAction, draft.account_id AS accountId,
+            draft.binding_json AS binding, event_row.status AS eventStatus,
+            account.type AS accountType, account.currency AS accountCurrency, account.archived_at AS accountArchivedAt
        FROM catledger_finance_update_account_mapping_drafts draft
        JOIN catledger_economic_events event_row
          ON event_row.uid = draft.uid AND event_row.update_id = draft.update_id
         AND event_row.event_id = draft.event_id
+       LEFT JOIN catledger_accounts account ON account.uid=draft.uid AND account.account_id=draft.account_id
       WHERE draft.uid = ? AND draft.update_id = ?
         AND NOT (draft.mapping_action = 'account' AND event_row.status = 'excluded')
-      GROUP BY draft.source_type, draft.payment_method_key
       ORDER BY draft.source_type, draft.payment_method_key`,
     [uid, updateId]
   )
   const audit = []
+  const binding = require('./account-binding'), groups = new Map(), batchOnly = new Set()
   for (const row of rows) {
+    const proof = binding.bindingFor(row)
+    // 文件内确认、旧弱键和账本外确认只在本批有效；排除永不成为永久规则。
+    if (row.mappingAction === 'ignore' || !proof || !proof.reusable) continue
+    const key = row.sourceType + ':' + row.paymentMethodKey
+    // 账本外确认不发布为可复用历史；同一引用同时出现账号与账本外决定时保留本批决定。
+    if (row.mappingAction !== 'account') { batchOnly.add(key); continue }
+    const previous = groups.get(key)
+    if (previous && (previous.accountId !== row.accountId ||
+        JSON.stringify(binding.bindingFor(previous)) !== JSON.stringify(proof))) throw importError('UNRESOLVED_IMPORT')
+    groups.set(key, row)
+  }
+  for (const key of batchOnly) groups.delete(key)
+  for (const row of groups.values()) {
+    if (!require('./account-mapping-policy').compatibleMapping({ ...row, mappingScope: 'history' }) ||
+        row.eventStatus !== 'posted') throw importError('UNRESOLVED_IMPORT')
     const before = await readMapping(connection, uid, 'account', row)
-    if (Number(row.actionCount) !== 1) throw importError('UNRESOLVED_IMPORT')
-    if (row.mappingAction === 'account') {
-      if (Number(row.accountCount) !== 1 || row.minimumEventStatus !== 'posted' || row.maximumEventStatus !== 'posted') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      await connection.execute(
-        `INSERT INTO catledger_import_account_mappings
-           (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
-            mapping_action, account_id, disabled_at)
-         VALUES (?, ?, ?, ?, ?, 'account', ?, NULL)
-         ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-           mapping_action = 'account', account_id = VALUES(account_id), disabled_at = NULL,
-           version = version + 1`,
-        [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint, row.accountId]
-      )
-    } else if (row.mappingAction === 'ignore') {
-      if (Number(row.accountCount) !== 0 || row.minimumEventStatus !== 'excluded' || row.maximumEventStatus !== 'excluded') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      // 「仅本次不计入」是本批决定：不写永久映射，也不改动已有映射。
-      // 之前这里会把 ignore 发布成永久规则，导致下一次导入被自动排除，与
-      // “本次排除不自动变成永久忽略”的规则冲突。
-    } else {
-      throw importError('UNRESOLVED_IMPORT')
-    }
+    await connection.execute(
+      `INSERT INTO catledger_import_account_mappings
+         (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
+          mapping_action, account_id, binding_json, disabled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
+         mapping_action = VALUES(mapping_action), account_id = VALUES(account_id),
+         binding_json = VALUES(binding_json), disabled_at = NULL, version = version + 1`,
+      [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint,
+        row.mappingAction, row.accountId, JSON.stringify(binding.bindingFor(row))]
+    )
     audit.push({ before, after: await readMapping(connection, uid, 'account', row) })
   }
   return audit
@@ -410,11 +411,11 @@ function transactionDraft(event, originalTransactionId) {
     }
   }
   if ([ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) {
-    const sourceIsLedger = event.sourceDirection !== 'income'
+    const route = funds(event)
     return {
       type: 'transfer',
-      sourceAccountId: sourceIsLedger ? event.ledgerAccountId : event.counterpartyLedgerAccountId,
-      destinationAccountId: sourceIsLedger ? event.counterpartyLedgerAccountId : event.ledgerAccountId,
+      sourceAccountId: route.sourceAccountId,
+      destinationAccountId: route.destinationAccountId,
       categoryId: null,
       originalTransactionId: null
     }
@@ -423,6 +424,7 @@ function transactionDraft(event, originalTransactionId) {
 }
 
 function transactionDrafts(event, originalTransactionId) {
+  if (require('./account-ownership-review-policy').pending(event).length) throw importError('UNRESOLVED_IMPORT')
   // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
   // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
   if (event.confirmedCreditInstallmentPrincipal === true || event.confirmedInstallmentRegistration === true) return []
