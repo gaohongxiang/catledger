@@ -51,7 +51,9 @@ test('准备账户期间不能重复提交，继续添加不伪装成已解析',
 })
 test('账户进度显示已确认卡片数，ready或建议仍不能冒充确认', () => {
   assert.match(markup, /已确认 {{accountStepSummary.displayConfirmed}}/)
-  assert.match(markup, /建议 · 待确认/)
+  assert.match(markup, /建议账户，可更改/)
+  assert.match(markup, /本批新建账户，可更改/)
+  assert.doesNotMatch(markup, /account-pending-label/)
   assert.match(markup, /account-decision-create/)
   for (const handler of ['openAccountChoice', 'bindAccountDraftName', 'changeAccountDraftType', 'completeAccountMapping', 'openAccountRecords']) {
     assert.ok(markup.includes('="' + handler + '"'), handler)

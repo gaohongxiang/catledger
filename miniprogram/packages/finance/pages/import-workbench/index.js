@@ -261,6 +261,7 @@ Page(theme.page({
   completeAccountMapping: accountReview.completeAccountMapping,
   confirmAllAccountMappings: accountReview.confirmAllAccountMappings,
   separateAccountGroup: accountReview.separateAccountGroup,
+  restoreAccountGroup: accountReview.restoreAccountGroup,
   persistAccountDrafts: accountReview.persistAccountDrafts,
   accountMappingDecision: accountReview.accountMappingDecision,
   retryDraftSync: runtime.retryDraftSync,

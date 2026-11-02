@@ -3,12 +3,14 @@ const types = require('../../domain/import-review/account-type-policy')
 const names = require('../../domain/import-review/account-draft-policy')
 
 const sourceLabels = { alipay: '支付宝', wechat: '微信', bank: '银行' }
-const clip = (value, length) => {
-  const text = Array.from(String(value || ''))
-  return text.length > length ? text.slice(0, length).join('') + '…' : text.join('')
-}
 const nameValid = value => Array.from(String(value || '').normalize('NFKC').trim()).length >= 1 &&
   Array.from(String(value || '').normalize('NFKC').trim()).length <= 32
+// 标题就是账单里的账户名。推荐选中同名账户时，再给一个下拉框只是把标题念第二遍。
+const titleKey = value => String(value || '').normalize('NFKC').replace(/\s+/g, '')
+function titleMatchesChoice(label, choiceName) {
+  const key = titleKey(label)
+  return Boolean(key) && key === titleKey(choiceName)
+}
 const signature = (rows, drafts) => JSON.stringify(rows.map(row => [row.issueId, row.version, row.status,
   row.accountContext?.accountId || '', drafts.get(row.issueId)?.revision || 0]))
 
@@ -128,17 +130,17 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
     const allowedOptions = typeOptions.filter(option => allowed.includes(option.value))
     const sources = group.sources || [], sourceCounts = new Map()
     for (const source of sources) sourceCounts.set(source.sourceType, (sourceCounts.get(source.sourceType) || 0) + Number(source.count || 0))
-    const sourceText = [...sourceCounts].slice(0, 2).map(([source, count]) => (sourceLabels[source] || '账单') + ' ' + count + ' 笔').join(' · ')
+    const sourceChips = [...sourceCounts].slice(0, 3).map(([source, count]) => ({ label: sourceLabels[source] || '账单', count }))
     const anchor = byId.get(group.anchorIssueId) || rows[0]
     const mapping = { ...anchor, issueId: group.groupId, groupId: group.groupId, groupIssueIds: group.issueIds.slice(),
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
       groupCandidate: group.candidate !== false, groupCanSeparate: true,
-      groupSourceCount: Number(group.sourceCount || sources.length), groupSourceText: sourceText,
-      groupFileText: sources.slice(0, 2).map(source => clip(source.fileName, 22)).filter(Boolean).join('、'),
-      groupConfirmationText: '这 ' + group.memberCount + ' 笔使用同一账户',
+      groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
+      groupConfirmationText: '这 ' + group.memberCount + ' 笔将记在同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,
       canExternal, needsConfirmation, canConfirm: ready, dirty: draft.dirty,
+      choiceMatchesTitle: !draft.dirty && titleMatchesChoice(group.label, draft.mode === 'create' ? draft.name : choiceName),
       choiceOptions: choices, choiceIndex: Math.max(0, choices.findIndex(choice => choice.value === choiceValue)), choiceValue, choiceName,
       suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' && draft.accountId === draft.recommendedAccountId),
       recommendedAccountId: draft.recommendedAccountId || '', draftName: draft.name, draftNameValid: validName,
@@ -178,4 +180,4 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
   return visible
 }
 
-module.exports = { fold, compact, syncInput, clearCoveredDrafts }
+module.exports = { fold, compact, syncInput, clearCoveredDrafts, titleMatchesChoice }

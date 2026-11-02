@@ -104,6 +104,11 @@ function confirmSuggestedBatch(count, creates) {
   })
 }
 
+// 拆开时记下每个成员当时的选择，之后任一成员被改过或确认过就不再允许合回去。
+function choiceSignature(draft) {
+  return [draft.mode, draft.accountId || '', draft.name || '', draft.typeIndex]
+}
+
 function selectionKey(page, mappings) {
   const originals = new Map((page.businessData().accountIssues || []).map(issue => [issue.issueId, issue]))
   return readCache.stableKey('account-confirmations', mappings.map(mapping => ({
@@ -447,6 +452,7 @@ module.exports = {
           summary.suggested += 1
           if (draft.mode === 'create') summary.suggestedCreate += 1
         }
+        const choiceName = issue.paymentNeedsReview && issue.status === 'open' ? '确认付款账户' : choices[choiceIndex].name
         return Object.assign({}, issue, {
             inline: true,
             accountContext,
@@ -454,6 +460,8 @@ module.exports = {
             needsConfirmation: needsConfirmation,
             canConfirm: ready,
             dirty: draft.dirty,
+            // 选中的就是标题那个账户且用户没改过时，不再渲染一遍下拉框；改过就放回选择器。
+            choiceMatchesTitle: !draft.dirty && displayGroups.titleMatchesChoice(issue.label, draft.mode === 'create' ? draft.name : choiceName),
             summaryText: ['ignore', 'external'].includes(draft.mode)
             ? choices[choiceIndex].name
             : '记入：' + (draft.mode === 'create' ? String(draft.name || '').trim() + '（' + (ACCOUNT_TYPE_OPTIONS[draft.typeIndex] || {}).label + '）' : choices[choiceIndex].name) + ' · 已确认',
@@ -461,7 +469,7 @@ module.exports = {
             choiceOptions: choices,
             choiceIndex: choiceIndex,
             choiceValue: choices[choiceIndex].value,
-            choiceName: issue.paymentNeedsReview && issue.status === 'open' ? '确认付款账户' : choices[choiceIndex].name,
+            choiceName: choiceName,
             suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' &&
               draft.accountId === draft.recommendedAccountId),
             recommendedAccountId: draft.recommendedAccountId,
@@ -480,6 +488,36 @@ module.exports = {
       })
     const visible = displayGroups.fold({ mappings, groups: accountDisplayGroups, drafts: self._accountUiDrafts,
       accounts, accountDrafts, typeOptions: ACCOUNT_TYPE_OPTIONS, ownershipNote: ownershipRecheckNote })
+    // 已拆开的联合卡把恢复入口挂在原锚点卡上；成员被改过或确认过就不再提供。
+    const rawById = new Map(mappings.map(mapping => [mapping.issueId, mapping]))
+    for (const [jointId, joint] of self._accountUiDrafts) {
+      if (!joint.separated || !Array.isArray(joint.separatedMembers)) continue
+      const anchor = visible.find(mapping => mapping.issueId === joint.anchorIssueId)
+      if (!anchor) continue
+      anchor.restoreGroupId = jointId
+      anchor.restoreBlocked = !joint.separatedMembers.every(id => {
+        const row = rawById.get(id), draft = self._accountUiDrafts.get(id)
+        return row && row.inline && row.status !== 'resolved' && draft && !draft.localConfirmed &&
+          JSON.stringify(choiceSignature(draft)) === JSON.stringify((joint.separatedSnapshot || {})[id])
+      })
+    }
+    // 旧版本拆开的卡没有留下联合草稿：同一显示账户名下的成员仍按同一张卡处理，同样允许合回。
+    const legacy = new Map()
+    for (const mapping of mappings) {
+      const draft = self._accountUiDrafts.get(mapping.issueId)
+      if (!mapping.inline || !draft || !draft.confirmationSeparate) continue
+      const context = mapping.accountContext || {}
+      const key = (context.label || '') + '|' + (context.currency || '')
+      if (!legacy.has(key)) legacy.set(key, [])
+      legacy.get(key).push(mapping)
+    }
+    for (const [key, members] of legacy) {
+      if (members.length < 2) continue
+      const anchor = visible.find(mapping => mapping.issueId === members[0].issueId)
+      if (!anchor || anchor.restoreGroupId) continue
+      anchor.restoreGroupId = 'legacy:' + key
+      anchor.restoreBlocked = !members.every(member => member.status !== 'resolved' && !member.dirty)
+    }
     // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
     for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate', 'displayConfirmed', 'displayPending']) summary[key] = 0
     for (const mapping of mappings) if (mapping.inline) {
@@ -712,6 +750,7 @@ module.exports = {
     if (!current()) return
     const previous = JSON.parse(JSON.stringify(Object.fromEntries(this._accountUiDrafts)))
     const joint = this._accountUiDrafts.get(mapping.groupId)
+    const snapshot = {}
     for (const id of mapping.groupIssueIds) {
       const draft = this._accountUiDrafts.get(id)
       // 联合卡里新输入的内容拆开后仍可核对；原先各自不同的草稿不相互覆盖。
@@ -721,8 +760,13 @@ module.exports = {
         if (this._accountConfirmed) this._accountConfirmed.delete(id)
       }
       draft.confirmationSeparate = true
+      snapshot[id] = choiceSignature(draft)
     }
-    this._accountUiDrafts.delete(mapping.groupId)
+    // 保留联合草稿并标记已拆分：成员都没再改动时可以合回去，避免一次误点不可逆。
+    joint.separated = true
+    joint.separatedMembers = mapping.groupIssueIds.slice()
+    joint.separatedSnapshot = snapshot
+    joint.anchorIssueId = mapping.groupAnchorIssueId || mapping.groupIssueIds[0]
     if (this._accountConfirmed) this._accountConfirmed.delete(mapping.groupId)
     this.setData({ accountStepBusy: true, accountStepError: '' })
     try {
@@ -732,6 +776,62 @@ module.exports = {
       if (!current()) return
       this._accountUiDrafts = new Map(Object.entries(this._draftSession?.state.drafts || previous))
       this.setData({ accountStepError: publicError(error, '分别确认的选择未保存，请重试') })
+    } finally { if (current()) { this.setData({ accountStepBusy: false }); this.refreshAccountMappings() } }
+  },
+
+  // 拆开只是这批的本地偏好；成员都还没动过时允许合回同一张卡。
+  restoreAccountGroup: async function (event) {
+    if (this.data.busy || this.data.accountStepBusy) return
+    this.flushAccountDraftSync()
+    const target = String(event.currentTarget.dataset.id || '')
+    const rows = (this.mappingState().rawMappings || [])
+    const blockedText = '已有一张卡被修改或确认，不能再合并回去。'
+    let members, joint = null
+    if (target.indexOf('legacy:') === 0) {
+      // 旧版本拆开的卡没有联合草稿，按同一显示账户名找回同组成员。
+      const key = target.slice('legacy:'.length)
+      members = rows.filter(mapping => {
+        const draft = this._accountUiDrafts.get(mapping.issueId)
+        if (!mapping.inline || !draft || !draft.confirmationSeparate) return false
+        const context = mapping.accountContext || {}
+        return (context.label || '') + '|' + (context.currency || '') === key
+      })
+      if (members.length < 2) return
+      if (!members.every(member => member.status !== 'resolved' && !member.dirty)) {
+        this.setData({ accountStepError: blockedText }); return
+      }
+    } else {
+      joint = this._accountUiDrafts.get(target)
+      if (!joint || !joint.separated || !Array.isArray(joint.separatedMembers)) return
+      const byId = new Map(rows.map(row => [row.issueId, row]))
+      const blocked = !joint.separatedMembers.every(id => {
+        const row = byId.get(id), draft = this._accountUiDrafts.get(id)
+        return row && row.inline && row.status !== 'resolved' && draft && !draft.localConfirmed &&
+          JSON.stringify(choiceSignature(draft)) === JSON.stringify(joint.separatedSnapshot[id])
+      })
+      if (blocked) { this.setData({ accountStepError: blockedText }); return }
+      members = joint.separatedMembers.map(id => ({ issueId: id }))
+    }
+    const current = currentAccountOperation(this)
+    if (!current()) return
+    const previous = JSON.parse(JSON.stringify(Object.fromEntries(this._accountUiDrafts)))
+    for (const member of members) {
+      const draft = this._accountUiDrafts.get(member.issueId)
+      if (draft) delete draft.confirmationSeparate
+    }
+    if (joint) {
+      delete joint.separated
+      delete joint.separatedMembers
+      delete joint.separatedSnapshot
+    }
+    this.setData({ accountStepBusy: true, accountStepError: '' })
+    try {
+      if (this._draftSession) this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep)
+      await this.loadActivePage(true)
+    } catch (error) {
+      if (!current()) return
+      this._accountUiDrafts = new Map(Object.entries(this._draftSession?.state.drafts || previous))
+      this.setData({ accountStepError: publicError(error, '恢复合并未保存，请重试') })
     } finally { if (current()) { this.setData({ accountStepBusy: false }); this.refreshAccountMappings() } }
   },
 

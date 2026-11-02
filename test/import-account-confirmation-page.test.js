@@ -43,8 +43,7 @@ test('真实 Page 联合候选：3笔支付宝和2笔微信为1卡，待确认�
   assert.equal(card.groupCandidate, true)
   assert.equal(card.needsConfirmation, true)
   assert.equal(card.typeLocked, true)
-  assert.match(card.groupSourceText, /支付宝 3 笔/u)
-  assert.match(card.groupSourceText, /微信 2 笔/u)
+  assert.equal(card.groupSourceChips.map(chip => chip.label + chip.count).join(','), '支付宝3,微信2')
   assert.equal(card.groupIssueIds, undefined)
   assert.equal(card.groupSources, undefined)
   assert.equal(page.businessData().accountIssues.length, 2)
@@ -157,6 +156,53 @@ test('真实 Page 分别确认保留原选择，在本批重开仍拆分，不�
   assert.equal(new Set([...reopened.local.model.events.values()].map(event => event.ledgerAccountId)).size, 2)
 })
 
+test('真实 Page 拆开后成员都没动过可以恢复合并，联合卡回到一张', async t => {
+  const h = await setup(t), page = h.page
+  const jointId = page.data.accountMappings[0].issueId
+  await page.separateAccountGroup(tap({ id: jointId }))
+  assert.equal(page.data.accountMappings.length, 2)
+  const anchor = page.data.accountMappings.find(card => card.restoreGroupId === jointId)
+  assert.ok(anchor, '拆开后应有原锚点卡挂恢复入口')
+  assert.equal(anchor.restoreBlocked, false)
+  await page.restoreAccountGroup(tap({ id: jointId }))
+  assert.equal(page.data.accountStepError, '')
+  assert.equal(page.data.accountMappings.length, 1)
+  assert.equal(page.data.accountMappings[0].groupId, jointId)
+  assert.equal(page.data.accountMappings[0].memberCount, 5)
+  assert.equal(h.local.state.drafts[anchor.issueId].confirmationSeparate, undefined)
+})
+
+test('真实 Page 拆开后改过其中一张就不能合并回去，不丢已改的选择', async t => {
+  const h = await setup(t), page = h.page
+  const jointId = page.data.accountMappings[0].issueId
+  await page.separateAccountGroup(tap({ id: jointId }))
+  const first = page.data.accountMappings[0]
+  page.bindAccountDraftName({ ...tap({ id: first.issueId }), detail: { value: '合成改名卡' } })
+  page.refreshAccountMappings()
+  const anchor = page.data.accountMappings.find(card => card.restoreGroupId === jointId)
+  assert.equal(anchor.restoreBlocked, true)
+  await page.restoreAccountGroup(tap({ id: jointId }))
+  assert.match(page.data.accountStepError, /不能再合并/u)
+  assert.equal(page.data.accountMappings.length, 2)
+  assert.equal(page._accountUiDrafts.get(first.issueId).name, '合成改名卡')
+})
+
+test('真实 Page 旧版本拆开没留联合草稿时，同账户名的成员仍能恢复合并', async t => {
+  const h = await setup(t), page = h.page
+  const jointId = page.data.accountMappings[0].issueId
+  await page.separateAccountGroup(tap({ id: jointId }))
+  // 旧版本的拆分只留成员标记、不留联合草稿。
+  page._accountUiDrafts.delete(jointId)
+  page.refreshAccountMappings()
+  const anchor = page.data.accountMappings.find(card => String(card.restoreGroupId).startsWith('legacy:'))
+  assert.ok(anchor, '旧拆分也应有恢复入口')
+  assert.equal(anchor.restoreBlocked, false)
+  await page.restoreAccountGroup(tap({ id: anchor.restoreGroupId }))
+  assert.equal(page.data.accountStepError, '')
+  assert.equal(page.data.accountMappings.length, 1)
+  assert.equal(page.data.accountMappings[0].memberCount, 5)
+})
+
 test('真实 Page 弹窗期间原决定或显示成员变化时不确认旧建议', async t => {
   const h = await setup(t), page = h.page
   let modal
@@ -193,6 +239,41 @@ test('真实 Page 原来源建议到不同账户时保留待选，不能靠合�
   assert.equal(page.data.accountStepError, '')
   assert.ok([...h.local.model.events.values()].every(event => event.ledgerAccountId === accounts[1].accountId))
   assert.equal([...h.local.model.accounts.values()].filter(row => row.isDraft).length, 0)
+})
+
+test('真实 Page 建议账户与标题同名时不再渲染选择行，改选别的账户后才出现', async t => {
+  const accounts = [
+    { accountId: randomUUID(), name: label, type: 'bank', nature: 'asset', currency: 'CNY', version: 1 },
+    { accountId: randomUUID(), name: '微信零钱', type: 'wallet', nature: 'asset', currency: 'CNY', version: 1 }
+  ]
+  const h = await setup(t, { accounts, extra: [syntheticBill(1, 'SYNTHETIC-SINGLE-TITLE', '微信零钱')] }), page = h.page
+  const single = page.data.accountMappings.find(card => !card.groupId)
+  const joint = page.data.accountMappings.find(card => card.groupId)
+  for (const card of [single, joint]) {
+    assert.equal(card.suggestedExisting, true)
+    assert.equal(card.choiceName, card.label)
+    assert.equal(card.choiceMatchesTitle, true, '标题已经就是选中的账户')
+  }
+  await page.openAccountChoice(tap({ id: single.issueId }))
+  page.selectAccountChoice(tap({ value: 'create' }))
+  const changed = page.data.accountMappings.find(card => card.issueId === single.issueId)
+  assert.equal(changed.choiceValue, 'create')
+  assert.equal(changed.choiceMatchesTitle, false, '选了别的处理方式就要把选择器放回来')
+})
+
+test('真实 Page 新建名称与标题相同也不再重复，改名后立即显示输入行', async t => {
+  const h = await setup(t, { accounts: [] }), page = h.page
+  await page.separateAccountGroup(tap({ id: page.data.accountMappings[0].issueId }))
+  const card = page.data.accountMappings.find(row => row.choiceValue === 'create')
+  assert.ok(card, '拆开的成员应保留新建选择')
+  assert.equal(card.choiceValue, 'create')
+  assert.equal(card.draftName, card.label)
+  assert.equal(card.choiceMatchesTitle, true)
+  page.bindAccountDraftName({ ...tap({ id: card.issueId }), detail: { value: '合成测试卡（改名）' } })
+  page.refreshAccountMappings()
+  const renamed = page.data.accountMappings.find(row => row.issueId === card.issueId)
+  assert.equal(renamed.choiceMatchesTitle, false)
+  assert.equal(renamed.draftNameValid, true)
 })
 
 test('真实 Page 候选只提供共同合法账户类型，单类型锁定和原外部提示保留', async t => {

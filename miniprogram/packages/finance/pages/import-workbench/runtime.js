@@ -928,7 +928,8 @@ module.exports = {
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
-        for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed && !draft.confirmationSeparate) this._accountUiDrafts.delete(id)
+        for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed &&
+          !draft.confirmationSeparate && !draft.separated) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         const state = this.mappingState()
         const mappings = state.mappings.map(compactMapping)
