@@ -76,6 +76,34 @@ function issueAccountContext(issue) {
   return { ...context, ...accountTypes.rules(context, { event }), currency: context.currency || subject.currency || 'CNY' }
 }
 
+// 点「分别确认」拆开的同一组账单，成员会各自变成一个事项；服务端按问题顺序下发，
+// 它们在整页里可能散得很开，看着像几张互不相干的卡。这里把同组成员收到组内第一张
+// 卡原来的位置，其余卡顺序不动，用户一眼能看出"这几张原本是一张"。
+function clusterSeparatedCards(rows, drafts) {
+  const clusterOf = new Map()
+  for (const [jointId, joint] of drafts) {
+    if (!joint || !joint.separated || !Array.isArray(joint.separatedMembers)) continue
+    for (const id of joint.separatedMembers) clusterOf.set(id, 'joint:' + jointId)
+  }
+  // 旧版本拆开的卡没留联合草稿，只能按来源名归拢，和服务端允许合回的口径一致。
+  for (const row of rows) {
+    if (clusterOf.has(row.issueId)) continue
+    const draft = drafts.get(row.issueId), context = row.accountContext || {}
+    if (row.inline && draft && draft.confirmationSeparate) {
+      clusterOf.set(row.issueId, 'legacy:' + (context.label || '') + '|' + (context.currency || ''))
+    }
+  }
+  const ordered = [], emitted = new Set()
+  for (const row of rows) {
+    const cluster = clusterOf.get(row.issueId)
+    if (!cluster) { ordered.push(row); continue }
+    if (emitted.has(cluster)) continue
+    emitted.add(cluster)
+    for (const member of rows) if (clusterOf.get(member.issueId) === cluster) ordered.push(member)
+  }
+  return ordered
+}
+
 function validAccountName(value) {
   const length = Array.from(String(value || '').normalize('NFKC').trim()).length
   return length >= 1 && length <= 32
@@ -596,7 +624,7 @@ module.exports = {
     const visiblePending = summary.pending
     summary.pending = accountPending.count(self, summary.pending)
     summary.pendingOutside = summary.pending > visiblePending
-    return { mappings: visible, rawMappings: mappings, summary }
+    return { mappings: clusterSeparatedCards(visible, self._accountUiDrafts), rawMappings: mappings, summary }
   },
 
   openAccountChoice: async function (event) {

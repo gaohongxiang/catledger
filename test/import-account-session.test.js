@@ -398,3 +398,21 @@ test('来源名缺失时留空，不拿问题类型名冒充来源', async t => 
   assert.equal(mapping.sourceLabel, '', '但来源不能复用这个兜底')
   assert.equal(page.data.accountMappingsIncluded.map(row => row.sourceLabel).join(','), '')
 })
+
+test('分别确认拆开的同组卡在列表里按组挨在一起', async t => {
+  const data = fixture(3, true)
+  const labels = ['兴业银行信用卡(6106)', '微信零钱', '主卡6106']
+  data.issues = data.events.map((event, index) => ({ issueId: 's-' + index, issueType: 'account_mapping',
+    status: 'open', version: 1, blocking: true, memberCount: 1, subject: event,
+    accountContext: { recognized: true, sourceType: 'wechat', label: labels[index], currency: 'CNY' } }))
+  data.summary.workbench = workbenchSummary(data.events, [], [{ issueType: 'account_mapping', status: 'open', count: 3 }], 0, 0)
+  const h = runtime(data), page = h.page
+  t.after(() => page.onUnload())
+  await until(() => page.data.accountMappings.length === 3)
+  assert.equal(page.data.accountMappings.map(row => row.issueId).join(','), 's-0,s-1,s-2')
+  // s-0 与 s-2 原本是同一张卡，点了「分别确认」后被拆成两张，中间还隔着别的账户。
+  for (const id of ['s-0', 's-2']) page._accountUiDrafts.get(id).confirmationSeparate = true
+  page._accountUiDrafts.set('joint:s-0', { separated: true, separatedMembers: ['s-0', 's-2'], anchorIssueId: 's-0' })
+  page.refreshAccountMappings()
+  assert.equal(page.data.accountMappings.map(row => row.issueId).join(','), 's-0,s-2,s-1')
+})
