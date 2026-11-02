@@ -436,3 +436,72 @@ test('账户步骤一键确认全部建议，待选择和已修改项保持逐�
   assert.equal(after.mappings.find(item => item.issueId === 'synthetic-bank').needsConfirmation, false)
   assert.equal(after.mappings.find(item => item.issueId === 'synthetic-issue').needsConfirmation, true)
 })
+
+function batchPage(t, issues, accounts = []) {
+  const h = require('./helpers/paged-workbench').runtime(), page = h.page
+  page._businessData = null
+  page._draftSession = null
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' }, accountIssues: issues, accounts })
+  t.after(() => page.onUnload())
+  return { h, page }
+}
+
+test('一键确认先说清项数和会新建的账户，取消后一项也不确认', async t => {
+  const issue = (id, label) => ({ issueId: id, issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType: 'bank', label, currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event-' + id, economicNature: 'expense' } })
+  const { h, page } = batchPage(t, [issue('synthetic-wallet', '合成钱包'), issue('synthetic-card', '合成信用卡')])
+  const asked = []
+  h.wx.showModal = options => { asked.push(options.content); options.success({ confirm: false }) }
+  assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 2, '两项都按建议名新建')
+  await page.confirmAllAccountMappings()
+  assert.equal(asked.length, 1)
+  assert.match(asked[0], /将确认 2 项建议，其中新建 2 个账户/u)
+  const after = page.refreshAccountMappings()
+  assert.equal(after.summary.suggested, 2, '取消后建议项保持待确认')
+  assert.equal(after.summary.confirmed, 0)
+})
+
+test('确认建议时按已有账户与新建分别计数，只有已有账户的批次不提新建', async t => {
+  const accounts = [{ accountId: 'wallet', name: '合成钱包', type: 'wallet', currency: 'CNY' }]
+  const issue = { issueId: 'synthetic-wallet', issueType: 'account_mapping', status: 'open', version: 1,
+    accountContext: { recognized: true, sourceType: 'wechat', label: '合成钱包', currency: 'CNY', canExternal: true },
+    subject: { eventId: 'synthetic-event', economicNature: 'expense' } }
+  const { h, page } = batchPage(t, [issue], accounts)
+  const asked = []
+  h.wx.showModal = options => { asked.push(options.content); options.success({ confirm: true }) }
+  assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 0, '命中已有账户不算新建')
+  await page.confirmAllAccountMappings()
+  assert.match(asked[0], /将确认 1 项建议。/u)
+  assert.equal(page.refreshAccountMappings().summary.confirmed, 1)
+})
+
+test('组合支付与还款分配选了账本外，提示还要去整理页补齐资金关系', async t => {
+  const base = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext, fundsSide: 'payment_target', canExternal: true } }
+  const { page } = batchPage(t, [{ ...base, subject: { eventId: 'synthetic-event', economicNature: 'repayment',
+    repaymentAllocations: [{ amountMinor: '100' }] } }])
+  page.refreshAccountMappings()
+  assert.equal(page.data.accountMappings[0].ownershipNote, '', '选之前不预先提示')
+  await page.openAccountChoice({ currentTarget: { dataset: { id: base.issueId } } })
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  assert.match(page.data.accountMappings[0].ownershipNote, /资金关系还要在整理页补齐/u)
+})
+
+test('普通收支选账本外不追加补齐提示，页面不复制配对与渠道规则', async t => {
+  const issue = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext, canExternal: true },
+    subject: { eventId: 'synthetic-event', economicNature: 'expense' } }
+  const { page } = batchPage(t, [issue])
+  page.refreshAccountMappings()
+  await page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'external' } } })
+  assert.equal(page.data.accountMappings[0].ownershipNote, '')
+})
+
+test('账户类型只剩一种时锁定下拉，多类型仍可改', () => {
+  const single = { ...unknownIssue(), version: 1, accountContext: { ...unknownIssue().accountContext,
+    recognized: true, label: '合成信用卡', sourceType: 'credit', allowedAccountTypes: ['credit'] } }
+  const locked = pageFor(single)
+  assert.equal(locked.refreshAccountMappings().mappings[0].typeLocked, true)
+  const open = pageFor(unknownIssue())
+  assert.equal(open.refreshAccountMappings().mappings[0].typeLocked, false)
+})

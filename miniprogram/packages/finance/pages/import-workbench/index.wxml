@@ -243,7 +243,10 @@
     </view>
     <text class="step-copy content-inset">核对建议，不合适可更改</text>
     <view wx:if="{{accountStepSummary.suggested > 0}}" class="account-batch-row content-inset">
-      <button class="account-batch-action" bindtap="confirmAllAccountMappings" disabled="{{busy || accountStepBusy}}">确认全部建议（{{accountStepSummary.suggested}} 项）</button>
+      <view class="account-batch-copy">
+        <button class="account-batch-action" bindtap="confirmAllAccountMappings" disabled="{{busy || accountStepBusy}}">确认 {{accountStepSummary.suggested}} 项建议</button>
+        <text wx:if="{{accountStepSummary.suggestedCreate > 0}}" class="account-batch-note">其中 {{accountStepSummary.suggestedCreate}} 项会新建账户</text>
+      </view>
     </view>
 
     <skeleton-rows wx:if="{{pageLoading && !accountMappings.length}}" rows="{{3}}" />
@@ -254,6 +257,7 @@
           <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
           <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
         </view>
+        <view wx:if="{{item.ownershipNote}}" class="account-recheck-note"><text>{{item.ownershipNote}}</text></view>
 
         <view wx:if="{{item.inline && !item.needsConfirmation}}" class="account-summary-row"><text class="account-summary-text">{{item.summaryText}}</text><button class="account-change" data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{busy}}">更改</button></view>
         <block wx:else>
@@ -268,12 +272,17 @@
             <view class="account-decision-divider"></view>
             <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" data-input-key="bindAccountDraftName-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
             <view class="account-decision-divider"></view>
-            <picker class="account-compact-type" mode="selector" range="{{item.typeOptions}}" range-key="label" value="{{item.draftTypeOptionIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{item.draftTypeLabel}}">
+            <picker wx:if="{{!item.typeLocked}}" class="account-compact-type" mode="selector" range="{{item.typeOptions}}" range-key="label" value="{{item.draftTypeOptionIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{item.draftTypeLabel}}">
               <view class="account-compact-type-control">
                 <text class="account-compact-type-value">{{item.draftTypeLabel}}</text>
                 <view class="account-dropdown-chevron"></view>
               </view>
             </picker>
+            <view wx:else class="account-compact-type account-compact-type-locked" aria-label="{{item.label}}的账户类型，{{item.draftTypeLabel}}">
+              <view class="account-compact-type-control">
+                <text class="account-compact-type-value">{{item.draftTypeLabel}}</text>
+              </view>
+            </view>
           </block>
         </view>
         <button wx:else class="account-decision-row account-transfer-control" data-id="{{item.issueId}}" bindtap="openIssue">
@@ -286,7 +295,6 @@
             <text wx:if="{{item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或改选已有账户 / 不计入。</text>
             <text wx:if="{{item.validationText}}" class="account-inline-note">{{item.validationText}}</text>
             <text wx:if="{{item.suggestedExisting}}" class="account-state-note">已按名称、银行和尾号推荐，请核对。</text>
-            <text wx:if="{{item.canExternal && item.choiceValue !== 'external'}}" class="account-inline-note">不是我的账户？可在上方改选「别人的账户」。</text>
             <text wx:if="{{item.choiceValue === 'ignore'}}" class="account-state-note">保留证据，本次不创建账户与账目。</text>
           </view>
           <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>

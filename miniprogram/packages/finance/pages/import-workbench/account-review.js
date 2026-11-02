@@ -79,6 +79,29 @@ function validAccountName(value) {
   return length >= 1 && length <= 32
 }
 
+// 只有随事项下发的三类结构能证明“这笔的钱关系还没定完”：组合支付、多账户
+// 付款、还款分配。选了账本外之后，事件仍要在整理页补齐这些关系。其余复杂
+// 情形（同笔配对、还款渠道等）页面读不到，不能靠猜，照旧留给服务端提示。
+function ownershipRecheckNote(subject) {
+  if (!subject) return ''
+  return subject.paymentResolution || (subject.paymentAccounts || []).length ||
+    (subject.repaymentAllocations || []).length
+    ? '已记录归属，资金关系还要在整理页补齐。' : ''
+}
+
+function confirmSuggestedBatch(count, creates) {
+  return new Promise(function (resolve) {
+    wx.showModal({
+      title: '确认建议',
+      content: '将确认 ' + count + ' 项建议' + (creates ? '，其中新建 ' + creates + ' 个账户' : '') + '。',
+      confirmText: '确认',
+      cancelText: '取消',
+      success: function (result) { resolve(Boolean(result.confirm)) },
+      fail: function () { resolve(false) }
+    })
+  })
+}
+
 async function recoverAccountConfirmation(page, issueId) {
   const session = page._draftSession, view = page._viewSession
   const issue = (page.businessData().accountIssues || []).find(item => item.issueId === issueId)
@@ -253,7 +276,7 @@ module.exports = {
 
   buildAccountMappingState: function (issues, accounts, accountDrafts, accountMappingDrafts) {
     const self = this
-    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0, suggested: 0 }
+    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0, suggested: 0, suggestedCreate: 0 }
     const mappings = issues.map(function (issue) {
         if (issue.issueType !== 'account_mapping') {
           summary.transfer += 1
@@ -339,7 +362,10 @@ module.exports = {
         if (needsConfirmation) summary.pending += 1
         else summary.confirmed += 1
         // 一键确认只覆盖页面已经给出建议且用户未改动的项；待选择和已修改项仍逐项确认。
-        if (needsConfirmation && ready && !draft.dirty && !['pending', 'ignore', 'external'].includes(draft.mode)) summary.suggested += 1
+        if (needsConfirmation && ready && !draft.dirty && !['pending', 'ignore', 'external'].includes(draft.mode)) {
+          summary.suggested += 1
+          if (draft.mode === 'create') summary.suggestedCreate += 1
+        }
         return Object.assign({}, issue, {
             inline: true,
             accountContext,
@@ -362,8 +388,11 @@ module.exports = {
             draftNameValid: nameValid,
             draftTypeIndex: draft.typeIndex,
             typeOptions,
+            // 只剩一种合法类型时不再给一个点了没反应的下拉。
+            typeLocked: typeOptions.length <= 1,
             draftTypeOptionIndex: Math.max(0, typeOptions.findIndex(option => option.value === ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.value)),
             draftTypeLabel: ACCOUNT_TYPE_OPTIONS[draft.typeIndex]?.label || '请选择类型',
+            ownershipNote: choiceValue === 'external' ? ownershipRecheckNote(issue.subject) : '',
             validationText: nameConflict ? draftPolicy.NAME_CONFLICT : draft.mode === 'create' && !typeValid ? '账户类型与来源或资金角色不符，请重新选择'
               : draft.mode === 'account' && !ready ? '所选账户类型或币种不符，请重新选择' : ''
           })
@@ -379,11 +408,14 @@ module.exports = {
       mapping.validationText = '多项新建账户同名，请分别命名，或新建一项后让其余项选择已有账户'
     }
     // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
-    for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested']) summary[key] = 0
+    for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate']) summary[key] = 0
     for (const mapping of mappings) if (mapping.inline) {
       if (mapping.canConfirm) summary.ready++; else { summary.invalid++; mapping.needsConfirmation = true }
       if (mapping.needsConfirmation) summary.pending++; else summary.confirmed++
-      if (mapping.needsConfirmation && mapping.canConfirm && !mapping.dirty && !['pending', 'ignore', 'external'].includes(mapping.choiceValue)) summary.suggested++
+      if (mapping.needsConfirmation && mapping.canConfirm && !mapping.dirty && !['pending', 'ignore', 'external'].includes(mapping.choiceValue)) {
+        summary.suggested++
+        if (mapping.choiceValue === 'create') summary.suggestedCreate++
+      }
     }
     return { mappings: mappings, summary: summary }
   },
@@ -537,6 +569,9 @@ module.exports = {
       targets = collect()
       if (!targets.length) return
     }
+    // 一键确认可能同时建出几个正式账户，按实际待确认项再问一次。
+    const creates = targets.filter(item => item.choiceValue === 'create').length
+    if (!await confirmSuggestedBatch(targets.length, creates)) return
     this.setData({ accountStepBusy: true, accountStepError: '', accountStepProgressText: '正在确认 ' + targets.length + ' 项账户…' })
     try {
       // 草稿会话一次最多接收 8 项未保存决定；超过时分段入队并等待上一段保存。

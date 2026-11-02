@@ -48,3 +48,16 @@ test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触
   assert.match(row, /class="account-compact-type-value">{{item.draftTypeLabel}}<\/text>/)
   assert.doesNotMatch(row, /type="hidden"|hidden="true"/)
 })
+
+test('外部入口只留在弹层，单类型锁定下拉，批量确认与补齐提示各自有位', () => {
+  assert.doesNotMatch(markup, /不是我的账户？可在上方改选/)
+  assert.match(markup, /确认 \{\{accountStepSummary\.suggested\}\} 项建议/)
+  assert.match(markup, /其中 \{\{accountStepSummary\.suggestedCreate\}\} 项会新建账户/)
+  assert.match(markup, /class="account-recheck-note"><text>\{\{item\.ownershipNote\}\}<\/text>/)
+  assert.match(row, /wx:if="\{\{!item\.typeLocked\}\}"/)
+  assert.match(row, /account-compact-type-locked/)
+  assert.doesNotMatch(row, /account-compact-type-locked[\s\S]*?account-dropdown-chevron/)
+  assert.match(style, /\.account-compact-type-locked \.account-compact-type-value\s*\{[^}]*color:/)
+  assert.match(style, /\.account-batch-note\s*\{[^}]*font-size:/)
+  assert.match(style, /\.account-recheck-note\s*\{[^}]*line-height:/)
+})
