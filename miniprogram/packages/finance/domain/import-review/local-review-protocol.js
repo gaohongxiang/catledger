@@ -61,7 +61,16 @@ function validateManifest(header, parts) {
 function validateState(value) {
   if (!value || value.protocolVersion !== VERSION || !Number.isSafeInteger(value.baseVersion) || value.baseVersion < 1 ||
     typeof value.snapshotId !== 'string' || typeof value.updateId !== 'string' || typeof value.ruleVersion !== 'string' ||
-    Object.keys(value).some(key => !['protocolVersion','snapshotId','updateId','baseVersion','ruleVersion','decisions'].includes(key))) failure('VALIDATION_ERROR')
+    Object.keys(value).some(key => !['protocolVersion','snapshotId','updateId','baseVersion','ruleVersion','decisions','accountCreations'].includes(key))) failure('VALIDATION_ERROR')
+  if (value.accountCreations !== undefined) {
+    if (!Array.isArray(value.accountCreations) || value.accountCreations.length > LIMITS.sourceRows * 2) failure('LOCAL_REVIEW_CAPACITY')
+    const keys = new Set()
+    for (const fact of value.accountCreations) {
+      require('./account-creation-facts').shape(fact)
+      if (keys.has(fact.key)) failure('VALIDATION_ERROR')
+      keys.add(fact.key)
+    }
+  }
   const decisions = value.decisions
   const kinds = ['accounts','events','pairings','reviews','duplicates']
   if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions) || Object.keys(decisions).some(key => !kinds.includes(key))) failure('VALIDATION_ERROR')

@@ -46,6 +46,12 @@ function scopes(facts, splitIds = new Set()) {
 function validateChoices(state, facts) {
   const baseline = scopes(facts), byId = scopes(facts, new Set(state.decisions.duplicates.filter(row => row.decision === 'distinct').map(row => row.eventId)))
   const allRows = new Set(facts.rows.map(row => row.rowId))
+  for (const fact of state.accountCreations || []) {
+    require('./account-creation-facts').shape(fact)
+    const ids = [...new Set(fact.members.map(member => member.objectId))]
+    if (ids.some(id => !byId.has(id)) || fact.sourceIds.some(id => !allRows.has(id)) ||
+        !same(fact.sourceIds, [...new Set(ids.flatMap(id => byId.get(id)))])) fail()
+  }
   for (const [kind, values] of Object.entries(state.decisions)) for (const item of values) {
     if (new Set(item.sourceIds).size !== item.sourceIds.length || item.sourceIds.some(id => !allRows.has(id))) fail()
     if (kind === 'events' || kind === 'duplicates') {
@@ -103,6 +109,26 @@ async function applyChoices(connection, uid, state, digest, batch) {
     await (item.decision === 'distinct' ? revise.split : revise.reopenHistory)(connection, uid, item, digest,
       { updateId, updateVersion, eventId: event.eventId, eventVersion: event.version })
   }
+  if ((state.accountCreations || []).length) {
+    const policy = require('./account-creation-facts')
+    const ids = [...new Set(state.accountCreations.flatMap(fact => fact.members.map(member => member.objectId)))]
+    const events = await store.selectDomainEvents(connection, uid, updateId, ids, { forUpdate: true })
+    const [members] = await connection.execute(`SELECT m.issue_id AS issueId,m.object_type AS objectType,
+      m.object_id AS objectId,m.member_role AS memberRole
+      FROM catledger_review_issue_members m JOIN catledger_review_issues i ON i.uid=m.uid AND i.issue_id=m.issue_id
+      WHERE m.uid=? AND m.update_id=? AND i.issue_type='account_mapping' AND i.status IN ('open','resolved')
+        AND m.object_type='event' AND m.member_role<>'candidate'`, [uid, updateId])
+    const [evidence] = await connection.execute(`SELECT event_id AS eventId,row_id AS rowId,evidence_role AS evidenceRole
+      FROM catledger_event_evidence WHERE uid=? AND update_id=? AND evidence_role<>'discarded'`, [uid, updateId])
+    // 先完整验证所有原成员与来源，再写入任何独立创建事实。
+    const verified = state.accountCreations.map(fact => policy.validate(fact, { events, members, evidence }))
+    const required = policy.referencedIds(choices, state.snapshotId)
+    if (verified.some(fact => !required.has(policy.accountId(fact, state.snapshotId)))) fail()
+    for (const fact of verified) {
+      batch.affected = [...new Set(fact.members.map(member => member.objectId))]
+      await require('./account-draft').stageAccountDraft(connection, uid, updateId, fact.draft, actionId, { creationKey: fact.key })
+    }
+  }
   if (choices.accounts.length) {
     const items = []
     for (const item of choices.accounts) {
@@ -111,6 +137,9 @@ async function applyChoices(connection, uid, state, digest, batch) {
       items.push({ issueId: issue.issueId, issueVersion: issue.version, operation: issue.status === 'open' ? 'resolve' : 'revise',
         decision: item.decision, fields: item.fields, paymentRuleAction: item.paymentRuleAction })
     }
+    // 最终决定保留原插入顺序；先建立已核验的新建，再处理显式复用，不重写冻结请求。
+    items.sort((left, right) => Number(Boolean(right.fields?.mappingAccountDraft || right.fields?.ledgerAccountDraft)) -
+      Number(Boolean(left.fields?.mappingAccountDraft || left.fields?.ledgerAccountDraft)))
     await require('./review/account-mapping').resolveAccountMappings(connection, uid, {}, digest, { updateId, decisions: items }, { updateVersion })
   }
   const pairedBanks = new Set(choices.pairings.filter(item => item.decision === 'same').map(item => item.bankEventId))
@@ -164,6 +193,7 @@ function selectedAccountProblems(state, facts, accounts) {
   const events = new Map(facts.events.map(event => [event.eventId, event])), pendingDraftIds = new Set()
   const types = require('./account-type-policy'), { memberReference } = require('./account-reference-context')
   const unavailable = new Set()
+  for (const fact of state.accountCreations || []) pendingDraftIds.add(require('./account-creation-facts').accountId(fact, state.snapshotId))
   for (const item of state.decisions.accounts) for (const key of ['mappingAccountDraft', 'ledgerAccountDraft']) {
     const draft = item.fields?.[key]
     if (draft && typeof draft.name === 'string' && typeof draft.type === 'string') {
@@ -244,7 +274,26 @@ async function post(context, postInTransaction) {
       state.updateId !== data.updateId || state.snapshotId !== data.snapshotId || state.baseVersion !== data.version || payload.header.ruleVersion !== PLAN_VERSION || snapshot.header.ruleVersion !== PLAN_VERSION ||
       snapshot.header.updateId !== data.updateId || snapshot.header.baseVersion !== data.version || state.ruleVersion !== PLAN_VERSION) fail()
     validateChoices(state, snapshot.value)
-    return state
+    let creationFailure = false
+    const origins = new Map()
+    for (const fact of state.accountCreations || []) {
+      if (!origins.has(fact.origin.snapshotId)) origins.set(fact.origin.snapshotId, [])
+      origins.get(fact.origin.snapshotId).push(fact)
+    }
+    try {
+      for (const [snapshotId, facts] of origins) {
+        // 同一原快照只读一次；逐代验证，避免同时保留多份完整旧快照。
+        const origin = snapshotId === snapshot.header.objectId ? snapshot : await loadObject(connection, uid, snapshotId, 'snapshot')
+        if (origin.header.updateId !== state.updateId || origin.header.baseVersion > state.baseVersion ||
+            origin.value.update.updateId !== state.updateId) fail()
+        for (const fact of facts) require('./account-creation-facts').validateOrigin(fact, origin.value)
+      }
+    } catch (error) {
+      if (!error.publicCode) throw error
+      // 原封存证明缺失或不符必须明确重核，不能退回接受客户端成员子集。
+      creationFailure = true
+    }
+    return { state, creationFailure }
   } })
   return executeIdempotentMutation({ ...context, action: 'financeUpdates.post', operation: async (connection, uid, input, digest) => {
     const current = await repository.selectUpdate(connection, uid, input.updateId, { forUpdate: true })
@@ -254,7 +303,11 @@ async function post(context, postInTransaction) {
     const batch = batchState.begin(connection, repository.publicUpdate(current)); batch.snapshotId = input.snapshotId; batch.affected = []
     let postingStarted = false
     try {
-      const actionId = await applyChoices(connection, uid, captured, digest, batch)
+      if (captured.creationFailure) {
+        batch.affected = [...new Set((captured.state.accountCreations || []).flatMap(fact => fact.members.map(member => member.objectId)))]
+        throw importError('LOCAL_RECHECK_REQUIRED')
+      }
+      const actionId = await applyChoices(connection, uid, captured.state, digest, batch)
       batchState.end(connection)
       await reconciliation.refreshProjectedEvents(connection, uid, input.updateId, actionId)
       await require('./review/bank-channel-candidates').synchronize(connection, uid, input.updateId, actionId, null, { reuseDecisions: false })
@@ -275,7 +328,7 @@ async function post(context, postInTransaction) {
       // the request unknown and safe to replay. Business failures are definitive.
       if (!error.publicCode || ['IDEMPOTENCY_CONFLICT','INITIALIZATION_REQUIRED'].includes(error.publicCode)) throw error
       if (postingStarted) await connection.query('ROLLBACK TO SAVEPOINT local_post')
-      const supplemental = await recheckFacts(connection, uid, captured, error.publicCode, batch.affected)
+      const supplemental = await recheckFacts(connection, uid, captured.state, error.publicCode, batch.affected)
       await connection.query('ROLLBACK TO SAVEPOINT local_review')
       const recheck = await saveObject(connection, uid, { objectId: randomUUID(), updateId: input.updateId, snapshotId: input.snapshotId,
         kind: 'recheck', baseVersion: input.version, ruleVersion: PLAN_VERSION }, split(JSON.stringify(supplemental)))

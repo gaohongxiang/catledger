@@ -7,11 +7,18 @@ const { buildOrganizePlan, PLAN_VERSION } = require('../../cloudfunctions/catled
 const protocol = require('../../cloudfunctions/catledger-import/src/local-review-protocol')
 const { statementAnalysis } = require('../../cloudfunctions/catledger-import/src/statement-analysis')
 const { syntheticBill } = require('./local-services')
-async function facts({ count = 3, content, mapped = true, accounts: suppliedAccounts, paymentMappings = [] } = {}) {
+async function facts({ count = 3, content, contents, mapped = true, accounts: suppliedAccounts, paymentMappings = [] } = {}) {
   const updateId = randomUUID(), snapshotId = randomUUID(), documents = []
-  for(let offset=0;offset<(content?1:count);offset+=4998){
-    const document=await parseEvidenceFile({content:content||syntheticBill(Math.min(4998,count-offset),'SYNTHETIC-LOCAL-'+offset),extension:'csv',timezoneOffsetMinutes:-480})
-    documents.push({document,batchId:randomUUID()})
+  if (contents) {
+    for (const source of contents) {
+      const document = await parseEvidenceFile({ content: source, extension: 'csv', timezoneOffsetMinutes: -480 })
+      documents.push({ document, batchId: randomUUID() })
+    }
+  } else {
+    for(let offset=0;offset<(content?1:count);offset+=4998){
+      const document=await parseEvidenceFile({content:content||syntheticBill(Math.min(4998,count-offset),'SYNTHETIC-LOCAL-'+offset),extension:'csv',timezoneOffsetMinutes:-480})
+      documents.push({document,batchId:randomUUID()})
+    }
   }
   const accounts = suppliedAccounts || [{ accountId: randomUUID(), name: '微信零钱', type: 'wallet', nature: 'asset', currency: 'CNY', version: 1 },
     { accountId: randomUUID(), name: '合成信用卡', type: 'credit', nature: 'liability', currency: 'CNY', version: 1 },

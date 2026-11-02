@@ -239,7 +239,7 @@
   <view wx:if="{{currentStep === 2 && update && !preparingAccount}}" class="step-section account-stage">
     <view class="step-heading content-inset">
       <view><text class="step-title serif-title">确认账户</text></view>
-      <text class="step-count money-number">已确认 {{accountStepSummary.confirmed}} / {{accountStepSummary.total}}</text>
+      <text class="step-count money-number">已确认 {{accountStepSummary.displayConfirmed}} / {{accountStepSummary.displayTotal}}</text>
     </view>
     <text class="step-copy content-inset">核对建议，不合适可更改</text>
     <view wx:if="{{accountStepSummary.suggested > 0}}" class="account-batch-row content-inset">
@@ -256,6 +256,14 @@
           <view class="account-proof-title-line"><text class="account-proof-title">{{item.label}}</text><text wx:if="{{item.needsConfirmation}}" class="account-pending-label">{{item.dirty && item.status === 'resolved' ? '待确认' : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
           <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
           <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
+        </view>
+        <view wx:if="{{item.groupId}}" class="account-group-note">
+          <view class="account-group-copy">
+            <text>{{item.groupCandidate ? '可能是同一张卡' : '已确认使用同一账户'}} · 来自 {{item.groupSourceCount}} 份账单</text>
+            <text class="account-group-sources">{{item.groupSourceText}}</text>
+            <text wx:if="{{item.groupFileText}}" class="account-group-files">{{item.groupFileText}}{{item.groupSourceCount > 2 ? ' 等' : ''}}</text>
+          </view>
+          <button class="account-group-separate" data-id="{{item.issueId}}" bindtap="separateAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="不是同一张卡，分别确认{{item.label}}的各来源">分别确认</button>
         </view>
         <view wx:if="{{item.ownershipNote}}" class="account-recheck-note"><text>{{item.ownershipNote}}</text></view>
 
@@ -296,8 +304,9 @@
             <text wx:if="{{item.validationText}}" class="account-inline-note">{{item.validationText}}</text>
             <text wx:if="{{item.suggestedExisting}}" class="account-state-note">已按名称、银行和尾号推荐，请核对。</text>
             <text wx:if="{{item.choiceValue === 'ignore'}}" class="account-state-note">保留证据，本次不创建账户与账目。</text>
+            <text wx:if="{{item.groupId && item.choiceValue !== 'ignore' && item.choiceValue !== 'external'}}" class="account-state-note">{{item.groupConfirmationText}}</text>
           </view>
-          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
+          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.choiceValue === 'ignore' ? '确认不计入' : item.status === 'resolved' ? '确认修改' : item.groupId ? '确认共同归属' : '确认此账户'}}</button>
         </view>
         </block>
       </view>
@@ -320,9 +329,10 @@
     <view class="stage-action stage-navigation">
       <text wx:if="{{accountStepError}}" class="stage-action-error">{{accountStepError}}</text>
       <text wx:elif="{{accountStepProgressText}}" class="stage-action-progress">{{accountStepProgressText}}</text>
+      <text wx:elif="{{accountStepSummary.pendingOutside && !accountStepSummary.displayPending}}" class="stage-action-progress">其他页仍有账户待确认</text>
       <view class="stage-navigation-buttons">
         <button class="stage-previous" data-step="1" bindtap="goToStep" disabled="{{busy}}">上一步</button>
-        <button class="primary-button stage-primary" data-step="3" bindtap="goToStep" disabled="{{busy || accountStepSummary.pending > 0 || unlockedStep < 3}}">下一步：整理账目{{accountStepSummary.pending ? '（剩 ' + accountStepSummary.pending + ' 项）' : ''}}</button>
+        <button class="primary-button stage-primary" data-step="3" bindtap="goToStep" disabled="{{busy || accountStepSummary.pending > 0 || unlockedStep < 3}}">下一步：整理账目{{accountStepSummary.displayPending ? '（剩 ' + accountStepSummary.displayPending + ' 项）' : ''}}</button>
       </view>
     </view>
   </view>

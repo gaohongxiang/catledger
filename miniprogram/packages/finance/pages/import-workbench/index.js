@@ -260,6 +260,7 @@ Page(theme.page({
   changeAccountDraftType: accountReview.changeAccountDraftType,
   completeAccountMapping: accountReview.completeAccountMapping,
   confirmAllAccountMappings: accountReview.confirmAllAccountMappings,
+  separateAccountGroup: accountReview.separateAccountGroup,
   persistAccountDrafts: accountReview.persistAccountDrafts,
   accountMappingDecision: accountReview.accountMappingDecision,
   retryDraftSync: runtime.retryDraftSync,

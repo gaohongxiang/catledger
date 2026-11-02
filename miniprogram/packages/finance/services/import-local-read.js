@@ -12,6 +12,7 @@ function create(model) {
   const update = () => ({ ...facts.update, version: facts.update.version, reviewMode: 'local_v3' })
   const envelope = () => ({ protocolVersion: 2, viewVersion: version(), update: update() })
   const summaryIndex = require('./import-local-summary').create(model)
+  let confirmationCache = null
   function summary() {
     if (model.summaryCache) return model.summaryCache
     const aggregated = summaryIndex.summary()
@@ -65,6 +66,32 @@ function create(model) {
       model.events.has(member.objectId) && model.events.get(member.objectId).economicNature !== 'repayment')
   }
   function issuePageValue(issue) { const { subjectEventIds, ...visible } = issue; return { ...visible, subjectEventIds: [] } }
+  function accountConfirmationIndex(data = {}) {
+    const separate = [...new Set(data.separateIssueIds || [])].sort()
+    const key = version() + ':' + JSON.stringify(separate)
+    if (confirmationCache?.key === key) return confirmationCache
+    const rows = [...model.issues.values()].filter(issue => issue.issueType === 'account_mapping' &&
+      ['open', 'resolved'].includes(issue.status) && !obsoletePaymentTarget(issue)).map(issueView).sort(chronological)
+    const groups = require('./import-account-confirmations').build(model, rows, { separateIssueIds: separate })
+    const byIssue = new Map(groups.flatMap(group => group.issueIds.map(id => [id, group])))
+    const display = rows.flatMap(issue => {
+      const group = byIssue.get(issue.issueId)
+      return !group ? [issue] : issue.issueId === group.anchorIssueId
+        ? [{ ...issue, memberCount: group.memberCount, accountConfirmationGroupId: group.groupId }] : []
+    }).sort(chronological)
+    confirmationCache = { key, rows, display, groups: new Map(groups.map(group => [group.groupId, group])),
+      issues: new Map(rows.map(issue => [issue.issueId, issue])) }
+    return confirmationCache
+  }
+  // 当前显示页的完整原事项只在本机模型/页面逻辑之间传递；分页响应与 setData
+  // 仍只携带有界卡片摘要，不把大组的所有 issueId 或来源明细塞进一条响应。
+  function accountConfirmationDetails(data = {}) {
+    if (data.viewVersion != null && data.viewVersion !== version()) error('STALE_VIEW')
+    const index = accountConfirmationIndex(data), groups = (data.groupIds || []).map(id => index.groups.get(id))
+    if (groups.some(group => !group)) error('STALE_VIEW', '账户分组已变化，请重新读取')
+    const ids = [...new Set(groups.flatMap(group => group.issueIds))]
+    return { groups: JSON.parse(JSON.stringify(groups)), issues: ids.map(id => issuePageValue(index.issues.get(id))) }
+  }
   function eventMatches(event,data) {
     if(model.hiddenOffset(event))return false
     const open=model.eventIssues(event.eventId).filter(issue=>issue.status==='open'),review=model.invalid.has(event.eventId)||open.some(issue=>issue.blocking&&issue.issueType!=='category_assignment')||event.status==='needs_action'&&!open.some(issue=>issue.issueType==='category_assignment')
@@ -125,12 +152,30 @@ function create(model) {
       return page(action,data,rows,'eventId',event=>model.publicRow(event.eventId))
     }
     if(action==='reviewIssues.list'){
+      if (data.group === 'accounts' && data.view === 'account_confirmations') {
+        const index = accountConfirmationIndex(data)
+        return page(action, data, index.display, 'issueId', issuePageValue)
+      }
       const rows=[...model.issues.values()].filter(issue=>(!data.status||issue.status===data.status)&&(!data.issueType||issue.issueType===data.issueType)&&
         (!data.group||data.group==='accounts'&&issue.issueType==='account_mapping'&&['open','resolved'].includes(issue.status)&&!obsoletePaymentTarget(issue)||data.group==='category'&&issue.issueType==='category_assignment'||data.group==='review'&&!['account_mapping','category_assignment'].includes(issue.issueType)&&issue.blocking))
         .map(issueView).filter(issue=>!data.query||issue.subjectEventIds.some(id=>model.events.has(id)&&eventMatches(model.events.get(id),{query:data.query}))).sort(chronological)
       return page(action,data,rows,'issueId',issuePageValue)
     }
     if(action==='reviewIssues.members'||action==='reviewIssues.get'){
+      if (action === 'reviewIssues.members' && data.accountConfirmationGroupId) {
+        const group = accountConfirmationIndex(data).groups.get(data.accountConfirmationGroupId)
+        if (!group) error('STALE_VIEW', '账户分组已变化，请重新读取')
+        const unique = new Map()
+        for (const id of group.issueIds) for (const member of model.members.get(id) || []) {
+          if (member.objectType !== 'event' || member.memberRole === 'candidate' || !model.events.has(member.objectId)) continue
+          if (!unique.has(member.objectId)) unique.set(member.objectId, member)
+        }
+        const rows = [...unique.values()].map(member => {
+          const event = model.publicRow(member.objectId)
+          return { ...member, objectVersion: event.version, event, localAt: event.localAt, relation: null, transaction: null }
+        }).sort(chronological)
+        return { ...page(action, data, rows, 'memberId'), accountConfirmationGroupId: group.groupId }
+      }
       const issue=model.issues.get(data.issueId);if(!issue)error('NOT_FOUND')
       const rows=(model.members.get(issue.issueId)||[]).filter(row=>!data.memberKind||row.objectType===data.memberKind).map(row=>{
         const event=row.objectType==='event'?model.publicRow(row.objectId):null,relation=model.relations.get(row.objectId)
@@ -215,6 +260,6 @@ function create(model) {
     }
     error('LOCAL_REVIEW_REQUIRED','完整草稿核对期间，此操作需要在本机完成')
   }
-  return { read,summary,version,pairRange }
+  return { read,summary,version,pairRange,accountConfirmationDetails }
 }
 module.exports={create}

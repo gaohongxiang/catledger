@@ -28,7 +28,7 @@ test('三项只改变排版，原账户选择、名称输入、类型及忙碌�
   assert.match(row, /bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}"/)
   assert.match(row, /aria-label="{{item.label}}的新账户名称"/)
   assert.match(row, /aria-label="{{item.label}}的账户类型/)
-  assert.match(markup, /已确认 {{accountStepSummary.confirmed}}/)
+  assert.match(markup, /已确认 {{accountStepSummary.displayConfirmed}}/)
   assert.match(markup, /建议 · 待确认/)
 })
 

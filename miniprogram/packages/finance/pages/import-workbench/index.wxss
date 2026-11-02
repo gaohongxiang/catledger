@@ -2683,6 +2683,13 @@ button::after { border: 0; }
 .account-batch-copy { display: flex; flex-direction: column; align-items: flex-end; }
 .account-batch-note { color: var(--ui-subtle); font-size: var(--font-caption); line-height: 1.4; }
 .account-recheck-note { margin-top: var(--layout-space-2); color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.6; }
+.account-group-note { display: flex; align-items: flex-start; gap: var(--layout-space-2); margin-top: var(--layout-space-2); color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.6; }
+.account-group-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.account-group-files { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-subtle); }
+.account-group-sources { color: var(--ui-subtle); }
+.account-proof-item .account-group-separate { flex: 0 0 auto; min-height: 64rpx; margin: 0; padding: 0 8rpx; background: transparent; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; }
+.account-group-separate::after { border: 0; }
+.account-group-separate[disabled] { opacity: .5; }
 .account-compact-type-locked .account-compact-type-value { color: var(--ui-muted); }
 .account-summary-row { display: flex; align-items: center; gap: var(--layout-space-3); min-height: 64rpx; }
 .account-summary-text { flex: 1; min-width: 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; overflow-wrap: anywhere; }
