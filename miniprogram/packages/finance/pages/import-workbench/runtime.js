@@ -723,7 +723,7 @@ module.exports = {
     this._duplicateLoadToken = null
     this.setData({
         phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', resumeNotice: null, abandoningRestore: false, abandoningUpdate: false, preparePending: false,
-        preparingAccount: false, prepareProgress: '',
+        preparingAccount: false, prepareProgress: '', refreshRequired: false, pageError: '', errorMessage: '',
         files: [], bankMappingSheet: null, fileAttentionSheet: null, fileNameEdit: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
         reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],

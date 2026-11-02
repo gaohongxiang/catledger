@@ -82,6 +82,9 @@ module.exports = {
           version: version
         })
       this._abandonedUpdateId = updateId
+      // 与恢复流程的放弃保持一致：本机草稿、最后批次和首页进度一起清掉，
+      // 否则首页仍按旧进度显示「待核对 / 待分类」。
+      drafts.clearUpdate(updateId)
       this.startAnother()
       if (abandoned.offlineAbandon) wx.showToast({ title: '本机已清理，服务端待联网放弃', icon: 'none' })
     } catch (error) {
