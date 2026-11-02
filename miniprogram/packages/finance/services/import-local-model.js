@@ -34,6 +34,8 @@ function create(facts) {
   const accountCreations = new Map()
   const categories = new Map(facts.categories.map(row => [row.categoryId, row]))
   const choices = Object.fromEntries(KINDS.map(kind => [kind, new Map()]))
+  // 只记已实际应用的事件内引用决定；会话重建时由落盘选择重放，不改写下载的事实。
+  const accountMappingChoices = new Map()
   const links = facts.links.map(row => ({ ...row })), needsCheck = new Set(), invalid = new Map()
   let revision = 0, supplemental = null, summaryCache = null
   let businessRevision = -1, businessByRow = new Map(), offsetsByMain = new Map()
@@ -645,13 +647,34 @@ function create(facts) {
     const mappingPolicy = require('../domain/import-review/account-mapping-policy')
     for (const member of issueMembers) {
       const current = events.get(member.objectId); if (!current) continue
-      const ref = accountGrouping.memberReference(current, member)
-      if (ref) mappingPolicy.setMappingDecision(index, ref, external ? 'external' : 'account', id, current.eventId)
+      const ref = accountGrouping.memberReference(current, member), referenceKey = paymentReferenceKey(ref)
+      let eventIndex
+      if (input.decision !== 'exclude_events') {
+        // 重算两端必须同时看到快照中的事件映射和之前的本机确认。
+        // 克隆当前事件的完整索引，不把本次选择扩成其他交易的共同绑定。
+        eventIndex = new Map(mappingPolicy.indexForEvent(index, current))
+        for (const [key, saved] of accountMappingChoices.get(current.eventId) || []) {
+          if (key === referenceKey) continue
+          const reference = accountGrouping.memberReference(current, saved.member)
+          if (paymentReferenceKey(reference) !== key) continue
+          if (saved.action === 'account' && !accountTypes.compatible(reference, accounts.get(saved.accountId),
+            { event: current, memberRole: saved.member.memberRole })) fail('账户不可用，请重新选择')
+          mappingPolicy.setMappingDecision(eventIndex, reference, saved.action, saved.accountId)
+        }
+        if (ref) mappingPolicy.setMappingDecision(eventIndex, ref, external ? 'external' : 'account', id)
+      }
       const next = input.decision === 'exclude_events' ? { ...current, status: 'excluded', reasonCodes: distinct([...current.reasonCodes,'manual_exclusion','account_mapping_excluded']) }
         : accountPolicy.applyMappedAccount({ ...current, status: 'needs_action', reasonCodes: policy.resolvedReasons('account_mapping', current.reasonCodes)
           .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) },
-          member.memberRole, id, mappingPolicy.indexForEvent(index, current), external ? 'external' : 'account', ref)
+          member.memberRole, id, eventIndex, external ? 'external' : 'account', ref)
       if (input.decision !== 'exclude_events') validateReferences(next)
+      if (referenceKey) {
+        if (!accountMappingChoices.has(current.eventId)) accountMappingChoices.set(current.eventId, new Map())
+        const saved = accountMappingChoices.get(current.eventId)
+        if (input.decision === 'exclude_events') saved.delete(referenceKey)
+        else saved.set(referenceKey, { member: { issueId: member.issueId, memberRole: member.memberRole },
+          action: external ? 'external' : 'account', accountId: id || null })
+      }
       next.version = current.version + 1; events.set(current.eventId, next); affected.push(current.eventId)
       invalid.delete(current.eventId)
     }

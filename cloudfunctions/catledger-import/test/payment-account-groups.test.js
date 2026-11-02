@@ -42,7 +42,8 @@ function componentKey(label) {
 }
 
 test('组合付款整理后按账户各成一组，同一笔交易同时是它们的成员', () => {
-  const plan = organizeComposite([planningRow('账户余额&测试银行储蓄卡(1234)')])
+  const row = planningRow('账户余额&测试银行储蓄卡(1234)')
+  const plan = organizeComposite([row])
   const accountIssues = plan.issues.filter(issue => issue.issueType === 'account_mapping')
   assert.equal(accountIssues.length, 3)
   assert.deepEqual(accountIssues.map(issue => issue.primaryReasonCode), Array(3).fill('payment_reference_mapping_required'))
@@ -61,6 +62,33 @@ test('组合付款整理后按账户各成一组，同一笔交易同时是它�
     ['payment_component_0', 'payment_component_1', 'payment_target'])
   assert.equal(needsExpansion(plan.events, [planningRow('账户余额&测试银行储蓄卡(1234)')],
     [{ eventId: plan.events[0].eventId, rowId: 'row-1', evidenceRole: 'primary' }]), false)
+  // payment_target 与组合成分从各自引用取来源，不能把问题类型名、原始合成付款串
+  // 或交易对方当作每张卡的账户名，也不能仅因不是 mapping_from/to 就丢掉上下文。
+  const { publicIssue } = require('../src/review-presentation')
+  const expected = {
+    payment_component_0: ['支付宝账户余额', 'wallet', 'source'],
+    payment_component_1: ['测试银行储蓄卡(1234)', 'bank', 'source'],
+    payment_target: ['1688先采后付', 'credit', 'destination']
+  }
+  for (const issue of accountIssues) {
+    const member = plan.members.find(item => item.issueId === issue.issueId && item.sortOrder === 0)
+    const event = plan.events.find(item => item.eventId === member.objectId)
+    const { accountContext } = publicIssue({ ...issue, subjectEventId: event.eventId, subjectMemberRole: member.memberRole,
+      subjectEconomicNature: event.economicNature, subjectSourceDirection: event.sourceDirection, subjectCurrency: event.currency,
+      subjectFieldSources: event.fieldSources, subjectLedgerAccountId: event.ledgerAccountId,
+      subjectCounterpartyLedgerAccountId: event.counterpartyLedgerAccountId,
+      subjectSourceType: row.sourceType, subjectPaymentMethod: row.paymentMethod })
+    const [label, type, side] = expected[member.memberRole]
+    assert.equal(accountContext.label, label)
+    assert.equal(accountContext.sourceType, 'alipay')
+    assert.equal(accountContext.fundsSide, member.memberRole)
+    assert.equal(accountContext.fundsRole, side)
+    assert.equal(accountContext.defaultAccountType, type)
+    assert.deepEqual(accountContext.allowedAccountTypes, [type])
+    assert.equal(accountContext.accountId, null)
+    assert.equal(accountContext.recognized, true)
+    assert.ok(accountContext.paymentMethodKey)
+  }
 })
 
 test('普通付款与组合付款共用账户时只确认一次，每组保留完整交易和资金角色', () => {
@@ -139,6 +167,7 @@ test('新导入的组合还款目标沿用账户时写入事件，不能出现�
     const event = plan.events[0], member = plan.members.find(item => item.memberRole === 'payment_target')
     const issue = plan.issues.find(item => item.issueId === member.issueId)
     const shown = publicIssue({ ...issue, subjectEventId: event.eventId, subjectMemberRole: member.memberRole,
+      subjectEconomicNature: event.economicNature, subjectSourceDirection: event.sourceDirection, subjectCurrency: event.currency,
       subjectFieldSources: event.fieldSources, subjectLedgerAccountId: event.ledgerAccountId,
       subjectCounterpartyLedgerAccountId: event.counterpartyLedgerAccountId,
       subjectSourceType: row.sourceType, subjectPaymentMethod: row.paymentMethod })
@@ -147,6 +176,13 @@ test('新导入的组合还款目标沿用账户时写入事件，不能出现�
     assert.equal(event.counterpartyLedgerAccountId, confirmed && action === 'account' ? 'acct-target' : null)
     assert.equal(shown.accountContext.accountId, event.counterpartyLedgerAccountId)
     assert.equal(shown.accountContext.defaultIgnored, false)
+    assert.equal(shown.accountContext.label, reference.label)
+    assert.equal(shown.accountContext.sourceType, row.sourceType)
+    assert.equal(shown.accountContext.paymentMethodKey, reference.paymentMethodKey)
+    assert.equal(shown.accountContext.fundsSide, 'payment_target')
+    assert.equal(shown.accountContext.fundsRole, 'destination')
+    assert.equal(shown.accountContext.defaultAccountType, 'credit')
+    assert.deepEqual(shown.accountContext.allowedAccountTypes, ['credit'])
   }
 })
 

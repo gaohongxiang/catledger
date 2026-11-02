@@ -456,7 +456,7 @@ test('一键确认先说清项数和会新建的账户，取消后一项也不�
   assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 2, '两项都按建议名新建')
   await page.confirmAllAccountMappings()
   assert.equal(asked.length, 1)
-  assert.match(asked[0], /将确认 2 项建议，其中新建 2 个账户/u)
+  assert.match(asked[0], /将确认 2 项账户，其中新建 2 个账户/u)
   const after = page.refreshAccountMappings()
   assert.equal(after.summary.suggested, 2, '取消后建议项保持待确认')
   assert.equal(after.summary.confirmed, 0)
@@ -472,7 +472,7 @@ test('确认建议时按已有账户与新建分别计数，只有已有账户�
   h.wx.showModal = options => { asked.push(options.content); options.success({ confirm: true }) }
   assert.equal(page.refreshAccountMappings().summary.suggestedCreate, 0, '命中已有账户不算新建')
   await page.confirmAllAccountMappings()
-  assert.match(asked[0], /将确认 1 项建议。/u)
+  assert.match(asked[0], /将确认 1 项账户。/u)
   assert.equal(page.refreshAccountMappings().summary.confirmed, 1)
 })
 
