@@ -137,6 +137,9 @@ test('原事项部分成员已单独选账户，不能因丢掉该决定而合�
   const result = grouped(reader)
   assert.equal(result.total, 2)
   assert.ok(result.items.every(issue => !issue.accountConfirmationGroupId))
+  const selected = grouped(reader, { accountSelections: original.map(issue => ({ issueId: issue.issueId,
+    mode: 'account', accountId: accountB, explicit: true, dirty: true })) })
+  assert.equal(selected.total, 2, 'a whole-card draft must not erase a member-level saved disagreement')
   assert.equal(model.events.get(model.issues.get(first.issueId).subjectEventIds[0]).ledgerAccountId, accountA)
 })
 
@@ -157,4 +160,175 @@ test('保留拆分偏好后，其他同账户子组的来源详情沿用同一�
     separateIssueIds, memberKind: 'event', pageSize: 8 })
   assert.equal(members.total, 2)
   assert.equal(new Set(members.items.map(member => member.objectId)).size, 2)
+})
+
+const creditLabel = '合成测试银行信用卡(6106)'
+const selection = (issueId, accountId, patch = {}) => ({ issueId, mode: 'account', accountId,
+  explicit: true, dirty: true, ...patch })
+const creditAccount = (name = creditLabel) => ({ accountId: randomUUID(), name,
+  type: 'credit', nature: 'liability', currency: 'CNY', version: 1 })
+
+test('主卡手选上方默认的已有账户后，整批合为待确认卡且不改变任何已保存事实', async () => {
+  const account = creditAccount(), value = await facts({ mapped: false, accounts: [account],
+    contents: [alipay(3, 'SYNTHETIC-SELECT-DEFAULT', creditLabel), syntheticBill(2, 'SYNTHETIC-SELECT-ALIAS', '主卡6106')] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  assert.equal(original.total, 2)
+  const alias = original.items.find(issue => issue.accountContext.label === '主卡6106')
+  const accountSelections = [selection(alias.issueId, account.accountId)]
+  const before = JSON.stringify(model.finalState()), revision = model.revision
+  const page = grouped(reader, { accountSelections })
+  assert.equal(page.total, 1)
+  assert.equal(page.items[0].memberCount, 5)
+  const details = reader.accountConfirmationDetails({ accountSelections,
+    groupIds: [page.items[0].accountConfirmationGroupId], accountConfirmationVersion: page.accountConfirmationVersion })
+  const group = details.groups[0]
+  assert.equal(group.groupReason, 'selected_account')
+  assert.equal(group.selectedAccountId, account.accountId)
+  assert.equal(group.accountId, null)
+  assert.equal(group.candidate, true)
+  assert.equal(group.label, account.name)
+  assert.equal(group.sourceCount, 2)
+  assert.deepEqual(details.issues.map(issue => issue.accountContext.label).sort(), ['主卡6106', creditLabel].sort())
+  assert.equal(details.accountConfirmationVersion, page.accountConfirmationVersion)
+  assert.equal(JSON.stringify(model.finalState()), before)
+  assert.equal(model.revision, revision)
+  assert.equal(model.choices.accounts.size, 0)
+  assert.equal(grouped(reader).total, 2, 'a display selection is not saved into the model')
+})
+
+test('两个同名默认建议不按账户ID合组，只有真实手选才启动且默认draft初始化不改变范围', async () => {
+  const account = { ...creditAccount('合成储值账户'), type: 'wallet', nature: 'asset' }
+  const value = await facts({ mapped: false, accounts: [account],
+    contents: [alipay(1, 'SYNTHETIC-DEFAULT-ONLY-ALI', account.name), syntheticBill(1, 'SYNTHETIC-DEFAULT-ONLY-WX', account.name)] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  assert.equal(original.total, 2)
+  const defaults = original.items.map(issue => selection(issue.issueId, account.accountId, { explicit: false, dirty: false }))
+  const untouched = grouped(reader, { accountSelections: defaults })
+  assert.equal(untouched.total, 2)
+  assert.equal(untouched.accountConfirmationVersion, original.accountConfirmationVersion)
+  const explicit = selection(original.items[0].issueId, account.accountId)
+  const page = grouped(reader, { accountSelections: [explicit] })
+  assert.equal(page.total, 1)
+  const withDefaults = grouped(reader, { accountSelections: [...defaults, explicit].reverse() })
+  assert.equal(withDefaults.accountConfirmationVersion, page.accountConfirmationVersion)
+  assert.equal(withDefaults.items[0].accountConfirmationGroupId, page.items[0].accountConfirmationGroupId)
+})
+
+test('手选显示组先覆盖完整批次再分页，未打开的120个默认来源一起参与', async () => {
+  const account = creditAccount(), contents = Array.from({ length: 120 }, (_, index) =>
+    syntheticBill(1, 'SYNTHETIC-SELECT-MANY-' + index, creditLabel))
+  contents.push(alipay(1, 'SYNTHETIC-SELECT-MANY-ALIAS', '主卡6106'))
+  const value = await facts({ mapped: false, accounts: [account], contents })
+  const model = local.create(value), reader = readers.create(model)
+  const alias = [...model.issues.values()].find(issue => issue.accountContext?.label === '主卡6106')
+  const accountSelections = [selection(alias.issueId, account.accountId)]
+  const page = grouped(reader, { accountSelections, pageSize: 1 })
+  assert.equal(page.total, 1)
+  assert.equal(page.nextCursor, null)
+  assert.equal(page.items[0].memberCount, 121)
+  assert.ok(Buffer.byteLength(JSON.stringify(page)) < 48 * 1024)
+  const details = reader.accountConfirmationDetails({ accountSelections, accountConfirmationVersion: page.accountConfirmationVersion,
+    groupIds: [page.items[0].accountConfirmationGroupId] })
+  assert.equal(details.issues.length, 121)
+  assert.equal(details.groups[0].sourceCount, 121)
+})
+
+test('UI改选令同组旧token与旧游标失效，来源详情按相同选择范围读取', async () => {
+  const account = creditAccount(), other = creditAccount('合成备用信用账户')
+  const value = await facts({ mapped: false, accounts: [account, other], contents: [
+    alipay(3, 'SYNTHETIC-SELECT-VIEW-DEFAULT', creditLabel), syntheticBill(2, 'SYNTHETIC-SELECT-VIEW-ALIAS', '主卡6106'),
+    syntheticBill(1, 'SYNTHETIC-SELECT-VIEW-SEPARATE', '合成其他银行储蓄卡(7788)')] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  const involved = original.items.filter(issue => issue.accountContext.label !== '合成其他银行储蓄卡(7788)')
+  const alias = involved.find(issue => issue.accountContext.label === '主卡6106')
+  const accountSelections = [selection(alias.issueId, account.accountId)]
+  const first = grouped(reader, { accountSelections, pageSize: 1 }), all = grouped(reader, { accountSelections })
+  assert.ok(first.nextCursor)
+  const accountConfirmationGroupId = all.items.find(issue => issue.accountConfirmationGroupId).accountConfirmationGroupId
+  const detail = reader.read('reviewIssues.members', { accountSelections, accountConfirmationGroupId, pageSize: 2,
+    accountConfirmationVersion: all.accountConfirmationVersion })
+  assert.equal(detail.total, 5)
+  assert.equal(detail.accountConfirmationVersion, all.accountConfirmationVersion)
+  assert.ok(detail.nextCursor)
+  const changedSelections = involved.map(issue => selection(issue.issueId, other.accountId))
+  const changed = grouped(reader, { accountSelections: changedSelections })
+  assert.equal(changed.viewVersion, all.viewVersion, 'only the display selection changed')
+  assert.equal(changed.items.find(issue => issue.accountConfirmationGroupId).accountConfirmationGroupId, accountConfirmationGroupId)
+  assert.notEqual(changed.accountConfirmationVersion, all.accountConfirmationVersion)
+  assert.throws(() => grouped(reader, { accountSelections: changedSelections, cursor: first.nextCursor }), { code: 'STALE_VIEW' })
+  assert.throws(() => reader.accountConfirmationDetails({ accountSelections: changedSelections,
+    accountConfirmationVersion: all.accountConfirmationVersion, groupIds: [accountConfirmationGroupId] }), { code: 'STALE_VIEW' })
+  assert.throws(() => reader.read('reviewIssues.members', { accountSelections: changedSelections,
+    accountConfirmationVersion: all.accountConfirmationVersion, accountConfirmationGroupId }), { code: 'STALE_VIEW' })
+  assert.throws(() => reader.read('reviewIssues.members', { accountSelections: changedSelections,
+    accountConfirmationGroupId, cursor: detail.nextCursor }), { code: 'STALE_VIEW' })
+})
+
+test('手工拆分与新建或外部等脏选择均阻止已保存账户回流合组，撤销显示偏好可恢复', async () => {
+  const account = creditAccount(), value = await facts({ mapped: false, accounts: [account],
+    contents: [alipay(1, 'SYNTHETIC-SELECT-BLOCK-DEFAULT', creditLabel), syntheticBill(1, 'SYNTHETIC-SELECT-BLOCK-ALIAS', '主卡6106')] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  const saved = original.items.find(issue => issue.accountContext.label === creditLabel)
+  const alias = original.items.find(issue => issue.accountContext.label === '主卡6106')
+  model.mapAccount({ issueId: saved.issueId, decision: 'apply_fields', fields: { mappingAccountId: account.accountId } })
+  const accountSelections = [selection(alias.issueId, account.accountId)]
+  const joined = grouped(reader, { accountSelections })
+  assert.equal(joined.total, 1)
+  const details = reader.accountConfirmationDetails({ accountSelections, groupIds: [joined.items[0].accountConfirmationGroupId] })
+  assert.equal(details.groups[0].candidate, true)
+  assert.equal(details.groups[0].accountId, account.accountId)
+  const separateIssueIds = [saved.issueId]
+  assert.equal(grouped(reader, { accountSelections, separateIssueIds }).total, 2)
+  for (const mode of ['create', 'external', 'excluded']) {
+    assert.equal(grouped(reader, { accountSelections: [...accountSelections,
+      { issueId: saved.issueId, mode, accountId: account.accountId, explicit: false, dirty: true }] }).total, 2)
+  }
+  assert.equal(grouped(reader, { accountSelections }).total, 1)
+  assert.equal(model.events.get(model.issues.get(saved.issueId).subjectEventIds[0]).ledgerAccountId, account.accountId)
+})
+
+test('已确认卡改选新账户后仍待确认，保存事实和selectedAccountId分开', async () => {
+  const target = creditAccount(), old = creditAccount('合成原有信用账户')
+  const value = await facts({ mapped: false, accounts: [target, old],
+    contents: [alipay(1, 'SYNTHETIC-SELECT-REASSIGN-DEFAULT', creditLabel), syntheticBill(1, 'SYNTHETIC-SELECT-REASSIGN-ALIAS', '主卡6106')] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  const saved = original.items.find(issue => issue.accountContext.label === creditLabel)
+  const alias = original.items.find(issue => issue.accountContext.label === '主卡6106')
+  model.mapAccount({ issueId: saved.issueId, decision: 'apply_fields', fields: { mappingAccountId: target.accountId } })
+  model.mapAccount({ issueId: alias.issueId, decision: 'apply_fields', fields: { mappingAccountId: old.accountId } })
+  const before = JSON.stringify(model.finalState()), accountSelections = [selection(alias.issueId, target.accountId)]
+  const page = grouped(reader, { accountSelections })
+  assert.equal(page.total, 1)
+  const { groups } = reader.accountConfirmationDetails({ accountSelections, groupIds: [page.items[0].accountConfirmationGroupId] })
+  assert.equal(groups[0].candidate, true)
+  assert.equal(groups[0].accountId, null)
+  assert.equal(groups[0].selectedAccountId, target.accountId)
+  assert.equal(JSON.stringify(model.finalState()), before)
+  assert.equal(model.events.get(model.issues.get(alias.issueId).subjectEventIds[0]).ledgerAccountId, old.accountId)
+})
+
+test('不存在、停用、类型或币种不兼容的选择与重复冲突选择不能合组', async () => {
+  const account = creditAccount(), bank = { ...creditAccount('合成储蓄账户'), type: 'bank', nature: 'asset' }
+  const foreign = { ...creditAccount('合成外币信用账户'), currency: 'USD' }
+  const unavailable = { ...creditAccount('合成停用信用账户'), disabledAt: '2026-01-01T00:00:00Z' }
+  const value = await facts({ mapped: false, accounts: [account, bank, foreign, unavailable],
+    contents: [alipay(1, 'SYNTHETIC-SELECT-INVALID-DEFAULT', creditLabel), syntheticBill(1, 'SYNTHETIC-SELECT-INVALID-ALIAS', '主卡6106')] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  for (const accountId of [randomUUID(), bank.accountId, foreign.accountId, unavailable.accountId]) {
+    assert.equal(grouped(reader, { accountSelections: original.items.map(issue => selection(issue.issueId, accountId)) }).total, 2)
+  }
+  const alias = original.items.find(issue => issue.accountContext.label === '主卡6106')
+  assert.equal(grouped(reader, { accountSelections: [selection(alias.issueId, account.accountId), selection(alias.issueId, bank.accountId)] }).total, 2)
+  assert.equal(model.choices.accounts.size, 0)
+})
+
+test('完整卡号冲突时，手选一项不会吞掉另一项误匹配的默认建议', async () => {
+  const firstLabel = '合成测试银行储蓄卡9900000000015564', secondLabel = '合成测试银行储蓄卡9900000000025564'
+  const account = { ...creditAccount(firstLabel), type: 'bank', nature: 'asset' }
+  const value = await facts({ mapped: false, accounts: [account], contents: [
+    alipay(1, 'SYNTHETIC-SELECT-FULL-FIRST', firstLabel), syntheticBill(1, 'SYNTHETIC-SELECT-FULL-SECOND', secondLabel)] })
+  const model = local.create(value), reader = readers.create(model), original = grouped(reader)
+  assert.equal(original.total, 2)
+  assert.equal(grouped(reader, { accountSelections: [selection(original.items[0].issueId, account.accountId)] }).total, 2)
+  assert.equal(grouped(reader, { accountSelections: original.items.map(issue => selection(issue.issueId, account.accountId)) }).total, 1)
 })

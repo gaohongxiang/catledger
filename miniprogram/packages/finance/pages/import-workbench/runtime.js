@@ -14,6 +14,7 @@ const readCache = require('../../../../services/read-cache')
 const pendingWrites = require('../../../../services/pending-ledger-write')
 const reviewLayout = require('./review-layout')
 const accountPending = require('./account-pending')
+const accountDisplay = require('./account-display-groups')
 
 // 账户步骤的问题组数量有限，一次读满并补齐服务端按字节预算切出的页；
 // 翻页只在超过 100 组时保留。
@@ -298,6 +299,8 @@ module.exports = {
     }
   },
   cancelPagedReads() {
+    this._accountSelectionRefresh = null
+    this._pendingAccountGroupRefresh = false
     this.cancelExcludedGroup()
     this._fileRenameToken = null
     this._reviewDetailToken = null
@@ -684,6 +687,7 @@ module.exports = {
 
   beginInputEditing: function (event) {
     this._editingInput = event.currentTarget.dataset.inputKey
+    if (this._accountSelectionRefresh) this._pendingAccountGroupRefresh = true
   },
 
   finishInputEditing: function () {
@@ -691,7 +695,19 @@ module.exports = {
     this.flushAccountDraftSync()
     const pending = this._pendingBackgroundView
     this._pendingBackgroundView = null
-    if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) this.applyUpdateView(pending, true)
+    if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) {
+      const regroup = this._pendingAccountGroupRefresh, epoch = this._viewEpoch, session = this._draftSession
+      this._pendingAccountGroupRefresh = false
+      const applied = this.applyUpdateView(pending, true)
+      if (!regroup) return applied
+      return Promise.resolve(applied).then(() => {
+        if (this._viewActive && this._viewEpoch === epoch && this._draftSession === session) return this.refreshAccountSelectionGroups()
+      })
+    }
+    if (this._pendingAccountGroupRefresh) {
+      this._pendingAccountGroupRefresh = false
+      return this.refreshAccountSelectionGroups()
+    }
   },
 
   startAnother: function () {
@@ -876,18 +892,27 @@ module.exports = {
 
   loadActivePage: async function (reset, direction, quiet) {
     if (!this._viewSession || !this._viewActive) return
+    if (this.data.currentStep === 2 && this._editingInput) { this._pendingAccountGroupRefresh = true; return }
     const expandedExcluded = this.data.excludedReviewGroups.find(group => group.expanded)
     this.cancelExcludedGroup()
     const step = this.data.currentStep
     this.loadPairingEntry()
-    const epoch = ++this._pageEpoch, viewEpoch = this._viewEpoch, scope = readCache.getSession()
-    const active = () => this._viewActive && epoch === this._pageEpoch && viewEpoch === this._viewEpoch && readCache.getSession() === scope
+    const epoch = ++this._pageEpoch, viewEpoch = this._viewEpoch, scope = readCache.getSession(), owner = currentOwner()
+    const draftSession = this._draftSession
+    const selectionSignature = step === 2 && this._draftSession?.isLocal ? accountDisplay.readSignature(this._accountUiDrafts) : null
+    const current = () => this._viewActive && epoch === this._pageEpoch && viewEpoch === this._viewEpoch &&
+      readCache.getSession() === scope && currentOwner() === owner && this._draftSession === draftSession
+    const active = () => current() && (selectionSignature === null || selectionSignature === accountDisplay.readSignature(this._accountUiDrafts))
+    const deferInput = () => {
+      if (step !== 2 || !current() || !this._editingInput) return false
+      this._pendingAccountGroupRefresh = true
+      return true
+    }
     this._loadedStep = step
     if (![2, 3].includes(step)) { setChangedData(this, Object.assign({}, this.stepPatch(step), { pageLoading: false, pageError: '' })); return }
     let action = 'reviewIssues.list', filter = {}, kind = 'accountMappings'
     if (step === 2) filter = this._draftSession?.isLocal && this._draftSession.accountConfirmationDetails
-      ? { group: 'accounts', view: 'account_confirmations', separateIssueIds: [...this._accountUiDrafts]
-        .filter(([, draft]) => draft.confirmationSeparate).map(([id]) => id).sort() }
+      ? { group: 'accounts', view: 'account_confirmations', ...accountDisplay.readOptions(this._accountUiDrafts) }
       : { group: 'accounts' }
     else if (this.data.activeReviewTab === 'category') {
       const status = this.data.activeCategoryStatus
@@ -906,7 +931,7 @@ module.exports = {
     if (!quiet) this.setData({ pageLoading: true, pageError: '' })
     try {
       const response = await pager.load(direction)
-      if (!active() || pager !== this._mainPager) return
+      if (deferInput() || !active() || pager !== this._mainPager) return
       const events = action === 'economicEvents.list' && kind !== 'excludedReviewGroups' ? response.items : []
       let issues = action === 'reviewIssues.list' ? response.items :
         Array.from(new Map(events.filter(event => event.pendingIssue).map(event => [event.pendingIssue.issueId,
@@ -914,22 +939,28 @@ module.exports = {
       let accountDisplayGroups = []
       if (step === 2 && filter.view === 'account_confirmations') {
         const details = this._draftSession.accountConfirmationDetails({ viewVersion: response.viewVersion,
-          separateIssueIds: filter.separateIssueIds, groupIds: response.items.map(issue => issue.accountConfirmationGroupId).filter(Boolean) })
+          separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections,
+          accountConfirmationVersion: response.accountConfirmationVersion,
+          groupIds: response.items.map(issue => issue.accountConfirmationGroupId).filter(Boolean) })
         const originals = new Map(details.issues.map(issue => [issue.issueId, issue]))
         accountDisplayGroups = details.groups
         const groups = new Map(details.groups.map(group => [group.groupId, group]))
         issues = response.items.flatMap(issue => issue.accountConfirmationGroupId
           ? groups.get(issue.accountConfirmationGroupId).issueIds.map(id => originals.get(id)) : [issue])
       }
-      const directory = step === 2 ? await this.loadDirectories(issues.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
-      if (!active()) return
-      this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountDisplayGroups, accountMappingDrafts: [] })
+      const selectedIds = step === 2 ? [...new Set(accountDisplayGroups.map(group => group.selectedAccountId)
+        .concat(issues.map(issue => this._accountUiDrafts.get(issue.issueId)?.accountId)).filter(Boolean))] : []
+      const directory = step === 2 ? await this.loadDirectories(issues.map(issue => issue.subject).filter(Boolean), selectedIds) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
+      if (deferInput() || !active()) return
+      this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [],
+        accountDisplayGroups, accountConfirmationVersion: response.accountConfirmationVersion,
+        accountConfirmationOptions: { separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections }, accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed &&
-          !draft.confirmationSeparate && !draft.separated) this._accountUiDrafts.delete(id)
+          !draft.confirmationSeparate && !draft.separated && !draft.explicitAccountSelection) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         const state = this.mappingState()
         const mappings = state.mappings.map(compactMapping)
@@ -971,7 +1002,11 @@ module.exports = {
     }
   },
 
-  changeReviewPage: function (event) {
+  changeReviewPage: async function (event) {
+    const epoch = this._viewEpoch, session = this._viewSession, scope = readCache.getSession(), owner = currentOwner()
+    if (this._accountSelectionRefresh) await this._accountSelectionRefresh
+    if (!this._viewActive || this._viewEpoch !== epoch || this._viewSession !== session ||
+        readCache.getSession() !== scope || currentOwner() !== owner) return
     return this.loadActivePage(false, event.currentTarget.dataset.direction === 'first' ? 'first' : Number(event.currentTarget.dataset.direction))
   },
 

@@ -1,5 +1,6 @@
 const bankSuggestion = require('./bank-suggestion')
 const { fundsAccountLabels, natureLabel } = require('./detail-fields')
+const { normalizePaymentAccountName, suggestExistingAccount } = require('../../services/import-account-suggestions')
 
 function reviewStatusTabs(tabs = []) {
   return [['pending', '待核对'], ['completed', '已核对'], ['duplicate', '重复交易'], ['excluded', '已排除']]
@@ -41,10 +42,6 @@ const ISSUE_GROUP_LABELS = Object.freeze({
   identity_conflict: '来源冲突',
   installment_origin: '分期来源'
 })
-const PAYMENT_ACCOUNT_GENERIC_NAME_TOKENS = Object.freeze([
-  '信用卡', '贷记卡', '借记卡', '储蓄卡', '银行卡', '银行', '账户', '账号', '支付', '付款'
-])
-const PAYMENT_ACCOUNT_UNSUPPORTED_CHARACTER_RE = /[^0-9a-z\u3400-\u4dbf\u4e00-\u9fff]+/g
 const ACCOUNT_TYPE_LABELS = Object.freeze({
   cash: '现金',
   bank: '银行卡',
@@ -133,79 +130,6 @@ async function runWithConcurrency(items, concurrency, worker) {
     }
   }
   await Promise.all(Array.from({ length: width }, consume))
-}
-
-function normalizePaymentAccountName(value) {
-  let normalized = String(value || '')
-  normalized = normalized.replace(/\u3000/g, ' ').replace(/[\uff01-\uff5e]/g, function (character) {
-    return String.fromCharCode(character.charCodeAt(0) - 0xfee0)
-  })
-  if (typeof normalized.normalize === 'function') {
-    try {
-      normalized = normalized.normalize('NFKC')
-    } catch (_) {}
-  }
-  normalized = normalized.replace(/^\s+|\s+$/g, '').toLowerCase()
-  normalized = normalized.replace(/(?:末四位|后四位|尾号|卡号)/g, '')
-  normalized = normalized.replace(/[xX*＊•·]{2,}/g, '')
-  normalized = normalized.replace(/\d{8,}/g, function (digits) { return digits.slice(-4) })
-  return normalized.replace(PAYMENT_ACCOUNT_UNSUPPORTED_CHARACTER_RE, '')
-}
-
-function paymentAccountTail(value) {
-  const match = normalizePaymentAccountName(value).match(/(\d{4})$/)
-  return match ? match[1] : ''
-}
-
-function paymentAccountBase(value) {
-  let normalized = normalizePaymentAccountName(value).replace(/\d+/g, '')
-  PAYMENT_ACCOUNT_GENERIC_NAME_TOKENS.forEach(function (token) {
-    normalized = normalized.split(token).join('')
-  })
-  return normalized
-}
-
-function stripPaymentPlatform(value, sourceType) {
-  let normalized = normalizePaymentAccountName(value)
-  if (sourceType === 'wechat') normalized = normalized.replace(/^微信(?:支付)?/, '')
-  if (sourceType === 'alipay') normalized = normalized.replace(/^支付宝/, '')
-  return normalized === '账户余额' ? '余额' : normalized
-}
-
-function paymentAccountMatchScore(context, accountName) {
-  const sourceName = normalizePaymentAccountName(context && context.label)
-  const candidateName = normalizePaymentAccountName(accountName)
-  if (!sourceName || !candidateName) return 0
-  if (sourceName === candidateName) return 100
-
-  const sourceTail = paymentAccountTail(context.label)
-  const candidateTail = paymentAccountTail(accountName)
-  const sourceBase = paymentAccountBase(context.label)
-  const candidateBase = paymentAccountBase(accountName)
-  if (sourceTail && sourceTail === candidateTail && sourceBase.length >= 2 && candidateBase.length >= 2 &&
-      (sourceBase === candidateBase || sourceBase.includes(candidateBase) || candidateBase.includes(sourceBase))) {
-    return 90
-  }
-
-  const sourceWithoutPlatform = stripPaymentPlatform(context.label, context.sourceType)
-  const candidateWithoutPlatform = stripPaymentPlatform(accountName, context.sourceType)
-  return sourceWithoutPlatform && sourceWithoutPlatform === candidateWithoutPlatform ? 80 : 0
-}
-
-function suggestExistingAccount(context, accounts) {
-  if (!context || !context.recognized || !context.label) return null
-  const candidates = (accounts || []).filter(function (account) {
-    return require('../../domain/import-review/account-type-policy').compatible(context, account)
-  }).map(function (account) {
-    return { account: account, score: paymentAccountMatchScore(context, account.name) }
-  }).filter(function (candidate) {
-    return candidate.score > 0
-  }).sort(function (left, right) {
-    return right.score - left.score || String(left.account.name).localeCompare(String(right.account.name))
-  })
-  const best = candidates[0]
-  if (!best || candidates.filter(function (candidate) { return candidate.score === best.score }).length !== 1) return null
-  return best.account
 }
 
 // 只初始化本地核对表单；不把推荐结果当作已提交的人工决定。

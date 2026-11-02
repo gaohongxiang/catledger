@@ -1,12 +1,40 @@
 const grouping = require('../domain/import-review/account-issue-grouping')
 const types = require('../domain/import-review/account-type-policy')
 const confirmations = require('../domain/import-review/account-confirmation-groups')
+const { safeDisplayName } = require('../domain/import-review/payment-account')
+const { suggestExistingAccount } = require('./import-account-suggestions')
+
+// Untouched drafts carry the same defaults as the complete-batch suggestion
+// helper. Leaving them out keeps the view stable as more pages initialize.
+function normalizeSelections(values) {
+  const unique = new Map()
+  for (const value of Array.isArray(values) ? values : []) {
+    if (!value || value.explicit !== true && value.dirty !== true) continue
+    const issueId = typeof value.issueId === 'string' ? value.issueId.trim() : ''
+    const mode = typeof value.mode === 'string' ? value.mode.trim() : ''
+    const accountId = mode === 'account' && typeof value.accountId === 'string' ? value.accountId.trim() : ''
+    if (!issueId) continue
+    const key = JSON.stringify([issueId, mode, accountId]), previous = unique.get(key)
+    unique.set(key, { issueId, mode, accountId,
+      explicit: value.explicit === true || previous?.explicit === true,
+      dirty: value.dirty === true || previous?.dirty === true })
+  }
+  return [...unique.values()].sort((left, right) => left.issueId.localeCompare(right.issueId) ||
+    left.mode.localeCompare(right.mode) || left.accountId.localeCompare(right.accountId) ||
+    Number(left.explicit) - Number(right.explicit) || Number(left.dirty) - Number(right.dirty))
+}
 
 // 从完整本机事实提取展示线索。每个来源事项和引用身份仍保持独立，
 // 不把展示分组写回 issues、成员、绑定或人工决定。
-function build(model, issues, { separateIssueIds = [] } = {}) {
+function build(model, issues, { separateIssueIds = [], accountSelections = [] } = {}) {
   const sources = new Map(model.facts.sources.map(source => [source.batchId, source]))
   const separate = new Set(separateIssueIds)
+  const selections = new Map()
+  for (const selection of normalizeSelections(accountSelections)) {
+    if (!selections.has(selection.issueId)) selections.set(selection.issueId, [])
+    selections.get(selection.issueId).push(selection)
+  }
+  const catalog = [...model.accounts.values()].filter(account => !model.drafts.has(account.accountId))
   const entries = []
   for (const issue of issues) {
     const original = (model.members.get(issue.issueId) || []).filter(member => member.memberRole !== 'candidate')
@@ -23,6 +51,19 @@ function build(model, issues, { separateIssueIds = [] } = {}) {
     const external = contexts.some(context => context.decision.kind === 'external')
     const confirmed = issue.status === 'resolved' && contexts.every(context => context.decision.kind === 'ledger' && context.decision.accountId)
     const conflict = ids.size > 1 || ids.size > 0 && !confirmed
+    const choices = selections.get(issue.issueId) || [], selection = choices[0]
+    const savedAccountId = confirmed ? [...ids][0] : null
+    const chosen = selection?.mode === 'account' ? model.accounts.get(selection.accountId) : null
+    const compatible = account => account && contexts.every(context => types.compatible({
+      ...(context.reference || {}), currency: context.reference?.currency || context.event.currency || 'CNY'
+    }, account, { event: context.event, memberRole: context.memberRole }))
+    // A different unsaved mode, invalid account or contradictory UI choices
+    // must not fall back to the saved account and reappear in another card.
+    const selectionBlocked = choices.length > 1 || Boolean(selection &&
+      (selection.mode !== 'account' || !compatible(chosen)))
+    const suggested = !selection && !confirmed ? suggestExistingAccount(issue.accountContext, catalog) : null
+    const selectedAccountId = selectionBlocked ? null : chosen?.accountId || savedAccountId ||
+      (compatible(suggested) ? suggested.accountId : null)
     const members = contexts.flatMap(({ member, event, reference }) => {
       const found = new Map()
       for (const link of model.evidenceFor(event.eventId)) {
@@ -35,11 +76,13 @@ function build(model, issues, { separateIssueIds = [] } = {}) {
       return found.size ? [...found.values()].map(source => ({ ...base, ...source })) : [base]
     })
     entries.push({ issueId: issue.issueId, status: issue.status,
-      decision: separate.has(issue.issueId) ? 'separate' : conflict ? 'conflict' : excluded ? 'excluded' : external ? 'external' : confirmed ? 'account' : 'pending',
-      accountId: confirmed ? [...ids][0] : null, currency: issue.accountContext?.currency || contexts[0].event.currency || 'CNY',
+      decision: separate.has(issue.issueId) ? 'separate' : conflict || selectionBlocked ? 'conflict' : excluded ? 'excluded' : external ? 'external' : confirmed ? 'account' : 'pending',
+      accountId: savedAccountId, selectedAccountId, selectionExplicit: Boolean(selection?.explicit), selectionDirty: Boolean(selection?.dirty),
+      currency: issue.accountContext?.currency || contexts[0].event.currency || 'CNY',
       allowedAccountTypes: types.forMembers(contexts), canExternal: grouping.canUseExternal(model.events, original), members })
   }
-  return confirmations.buildGroups(entries)
+  return confirmations.buildGroups(entries).map(group => group.groupReason === 'selected_account'
+    ? { ...group, label: safeDisplayName(model.accounts.get(group.selectedAccountId)?.name || group.label) } : group)
 }
 
-module.exports = { build }
+module.exports = { build, normalizeSelections }

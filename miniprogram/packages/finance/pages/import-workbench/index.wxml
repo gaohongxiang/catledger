@@ -278,7 +278,7 @@
           <view class="account-group-chips">
             <text wx:for="{{item.groupSourceChips}}" wx:for-item="source" wx:key="label" class="account-group-chip">{{source.label}}<text class="account-group-chip-count">{{source.count}}</text></text>
           </view>
-          <text wx:if="{{item.groupCandidate}}" class="account-group-hint">可能同一张卡</text>
+          <text wx:if="{{item.groupHint}}" class="account-group-hint">{{item.groupHint}}</text>
           <button class="account-group-separate" data-id="{{item.issueId}}" bindtap="separateAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="不是同一张卡，分别确认{{item.label}}的各来源">分别确认</button>
         </view>
         <view wx:if="{{item.inline && !item.groupId}}" class="account-source-line {{item.choiceValue === 'create' ? 'account-source-line-create' : ''}}">

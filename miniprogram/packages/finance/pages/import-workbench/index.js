@@ -167,6 +167,7 @@ Page(theme.page({
   businessData: runtime.businessData,
   mappingState: accountReview.mappingState,
   refreshAccountMappings: accountReview.refreshAccountMappings,
+  refreshAccountSelectionGroups: accountReview.refreshAccountSelectionGroups,
   onLoad: runtime.onLoad,
   onHide: runtime.onHide,
   onUnload: runtime.onUnload,

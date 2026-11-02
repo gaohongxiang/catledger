@@ -76,9 +76,16 @@ function normalizedEntry(entry) {
   if (!issueId || !Array.isArray(entry.members) || !entry.members.length ||
       BLOCKED_DECISIONS.has(entry.decision)) return null
   const confirmed = entry.status === 'resolved' && entry.decision === 'account' && Boolean(text(entry.accountId))
-  const pending = entry.status === 'open' && entry.decision === 'pending' && !entry.accountId
-  if (!confirmed && !pending) return null
+  const unresolved = entry.status === 'open' && entry.decision === 'pending' && !entry.accountId
+  if (!confirmed && !unresolved) return null
   const accountId = confirmed ? text(entry.accountId) : null
+  // A selection is a current UI choice (or its default), not a saved binding.
+  // Only an explicit manual choice can start a group by this account ID.
+  const selectedAccountId = text(entry.selectedAccountId) || null
+  const selectionExplicit = Boolean(selectedAccountId && entry.selectionExplicit === true)
+  const selectionDirty = Boolean(selectedAccountId && entry.selectionDirty === true)
+  const pending = unresolved || Boolean(selectedAccountId && selectedAccountId !== accountId &&
+    (selectionExplicit || selectionDirty))
   const members = entry.members
   if (members.some(member => !text(member?.eventId) || !ACCOUNT_ROLES.has(member.reference?.role) ||
       !SOURCE_TYPES.has(member.reference?.sourceType) || BLOCKED_DECISIONS.has(member.decision) ||
@@ -105,13 +112,16 @@ function normalizedEntry(entry) {
     ? evidence.every(value => value && (value.strongKey === strongKeys[0] ||
       !value.strongKey && value.weakKey && evidence.some(other => other?.strongKey && other.weakKey === value.weakKey)))
     : weakKeys.length === 1 && evidence.every(value => value?.weakKey === weakKeys[0]))
-  return { original: entry, issueId, accountId, pending, members, currency: currencies[0], allowedAccountTypes,
-    candidate: ownSource && consistent, strongKey: strongKeys[0] || null, weakKeys }
+  return { original: entry, issueId, accountId, selectedAccountId, selectionExplicit, selectionDirty,
+    pending, members, currency: currencies[0], allowedAccountTypes,
+    candidate: ownSource && consistent, strongKey: strongKeys[0] || null, strongKeys, weakKeys }
 }
 
-function groupCompatible(entries) {
+function groupCompatible(entries, selected = false) {
+  const accountFor = entry => selected || entry.selectionExplicit || entry.selectionDirty
+    ? entry.selectedAccountId || entry.accountId : entry.accountId
   if (unique(entries.map(entry => entry.currency)).length !== 1 ||
-      unique(entries.map(entry => entry.accountId).filter(Boolean)).length > 1 ||
+      unique(entries.map(accountFor).filter(Boolean)).length > 1 ||
       !intersection(entries.map(entry => entry.allowedAccountTypes)).length) return false
   const events = new Map()
   for (const entry of entries) for (const member of entry.members) {
@@ -128,7 +138,7 @@ function groupCompatible(entries) {
   return true
 }
 
-function descriptor(entries, conflictReason) {
+function descriptor(entries, conflictReason, groupReason) {
   const sorted = [...entries].sort((left, right) => compare(left.issueId, right.issueId))
   const issueIds = sorted.map(entry => entry.issueId), sources = new Map(), events = new Set()
   for (const entry of sorted) for (const member of entry.members) {
@@ -140,6 +150,8 @@ function descriptor(entries, conflictReason) {
     events.add(eventId)
   }
   const first = sorted[0], reference = first.members[0].reference
+  const saved = unique(sorted.map(entry => entry.accountId).filter(Boolean))
+  const selected = unique(sorted.map(entry => entry.selectedAccountId || entry.accountId).filter(Boolean))
   return {
     groupId: 'account-confirmation:' + digestParts('account-confirmation-group-v1', ...issueIds),
     issueIds, anchorIssueId: issueIds[0],
@@ -149,7 +161,8 @@ function descriptor(entries, conflictReason) {
     sources: [...sources.values()].sort((left, right) => compare(left.sourceId, right.sourceId) ||
       compare(left.sourceType, right.sourceType) || compare(left.fileName, right.fileName))
       .map(source => ({ sourceId: source.sourceId, sourceType: source.sourceType, fileName: source.fileName, count: source.events.size })),
-    candidate: sorted.some(entry => entry.pending), accountId: sorted.find(entry => entry.accountId)?.accountId || null,
+    candidate: sorted.some(entry => entry.pending), accountId: saved.length === 1 ? saved[0] : null,
+    ...(groupReason ? { groupReason, selectedAccountId: selected.length === 1 ? selected[0] : null } : {}),
     canExternal: sorted.every(entry => entry.original.canExternal === true),
     ...(conflictReason ? { conflictReason } : {})
   }
@@ -160,7 +173,10 @@ function descriptor(entries, conflictReason) {
  * Each entry contains issueId, status, decision, accountId, currency,
  * allowedAccountTypes, canExternal and members[{eventId, actualSide, reference,
  * sourceId, sourceType, fileName}]. accountId is an explicit saved choice, never
- * a suggestion. Original issues and references must remain independently saved.
+ * a suggestion. selectedAccountId is a compatible existing account currently
+ * shown by the UI; selectionExplicit proves a manual choice. A default alone
+ * never starts this grouping path. Original issues and references stay saved
+ * independently, including when a resolved card has an unconfirmed new choice.
  * Only groups containing at least two original issues are returned.
  */
 function buildGroups(input = []) {
@@ -180,7 +196,29 @@ function buildGroups(input = []) {
     if (!strongByTail.has(key)) strongByTail.set(key, new Set())
     strongByTail.get(key).add(evidence.strongKey)
   }
-  for (const entry of entries.filter(entry => entry.candidate)) {
+  const result = [], used = new Set(), selectedGroups = new Map()
+  for (const entry of entries) {
+    const accountId = entry.selectedAccountId || entry.accountId
+    if (!accountId) continue
+    // A suggested account name does not turn an unknown counterparty into the
+    // user's own account. That endpoint needs its own explicit choice first.
+    if (!entry.accountId && !entry.selectionExplicit &&
+        entry.members.some(member => member.reference.role === 'counterparty_account')) continue
+    const key = entry.currency + ':' + accountId
+    if (!selectedGroups.has(key)) selectedGroups.set(key, [])
+    selectedGroups.get(key).push(entry)
+  }
+  for (const group of selectedGroups.values()) {
+    if (group.length < 2 || !group.some(entry => entry.selectionExplicit) ||
+        !group.some(entry => entry.pending) || !groupCompatible(group, true)) continue
+    // A default obtained from a matching name/tail is not permission to discard
+    // contradictory complete numbers. Those references need their own choice.
+    if (unique(group.flatMap(entry => entry.strongKeys)).length > 1 &&
+        group.some(entry => !entry.accountId && !entry.selectionExplicit)) continue
+    result.push(descriptor(group, null, 'selected_account'))
+    group.forEach(entry => used.add(entry.issueId))
+  }
+  for (const entry of entries.filter(entry => entry.candidate && !used.has(entry.issueId))) {
     const map = entry.strongKey ? strongGroups : weakGroups
     const key = entry.currency + ':' + (entry.strongKey || entry.weakKeys[0])
     if (!map.has(key)) map.set(key, [])
@@ -204,7 +242,6 @@ function buildGroups(input = []) {
     if (groupCompatible(combined)) strongGroups.set(key, combined)
   }
   candidates.push(...strongGroups.values())
-  const result = [], used = new Set()
   for (const group of candidates) {
     if (group.length < 2 || !group.some(entry => entry.pending) || !groupCompatible(group)) continue
     const collision = group.some(entry => entry.strongKey && entry.weakKeys.some(key =>
@@ -216,7 +253,7 @@ function buildGroups(input = []) {
   // card even without a number. This does not assert their raw labels are equal.
   const confirmedGroups = new Map()
   for (const entry of entries) {
-    if (!entry.accountId || used.has(entry.issueId)) continue
+    if (!entry.accountId || entry.pending || used.has(entry.issueId)) continue
     const key = entry.currency + ':' + entry.accountId
     if (!confirmedGroups.has(key)) confirmedGroups.set(key, [])
     confirmedGroups.get(key).push(entry)

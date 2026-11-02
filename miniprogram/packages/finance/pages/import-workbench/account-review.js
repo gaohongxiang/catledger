@@ -143,6 +143,15 @@ function currentAccountOperation(page) {
     page.data.update?.updateId === updateId
 }
 
+async function finishAccountSelectionRead(page) {
+  const current = currentAccountOperation(page)
+  while (page._accountSelectionRefresh) {
+    await page._accountSelectionRefresh
+    if (!current()) return false
+  }
+  return current()
+}
+
 function syncGroupInput(page, issueId) {
   const group = (page.businessData().accountDisplayGroups || []).find(group => group.groupId === issueId)
   if (!group) return
@@ -304,12 +313,14 @@ function applyAccountChoice(event) {
   const value = String(event.currentTarget.dataset.value || '')
   const draft = sheet && this._accountUiDrafts.get(sheet.issueId)
   if (!sheet || !draft || !value) return
+  const previousSelection = displayGroups.readSignature(this._accountUiDrafts)
   if (value.indexOf('account:') === 0) {
     const id = value.slice('account:'.length)
     const account = (this._choiceRows || []).concat(this.data.accounts || [], this.data.accountDrafts || []).find(row => row.accountId === id)
     if (!accountTypes.compatible(sheet.accountContext || {}, account)) return
     draft.mode = 'account'
     draft.accountId = id
+    draft.explicitAccountSelection = true
     draft.accountFacts = { accountId: id, type: account.type, currency: account.currency }
     draft.recommendedAccountId = sheet.recommendedAccount &&
     sheet.recommendedAccount.accountId === draft.accountId ? draft.accountId : ''
@@ -317,6 +328,7 @@ function applyAccountChoice(event) {
     if (value === 'create' && draft.mode !== 'create') { delete draft.createdAccountId; delete draft.creatorIssueId }
     draft.mode = value
     draft.accountId = ''
+    draft.explicitAccountSelection = false
     draft.recommendedAccountId = ''
   } else {
     return
@@ -333,13 +345,27 @@ function applyAccountChoice(event) {
       accountChoiceQuery: '',
       accountChoiceResults: []
     })
-  this.persistAccountDrafts()
+  const saved = this.persistAccountDrafts()
   this.refreshAccountMappings()
+  if (saved !== false && this._draftSession?.isLocal && previousSelection !== displayGroups.readSignature(this._accountUiDrafts)) {
+    return this.refreshAccountSelectionGroups()
+  }
 }
 
 module.exports = {
   ACCOUNT_TYPE_OPTIONS,
   suggestedAccountTypeIndex,
+  refreshAccountSelectionGroups: function () {
+    if (!this._draftSession?.isLocal || !this._draftSession.accountConfirmationDetails || !this._viewActive || this.data.currentStep !== 2) return
+    if (this._editingInput) { this._pendingAccountGroupRefresh = true; return }
+    const current = currentAccountOperation(this)
+    const refresh = this.loadActivePage(true, undefined, true)
+    const pending = Promise.resolve(refresh).finally(() => {
+      if (this._accountSelectionRefresh === pending) this._accountSelectionRefresh = null
+    })
+    this._accountSelectionRefresh = pending
+    return pending.then(() => current())
+  },
   mappingState: function () {
     const data = this.businessData()
     return this.buildAccountMappingState(data.accountIssues || [], data.accounts || [], data.accountDrafts || [], [], data.accountDisplayGroups || [])
@@ -396,6 +422,13 @@ module.exports = {
         const missingResolution = issue.status === 'resolved' && !resolvedAccountId && !resolvedExclusion && !resolvedExternal
         let draft = self._accountUiDrafts.get(issue.issueId)
         if (missingResolution && draft && !draft.dirty && !draft.localConfirmed) draft = null
+        // 完整本批可能已推荐到目录后页的账户。联合读取补齐目录后，只更新未触碰的默认值。
+        const selectedGroup = accountDisplayGroups.find(group => group.groupReason === 'selected_account' && group.issueIds.includes(issue.issueId))
+        if (selectedGroup && issue.status === 'open' && draft && !draft.dirty && !draft.localConfirmed && !draft.explicitAccountSelection) {
+          const suggested = model.suggestExistingAccount(accountContext, accounts)
+          if (suggested?.accountId === selectedGroup.selectedAccountId &&
+              (draft.mode !== 'account' || draft.accountId !== suggested.accountId)) draft = null
+        }
         if (!draft) {
           const resolvedMode = resolvedExclusion ? 'ignore' : resolvedExternal ? 'external' : resolvedAccountId ? 'account' : ''
           const suggestedName = issue.accountContext && issue.accountContext.recognized
@@ -663,10 +696,19 @@ module.exports = {
   },
 
   completeAccountMapping: async function (event) {
+    const requestedId = event && event.currentTarget && event.currentTarget.dataset.id
+    const requestedMembers = this.mappingState().mappings.find(item => item.issueId === requestedId)?.groupIssueIds || [requestedId]
+    if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
     this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
-    const issueId = event && event.currentTarget && event.currentTarget.dataset.id
+    const issueId = requestedId
+    const currentMapping = this.mappingState().mappings.find(item => item.issueId === issueId)
+    const currentMembers = currentMapping?.groupIssueIds || (currentMapping ? [currentMapping.issueId] : [])
+    if (requestedId && (requestedMembers.length !== currentMembers.length || requestedMembers.some(id => !currentMembers.includes(id)))) {
+      this.setData({ accountStepError: '账户对应记录已变化，选择已保留，请核对后再次确认' })
+      return
+    }
     let recovered
     if (this._viewSession && !this._viewSession.active) {
       if (this.mappingState().mappings.some(item => item.issueId === issueId && item.groupId)) return refreshChangedDisplayGroup(this)
@@ -712,6 +754,7 @@ module.exports = {
 
   // 首次导入的旧映射只作建议，确认一次后才可复用；批量确认仍是一次明确的人工决定。
   confirmAllAccountMappings: async function () {
+    if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
     this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
@@ -770,6 +813,7 @@ module.exports = {
   },
 
   separateAccountGroup: async function (event) {
+    if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     if (this.data.busy || this.data.accountStepBusy) return
     this.flushAccountDraftSync()
     const mapping = this.mappingState().mappings.find(row => row.issueId === event.currentTarget.dataset.id)
@@ -783,7 +827,7 @@ module.exports = {
       const draft = this._accountUiDrafts.get(id)
       // 联合卡里新输入的内容拆开后仍可核对；原先各自不同的草稿不相互覆盖。
       if (joint.dirty && joint.revision > 0 && (joint.mode !== 'create' || !joint.createdAccountId || joint.creatorIssueId === id)) {
-        for (const key of ['mode', 'accountId', 'accountFacts', 'accountName', 'name', 'typeIndex']) draft[key] = joint[key]
+        for (const key of ['mode', 'accountId', 'accountFacts', 'accountName', 'name', 'typeIndex', 'explicitAccountSelection']) draft[key] = joint[key]
         draft.dirty = true; draft.localConfirmed = false; draft.revision = (draft.revision || 0) + 1
         if (this._accountConfirmed) this._accountConfirmed.delete(id)
       }
@@ -809,6 +853,7 @@ module.exports = {
 
   // 拆开只是这批的本地偏好；成员都还没动过时允许合回同一张卡。
   restoreAccountGroup: async function (event) {
+    if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     if (this.data.busy || this.data.accountStepBusy) return
     this.flushAccountDraftSync()
     const target = String(event.currentTarget.dataset.id || '')
@@ -864,11 +909,12 @@ module.exports = {
   },
 
   persistAccountDrafts: function () {
-    if (!this._draftSession) return
-    try { this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep) }
+    if (!this._draftSession) return true
+    try { this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep); return true }
     catch (error) {
       this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession.state.drafts))))
       this.setData({ accountStepError: publicError(error, '本机草稿未保存，请检查存储空间后重试') })
+      return false
     }
   },
 
@@ -1060,6 +1106,7 @@ module.exports = {
   },
 
   openAccountRecords: async function (event) {
+    if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     const issueId = event.currentTarget.dataset.id
     if (!this._viewActive || !this._viewSession || !getApp().hasLoginApproval() || this.data.busy) return
     const mapping = this.data.accountMappings.find(item => item.issueId === issueId)
@@ -1090,8 +1137,9 @@ module.exports = {
       }
       if (this._pendingBackgroundView && this._pendingBackgroundView.viewVersion !== token.version) throw new Error('账户记录仍在更新，请重新读取')
       this._accountPager = this._viewSession.pager('reviewIssues.members', {
-        ...(mapping.groupId ? { accountConfirmationGroupId: mapping.groupId, separateIssueIds: [...this._accountUiDrafts]
-          .filter(([, draft]) => draft.confirmationSeparate).map(([id]) => id).sort() } : { issueId }), memberKind: 'event', pageSize: 8 })
+        ...(mapping.groupId ? { accountConfirmationGroupId: mapping.groupId,
+          ...(this.businessData().accountConfirmationOptions || displayGroups.readOptions(this._accountUiDrafts)),
+          accountConfirmationVersion: this.businessData().accountConfirmationVersion } : { issueId }), memberKind: 'event', pageSize: 8 })
       return this.changeAccountMembers(event)
     } catch (error) {
       if (currentAccountRecords(this, token)) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) })

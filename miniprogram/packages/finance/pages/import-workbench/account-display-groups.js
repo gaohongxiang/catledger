@@ -19,6 +19,23 @@ function compact(mapping) {
   return visible
 }
 
+// 只传原事项的输入；联合卡是它们的展示，不能再次作为一个账户参与分组。
+function readOptions(drafts) {
+  const rows = [...drafts].filter(([id]) => !String(id).startsWith('account-confirmation:') && !String(id).startsWith('legacy:'))
+    .sort(([left], [right]) => left.localeCompare(right))
+  return {
+    separateIssueIds: rows.filter(([, draft]) => draft.confirmationSeparate).map(([id]) => id),
+    accountSelections: rows.map(([issueId, draft]) => ({ issueId, mode: draft.mode || 'pending', accountId: draft.accountId || '',
+      explicit: draft.explicitAccountSelection === true, dirty: draft.dirty === true }))
+  }
+}
+
+function readSignature(drafts) {
+  const options = readOptions(drafts)
+  // 翻页时补齐的默认草稿不算一次改选，默认值由完整本批的读层统一计算。
+  return JSON.stringify({ ...options, accountSelections: options.accountSelections.filter(row => row.explicit || row.dirty) })
+}
+
 function draftIssueIds(draft) {
   if (Array.isArray(draft?.confirmationIssueIds)) return draft.confirmationIssueIds
   try { return JSON.parse(draft?.originSignature || '[]').map(row => row[0]).filter(id => typeof id === 'string') }
@@ -34,7 +51,7 @@ function syncInput(group, drafts) {
   for (const id of group.issueIds) {
     const draft = drafts.get(id)
     if (!draft) continue
-    for (const key of ['accountFacts', 'accountName', 'name', 'typeIndex', 'recommendedAccountId']) draft[key] = joint[key]
+    for (const key of ['accountFacts', 'accountName', 'name', 'typeIndex', 'recommendedAccountId', 'explicitAccountSelection']) draft[key] = joint[key]
     // 已创建的共享账户改名，仍只有原创建者修改创建事实，其余来源保留显式复用。
     const reuse = joint.mode === 'create' && joint.createdAccountId && joint.creatorIssueId !== id
     draft.mode = reuse ? 'account' : joint.mode
@@ -61,15 +78,21 @@ function initialDraft(group, rows, drafts, accountRows, typeOptions) {
   const values = new Set(prior.map(draft => draft?.mode === 'account' ? 'account:' + draft.accountId
     : draft?.mode === 'create' ? 'create:' + draft.name + ':' + draft.typeIndex : draft?.mode || 'pending'))
   const confirmedId = group.candidate === false ? group.accountId : null
+  const selectedId = group.groupReason === 'selected_account' ? group.selectedAccountId : null
   const creator = rows.find(row => {
     const draft = drafts.get(row.issueId)
-    return draft?.mode === 'create' && draft.createdAccountId && draft.createdAccountId === group.accountId
+    return draft?.mode === 'create' && draft.createdAccountId && draft.createdAccountId === (selectedId || group.accountId) &&
+      (!selectedId || !draft.dirty)
   })
   const resolvedCreator = creator && drafts.get(creator.issueId)
   const preferredTypes = new Set(prior.map(draft => typeOptions[draft?.typeIndex]?.value))
   const allowed = group.allowedAccountTypes || []
   let mode = 'pending', accountId = '', name = group.label || '', recommendedAccountId = '', conflict = ''
-  if (dirty && values.size > 1) conflict = '各来源已有不同选择，请选择共同账户或分别确认。'
+  if (selectedId && prior.every(draft => draft?.mode === 'account' && draft.accountId === selectedId ||
+      draft === resolvedCreator && draft?.createdAccountId === selectedId)) {
+    mode = resolvedCreator ? 'create' : 'account'; accountId = selectedId
+    if (resolvedCreator) name = resolvedCreator.name
+  } else if (dirty && values.size > 1) conflict = '各来源已有不同选择，请选择共同账户或分别确认。'
   else if (confirmedId && !dirty) {
     mode = resolvedCreator ? 'create' : 'account'; accountId = confirmedId
     if (resolvedCreator) name = resolvedCreator.name
@@ -88,10 +111,11 @@ function initialDraft(group, rows, drafts, accountRows, typeOptions) {
     : prior.length && prior.every(draft => draft?.typeIndex === prior[0]?.typeIndex) ? typeOptions[prior[0]?.typeIndex]?.value : null
   const selectedType = allowed.includes(preferred) ? preferred : allowed.length === 1 ? allowed[0] : null
   return { mode, accountId, accountFacts: selected || null, recommendedAccountId, name,
+    explicitAccountSelection: mode === 'account' && (group.groupReason === 'selected_account' || prior.some(draft => draft?.explicitAccountSelection)),
     typeIndex: typeOptions.findIndex(option => option.value === selectedType), dirty,
     localConfirmed: Boolean(confirmedId && !dirty), revision: 0, conflict,
     confirmationIssueIds: group.issueIds.slice(),
-    ...(resolvedCreator ? { createdAccountId: confirmedId, creatorIssueId: creator.issueId } : {}) }
+    ...(resolvedCreator ? { createdAccountId: resolvedCreator.createdAccountId, creatorIssueId: creator.issueId } : {}) }
 }
 
 function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOptions, ownershipNote }) {
@@ -108,7 +132,10 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       currency: group.currency, sourceType: '', fundsSide: '' }
     const currentSignature = signature(rows, drafts)
     let draft = drafts.get(group.groupId)
-    if (!draft || !draft.dirty && draft.originSignature !== currentSignature) {
+    const changedSelection = group.groupReason === 'selected_account' &&
+      !(draft?.mode === 'account' && draft.accountId === group.selectedAccountId ||
+        draft?.mode === 'create' && draft.createdAccountId === group.selectedAccountId)
+    if (!draft || changedSelection || !draft.dirty && draft.originSignature !== currentSignature) {
       draft = initialDraft({ ...group, allowedAccountTypes: allowed }, rows, drafts, accountRows, typeOptions)
       draft.originSignature = currentSignature
       drafts.set(group.groupId, draft)
@@ -135,6 +162,8 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
     const mapping = { ...anchor, issueId: group.groupId, groupId: group.groupId, groupIssueIds: group.issueIds.slice(),
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
       groupCandidate: group.candidate !== false, groupCanSeparate: true,
+      groupReason: group.groupReason || '',
+      groupHint: group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
       groupConfirmationText: '这 ' + group.memberCount + ' 笔将记在同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
@@ -180,4 +209,4 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
   return visible
 }
 
-module.exports = { fold, compact, syncInput, clearCoveredDrafts, titleMatchesChoice }
+module.exports = { fold, compact, syncInput, clearCoveredDrafts, titleMatchesChoice, readOptions, readSignature }

@@ -2,6 +2,7 @@ const { sha256, byteLength } = require('../domain/import-review/portable-digest'
 const { accountIds, repaymentExpense } = require('../domain/import-review/workbench-summary')
 const editor = require('../domain/import-review/review/editor-policy')
 const excluded = require('../domain/import-review/excluded-event-groups')
+const accountConfirmations = require('./import-account-confirmations')
 const chronological = (a,b) => Number(!a.localAt) - Number(!b.localAt) || String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId || a.issueId || a.memberId || a.pairKey).localeCompare(String(b.eventId || b.issueId || b.memberId || b.pairKey))
 const historical = event => event.status === 'excluded' && event.reasonCodes.some(code => ['already_posted','linked_existing_transaction'].includes(code))
 const active = event => ['ready','needs_action','posted'].includes(event.status)
@@ -67,19 +68,25 @@ function create(model) {
   }
   function issuePageValue(issue) { const { subjectEventIds, ...visible } = issue; return { ...visible, subjectEventIds: [] } }
   function accountConfirmationIndex(data = {}) {
-    const separate = [...new Set(data.separateIssueIds || [])].sort()
-    const key = version() + ':' + JSON.stringify(separate)
+    const separate = [...new Set((data.separateIssueIds || []).filter(id => typeof id === 'string' && id))].sort()
+    const accountSelections = accountConfirmations.normalizeSelections(data.accountSelections)
+    const key = version() + ':' + JSON.stringify([separate, accountSelections])
+    const accountConfirmationVersion = 'account-confirmations:' + sha256(key).slice(0, 20)
+    if (data.accountConfirmationVersion != null && data.accountConfirmationVersion !== accountConfirmationVersion) {
+      error('STALE_VIEW', '账户选择已变化，请重新读取')
+    }
     if (confirmationCache?.key === key) return confirmationCache
     const rows = [...model.issues.values()].filter(issue => issue.issueType === 'account_mapping' &&
       ['open', 'resolved'].includes(issue.status) && !obsoletePaymentTarget(issue)).map(issueView).sort(chronological)
-    const groups = require('./import-account-confirmations').build(model, rows, { separateIssueIds: separate })
+    const groups = accountConfirmations.build(model, rows, { separateIssueIds: separate, accountSelections })
     const byIssue = new Map(groups.flatMap(group => group.issueIds.map(id => [id, group])))
     const display = rows.flatMap(issue => {
       const group = byIssue.get(issue.issueId)
       return !group ? [issue] : issue.issueId === group.anchorIssueId
         ? [{ ...issue, memberCount: group.memberCount, accountConfirmationGroupId: group.groupId }] : []
     }).sort(chronological)
-    confirmationCache = { key, rows, display, groups: new Map(groups.map(group => [group.groupId, group])),
+    confirmationCache = { key, accountConfirmationVersion, options: { separateIssueIds: separate, accountSelections },
+      rows, display, groups: new Map(groups.map(group => [group.groupId, group])),
       issues: new Map(rows.map(issue => [issue.issueId, issue])) }
     return confirmationCache
   }
@@ -90,7 +97,8 @@ function create(model) {
     const index = accountConfirmationIndex(data), groups = (data.groupIds || []).map(id => index.groups.get(id))
     if (groups.some(group => !group)) error('STALE_VIEW', '账户分组已变化，请重新读取')
     const ids = [...new Set(groups.flatMap(group => group.issueIds))]
-    return { groups: JSON.parse(JSON.stringify(groups)), issues: ids.map(id => issuePageValue(index.issues.get(id))) }
+    return { accountConfirmationVersion: index.accountConfirmationVersion,
+      groups: JSON.parse(JSON.stringify(groups)), issues: ids.map(id => issuePageValue(index.issues.get(id))) }
   }
   function eventMatches(event,data) {
     if(model.hiddenOffset(event))return false
@@ -154,7 +162,8 @@ function create(model) {
     if(action==='reviewIssues.list'){
       if (data.group === 'accounts' && data.view === 'account_confirmations') {
         const index = accountConfirmationIndex(data)
-        return page(action, data, index.display, 'issueId', issuePageValue)
+        return { ...page(action, { ...data, ...index.options, accountConfirmationVersion: index.accountConfirmationVersion },
+          index.display, 'issueId', issuePageValue), accountConfirmationVersion: index.accountConfirmationVersion }
       }
       const rows=[...model.issues.values()].filter(issue=>(!data.status||issue.status===data.status)&&(!data.issueType||issue.issueType===data.issueType)&&
         (!data.group||data.group==='accounts'&&issue.issueType==='account_mapping'&&['open','resolved'].includes(issue.status)&&!obsoletePaymentTarget(issue)||data.group==='category'&&issue.issueType==='category_assignment'||data.group==='review'&&!['account_mapping','category_assignment'].includes(issue.issueType)&&issue.blocking))
@@ -163,7 +172,7 @@ function create(model) {
     }
     if(action==='reviewIssues.members'||action==='reviewIssues.get'){
       if (action === 'reviewIssues.members' && data.accountConfirmationGroupId) {
-        const group = accountConfirmationIndex(data).groups.get(data.accountConfirmationGroupId)
+        const index = accountConfirmationIndex(data), group = index.groups.get(data.accountConfirmationGroupId)
         if (!group) error('STALE_VIEW', '账户分组已变化，请重新读取')
         const unique = new Map()
         for (const id of group.issueIds) for (const member of model.members.get(id) || []) {
@@ -174,7 +183,8 @@ function create(model) {
           const event = model.publicRow(member.objectId)
           return { ...member, objectVersion: event.version, event, localAt: event.localAt, relation: null, transaction: null }
         }).sort(chronological)
-        return { ...page(action, data, rows, 'memberId'), accountConfirmationGroupId: group.groupId }
+        return { ...page(action, { ...data, ...index.options, accountConfirmationVersion: index.accountConfirmationVersion }, rows, 'memberId'),
+          accountConfirmationGroupId: group.groupId, accountConfirmationVersion: index.accountConfirmationVersion }
       }
       const issue=model.issues.get(data.issueId);if(!issue)error('NOT_FOUND')
       const rows=(model.members.get(issue.issueId)||[]).filter(row=>!data.memberKind||row.objectType===data.memberKind).map(row=>{

@@ -250,3 +250,88 @@ test('explicit card kinds still constrain reliable full numbers when callers pro
   b.members[0].reference.expectedAccountType = null
   assert.deepEqual(buildGroups([a, b]), [])
 })
+
+test('one explicit existing-account choice joins another default while both saved states stay pending', () => {
+  const options = { selectedAccountId: 'synthetic-credit', allowedAccountTypes: ['credit'] }
+  const a = entry('a', 'alipay', '合成银行信用卡(6106)', options)
+  const b = entry('b', 'bank', '主卡6106', options)
+  assert.deepEqual(buildGroups([a, b]), [], 'two untouched defaults are not an account-ID confirmation')
+  b.selectionExplicit = true
+  b.selectionDirty = true
+  const original = JSON.stringify([a, b]), [group] = buildGroups(frozen([a, b]))
+  assert.equal(group.groupReason, 'selected_account')
+  assert.equal(group.selectedAccountId, 'synthetic-credit')
+  assert.equal(group.accountId, null)
+  assert.equal(group.candidate, true)
+  assert.deepEqual(group.issueIds, ['a', 'b'])
+  assert.equal(JSON.stringify([a, b]), original)
+})
+
+test('saved and newly selected accounts are distinct when a resolved card changes its target', () => {
+  const a = entry('a', 'alipay', '合成银行信用卡(6106)', {
+    accountId: 'synthetic-a', allowedAccountTypes: ['credit'] })
+  const pending = entry('pending', 'bank', '主卡6106', { selectedAccountId: 'synthetic-a',
+    selectionExplicit: true, allowedAccountTypes: ['credit'] })
+  const [mixed] = buildGroups([a, pending])
+  assert.equal(mixed.candidate, true)
+  assert.equal(mixed.accountId, 'synthetic-a')
+  assert.equal(mixed.selectedAccountId, 'synthetic-a')
+  const changed = entry('changed', 'bank', '主卡6106', { accountId: 'synthetic-b',
+    selectedAccountId: 'synthetic-a', selectionExplicit: true, selectionDirty: true,
+    allowedAccountTypes: ['credit'] })
+  const [group] = buildGroups([a, changed])
+  assert.equal(group.candidate, true)
+  assert.equal(group.accountId, null, 'two saved IDs cannot be silently reduced to one')
+  assert.equal(group.selectedAccountId, 'synthetic-a')
+  assert.equal(changed.accountId, 'synthetic-b')
+})
+
+test('different manual selections block identity grouping, while default disagreements stay reviewable', () => {
+  const a = entry('a', 'alipay', LABEL, { selectedAccountId: 'synthetic-a' })
+  const b = entry('b', 'wechat', LABEL, { selectedAccountId: 'synthetic-b' })
+  assert.equal(buildGroups([a, b])[0].candidate, true, 'original same-card suggestions remain a pending candidate')
+  a.selectionExplicit = true
+  b.selectionExplicit = true
+  assert.deepEqual(buildGroups([a, b]), [])
+  b.selectionExplicit = false
+  b.selectionDirty = true
+  assert.deepEqual(buildGroups([a, b]), [], 'a legacy dirty choice must not be discarded as a default')
+})
+
+test('selected-account groups still reject incompatible currency/types, blocked decisions and two ends', () => {
+  const options = { selectedAccountId: 'synthetic-target', selectionExplicit: true }
+  const a = entry('a', 'alipay', '合成来源甲', options)
+  const b = entry('b', 'bank', '合成来源乙', options)
+  assert.equal(buildGroups([a, b]).length, 1)
+  for (const patch of [{ currency: 'USD' }, { allowedAccountTypes: ['credit'] },
+    { decision: 'external', status: 'resolved' }, { decision: 'excluded', status: 'resolved' },
+    { decision: 'separate' }, { decision: 'conflict' }]) {
+    assert.deepEqual(buildGroups([a, { ...b, ...patch }]), [])
+  }
+  b.members[0].eventId = a.members[0].eventId
+  b.members[0].actualSide = 'destination'
+  assert.deepEqual(buildGroups([a, b]), [])
+})
+
+test('an explicit choice does not absorb contradictory complete numbers from default suggestions', () => {
+  const a = entry('a', 'alipay', '合成银行储蓄卡' + FULL_ONE, {
+    selectedAccountId: 'synthetic-target', selectionExplicit: true })
+  const b = entry('b', 'wechat', '合成银行储蓄卡' + FULL_TWO, { selectedAccountId: 'synthetic-target' })
+  assert.deepEqual(buildGroups([a, b]), [])
+  b.selectionExplicit = true
+  const [group] = buildGroups([a, b])
+  assert.equal(group.groupReason, 'selected_account')
+  assert.equal(group.candidate, true)
+  assert.equal(group.selectedAccountId, 'synthetic-target')
+})
+
+test('a default suggestion for a counterparty needs its own explicit ownership choice', () => {
+  const a = entry('a', 'alipay', LABEL, { selectedAccountId: 'synthetic-target', selectionExplicit: true })
+  const b = entry('b', 'wechat', LABEL, { selectedAccountId: 'synthetic-target', role: 'counterparty_account' })
+  assert.deepEqual(buildGroups([a, b]), [])
+  b.selectionExplicit = true
+  const [group] = buildGroups([a, b])
+  assert.equal(group.groupReason, 'selected_account')
+  assert.equal(group.selectedAccountId, 'synthetic-target')
+  assert.equal(group.candidate, true)
+})

@@ -417,7 +417,7 @@ test('真实 Page 拆分偏好随剩余联合子组明细读取传入，不重�
   assert.equal(page.data.accountRecordsSheet.records.length, 2)
 })
 
-test('真实 Page 联合范围扩大时旧选择仍待核对，覆盖确认同次清理旧group草稿', async t => {
+test('真实 Page 已保存组改选后不按旧绑定扩大；真正选到同一账户才合组并清理旧group草稿', async t => {
   const accounts = ['合成账户甲', '合成账户乙'].map(name => ({ accountId: randomUUID(), name, type: 'bank', nature: 'asset', currency: 'CNY', version: 1 }))
   const value = await facts({ mapped: false, accounts, contents: [
     syntheticBill(1, 'SYNTHETIC-SCOPE-A1', label), syntheticBill(1, 'SYNTHETIC-SCOPE-A2', label),
@@ -425,23 +425,26 @@ test('真实 Page 联合范围扩大时旧选择仍待核对，覆盖确认同�
   const h = await localWorkbench(t, value), page = h.page
   await page.setStep({ currentStep: 2 })
   const first = page.data.accountMappings[0].issueId
-  const select = async (id, accountId) => { await page.openAccountChoice(tap({ id })); page.selectAccountChoice(tap({ value: 'account:' + accountId })) }
+  const select = async (id, accountId) => { await page.openAccountChoice(tap({ id })); await page.selectAccountChoice(tap({ value: 'account:' + accountId })) }
   await select(first, accounts[0].accountId)
   await page.completeAccountMapping(tap({ id: first }))
   await select(first, accounts[1].accountId)
   const second = page.data.accountMappings.find(card => card.issueId !== first).issueId
   await select(second, accounts[0].accountId)
   await page.completeAccountMapping(tap({ id: second }))
-  const expanded = page.data.accountMappings[0]
-  assert.equal(page.data.accountMappings.length, 1)
-  assert.equal(expanded.memberCount, 4)
-  assert.equal(expanded.choiceValue, 'pending')
-  assert.equal(expanded.needsConfirmation, true)
+  assert.equal(page.data.accountMappings.length, 2, '未确认的改选优先于旧归属，不能再按旧ID吸入另一组')
+  assert.equal(page.data.accountMappings.find(card => card.issueId === first).choiceValue, 'account:' + accounts[1].accountId)
+  assert.equal(page.data.accountMappings.find(card => card.issueId === second).needsConfirmation, false)
   assert.equal(page.data.accountStepSummary.displayPending, 1)
   const priorIds = page._accountUiDrafts.get(first).confirmationIssueIds
   assert.ok(priorIds.every(id => page._accountUiDrafts.get(id).accountId === accounts[1].accountId && page._accountUiDrafts.get(id).dirty))
   assert.ok([...h.local.model.events.values()].every(event => event.ledgerAccountId === accounts[0].accountId), '未确认输入不能成为业务决定')
-  await select(expanded.issueId, accounts[1].accountId)
+  await select(second, accounts[1].accountId)
+  const expanded = page.data.accountMappings[0]
+  assert.equal(page.data.accountMappings.length, 1)
+  assert.equal(expanded.memberCount, 4)
+  assert.equal(expanded.choiceValue, 'account:' + accounts[1].accountId)
+  assert.equal(expanded.needsConfirmation, true)
   const before = h.files.restore().records.length
   await page.completeAccountMapping(tap({ id: expanded.issueId }))
   assert.equal(h.files.restore().records.length, before + 1)
@@ -451,7 +454,7 @@ test('真实 Page 联合范围扩大时旧选择仍待核对，覆盖确认同�
   assert.ok([...h.local.model.events.values()].every(event => event.ledgerAccountId === accounts[1].accountId))
 })
 
-test('真实 Page 共享新建未确认改名遇范围扩大，拆开核对仍只有原创建者改名', async t => {
+test('真实 Page 共享新建未确认改名不被旧ID吸收，其余来源复用后仍只有原创建者改名', async t => {
   const value = await facts({ mapped: false, accounts: [], contents: [
     syntheticBill(1, 'SYNTHETIC-SCOPE-NAME-A1', label), syntheticBill(1, 'SYNTHETIC-SCOPE-NAME-A2', label),
     syntheticBill(1, 'SYNTHETIC-SCOPE-NAME-B1', '合成测试银行储蓄卡(7788)'), syntheticBill(1, 'SYNTHETIC-SCOPE-NAME-B2', '合成测试银行储蓄卡(7788)')] })
@@ -464,17 +467,17 @@ test('真实 Page 共享新建未确认改名遇范围扩大，拆开核对仍�
   page.flushAccountDraftSync()
   const second = page.data.accountMappings.find(card => card.issueId !== first).issueId
   await page.openAccountChoice(tap({ id: second }))
-  page.selectAccountChoice(tap({ value: 'account:' + created.accountId }))
-  await page.completeAccountMapping(tap({ id: second }))
-  const expanded = page.data.accountMappings[0]
-  assert.equal(expanded.choiceValue, 'pending')
-  assert.equal(page.data.accountMappings.length, 1)
-  await page.separateAccountGroup(tap({ id: expanded.issueId }))
+  await page.selectAccountChoice(tap({ value: 'account:' + created.accountId }))
+  assert.equal(page.data.accountMappings.length, 2)
   const pending = page.data.accountMappings.filter(card => card.dirty)
   assert.equal(pending.length, 2)
   assert.equal(pending.filter(card => card.choiceValue === 'create').length, 1)
   assert.equal(pending.find(card => card.choiceValue === 'create').draftName, '待确认的新卡名')
-  for (const card of pending) await page.completeAccountMapping(tap({ id: card.issueId }))
+  const reuse = pending.find(card => card.choiceValue === 'account:' + created.accountId)
+  assert.ok(reuse)
+  await page.completeAccountMapping(tap({ id: reuse.issueId }))
+  const creator = page.data.accountMappings.find(card => card.choiceValue === 'create' && card.dirty)
+  await page.completeAccountMapping(tap({ id: creator.issueId }))
   assert.equal(page.data.accountStepError, '')
   assert.equal(h.local.model.accounts.get(created.accountId).name, '待确认的新卡名')
   assert.equal([...h.local.model.accounts.values()].filter(account => account.isDraft).length, 1)
@@ -489,6 +492,8 @@ test('真实 Page 共享新建未确认改名遇范围扩大，拆开核对仍�
 test('真实 Page 101张显示卡按100卡分页，离页输入阻止继续和入账，拆分偏好不被翻页清理', async t => {
   const labels = Array.from({ length: 101 }, (_, index) => '合成银行储蓄卡(' + String(5000 + index) + ')')
   const accounts = labels.map(name => ({ accountId: randomUUID(), name, type: 'bank', nature: 'asset', currency: 'CNY', version: 1 }))
+  const unused = { accountId: randomUUID(), name: '合成尚未用于本批的账户', type: 'bank', nature: 'asset', currency: 'CNY', version: 1 }
+  accounts.push(unused)
   const contents = [syntheticBill(1, 'SYNTHETIC-PAGE-GATE-A1', labels[0]), syntheticBill(1, 'SYNTHETIC-PAGE-GATE-A2', labels[0]),
     ...labels.slice(1).map((name, index) => Buffer.from(syntheticBill(1, 'SYNTHETIC-PAGE-GATE-OTHER-' + index, name)
       .toString().replace('2026-09-01', '2026-09-02')))]
@@ -505,7 +510,7 @@ test('真实 Page 101张显示卡按100卡分页，离页输入阻止继续和�
   assert.equal(page.data.reviewPage.count, 101)
   const joint = page.data.accountMappings.find(card => card.groupId)
   await page.openAccountChoice(tap({ id: joint.issueId }))
-  page.selectAccountChoice(tap({ value: 'account:' + accounts[1].accountId }))
+  page.selectAccountChoice(tap({ value: 'account:' + unused.accountId }))
   await page.changeReviewPage(tap({ direction: '1' }))
   assert.equal(page.data.accountMappings.length, 1)
   assert.equal(page.data.accountStepSummary.displayPending, 0)
