@@ -847,14 +847,15 @@ module.exports = {
         if (this._unsubscribeDraft) this._unsubscribeDraft()
         const session = this._draftSession = draftSessions.open(view)
         const scope = readCache.getSession()
-        this._accountUiDrafts = new Map(Object.entries(session.state.drafts))
+        // 输入与已保存草稿分离；原位改会话对象会让 saveDrafts 看不见差异。
+        this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(session.state.drafts))))
         this._unsubscribeDraft = session.subscribe(() => {
             if (!this._viewActive || this._draftSession !== session || readCache.getSession() !== scope) return
             setChangedData(this, { draftSync: session.status })
             if (this._viewSession.summary.viewVersion !== session.view.viewVersion) this.applyUpdateView(session.view, true, false, true)
           })
       } else this._draftSession.accept(view)
-      if (changed) this._accountUiDrafts = new Map(Object.entries(this._draftSession.state.drafts))
+      if (changed) this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession.state.drafts))))
       setChangedData(this, { draftSync: this._draftSession.status, prepareProgress: '' })
       this._draftSession.schedule()
     }

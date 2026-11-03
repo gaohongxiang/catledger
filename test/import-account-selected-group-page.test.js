@@ -205,6 +205,32 @@ test('真实 Page：已确认本批新建账户被手选复用时保留创建者
   assert.ok([...reopened.local.model.events.values()].every(event => event.ledgerAccountId === created.accountId))
 })
 
+test('真实 Page：本批新建后冷恢复再改选同一账户会真正落盘，再次重开仍合组待确认', async t => {
+  const h = await setup(t, { accounts: [] })
+  h.wx.showModal = options => options.success({ confirm: true })
+  await h.page.confirmAllAccountMappings()
+  assert.equal(h.page.data.accountStepSummary.displayPending, 0)
+  const selectedId = [...h.local.model.accounts.values()].find(row => row.name === fullLabel).accountId
+  const reopened = await coldPage(t, h)
+  const aliasId = reopened.page.data.accountMappings.find(card => card.sourceLabel === aliasLabel).issueId
+  const savedDraft = reopened.local.state.drafts[aliasId]
+  const priorMode = savedDraft.mode, records = h.files.restore().records.length
+  const finalBefore = plain(reopened.local.model.finalState())
+  await choose(reopened.page, aliasId, 'account:' + selectedId)
+  assert.equal(h.files.restore().records.length, records + 1, '冷恢复后的手选必须写入新的草稿日志')
+  assert.equal(savedDraft.mode, priorMode, '编辑不能原位改写会话原草稿并绕过落盘差异检查')
+  assert.equal(reopened.page.data.accountMappings.length, 1)
+  assert.equal(reopened.page.data.accountMappings[0].needsConfirmation, true)
+  assert.deepEqual(plain(reopened.local.model.finalState()), finalBefore, '手选只保存输入，原已确认决定保持不变')
+  const again = await coldPage(t, h)
+  assert.equal(again.page.data.accountMappings.length, 1)
+  assert.equal(again.page.data.accountMappings[0].memberCount, 5)
+  assert.equal(again.page.data.accountMappings[0].needsConfirmation, true)
+  assert.equal(again.local.state.drafts[aliasId].accountId, selectedId)
+  assert.equal(again.local.state.drafts[aliasId].explicitAccountSelection, true)
+  assert.deepEqual(plain(again.local.model.finalState()), finalBefore)
+})
+
 for (const mode of ['create', 'ignore', 'external']) test('真实 Page：已保存账户改为' + mode + '后不能被另一个手选成员按旧ID吸收', async t => {
   const selected = account('合成测试银行储蓄卡(5564)', { type: 'bank', nature: 'asset' })
   const h = await setup(t, { selected, accounts: [selected], contents: [

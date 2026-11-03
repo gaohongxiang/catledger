@@ -65,15 +65,21 @@ function directoryRows(sheet, items) {
 }
 
 function suggestedAccountTypeIndex(label, sourceType, fundsSide, economicNature, context = {}) {
-  const value = accountTypes.rules({ label, sourceType, fundsSide, ...context }, { event: { economicNature } })
-  return ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === value.defaultAccountType)
+  const value = Array.isArray(context.allowedAccountTypes) ? context
+    : accountTypes.rules({ label, sourceType, fundsSide, ...context }, { event: { economicNature } })
+  return ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === value.defaultAccountType &&
+    value.allowedAccountTypes.includes(option.value))
 }
 
 function issueAccountContext(issue) {
   const context = issue.accountContext || {}, subject = issue.subject || {}
+  const currency = context.currency || subject.currency || 'CNY'
+  // 读层已按整组的真实资金角色计算类型；配对后代表交易可能换成付款端，
+  // 不能再用它和旧 fundsSide 收窄信用卡。显式空集合仍表示不兼容。
+  if (Array.isArray(context.allowedAccountTypes)) return { ...context, currency }
   const event = { ...subject, fieldSources: { accountOwnership: subject.accountOwnership,
     fundsProjection: subject.fundsProjection, installment: subject.installment, disbursement: subject.disbursement } }
-  return { ...context, ...accountTypes.rules(context, { event }), currency: context.currency || subject.currency || 'CNY' }
+  return { ...context, ...accountTypes.rules(context, { event }), currency }
 }
 
 // 点「分别确认」拆开的同一组账单，成员会各自变成一个事项；服务端按问题顺序下发，
@@ -891,7 +897,8 @@ module.exports = {
       await this.loadActivePage(true)
     } catch (error) {
       if (!current()) return
-      this._accountUiDrafts = new Map(Object.entries(this._draftSession?.state.drafts || previous))
+      // 恢复输入副本，后续重试不能原位修改已保存草稿。
+      this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession?.state.drafts || previous))))
       this.setData({ accountStepError: publicError(error, '分别确认的选择未保存，请重试') })
     } finally { if (current()) { this.setData({ accountStepBusy: false }); this.refreshAccountMappings() } }
   },
@@ -965,7 +972,8 @@ module.exports = {
       await this.loadActivePage(true)
     } catch (error) {
       if (!current()) return
-      this._accountUiDrafts = new Map(Object.entries(this._draftSession?.state.drafts || previous))
+      // 恢复输入副本，后续重试不能原位修改已保存草稿。
+      this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession?.state.drafts || previous))))
       this.setData({ accountStepError: publicError(error, '恢复合并未保存，请重试') })
     } finally { if (current()) { this.setData({ accountStepBusy: false }); this.refreshAccountMappings() } }
   },
