@@ -27,7 +27,7 @@ test('来源单独一行，多来源仍用标签加分别确认', () => {
   assert.match(markup, /item\.sourceHint/)
   assert.match(markup, /item\.inline && item\.groupId/)
   assert.match(markup, /account-group-chips/)
-  assert.match(markup, /\{\{item\.groupHint\}\}/)
+  assert.match(markup, /\{\{item\.groupCountNote \|\| item\.groupHint\}\}/)
   const grouping = read('miniprogram/packages/finance/pages/import-workbench/account-display-groups.js')
   assert.match(grouping, /可能同一张卡/)
   assert.match(grouping, /已选择同一账户/)

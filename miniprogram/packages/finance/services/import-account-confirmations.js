@@ -90,10 +90,30 @@ function displayDescriptor(preference, entries, accounts) {
     ...(conflict ? { conflictReason: 'different_account_choices' } : {}) }
 }
 
+function countDescriptor(group, entries) {
+  const platforms = new Map()
+  let separateMemberCount = 0
+  for (const id of group.issueIds) {
+    const events = new Set()
+    for (const member of entries.get(id).members) {
+      events.add(member.eventId)
+      const sourceType = member.sourceType || member.reference?.sourceType || ''
+      if (!platforms.has(sourceType)) platforms.set(sourceType, new Set())
+      platforms.get(sourceType).add(member.eventId)
+    }
+    separateMemberCount += events.size
+  }
+  // 各原卡可以共享同一笔交易；同平台的不同文件也可以重复证明它。
+  // 分卡合计只用于解释去重，平台标签按交易并集计数，不改组总笔数。
+  const sourceCounts = [...platforms].map(([sourceType, events]) => ({ sourceType, count: events.size }))
+    .sort((left, right) => right.count - left.count || left.sourceType.localeCompare(right.sourceType))
+  return { ...group, separateMemberCount, sourceCounts }
+}
+
 // 从完整本机事实提取展示线索。每个来源事项和引用身份仍保持独立，
 // 不把展示分组写回 issues、成员、绑定或人工决定。
 function buildIndex(model, issues, { separateIssueIds = [], accountSelections = [], displayGroups = [] } = {}) {
-  const sources = new Map(model.facts.sources.map(source => [source.batchId, source]))
+  const sourcesFor = require('./import-account-sources').create(model)
   const preferences = normalizeDisplayGroups(displayGroups)
   const covered = new Set(preferences.flatMap(group => group.issueIds)), legacy = new Map()
   const legacyIds = new Set(separateIssueIds)
@@ -147,15 +167,9 @@ function buildIndex(model, issues, { separateIssueIds = [], accountSelections = 
     const selectedAccountId = selectionBlocked ? null : chosen?.accountId || savedAccountId ||
       (compatible(suggested) ? suggested.accountId : null)
     const members = contexts.flatMap(({ member, event, reference }) => {
-      const found = new Map()
-      for (const link of model.evidenceFor(event.eventId)) {
-        if (link.evidenceRole === 'discarded') continue
-        const row = model.rows.get(link.rowId), source = row && sources.get(row.batchId)
-        if (row) found.set(source?.sourceId || row.batchId, { sourceId: source?.sourceId || row.batchId,
-          sourceType: source?.sourceType || row.sourceType, fileName: source?.fileName || '' })
-      }
+      const found = sourcesFor(member, event, reference)
       const base = { eventId: event.eventId, actualSide: types.actualSide(event, member.memberRole), reference }
-      return found.size ? [...found.values()].map(source => ({ ...base, ...source })) : [base]
+      return found.length ? found.map(source => ({ ...base, ...source })) : [base]
     })
     const canExternal = grouping.canUseExternal(model.events, original)
     const needsConfirmation = issue.status !== 'resolved' || Boolean(selection?.dirty) || choices.length > 1 ||
@@ -205,7 +219,7 @@ function buildIndex(model, issues, { separateIssueIds = [], accountSelections = 
     ...(group.groupReason === 'selected_account'
       ? { label: safeDisplayName(model.accounts.get(group.selectedAccountId)?.name || group.label) } : {}) }))
   for (const group of explicit) if (!group.issueIds.every(id => expanded.has(id))) groups.push(group)
-  return { groups, entries: byIssue }
+  return { groups: groups.map(group => countDescriptor(group, byIssue)), entries: byIssue }
 }
 
 const build = (model, issues, options) => buildIndex(model, issues, options).groups

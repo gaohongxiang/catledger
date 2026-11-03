@@ -274,12 +274,14 @@
             <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
           </block>
         </view>
-        <view wx:if="{{item.inline && item.groupId}}" class="account-group-note">
+        <view wx:if="{{item.inline && item.groupId}}" class="account-group-note account-group-sources">
           <view class="account-group-chips">
             <text wx:for="{{item.groupSourceChips}}" wx:for-item="source" wx:key="label" class="account-group-chip">{{source.label}}<text class="account-group-chip-count">{{source.count}}</text></text>
           </view>
-          <text wx:if="{{item.groupHint}}" class="account-group-hint">{{item.groupHint}}</text>
-          <button class="account-group-separate" data-id="{{item.issueId}}" bindtap="separateAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="不是同一张卡，分别确认{{item.label}}的各来源">分别确认</button>
+          <view class="account-group-actions">
+            <text wx:if="{{item.groupCountNote || item.groupHint}}" class="account-group-hint">{{item.groupCountNote || item.groupHint}}</text>
+            <button class="account-group-separate" data-id="{{item.issueId}}" bindtap="separateAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="不是同一张卡，分别确认{{item.label}}的各来源">分别确认</button>
+          </view>
         </view>
         <view wx:if="{{item.inline && !item.groupId}}" class="account-source-line {{item.choiceValue === 'create' ? 'account-source-line-create' : ''}}">
           <text wx:if="{{item.sourceLabel}}" class="account-source-text">来源：{{item.sourceLabel}}</text>
@@ -288,7 +290,7 @@
           <view wx:if="{{item.choiceValue === 'create' && item.memberCount > 0}}" class="account-evidence-trigger" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
         </view>
         <view wx:if="{{item.restoreGroupId && !item.restoreBlocked}}" class="account-group-note account-restore-note">
-          <text class="account-restore-copy">这组账单已拆开</text>
+          <text class="account-restore-copy">{{item.accountSeparatedCountNote || '这组账单已拆开'}}</text>
           <button class="account-group-separate" data-id="{{item.restoreGroupId}}" bindtap="restoreAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="把这组账单合并回一张卡">恢复合并</button>
         </view>
         <view wx:if="{{item.ownershipNote}}" class="account-recheck-note"><text>{{item.ownershipNote}}</text></view>
@@ -309,7 +311,11 @@
     <view wx:if="{{accountMappingsExcluded.length}}" class="account-excluded-list">
       <view class="account-excluded-head"><text>本次不计入</text><text class="money-number">{{accountMappingsExcluded.length}} 项</text></view>
       <view wx:for="{{accountMappingsExcluded}}" wx:key="issueId" class="account-excluded-item" data-id="{{item.issueId}}" bindtap="openAccountChoice">
-        <view class="account-excluded-copy"><text class="account-proof-title">{{item.label}}</text><text class="account-proof-meta">{{item.memberCount}} 笔 · {{item.summaryText}}</text></view>
+        <view class="account-excluded-copy">
+          <text class="account-proof-title">{{item.label}}</text>
+          <text class="account-proof-meta">{{item.memberCount}} 笔 · {{item.summaryText}}</text>
+          <text wx:if="{{item.accountSeparatedCountNote || item.groupCountNote}}" class="account-proof-meta">{{item.accountSeparatedCountNote || item.groupCountNote}}</text>
+        </view>
         <text wx:if="{{item.restoreGroupId}}" class="account-change" data-id="{{item.restoreGroupId}}" catchtap="restoreAccountGroup" aria-role="button" aria-label="把这组已拆开的账单合并回一张卡">恢复合并</text>
         <text class="account-change">更改</text>
       </view>

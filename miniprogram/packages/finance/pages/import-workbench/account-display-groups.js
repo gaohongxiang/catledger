@@ -14,6 +14,11 @@ function titleMatchesChoice(label, choiceName) {
 const signature = (rows, drafts) => JSON.stringify(rows.map(row => [row.issueId, row.version, row.status,
   row.accountContext?.accountId || '', drafts.get(row.issueId)?.revision || 0]))
 
+function countNote(group) {
+  const separate = Number(group?.separateMemberCount || 0), joined = Number(group?.memberCount || 0)
+  return separate > joined ? '分开合计 ' + separate + ' 笔，去重后 ' + joined + ' 笔' : ''
+}
+
 function compact(mapping) {
   const { groupIssueIds, groupSources, groupAnchorIssueId, ...visible } = mapping
   // setData 的叶路径会原位更新 Page.data。可见卡需要独立的嵌套对象，
@@ -212,16 +217,22 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
     const needsConfirmation = !ready || draft.dirty || (rows.some(row => row.needsConfirmation) && !draft.localConfirmed)
     const allowedOptions = typeOptions.filter(option => allowed.includes(option.value))
     const sources = group.sources || [], sourceCounts = new Map()
-    for (const source of sources) sourceCounts.set(source.sourceType, (sourceCounts.get(source.sourceType) || 0) + Number(source.count || 0))
+    // 完整读层已按平台对当前账户的交易去重，不能再把同平台各文件的笔数相加。
+    if (Array.isArray(group.sourceCounts)) {
+      for (const source of group.sourceCounts) sourceCounts.set(source.sourceType, source.count)
+    } else {
+      for (const source of sources) sourceCounts.set(source.sourceType, (sourceCounts.get(source.sourceType) || 0) + Number(source.count || 0))
+    }
     const sourceChips = [...sourceCounts].slice(0, 3).map(([source, count]) => ({ label: sourceLabels[source] || '账单', count }))
     const anchor = byId.get(group.anchorIssueId) || rows[0]
     const mapping = { ...anchor, issueId: group.groupId, groupId: group.groupId, groupIssueIds: group.issueIds.slice(),
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
       groupCandidate: group.candidate !== false, groupCanSeparate: true,
       groupReason: group.groupReason || '',
-      groupHint: group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
+      groupHint: !needsConfirmation ? '' : group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
         : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
+      groupCountNote: countNote(group),
       groupConfirmationText: '这 ' + group.memberCount + ' 笔使用同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,
@@ -266,4 +277,4 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
   return visible
 }
 
-module.exports = { fold, compact, isExcluded, syncInput, clearCoveredDrafts, setDisplayGroup, titleMatchesChoice, readOptions, readSignature }
+module.exports = { fold, compact, isExcluded, countNote, syncInput, clearCoveredDrafts, setDisplayGroup, titleMatchesChoice, readOptions, readSignature }
