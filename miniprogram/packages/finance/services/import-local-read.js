@@ -23,7 +23,7 @@ function create(model) {
       freshness:{ requiresAccountGroupRefresh:false },localReview:true }
     return model.summaryCache
   }
-  function page(action, data, rows, key, mapper = row => row) {
+  function page(action, data, rows, key, mapper = row => row, accountBlocks) {
     const { cursor,viewVersion,pageSize,...filter } = data
     const scope = sha256(JSON.stringify([action,filter,version()])).slice(0,20)
     let offset = 0
@@ -33,12 +33,20 @@ function create(model) {
       offset=Number(bits[2])
     }
     const size=Math.max(1,Math.min(100,pageSize||20)),items=[]
-    for (const row of rows.slice(offset,offset+size)) {
-      const item=mapper(row)
+    let pageBoundary = false
+    for (let index = offset; index < Math.min(rows.length, offset + size); index++) {
+      const end = accountBlocks?.get(index)
+      // Keep an ordinary split group on one logical page. Byte-limited reads
+      // remain chunks that the pager can combine up to the requested card count.
+      if (items.length && end > index + 1 && end - offset > size) {
+        pageBoundary = true; break
+      }
+      const item=mapper(rows[index])
       if(byteLength(JSON.stringify(items.concat(item)))>48*1024) { if(!items.length)error('PAGINATION_REQUIRED','单项详情较大，请打开原始凭据');break }
       items.push(item)
     }
-    return {...envelope(),items,total:rows.length,nextCursor:offset+items.length<rows.length?'local:'+scope+':'+(offset+items.length):null}
+    return {...envelope(),items,total:rows.length,nextCursor:offset+items.length<rows.length?'local:'+scope+':'+(offset+items.length):null,
+      ...(pageBoundary ? { pageBoundary: true } : {})}
   }
   function issueView(issue) {
     const ids=issue.subjectEventIds.filter(id=>model.events.has(id)),subject=ids.length?model.publicRow(ids[0]):null
@@ -70,7 +78,8 @@ function create(model) {
   function accountConfirmationIndex(data = {}) {
     const separate = [...new Set((data.separateIssueIds || []).filter(id => typeof id === 'string' && id))].sort()
     const accountSelections = accountConfirmations.normalizeSelections(data.accountSelections)
-    const key = version() + ':' + JSON.stringify([separate, accountSelections])
+    const displayGroups = accountConfirmations.normalizeDisplayGroups(data.displayGroups)
+    const key = version() + ':' + JSON.stringify([separate, accountSelections, displayGroups])
     const accountConfirmationVersion = 'account-confirmations:' + sha256(key).slice(0, 20)
     if (data.accountConfirmationVersion != null && data.accountConfirmationVersion !== accountConfirmationVersion) {
       error('STALE_VIEW', '账户选择已变化，请重新读取')
@@ -78,15 +87,30 @@ function create(model) {
     if (confirmationCache?.key === key) return confirmationCache
     const rows = [...model.issues.values()].filter(issue => issue.issueType === 'account_mapping' &&
       ['open', 'resolved'].includes(issue.status) && !obsoletePaymentTarget(issue)).map(issueView).sort(chronological)
-    const groups = accountConfirmations.build(model, rows, { separateIssueIds: separate, accountSelections })
+    const built = accountConfirmations.buildIndex(model, rows, { separateIssueIds: separate, accountSelections, displayGroups })
+    const groups = built.groups
     const byIssue = new Map(groups.flatMap(group => group.issueIds.map(id => [id, group])))
-    const display = rows.flatMap(issue => {
+    const originalById = new Map(rows.map(issue => [issue.issueId, issue])), units = [], emitted = new Set()
+    for (const issue of rows) {
       const group = byIssue.get(issue.issueId)
-      return !group ? [issue] : issue.issueId === group.anchorIssueId
-        ? [{ ...issue, memberCount: group.memberCount, accountConfirmationGroupId: group.groupId }] : []
-    }).sort(chronological)
-    confirmationCache = { key, accountConfirmationVersion, options: { separateIssueIds: separate, accountSelections },
-      rows, display, groups: new Map(groups.map(group => [group.groupId, group])),
+      if (group && emitted.has(group.groupId)) continue
+      if (group) emitted.add(group.groupId)
+      const members = group ? group.issueIds.map(id => originalById.get(id)) : [issue]
+      const count = group ? group.memberCount : new Set(issue.subjectEventIds).size
+      const pending = group ? group.needsConfirmation : built.entries.get(issue.issueId)?.needsConfirmation ?? issue.status !== 'resolved'
+      const shown = !group ? [issue] : group.displayMode === 'separated'
+        ? members.sort((left, right) => right.memberCount - left.memberCount || left.issueId.localeCompare(right.issueId))
+          .map(member => ({ ...member, accountSeparatedGroupId: group.groupId, accountSeparatedGroupExcluded: group.allExcluded }))
+        : [{ ...originalById.get(group.anchorIssueId), memberCount: count, accountConfirmationGroupId: group.groupId }]
+      units.push({ rows: shown, count, pending, key: group?.groupId || issue.issueId })
+    }
+    // Sort the complete batch, then page its display rows. A split group's
+    // status/count belong to the whole group; children never jump apart.
+    units.sort((left, right) => Number(right.pending) - Number(left.pending) || right.count - left.count || left.key.localeCompare(right.key))
+    const display = [], blocks = new Map()
+    for (const unit of units) { blocks.set(display.length, display.length + unit.rows.length); display.push(...unit.rows) }
+    confirmationCache = { key, accountConfirmationVersion, options: { separateIssueIds: separate, accountSelections, displayGroups },
+      rows, display, blocks, groups: new Map(groups.map(group => [group.groupId, group])),
       issues: new Map(rows.map(issue => [issue.issueId, issue])) }
     return confirmationCache
   }
@@ -94,7 +118,19 @@ function create(model) {
   // 仍只携带有界卡片摘要，不把大组的所有 issueId 或来源明细塞进一条响应。
   function accountConfirmationDetails(data = {}) {
     if (data.viewVersion != null && data.viewVersion !== version()) error('STALE_VIEW')
-    const index = accountConfirmationIndex(data), groups = (data.groupIds || []).map(id => index.groups.get(id))
+    const index = accountConfirmationIndex(data)
+    let groups = (data.groupIds || []).map(id => index.groups.get(id))
+    if (data.containingIssueIds !== undefined) {
+      const ids = [...new Set((Array.isArray(data.containingIssueIds) ? data.containingIssueIds : [])
+        .filter(id => typeof id === 'string' && id))]
+      // Rejoining may produce a larger display card when another source already
+      // selects the same account. This is an explicit preview query, not an alias
+      // that silently changes the meaning of a stale group ID or version token.
+      if (groups.length || ids.length < 2) error('STALE_VIEW', '账户分组已变化，请重新读取')
+      groups = [...index.groups.values()].filter(group => group.displayMode !== 'separated' &&
+        ids.every(id => group.issueIds.includes(id)))
+      if (groups.length !== 1) error('STALE_VIEW', '账户分组已变化，请重新读取')
+    }
     if (groups.some(group => !group)) error('STALE_VIEW', '账户分组已变化，请重新读取')
     const ids = [...new Set(groups.flatMap(group => group.issueIds))]
     return { accountConfirmationVersion: index.accountConfirmationVersion,
@@ -163,7 +199,7 @@ function create(model) {
       if (data.group === 'accounts' && data.view === 'account_confirmations') {
         const index = accountConfirmationIndex(data)
         return { ...page(action, { ...data, ...index.options, accountConfirmationVersion: index.accountConfirmationVersion },
-          index.display, 'issueId', issuePageValue), accountConfirmationVersion: index.accountConfirmationVersion }
+          index.display, 'issueId', issuePageValue, index.blocks), accountConfirmationVersion: index.accountConfirmationVersion }
       }
       const rows=[...model.issues.values()].filter(issue=>(!data.status||issue.status===data.status)&&(!data.issueType||issue.issueType===data.issueType)&&
         (!data.group||data.group==='accounts'&&issue.issueType==='account_mapping'&&['open','resolved'].includes(issue.status)&&!obsoletePaymentTarget(issue)||data.group==='category'&&issue.issueType==='category_assignment'||data.group==='review'&&!['account_mapping','category_assignment'].includes(issue.issueType)&&issue.blocking))

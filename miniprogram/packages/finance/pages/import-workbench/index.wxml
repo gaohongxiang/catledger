@@ -310,6 +310,7 @@
       <view class="account-excluded-head"><text>本次不计入</text><text class="money-number">{{accountMappingsExcluded.length}} 项</text></view>
       <view wx:for="{{accountMappingsExcluded}}" wx:key="issueId" class="account-excluded-item" data-id="{{item.issueId}}" bindtap="openAccountChoice">
         <view class="account-excluded-copy"><text class="account-proof-title">{{item.label}}</text><text class="account-proof-meta">{{item.memberCount}} 笔 · {{item.summaryText}}</text></view>
+        <text wx:if="{{item.restoreGroupId}}" class="account-change" data-id="{{item.restoreGroupId}}" catchtap="restoreAccountGroup" aria-role="button" aria-label="把这组已拆开的账单合并回一张卡">恢复合并</text>
         <text class="account-change">更改</text>
       </view>
     </view>

@@ -172,19 +172,22 @@ test('真实 Page 拆开后成员都没动过可以恢复合并，联合卡回�
   assert.equal(h.local.state.drafts[anchor.issueId].confirmationSeparate, undefined)
 })
 
-test('真实 Page 拆开后改过其中一张就不能合并回去，不丢已改的选择', async t => {
+test('真实 Page 拆开后改过其中一张仍可合回，保留原输入并待选共同账户', async t => {
   const h = await setup(t), page = h.page
   const jointId = page.data.accountMappings[0].issueId
   await page.separateAccountGroup(tap({ id: jointId }))
-  const first = page.data.accountMappings[0]
-  page.bindAccountDraftName({ ...tap({ id: first.issueId }), detail: { value: '合成改名卡' } })
+  const firstId = page.data.accountMappings[0].issueId
+  page.bindAccountDraftName({ ...tap({ id: firstId }), detail: { value: '合成改名卡' } })
   page.refreshAccountMappings()
   const anchor = page.data.accountMappings.find(card => card.restoreGroupId === jointId)
-  assert.equal(anchor.restoreBlocked, true)
+  assert.equal(anchor.restoreBlocked, false)
   await page.restoreAccountGroup(tap({ id: jointId }))
-  assert.match(page.data.accountStepError, /不能再合并/u)
-  assert.equal(page.data.accountMappings.length, 2)
-  assert.equal(page._accountUiDrafts.get(first.issueId).name, '合成改名卡')
+  assert.equal(page.data.accountStepError, '')
+  assert.equal(page.data.accountMappings.length, 1)
+  assert.equal(page.data.accountMappings[0].choiceValue, 'pending')
+  assert.equal(page.data.accountMappings[0].needsConfirmation, true)
+  assert.equal(page._accountUiDrafts.get(firstId).name, '合成改名卡')
+  assert.equal(h.local.model.choices.accounts.size, 0)
 })
 
 test('真实 Page 旧版本拆开没留联合草稿时，同账户名的成员仍能恢复合并', async t => {
@@ -193,7 +196,8 @@ test('真实 Page 旧版本拆开没留联合草稿时，同账户名的成员�
   await page.separateAccountGroup(tap({ id: jointId }))
   // 旧版本的拆分只留成员标记、不留联合草稿。
   page._accountUiDrafts.delete(jointId)
-  page.refreshAccountMappings()
+  page.persistAccountDrafts()
+  await page.loadActivePage(true)
   const anchor = page.data.accountMappings.find(card => String(card.restoreGroupId).startsWith('legacy:'))
   assert.ok(anchor, '旧拆分也应有恢复入口')
   assert.equal(anchor.restoreBlocked, false)

@@ -803,8 +803,8 @@ module.exports = {
     const current = this.data.currentStep
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
     : forceStep || (background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow)
-    const mappings = workbench.accountMappings || this.data.accountMappings || []
-    const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' })
+    const mappings = (workbench.accountMappings || this.data.accountMappings || []).map(accountDisplay.compact)
+    const excluded = mappings.filter(accountDisplay.isExcluded)
     const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
     const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               importId: source.importId || '', fileName: source.fileName, originalFileName: source.originalFileName || source.fileName,
@@ -812,8 +812,9 @@ module.exports = {
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false,
         preparingAccount: false, prepareProgress: '', resumeNotice: null,
-        accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }),
-        accountMappingsExcluded: excluded })
+        accountMappings: mappings,
+        accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }).map(accountDisplay.compact),
+        accountMappingsExcluded: excluded.map(accountDisplay.compact) })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
     // 首页「待核对」读这里：与本页签的待办数同源，入账或放弃时随草稿一起清掉。
@@ -939,9 +940,9 @@ module.exports = {
       let accountDisplayGroups = []
       if (step === 2 && filter.view === 'account_confirmations') {
         const details = this._draftSession.accountConfirmationDetails({ viewVersion: response.viewVersion,
-          separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections,
+          separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections, displayGroups: filter.displayGroups,
           accountConfirmationVersion: response.accountConfirmationVersion,
-          groupIds: response.items.map(issue => issue.accountConfirmationGroupId).filter(Boolean) })
+          groupIds: [...new Set(response.items.map(issue => issue.accountConfirmationGroupId || issue.accountSeparatedGroupId).filter(Boolean))] })
         const originals = new Map(details.issues.map(issue => [issue.issueId, issue]))
         accountDisplayGroups = details.groups
         const groups = new Map(details.groups.map(group => [group.groupId, group]))
@@ -954,7 +955,8 @@ module.exports = {
       if (deferInput() || !active()) return
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [],
         accountDisplayGroups, accountConfirmationVersion: response.accountConfirmationVersion,
-        accountConfirmationOptions: { separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections }, accountMappingDrafts: [] })
+        accountConfirmationOptions: { separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections,
+          displayGroups: filter.displayGroups }, accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
       patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
@@ -964,11 +966,11 @@ module.exports = {
         Object.assign(patch, directory)
         const state = this.mappingState()
         const mappings = state.mappings.map(compactMapping)
-        const excluded = mappings.filter(function (mapping) { return mapping.choiceValue === 'ignore' })
+        const excluded = mappings.filter(accountDisplay.isExcluded)
         const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
         patch.accountMappings = mappings
-        patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) })
-        patch.accountMappingsExcluded = excluded
+        patch.accountMappingsIncluded = mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }).map(accountDisplay.compact)
+        patch.accountMappingsExcluded = excluded.map(accountDisplay.compact)
         patch.accountStepSummary = state.summary
       } else if (kind === 'reviewGroups') {
         const cards = presentation.splitInstallmentCards(events.map(event => presentation.pendingCard(event, false)))

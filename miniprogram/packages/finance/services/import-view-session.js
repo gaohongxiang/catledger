@@ -90,6 +90,8 @@ function create(call, summary, options = {}) {
         }
         combined = Object.assign({}, next, { items: (combined ? combined.items : []).concat(next.items) })
         cursor = next.nextCursor
+        // 账户显示组可在页满前主动换页，不能为补足数量又拆开下一组。
+        if (next.pageBoundary === true) break
       } while (cursor && combined.items.length < size)
       return combined
     }

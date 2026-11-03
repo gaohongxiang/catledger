@@ -16,14 +16,28 @@ const signature = (rows, drafts) => JSON.stringify(rows.map(row => [row.issueId,
 
 function compact(mapping) {
   const { groupIssueIds, groupSources, groupAnchorIssueId, ...visible } = mapping
-  return visible
+  // setData 的叶路径会原位更新 Page.data。可见卡需要独立的嵌套对象，
+  // 否则排序会把共用的类型选项、账户上下文或另一列表里的卡一起改写。
+  return JSON.parse(JSON.stringify(visible))
+}
+
+function isExcluded(mapping) {
+  if (mapping.accountSeparatedGroupId) return mapping.accountSeparatedGroupExcluded === true
+  return mapping.choiceValue === 'ignore' && !mapping.needsConfirmation
 }
 
 // 只传原事项的输入；联合卡是它们的展示，不能再次作为一个账户参与分组。
 function readOptions(drafts) {
-  const rows = [...drafts].filter(([id]) => !String(id).startsWith('account-confirmation:') && !String(id).startsWith('legacy:'))
+  const displayGroups = [...drafts].flatMap(([groupId, draft]) => {
+    const mode = draft.confirmationDisplayMode || (draft.separated ? 'separated' : '')
+    const issueIds = [...new Set(draftIssueIds(draft))].sort()
+    return ['separated', 'joined'].includes(mode) && issueIds.length >= 2 ? [{ groupId, issueIds, mode }] : []
+  }).sort((left, right) => left.groupId.localeCompare(right.groupId))
+  const rows = [...drafts].filter(([id, draft]) => !draftIssueIds(draft).length &&
+    !String(id).startsWith('account-confirmation:') && !String(id).startsWith('legacy:'))
     .sort(([left], [right]) => left.localeCompare(right))
   return {
+    displayGroups,
     separateIssueIds: rows.filter(([, draft]) => draft.confirmationSeparate).map(([id]) => id),
     accountSelections: rows.map(([issueId, draft]) => ({ issueId, mode: draft.mode || 'pending', accountId: draft.accountId || '',
       explicit: draft.explicitAccountSelection === true, dirty: draft.dirty === true }))
@@ -38,6 +52,7 @@ function readSignature(drafts) {
 
 function draftIssueIds(draft) {
   if (Array.isArray(draft?.confirmationIssueIds)) return draft.confirmationIssueIds
+  if (Array.isArray(draft?.separatedMembers)) return draft.separatedMembers
   try { return JSON.parse(draft?.originSignature || '[]').map(row => row[0]).filter(id => typeof id === 'string') }
   catch (_) { return [] }
 }
@@ -67,9 +82,48 @@ function syncInput(group, drafts) {
 function clearCoveredDrafts(drafts, confirmedIds, activeGroupIds) {
   for (const [key, draft] of Object.entries(drafts)) {
     const ids = draftIssueIds(draft)
-    if (!ids.length || activeGroupIds.has(key)) continue
-    if (ids.every(id => confirmedIds.has(id) || drafts[id]?.localConfirmed && !drafts[id]?.dirty)) delete drafts[key]
+    // 拆开／合回是本批显示关系；确认最后一个成员也不能把它删掉。
+    if (!ids.length) continue
+    const covered = ids.every(id => confirmedIds.has(id) || drafts[id]?.localConfirmed && !drafts[id]?.dirty)
+    if (draft.separated || draft.confirmationDisplayMode === 'separated') {
+      if (covered) { draft.dirty = false; draft.localConfirmed = false }
+      continue
+    }
+    // A/B 旧决定已确认也不能解除合回后的待选；必须这次共同确认覆盖整组。
+    if (draft.confirmationDisplayMode === 'joined') {
+      if (!ids.every(id => confirmedIds.has(id))) continue
+      // 共同确认后由原事项的已保存选择重建当前组；旧范围可能随后自动扩大。
+      delete drafts[key]
+      continue
+    }
+    if (activeGroupIds.has(key)) continue
+    if (covered) delete drafts[key]
   }
+}
+
+function setDisplayGroup(drafts, groupId, issueIds, mode) {
+  const ids = [...new Set(issueIds)].sort(), selected = new Set(ids)
+  // 自动合组扩大后，新的显式拆分关系取代旧范围，不能同时留下重叠的显示组。
+  for (const [id, draft] of drafts) if (id !== groupId && (draft.separated || draft.confirmationDisplayMode) &&
+      draftIssueIds(draft).some(memberId => selected.has(memberId))) {
+    delete draft.confirmationDisplayMode
+    delete draft.separated
+    delete draft.separatedMembers
+    delete draft.separatedSnapshot
+  }
+  const joint = drafts.get(groupId) || {}
+  joint.confirmationIssueIds = ids
+  joint.confirmationDisplayMode = mode
+  if (mode === 'separated') {
+    joint.separated = true
+    joint.separatedMembers = ids
+  } else {
+    delete joint.separated
+    delete joint.separatedMembers
+  }
+  delete joint.separatedSnapshot
+  drafts.set(groupId, joint)
+  return joint
 }
 
 function initialDraft(group, rows, drafts, accountRows, typeOptions) {
@@ -78,7 +132,7 @@ function initialDraft(group, rows, drafts, accountRows, typeOptions) {
   const values = new Set(prior.map(draft => draft?.mode === 'account' ? 'account:' + draft.accountId
     : draft?.mode === 'create' ? 'create:' + draft.name + ':' + draft.typeIndex : draft?.mode || 'pending'))
   const confirmedId = group.candidate === false ? group.accountId : null
-  const selectedId = group.groupReason === 'selected_account' ? group.selectedAccountId : null
+  const selectedId = ['selected_account', 'manual_join'].includes(group.groupReason) ? group.selectedAccountId : null
   const creator = rows.find(row => {
     const draft = drafts.get(row.issueId)
     return draft?.mode === 'create' && draft.createdAccountId && draft.createdAccountId === (selectedId || group.accountId) &&
@@ -92,7 +146,7 @@ function initialDraft(group, rows, drafts, accountRows, typeOptions) {
       draft === resolvedCreator && draft?.createdAccountId === selectedId)) {
     mode = resolvedCreator ? 'create' : 'account'; accountId = selectedId
     if (resolvedCreator) name = resolvedCreator.name
-  } else if (dirty && values.size > 1) conflict = '各来源已有不同选择，请选择共同账户或分别确认。'
+  } else if ((dirty || group.groupReason === 'manual_join') && values.size > 1) conflict = '各来源已有不同选择，请选择共同账户或分别确认。'
   else if (confirmedId && !dirty) {
     mode = resolvedCreator ? 'create' : 'account'; accountId = confirmedId
     if (resolvedCreator) name = resolvedCreator.name
@@ -122,7 +176,7 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
   const byId = new Map(mappings.map(mapping => [mapping.issueId, mapping])), grouped = new Map(), children = new Set()
   const accountRows = accounts.concat(accountDrafts)
   for (const group of groups) {
-    if (!Array.isArray(group.issueIds) || group.issueIds.length < 2 || !group.groupId) continue
+    if (!Array.isArray(group.issueIds) || group.issueIds.length < 2 || !group.groupId || group.displayMode === 'separated') continue
     const rows = group.issueIds.map(id => byId.get(id))
     if (rows.some(row => !row || !row.inline || drafts.get(row.issueId)?.confirmationSeparate) ||
         rows.some(row => children.has(row.issueId))) continue
@@ -132,11 +186,13 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       currency: group.currency, sourceType: '', fundsSide: '' }
     const currentSignature = signature(rows, drafts)
     let draft = drafts.get(group.groupId)
-    const changedSelection = group.groupReason === 'selected_account' &&
+    const changedSelection = ['selected_account', 'manual_join'].includes(group.groupReason) && group.selectedAccountId &&
       !(draft?.mode === 'account' && draft.accountId === group.selectedAccountId ||
         draft?.mode === 'create' && draft.createdAccountId === group.selectedAccountId)
     if (!draft || changedSelection || !draft.dirty && draft.originSignature !== currentSignature) {
+      const displayMode = draft?.confirmationDisplayMode
       draft = initialDraft({ ...group, allowedAccountTypes: allowed }, rows, drafts, accountRows, typeOptions)
+      if (displayMode) draft.confirmationDisplayMode = displayMode
       draft.originSignature = currentSignature
       drafts.set(group.groupId, draft)
     }
@@ -163,7 +219,8 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
       groupCandidate: group.candidate !== false, groupCanSeparate: true,
       groupReason: group.groupReason || '',
-      groupHint: group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
+      groupHint: group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
+        : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
       groupConfirmationText: '这 ' + group.memberCount + ' 笔将记在同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
@@ -209,4 +266,4 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
   return visible
 }
 
-module.exports = { fold, compact, syncInput, clearCoveredDrafts, titleMatchesChoice, readOptions, readSignature }
+module.exports = { fold, compact, isExcluded, syncInput, clearCoveredDrafts, setDisplayGroup, titleMatchesChoice, readOptions, readSignature }

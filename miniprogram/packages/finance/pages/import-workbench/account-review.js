@@ -136,11 +136,6 @@ function confirmSuggestedBatch(count, creates, ignores) {
   })
 }
 
-// 拆开时记下每个成员当时的选择，之后任一成员被改过或确认过就不再允许合回去。
-function choiceSignature(draft) {
-  return [draft.mode, draft.accountId || '', draft.name || '', draft.typeIndex]
-}
-
 function selectionKey(page, mappings) {
   const originals = new Map((page.businessData().accountIssues || []).map(issue => [issue.issueId, issue]))
   return readCache.stableKey('account-confirmations', mappings.map(mapping => ({
@@ -184,6 +179,10 @@ function syncGroupInput(page, issueId) {
   const group = (page.businessData().accountDisplayGroups || []).find(group => group.groupId === issueId)
   if (!group) return
   for (const id of displayGroups.syncInput(group, page._accountUiDrafts)) if (page._accountConfirmed) page._accountConfirmed.delete(id)
+  // 共同编辑新建账户时保留当前范围，避免全批重排把创建者与复用来源拆开。
+  if (page._accountUiDrafts.get(issueId)?.mode === 'create') {
+    displayGroups.setDisplayGroup(page._accountUiDrafts, issueId, group.issueIds, 'joined')
+  }
 }
 
 async function confirmDisplayMappings(page, mappings, current) {
@@ -402,19 +401,15 @@ module.exports = {
   refreshAccountMappings: function () {
     const state = this.mappingState()
     const mappings = state.mappings.map(function (mapping) {
-      const visible = displayGroups.compact(presentation.accountMapping(mapping))
-      delete visible.choiceOptions
-      visible.evidencePreview = Boolean(visible.evidencePreview)
-      return visible
+      const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping)
+      return displayGroups.compact(Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }))
     })
-    const isExcluded = mapping => mapping.choiceValue === 'ignore'
-    // Keep an unconfirmed exclusion in the actionable list; only a confirmed
-    // exclusion moves to the compact "本次不计入" section.
-    const excluded = mappings.filter(function (mapping) { return isExcluded(mapping) && !mapping.needsConfirmation })
+    // 拆分组只有全组都已确认不计入才移到下方，混合组不能被两个区域拆散。
+    const excluded = mappings.filter(displayGroups.isExcluded)
     const excludedIds = new Set(excluded.map(function (mapping) { return mapping.issueId }))
     setChangedData(this, { accountMappings: mappings,
-      accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }),
-      accountMappingsExcluded: excluded, accountStepSummary: state.summary })
+      accountMappingsIncluded: mappings.filter(function (mapping) { return !excludedIds.has(mapping.issueId) }).map(displayGroups.compact),
+      accountMappingsExcluded: excluded.map(displayGroups.compact), accountStepSummary: state.summary })
     return state
   },
 
@@ -559,18 +554,22 @@ module.exports = {
       })
     const visible = displayGroups.fold({ mappings, groups: accountDisplayGroups, drafts: self._accountUiDrafts,
       accounts, accountDrafts, typeOptions: ACCOUNT_TYPE_OPTIONS, ownershipNote: ownershipRecheckNote })
-    // 已拆开的联合卡把恢复入口挂在原锚点卡上；成员被改过或确认过就不再提供。
-    const rawById = new Map(mappings.map(mapping => [mapping.issueId, mapping]))
+    // 每页的组内首卡保留合回入口，不要求整个拆分组刚好在当前页。
+    const restoreShown = new Set()
+    for (const mapping of visible) {
+      const id = mapping.accountSeparatedGroupId
+      if (!id || restoreShown.has(id)) continue
+      restoreShown.add(id)
+      mapping.restoreGroupId = id
+      mapping.restoreBlocked = false
+    }
     for (const [jointId, joint] of self._accountUiDrafts) {
       if (!joint.separated || !Array.isArray(joint.separatedMembers)) continue
-      const anchor = visible.find(mapping => mapping.issueId === joint.anchorIssueId)
-      if (!anchor) continue
+      const anchor = visible.find(mapping => joint.separatedMembers.includes(mapping.issueId))
+      if (!anchor || restoreShown.has(jointId)) continue
+      restoreShown.add(jointId)
       anchor.restoreGroupId = jointId
-      anchor.restoreBlocked = !joint.separatedMembers.every(id => {
-        const row = rawById.get(id), draft = self._accountUiDrafts.get(id)
-        return row && row.inline && row.status !== 'resolved' && draft && !draft.localConfirmed &&
-          JSON.stringify(choiceSignature(draft)) === JSON.stringify((joint.separatedSnapshot || {})[id])
-      })
+      anchor.restoreBlocked = false
     }
     // 旧版本拆开的卡没有留下联合草稿：同一显示账户名下的成员仍按同一张卡处理，同样允许合回。
     const legacy = new Map()
@@ -587,7 +586,7 @@ module.exports = {
       const anchor = visible.find(mapping => mapping.issueId === members[0].issueId)
       if (!anchor || anchor.restoreGroupId) continue
       anchor.restoreGroupId = 'legacy:' + key
-      anchor.restoreBlocked = !members.every(member => member.status !== 'resolved' && !member.dirty)
+      anchor.restoreBlocked = false
     }
     // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
     for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate',
@@ -624,7 +623,7 @@ module.exports = {
     const visiblePending = summary.pending
     summary.pending = accountPending.count(self, summary.pending)
     summary.pendingOutside = summary.pending > visiblePending
-    return { mappings: clusterSeparatedCards(visible, self._accountUiDrafts), rawMappings: mappings, summary }
+    return { mappings: self._draftSession?.isLocal ? visible : clusterSeparatedCards(visible, self._accountUiDrafts), rawMappings: mappings, summary }
   },
 
   openAccountChoice: async function (event) {
@@ -674,11 +673,13 @@ module.exports = {
   bindAccountDraftName: function (event) {
     const draft = this._accountUiDrafts.get(event.currentTarget.dataset.id)
     if (!draft || this.data.accountStepBusy) return
+    const previous = displayGroups.readSignature(this._accountUiDrafts)
     draft.name = event.detail.value
     draft.dirty = true
     draft.localConfirmed = false
     draft.revision = (draft.revision || 0) + 1
     syncGroupInput(this, event.currentTarget.dataset.id)
+    if (this._draftSession?.isLocal && previous !== displayGroups.readSignature(this._accountUiDrafts)) this._pendingAccountGroupRefresh = true
     this.setData({ accountStepError: '' })
     this.scheduleAccountDraftSync()
   },
@@ -693,8 +694,12 @@ module.exports = {
     const self = this
     this._accountDraftTimer = setTimeout(function () {
         self._accountDraftTimer = null
-        self.persistAccountDrafts()
+        const saved = self.persistAccountDrafts()
         self.refreshAccountMappings()
+        if (saved !== false && self._pendingAccountGroupRefresh && !self._editingInput) {
+          self._pendingAccountGroupRefresh = false
+          self.refreshAccountSelectionGroups()
+        }
       }, 300)
   },
 
@@ -713,14 +718,18 @@ module.exports = {
     const mapping = this.mappingState().mappings.find(item => item.issueId === issueId)
     const selected = mapping?.typeOptions[Number(event.detail.value)]
     if (!selected) return
+    const previous = displayGroups.readSignature(this._accountUiDrafts)
     draft.typeIndex = ACCOUNT_TYPE_OPTIONS.findIndex(option => option.value === selected.value)
     draft.dirty = true
     draft.localConfirmed = false
     draft.revision = (draft.revision || 0) + 1
     syncGroupInput(this, issueId)
     this.setData({ accountStepError: '' })
-    this.persistAccountDrafts()
+    const saved = this.persistAccountDrafts()
     this.refreshAccountMappings()
+    if (saved !== false && this._draftSession?.isLocal && previous !== displayGroups.readSignature(this._accountUiDrafts)) {
+      return this.refreshAccountSelectionGroups()
+    }
   },
 
   completeAccountMapping: async function (event) {
@@ -730,6 +739,11 @@ module.exports = {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
     this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
+    if (this._pendingAccountGroupRefresh && !this._editingInput) {
+      this._pendingAccountGroupRefresh = false
+      this.refreshAccountSelectionGroups()
+      if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
+    }
     const issueId = requestedId
     const currentMapping = this.mappingState().mappings.find(item => item.issueId === issueId)
     const currentMembers = currentMapping?.groupIssueIds || (currentMapping ? [currentMapping.issueId] : [])
@@ -786,6 +800,11 @@ module.exports = {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
     this._accountScrollTarget = this._pageScrollTop
     this.flushAccountDraftSync()
+    if (this._pendingAccountGroupRefresh && !this._editingInput) {
+      this._pendingAccountGroupRefresh = false
+      this.refreshAccountSelectionGroups()
+      if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
+    }
     const collect = () => this.refreshAccountMappings().mappings.filter(function (item) {
       return item.inline && item.needsConfirmation && item.canConfirm
     })
@@ -850,7 +869,6 @@ module.exports = {
     if (!current()) return
     const previous = JSON.parse(JSON.stringify(Object.fromEntries(this._accountUiDrafts)))
     const joint = this._accountUiDrafts.get(mapping.groupId)
-    const snapshot = {}
     for (const id of mapping.groupIssueIds) {
       const draft = this._accountUiDrafts.get(id)
       // 联合卡里新输入的内容拆开后仍可核对；原先各自不同的草稿不相互覆盖。
@@ -860,12 +878,11 @@ module.exports = {
         if (this._accountConfirmed) this._accountConfirmed.delete(id)
       }
       draft.confirmationSeparate = true
-      snapshot[id] = choiceSignature(draft)
     }
-    // 保留联合草稿并标记已拆分：成员都没再改动时可以合回去，避免一次误点不可逆。
-    joint.separated = true
-    joint.separatedMembers = mapping.groupIssueIds.slice()
-    joint.separatedSnapshot = snapshot
+    displayGroups.setDisplayGroup(this._accountUiDrafts, mapping.groupId, mapping.groupIssueIds, 'separated')
+    // 输入已分别留在原事项上；此处只保留显示关系，不额外制造未确认事项。
+    joint.dirty = false
+    joint.localConfirmed = false
     joint.anchorIssueId = mapping.groupAnchorIssueId || mapping.groupIssueIds[0]
     if (this._accountConfirmed) this._accountConfirmed.delete(mapping.groupId)
     this.setData({ accountStepBusy: true, accountStepError: '' })
@@ -879,54 +896,71 @@ module.exports = {
     } finally { if (current()) { this.setData({ accountStepBusy: false }); this.refreshAccountMappings() } }
   },
 
-  // 拆开只是这批的本地偏好；成员都还没动过时允许合回同一张卡。
+  // 合回只改变显示。原决定保持到共同账户被明确确认之后。
   restoreAccountGroup: async function (event) {
     if (this._accountSelectionRefresh && !await finishAccountSelectionRead(this)) return
     if (this.data.busy || this.data.accountStepBusy) return
     this.flushAccountDraftSync()
     const target = String(event.currentTarget.dataset.id || '')
     const rows = (this.mappingState().rawMappings || [])
-    const blockedText = '已有一张卡被修改或确认，不能再合并回去。'
-    let members, joint = null
-    if (target.indexOf('legacy:') === 0) {
+    const savedGroup = this._accountUiDrafts.get(target)
+    let issueIds = savedGroup?.confirmationIssueIds || savedGroup?.separatedMembers
+    if (!issueIds && this._draftSession?.isLocal && rows.some(row => row.accountSeparatedGroupId === target)) {
+      try {
+        const details = this._draftSession.accountConfirmationDetails({ viewVersion: this._draftSession.view.viewVersion,
+          groupIds: [target], ...displayGroups.readOptions(this._accountUiDrafts) })
+        issueIds = details.groups[0]?.issueIds
+      } catch (error) {
+        this.setData({ accountStepError: publicError(error, '账户组已变化，请重新读取后合并') })
+        return
+      }
+    }
+    if (!issueIds && target.indexOf('legacy:') === 0) {
       // 旧版本拆开的卡没有联合草稿，按同一显示账户名找回同组成员。
       const key = target.slice('legacy:'.length)
-      members = rows.filter(mapping => {
+      issueIds = rows.filter(mapping => {
         const draft = this._accountUiDrafts.get(mapping.issueId)
         if (!mapping.inline || !draft || !draft.confirmationSeparate) return false
         const context = mapping.accountContext || {}
         return (context.label || '') + '|' + (context.currency || '') === key
-      })
-      if (members.length < 2) return
-      if (!members.every(member => member.status !== 'resolved' && !member.dirty)) {
-        this.setData({ accountStepError: blockedText }); return
-      }
-    } else {
-      joint = this._accountUiDrafts.get(target)
-      if (!joint || !joint.separated || !Array.isArray(joint.separatedMembers)) return
-      const byId = new Map(rows.map(row => [row.issueId, row]))
-      const blocked = !joint.separatedMembers.every(id => {
-        const row = byId.get(id), draft = this._accountUiDrafts.get(id)
-        return row && row.inline && row.status !== 'resolved' && draft && !draft.localConfirmed &&
-          JSON.stringify(choiceSignature(draft)) === JSON.stringify(joint.separatedSnapshot[id])
-      })
-      if (blocked) { this.setData({ accountStepError: blockedText }); return }
-      members = joint.separatedMembers.map(id => ({ issueId: id }))
+      }).map(mapping => mapping.issueId)
     }
+    if (!Array.isArray(issueIds) || issueIds.length < 2) return
     const current = currentAccountOperation(this)
     if (!current()) return
     const previous = JSON.parse(JSON.stringify(Object.fromEntries(this._accountUiDrafts)))
-    for (const member of members) {
-      const draft = this._accountUiDrafts.get(member.issueId)
+    const staged = new Map(Object.entries(JSON.parse(JSON.stringify(previous))))
+    for (const id of issueIds) {
+      const draft = staged.get(id)
       if (draft) delete draft.confirmationSeparate
     }
-    if (joint) {
-      delete joint.separated
-      delete joint.separatedMembers
-      delete joint.separatedSnapshot
-    }
+    displayGroups.setDisplayGroup(staged, target, issueIds, 'joined')
     this.setData({ accountStepBusy: true, accountStepError: '' })
     try {
+      const session = this._draftSession, version = session?.view.viewVersion
+      if (session?.isLocal && session.accountConfirmationDetails) {
+        // details 在完整本批中取组；即使拆分组跨页，也不能只合回当前页的成员。
+        const details = session.accountConfirmationDetails({ viewVersion: version, containingIssueIds: issueIds, ...displayGroups.readOptions(staged) })
+        const group = details.groups[0]
+        if (!group || !issueIds.every(id => group.issueIds.includes(id))) throw new Error('账户对应记录已变化，请重新读取后合并')
+        const directory = await this.loadDirectories(details.issues.map(issue => issue.subject).filter(Boolean),
+          [group.selectedAccountId, group.accountId, ...group.issueIds.map(id => staged.get(id)?.accountId)].filter(Boolean))
+        if (!current()) return
+        if (session.view.viewVersion !== version) throw new Error('账户对应记录已变化，请重新读取后合并')
+        // 丢掉旧联合选择，只按各原事项现在的输入构建共同选择。
+        staged.delete(target)
+        staged.delete(group.groupId)
+        this._accountUiDrafts = staged
+        const state = this.buildAccountMappingState(details.issues.map(model.issueView), directory.accounts,
+          directory.accountDrafts, [], [group])
+        const mapping = state.mappings.find(row => row.issueId === group.groupId)
+        if (!mapping?.groupId) throw new Error('这些来源暂时不能合并，请分别核对账户')
+        const joint = displayGroups.setDisplayGroup(staged, group.groupId, group.issueIds, 'joined')
+        // A/B 的旧决定即使都已保存，合回后的共同账户也必须明确确认；此门禁须落盘。
+        joint.dirty = mapping.needsConfirmation
+        joint.localConfirmed = !mapping.needsConfirmation
+        joint.revision = Number(previous[target]?.revision || 0) + 1
+      } else this._accountUiDrafts = staged
       if (this._draftSession) this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep)
       await this.loadActivePage(true)
     } catch (error) {

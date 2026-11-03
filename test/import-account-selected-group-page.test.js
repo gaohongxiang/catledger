@@ -178,11 +178,11 @@ test('真实 Page：已确认本批新建账户被手选复用时保留创建者
     syntheticBill(1, 'SYNTHETIC-REUSE-CREATOR', '合成测试银行储蓄卡(5564)'),
     syntheticBill(1, 'SYNTHETIC-REUSE-OTHER', '合成测试银行储蓄卡(7788)')
   ] }), page = h.page
-  const creator = page.data.accountMappings.find(card => card.sourceLabel.includes('5564'))
-  await page.completeAccountMapping(tap({ id: creator.issueId }))
+  const creatorId = page.data.accountMappings.find(card => card.sourceLabel.includes('5564')).issueId
+  await page.completeAccountMapping(tap({ id: creatorId }))
   const created = [...h.local.model.accounts.values()].find(row => row.isDraft)
-  const other = page.data.accountMappings.find(card => card.issueId !== creator.issueId)
-  await choose(page, other.issueId, 'account:' + created.accountId)
+  const otherId = page.data.accountMappings.find(card => card.issueId !== creatorId).issueId
+  await choose(page, otherId, 'account:' + created.accountId)
   assert.equal(page.data.accountMappings.length, 1)
   const joint = page.data.accountMappings[0], input = page._accountUiDrafts.get(joint.issueId)
   assert.equal(joint.groupHint, '已选择同一账户')
@@ -190,7 +190,7 @@ test('真实 Page：已确认本批新建账户被手选复用时保留创建者
   assert.equal(joint.canConfirm, true)
   assert.equal(input.mode, 'create')
   assert.equal(input.createdAccountId, created.accountId)
-  assert.equal(input.creatorIssueId, creator.issueId)
+  assert.equal(input.creatorIssueId, creatorId)
   await page.completeAccountMapping(tap({ id: joint.issueId }))
   page.bindAccountDraftName({ ...tap({ id: joint.issueId }), detail: { value: '合成共同账户新名' } })
   await page.completeAccountMapping(tap({ id: joint.issueId }))
@@ -211,18 +211,18 @@ for (const mode of ['create', 'ignore', 'external']) test('真实 Page：已保�
     syntheticBill(1, 'SYNTHETIC-MODE-OLD', selected.name),
     syntheticBill(1, 'SYNTHETIC-MODE-NEW', '合成测试银行储蓄卡(7788)')
   ] }), page = h.page
-  const named = page.data.accountMappings.find(card => card.sourceLabel === selected.name)
-  await page.completeAccountMapping(tap({ id: named.issueId }))
-  await choose(page, named.issueId, mode)
-  const other = page.data.accountMappings.find(card => card.issueId !== named.issueId)
-  await choose(page, other.issueId, 'account:' + selected.accountId)
+  const namedId = page.data.accountMappings.find(card => card.sourceLabel === selected.name).issueId
+  await page.completeAccountMapping(tap({ id: namedId }))
+  await choose(page, namedId, mode)
+  const otherId = page.data.accountMappings.find(card => card.issueId !== namedId).issueId
+  await choose(page, otherId, 'account:' + selected.accountId)
   assert.equal(page.data.accountMappings.length, 2)
-  assert.equal(page.data.accountMappings.find(card => card.issueId === named.issueId).choiceValue, mode)
-  assert.equal(page.data.accountMappings.find(card => card.issueId === other.issueId).choiceValue, 'account:' + selected.accountId)
+  assert.equal(page.data.accountMappings.find(card => card.issueId === namedId).choiceValue, mode)
+  assert.equal(page.data.accountMappings.find(card => card.issueId === otherId).choiceValue, 'account:' + selected.accountId)
   assert.equal(h.local.model.choices.accounts.size, 1)
   const reopened = await coldPage(t, h)
   assert.equal(reopened.page.data.accountMappings.length, 2)
-  assert.equal(reopened.page.data.accountMappings.find(card => card.issueId === named.issueId).choiceValue, mode)
+  assert.equal(reopened.page.data.accountMappings.find(card => card.issueId === namedId).choiceValue, mode)
 })
 
 test('真实 Page：账户目录第100项之后的真实同ID选择仍可合组，未触碰默认值随补齐目录更新', async t => {
@@ -250,7 +250,8 @@ test('真实 Page：账户目录第100项之后的真实同ID选择仍可合组�
 
 test('真实 Page：一次手选可跨账户列表页吸收同ID默认卡，返回首屏与冷恢复结果一致', async t => {
   const selected = account(), labels = Array.from({ length: 100 }, (_, index) => '合成独立来源' + index)
-  const contents = [alipay(1), ...labels.map((label, index) => syntheticBill(1, 'SYNTHETIC-CROSS-PAGE-' + index, label)),
+  // 笔数排序下用更少的记录把别名卡放在末页，不能再依靠交易日期定位。
+  const contents = [alipay(3), ...labels.map((label, index) => syntheticBill(2, 'SYNTHETIC-CROSS-PAGE-' + index, label)),
     Buffer.from(syntheticBill(1, 'SYNTHETIC-CROSS-PAGE-ALIAS', aliasLabel).toString().replace('2026-09-01', '2026-09-03'))]
   const h = await setup(t, { selected, contents }), page = h.page
   assert.equal(page.data.reviewPage.count, 102)
@@ -266,7 +267,7 @@ test('真实 Page：一次手选可跨账户列表页吸收同ID默认卡，返�
     joint = page.data.accountMappings.find(card => card.groupReason === 'selected_account')
   }
   assert.ok(joint, '从末页选择后按完整本批合组，不能只比较当前页')
-  assert.equal(joint.memberCount, 2)
+  assert.equal(joint.memberCount, 4)
   assert.equal(joint.needsConfirmation, true)
   await page.changeReviewPage(tap({ direction: 'first' }))
   await page.changeReviewPage(tap({ direction: '1' }))

@@ -4,6 +4,27 @@ const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/packages/fina
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const event = (direction, id) => ({ currentTarget: { dataset: { direction, id } } })
 
+test('完整显示组主动换页时不继续补页，往返翻页保持成员范围', async () => {
+  const summary = { viewVersion: 'v1', update: { updateId: 'synthetic-sort-update' } }, calls = []
+  const session = create(async (action, input) => {
+    calls.push(input.cursor)
+    return { protocolVersion: 2, viewVersion: 'v1', total: 3,
+      items: input.cursor ? [{ issueId: 'split-a' }, { issueId: 'split-b' }] : [{ issueId: 'single' }],
+      nextCursor: input.cursor ? null : 'next-group', pageBoundary: !input.cursor }
+  }, summary)
+  const pager = session.pager('reviewIssues.list', { group: 'accounts', pageSize: 2 }, { fillPage: true })
+  const first = await pager.load('first')
+  assert.deepEqual(first.items.map(row => row.issueId), ['single'])
+  assert.deepEqual(calls, [null])
+  assert.deepEqual([first.page.start, first.page.end, first.page.hasNext], [1, 1, true])
+  const second = await pager.load(1)
+  assert.deepEqual(second.items.map(row => row.issueId), ['split-a', 'split-b'])
+  assert.deepEqual([second.page.start, second.page.end, second.page.hasNext], [2, 3, false])
+  assert.deepEqual((await pager.load(-1)).items.map(row => row.issueId), ['single'])
+  assert.deepEqual(calls, [null, 'next-group'])
+  session.close()
+})
+
 test('冷启动自动登录后新导入页激活，待恢复批次与原文仅恢复一次', async () => {
   for (const restore of [false, true]) {
     const h = runtime(fixture(2), { approved: false, initialView: false,

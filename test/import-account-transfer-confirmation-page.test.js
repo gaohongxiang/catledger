@@ -78,6 +78,23 @@ function assertCompleted(h, count, transferCount = 2) {
   assert.equal(h.network.length, 0)
 }
 
+function assertNativeCardsIsolated(h, expectedTypes) {
+  const options = h.load(path.resolve(__dirname, '../miniprogram/packages/finance/pages/import-workbench/account-review.js')).ACCOUNT_TYPE_OPTIONS
+  assert.equal(JSON.stringify(options), expectedTypes, '重排的叶路径更新不能改写共享账户类型表')
+  const displayed = h.page.data.accountMappingsIncluded.concat(h.page.data.accountMappingsExcluded)
+  for (const card of h.page.data.accountMappings) {
+    const copy = displayed.find(row => row.issueId === card.issueId)
+    assert.ok(copy)
+    assert.notEqual(card, copy, '总列表与分区列表需要各自可变的原生卡片对象')
+    assert.deepEqual(JSON.parse(JSON.stringify(card)), JSON.parse(JSON.stringify(copy)), '重排后各列表显示同一个决定')
+    assert.notEqual(card.accountContext, copy.accountContext)
+    for (const option of card.typeOptions) {
+      assert.ok(options.every(shared => shared !== option), '原生叶更新不能持有类型常量的嵌套对象')
+      assert.ok(copy.typeOptions.every(other => other !== option), '两个原生列表的选项不能共用可变对象')
+    }
+  }
+}
+
 test('真实 Page：余额宝自动转入和零钱提现的四个端点一次确认后仍是四张卡', async t => {
   const h = await setup(t), page = h.page
   assert.equal(page.data.accountMappings.length, 4)
@@ -142,19 +159,26 @@ test('真实 Page：快照已有仅本事件的转出绑定，确认转入端和
 for (const first of ['from', 'to']) {
   test(`真实 Page：先确认${first === 'from' ? '转出' : '转入'}端，重开后确认另一端仍保留两端归属`, async t => {
     let h = await setup(t)
+    const expectedTypes = JSON.stringify(h.load(path.resolve(__dirname,
+      '../miniprogram/packages/finance/pages/import-workbench/account-review.js')).ACCOUNT_TYPE_OPTIONS)
+    assertNativeCardsIsolated(h, expectedTypes)
     const ordered = [first, first === 'from' ? 'to' : 'from'].map(side => h.page.mappingState().rawMappings
       .filter(mapping => mapping.accountContext.fundsSide === side).map(mapping => mapping.issueId))
     assert.deepEqual(ordered.map(ids => ids.length), [2, 2])
     for (const id of ordered[0]) {
       await h.page.completeAccountMapping(tap(id))
       assert.equal(h.page.data.accountStepError, '')
+      assertNativeCardsIsolated(h, expectedTypes)
     }
     assert.equal(h.page.data.accountMappings.length, 4)
     assert.equal(h.page.data.accountStepSummary.displayConfirmed, 2)
     h = await reopen(t, h)
     assert.equal(h.page.data.accountMappings.length, 4)
     assert.equal(h.page.data.accountStepSummary.displayConfirmed, 2)
-    for (const id of ordered[1]) await h.page.completeAccountMapping(tap(id))
+    for (const id of ordered[1]) {
+      await h.page.completeAccountMapping(tap(id))
+      assertNativeCardsIsolated(h, expectedTypes)
+    }
     assertCompleted(h, 4)
     h = await reopen(t, h)
     assertCompleted(h, 4)
