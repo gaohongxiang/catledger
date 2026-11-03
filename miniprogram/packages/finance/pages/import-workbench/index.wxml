@@ -276,7 +276,7 @@
         </view>
         <view wx:if="{{item.inline && item.groupId}}" class="account-group-note account-group-sources">
           <view class="account-group-chips">
-            <text wx:for="{{item.groupSourceChips}}" wx:for-item="source" wx:key="label" class="account-group-chip">{{source.label}}<text class="account-group-chip-count">{{source.count}}</text></text>
+            <text wx:for="{{item.groupSourceChips}}" wx:for-item="source" wx:key="label" class="account-group-chip">{{source.label}}</text>
           </view>
           <view class="account-group-actions">
             <text wx:if="{{item.groupCountNote || item.groupHint}}" class="account-group-hint">{{item.groupCountNote || item.groupHint}}</text>

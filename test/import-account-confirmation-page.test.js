@@ -43,7 +43,7 @@ test('真实 Page 联合候选：3笔支付宝和2笔微信为1卡，待确认�
   assert.equal(card.groupCandidate, true)
   assert.equal(card.needsConfirmation, true)
   assert.equal(card.typeLocked, true)
-  assert.equal(card.groupSourceChips.map(chip => chip.label + chip.count).join(','), '支付宝3,微信2')
+  assert.deepEqual(plain(card.groupSourceChips), [{ label: '支付宝' }, { label: '微信' }])
   assert.equal(card.groupIssueIds, undefined)
   assert.equal(card.groupSources, undefined)
   assert.equal(page.businessData().accountIssues.length, 2)

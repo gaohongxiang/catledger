@@ -14,9 +14,12 @@ function titleMatchesChoice(label, choiceName) {
 const signature = (rows, drafts) => JSON.stringify(rows.map(row => [row.issueId, row.version, row.status,
   row.accountContext?.accountId || '', drafts.get(row.issueId)?.revision || 0]))
 
-function countNote(group) {
+function countNote(group, separated = false) {
+  // 旧页面没有完整组信息时，只解释各来源可能重叠，不猜全组笔数。
+  if (!group) return separated ? '各来源可能包含同一笔交易' : ''
   const separate = Number(group?.separateMemberCount || 0), joined = Number(group?.memberCount || 0)
-  return separate > joined ? '分开合计 ' + separate + ' 笔，去重后 ' + joined + ' 笔' : ''
+  if (!(separate > joined)) return ''
+  return separated ? '各来源包含相同交易，笔数不相加' : '同一笔交易只算一次'
 }
 
 function compact(mapping) {
@@ -216,14 +219,10 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       : choices.find(choice => choice.value === choiceValue)?.name || '请选择账户'
     const needsConfirmation = !ready || draft.dirty || (rows.some(row => row.needsConfirmation) && !draft.localConfirmed)
     const allowedOptions = typeOptions.filter(option => allowed.includes(option.value))
-    const sources = group.sources || [], sourceCounts = new Map()
-    // 完整读层已按平台对当前账户的交易去重，不能再把同平台各文件的笔数相加。
-    if (Array.isArray(group.sourceCounts)) {
-      for (const source of group.sourceCounts) sourceCounts.set(source.sourceType, source.count)
-    } else {
-      for (const source of sources) sourceCounts.set(source.sourceType, (sourceCounts.get(source.sourceType) || 0) + Number(source.count || 0))
-    }
-    const sourceChips = [...sourceCounts].slice(0, 3).map(([source, count]) => ({ label: sourceLabels[source] || '账单', count }))
+    const sources = group.sources || []
+    // 卡片只显示一个交易总数；来源只说明来自哪里，不把分平台计数并列展示。
+    const sourceTypes = new Set((group.sourceCounts || sources).map(source => source.sourceType))
+    const sourceChips = [...sourceTypes].slice(0, 3).map(source => ({ label: sourceLabels[source] || '账单' }))
     const anchor = byId.get(group.anchorIssueId) || rows[0]
     const mapping = { ...anchor, issueId: group.groupId, groupId: group.groupId, groupIssueIds: group.issueIds.slice(),
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
@@ -233,7 +232,7 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
         : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
       groupCountNote: countNote(group),
-      groupConfirmationText: '这 ' + group.memberCount + ' 笔使用同一账户',
+      groupConfirmationText: '这些交易使用同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,
       canExternal, needsConfirmation, canConfirm: ready, dirty: draft.dirty,

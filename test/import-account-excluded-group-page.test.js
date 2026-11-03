@@ -107,7 +107,7 @@ function assertJoined(page, credit) {
   assert.equal(cards[0].choiceValue, 'account:' + credit.accountId)
   assert.ok(cards[0].groupId)
   assert.equal(cards[0].groupSourceCount, 2)
-  assert.deepEqual(plain(cards[0].groupSourceChips.map(chip => [chip.label, chip.count]).sort()), [['支付宝', 29], ['银行', 40]])
+  assert.deepEqual(plain(cards[0].groupSourceChips.map(chip => chip.label).sort()), ['支付宝', '银行'])
   return cards[0]
 }
 

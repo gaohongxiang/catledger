@@ -8,7 +8,8 @@ const sessions = require('../miniprogram/packages/finance/services/import-local-
 
 const plain = value => JSON.parse(JSON.stringify(value))
 const tap = dataset => ({ currentTarget: { dataset } })
-const countNote = '分开合计 69 笔，去重后 40 笔'
+const countNote = '同一笔交易只算一次'
+const separatedNote = '各来源包含相同交易，笔数不相加'
 
 async function setup(t, options = {}) {
   const fixture = await accountGroupCountsFacts(options), { credit, wechat, alipay, value } = fixture
@@ -50,9 +51,14 @@ function joined(page, credit, sourceCount = 2) {
   assert.equal(card.memberCount, 40, '合卡按不同交易计数，不把已确认同笔的两份凭据相加')
   assert.equal(card.needsConfirmation, false)
   assert.equal(card.groupSourceCount, sourceCount)
-  assert.deepEqual(plain(Object.fromEntries(card.groupSourceChips.map(source => [source.label, source.count]))),
-    { 银行: 40, 微信: 29 }, '信用卡来源不混入还款付款端的微信零钱和支付宝余额')
+  assert.deepEqual(plain(card.groupSourceChips), [{ label: '银行' }, { label: '微信' }],
+    '来源标签只显示平台名称，不混入还款付款端的微信零钱和支付宝余额')
+  const descriptor = page.businessData().accountDisplayGroups.find(group => group.groupId === card.groupId)
+  assert.ok(descriptor)
+  assert.deepEqual(plain(Object.fromEntries(descriptor.sourceCounts.map(source => [source.sourceType, source.count]))),
+    { bank: 40, wechat: 29 }, '平台内部仍按本账户的事件并集计数，同平台多份文件不相加')
   assert.equal(card.groupCountNote, countNote)
+  assert.equal(card.groupConfirmationText, '这些交易使用同一账户')
   return card
 }
 
@@ -60,7 +66,7 @@ function separated(page, credit) {
   const cards = page.data.accountMappings.filter(card => card.choiceValue === 'account:' + credit.accountId)
   assert.deepEqual(plain(cards.map(card => card.memberCount)), [40, 29])
   assert.ok(cards.every(card => card.accountSeparatedGroupId && !card.needsConfirmation))
-  assert.equal(cards[0].accountSeparatedCountNote, countNote)
+  assert.equal(cards[0].accountSeparatedCountNote, separatedNote)
   assert.ok(!cards[1].accountSeparatedCountNote, '组计数说明只在拆分组首卡展示一次')
   return cards
 }
@@ -78,7 +84,7 @@ async function cold(t, h) {
   await page.setStep({ currentStep: 2 })
 }
 
-test('真实账户合卡40笔：只统计该账户的银行40/微信29来源，去重说明与40笔详情一致', async t => {
+test('真实账户合卡40笔：来源标签不再显示数字，内部去重与40笔详情保持一致', async t => {
   const h = await setup(t), financial = plain(h.local.model.finalState()), card = joined(h.page, h.credit)
   const originals = h.page.mappingState().rawMappings.filter(mapping => mapping.choiceValue === 'account:' + h.credit.accountId)
   assert.deepEqual(plain(originals.map(mapping => mapping.memberCount).sort((a, b) => b - a)), [40, 29])
@@ -101,13 +107,24 @@ test('真实账户合卡40笔：只统计该账户的银行40/微信29来源，�
   assert.equal(h.network.length, 0)
 })
 
-test('真实40/29来源拆开、恢复合并及冷恢复：去重说明和来源数字稳定，金融事实不变', async t => {
+test('真实40/29来源拆开、旧草稿冷恢复及合回：简洁说明稳定，金融事实不变', async t => {
   const h = await setup(t), financial = plain(h.local.model.finalState()), card = joined(h.page, h.credit)
   await h.page.separateAccountGroup(tap({ id: card.issueId }))
   separated(h.page, h.credit)
   assert.deepEqual(plain(h.local.model.finalState()), financial)
   await cold(t, h)
-  const children = separated(h.page, h.credit)
+  let children = separated(h.page, h.credit)
+  // 旧版本可能只留下原事项的拆分标记；正常冷恢复应读取完整组，不能猜当前页的总数。
+  const drafts = plain(h.local.state.drafts), splitId = children[0].accountSeparatedGroupId
+  assert.ok(drafts[splitId])
+  delete drafts[splitId]
+  h.local.saveDrafts(drafts)
+  await cold(t, h)
+  children = separated(h.page, h.credit)
+  assert.match(children[0].accountSeparatedGroupId, /^legacy:account:/)
+  assert.ok(children.every(child => h.local.state.drafts[child.issueId].confirmationSeparate))
+  assert.equal(h.local.model.evidence.size, 71)
+  assert.deepEqual(plain(h.local.model.finalState()), financial)
   await h.page.restoreAccountGroup(tap({ id: children[0].restoreGroupId }))
   joined(h.page, h.credit)
   assert.deepEqual(plain(h.local.model.finalState()), financial)

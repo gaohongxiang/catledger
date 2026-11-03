@@ -560,7 +560,7 @@ module.exports = {
       })
     const visible = displayGroups.fold({ mappings, groups: accountDisplayGroups, drafts: self._accountUiDrafts,
       accounts, accountDrafts, typeOptions: ACCOUNT_TYPE_OPTIONS, ownershipNote: ownershipRecheckNote })
-    const countNotes = new Map(accountDisplayGroups.map(group => [group.groupId, displayGroups.countNote(group)]))
+    const groupDescriptors = new Map(accountDisplayGroups.map(group => [group.groupId, group]))
     // 每页的组内首卡保留合回入口，不要求整个拆分组刚好在当前页。
     const restoreShown = new Set()
     for (const mapping of visible) {
@@ -569,7 +569,7 @@ module.exports = {
       restoreShown.add(id)
       mapping.restoreGroupId = id
       mapping.restoreBlocked = false
-      mapping.accountSeparatedCountNote = countNotes.get(id) || ''
+      mapping.accountSeparatedCountNote = displayGroups.countNote(groupDescriptors.get(id), true)
     }
     for (const [jointId, joint] of self._accountUiDrafts) {
       if (!joint.separated || !Array.isArray(joint.separatedMembers)) continue
@@ -578,7 +578,7 @@ module.exports = {
       restoreShown.add(jointId)
       anchor.restoreGroupId = jointId
       anchor.restoreBlocked = false
-      anchor.accountSeparatedCountNote = countNotes.get(jointId) || ''
+      anchor.accountSeparatedCountNote = displayGroups.countNote(groupDescriptors.get(jointId), true)
     }
     // 旧版本拆开的卡没有留下联合草稿：同一显示账户名下的成员仍按同一张卡处理，同样允许合回。
     const legacy = new Map()
@@ -596,6 +596,7 @@ module.exports = {
       if (!anchor || anchor.restoreGroupId) continue
       anchor.restoreGroupId = 'legacy:' + key
       anchor.restoreBlocked = false
+      anchor.accountSeparatedCountNote = displayGroups.countNote(groupDescriptors.get(anchor.restoreGroupId), true)
     }
     // 批量确认前检查整个可见账户目录，不能先新建一项再把后面的同名创建悄悄复用。
     for (const key of ['ready', 'invalid', 'pending', 'confirmed', 'suggested', 'suggestedCreate',
