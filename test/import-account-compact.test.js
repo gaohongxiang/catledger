@@ -19,15 +19,17 @@ test('账户标题始终显示当前账户或操作，并带下拉箭头', () =>
   assert.match(markup, /account-state-tag-done/)
 })
 
-test('来源单独一行，多来源仍用标签加分别确认', () => {
+test('来源单独一行，多来源用平台文字与分别确认，主笔数承接去重标记', () => {
   assert.match(markup, /class="account-source-line[ "]/)
   assert.match(markup, /来源：\{\{item\.sourceLabel\}\}/)
   // 来源名缺失时不能拿问题类型名冒充，改成「来源未识别」并带上交易对方。
   assert.match(markup, /来源未识别/)
   assert.match(markup, /item\.sourceHint/)
   assert.match(markup, /item\.inline && item\.groupId/)
-  assert.match(markup, /account-group-chips/)
-  assert.match(markup, /\{\{item\.groupCountNote \|\| item\.groupHint\}\}/)
+  assert.match(markup, /来源：\{\{item\.groupSourceText\}\}/)
+  assert.doesNotMatch(markup, /item\.groupSourceChips|item\.groupCountNote/)
+  assert.match(markup, /wx:if="\{\{item\.groupDeduplicated\}\}"[^>]*>去重后<\/text>/)
+  assert.match(markup, /\{\{item\.accountSeparatedCountNote \|\| '这组账单已拆开'\}\}/)
   const grouping = read('miniprogram/packages/finance/pages/import-workbench/account-display-groups.js')
   assert.match(grouping, /可能同一张卡/)
   assert.match(grouping, /已选择同一账户/)
@@ -51,6 +53,13 @@ test('新建账户：选择、名称、类型、状态都在同一行里', () =>
   assert.match(row, /bindchange="changeAccountDraftType" disabled="\{\{accountStepBusy\}\}"/)
   assert.match(row, /aria-label="\{\{item\.label\}\}的新账户名称"/)
   assert.match(row, /aria-label="\{\{item\.label\}\}的账户类型/)
+  const groupStart = markup.indexOf('<view wx:if="{{item.inline && item.groupId}}"')
+  const groupEnd = markup.indexOf('<view wx:if="{{item.inline && !item.groupId}}"', groupStart)
+  assert.ok(groupStart >= 0 && groupEnd > groupStart)
+  const grouped = markup.slice(groupStart, groupEnd)
+  assert.match(grouped, /wx:if="\{\{item\.choiceValue === 'create' && item\.memberCount > 0\}\}"[^>]*bindtap="openAccountRecords"/,
+    '新建联合卡也有可达的交易入口，不能只给非新建或单来源卡显示笔数')
+  assert.match(grouped, /data-id="\{\{item\.issueId\}\}"[^>]*bindtap="openAccountRecords"/)
 })
 
 test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触控高度', () => {

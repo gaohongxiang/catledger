@@ -270,16 +270,16 @@
               <text wx:else class="account-proof-title">{{item.label}}</text>
               <text wx:if="{{item.inline}}" class="account-state-tag {{item.needsConfirmation ? 'account-state-tag-pending' : 'account-state-tag-done'}}">{{item.needsConfirmation ? '待确认' : '已确认'}}</text>
             </view>
-            <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
+            <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.groupDeduplicated ? '去重后' : ''}}{{item.memberCount}}笔交易"><text wx:if="{{item.groupDeduplicated}}" class="account-deduplicated-label">去重后</text><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
             <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
           </block>
         </view>
         <view wx:if="{{item.inline && item.groupId}}" class="account-group-note account-group-sources">
-          <view class="account-group-chips">
-            <text wx:for="{{item.groupSourceChips}}" wx:for-item="source" wx:key="label" class="account-group-chip">{{source.label}}</text>
-          </view>
-          <view class="account-group-actions">
-            <text wx:if="{{item.groupCountNote || item.groupHint}}" class="account-group-hint">{{item.groupCountNote || item.groupHint}}</text>
+          <text wx:if="{{item.groupSourceText}}" class="account-source-text">来源：{{item.groupSourceText}}</text>
+          <text wx:else class="account-source-text">来源未识别</text>
+          <view class="account-group-controls">
+            <!-- 新建合并卡的头行保留输入控件，唯一笔数入口放在来源与分别确认旁。 -->
+            <view wx:if="{{item.choiceValue === 'create' && item.memberCount > 0}}" class="account-evidence-trigger" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.groupDeduplicated ? '去重后' : ''}}{{item.memberCount}}笔交易"><text wx:if="{{item.groupDeduplicated}}" class="account-deduplicated-label">去重后</text><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
             <button class="account-group-separate" data-id="{{item.issueId}}" bindtap="separateAccountGroup" disabled="{{busy || accountStepBusy}}" aria-label="不是同一张卡，分别确认{{item.label}}的各来源">分别确认</button>
           </view>
         </view>
@@ -303,7 +303,8 @@
           <text wx:if="{{item.choiceValue === 'pending'}}" class="account-inline-note">{{item.paymentNeedsReview ? '多账户共同支付，请核对金额与性质。' : '请选择归属账户；信息不足请核对后确认。'}}</text>
           <text wx:if="{{item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或改选已有账户 / 不计入。</text>
           <text wx:if="{{item.validationText}}" class="account-inline-note">{{item.validationText}}</text>
-          <text wx:if="{{item.groupId && item.choiceValue !== 'ignore' && item.choiceValue !== 'external'}}" class="account-state-note">{{item.groupConfirmationText}}</text>
+          <text wx:if="{{item.groupId && item.groupHint}}" class="account-state-note">{{item.groupHint}}</text>
+          <text wx:elif="{{item.groupId && item.choiceValue !== 'ignore' && item.choiceValue !== 'external'}}" class="account-state-note">{{item.groupConfirmationText}}</text>
         </view>
       </view>
     </view>
@@ -313,8 +314,8 @@
       <view wx:for="{{accountMappingsExcluded}}" wx:key="issueId" class="account-excluded-item" data-id="{{item.issueId}}" bindtap="openAccountChoice">
         <view class="account-excluded-copy">
           <text class="account-proof-title">{{item.label}}</text>
-          <text class="account-proof-meta">{{item.memberCount}} 笔 · {{item.summaryText}}</text>
-          <text wx:if="{{item.accountSeparatedCountNote || item.groupCountNote}}" class="account-proof-meta">{{item.accountSeparatedCountNote || item.groupCountNote}}</text>
+          <text class="account-proof-meta"><text class="account-count"><text wx:if="{{item.groupDeduplicated}}" class="account-deduplicated-label">去重后</text><text class="money-number">{{item.memberCount}} 笔</text></text> · {{item.summaryText}}</text>
+          <text wx:if="{{item.accountSeparatedCountNote}}" class="account-proof-meta">{{item.accountSeparatedCountNote}}</text>
         </view>
         <text wx:if="{{item.restoreGroupId}}" class="account-change" data-id="{{item.restoreGroupId}}" catchtap="restoreAccountGroup" aria-role="button" aria-label="把这组已拆开的账单合并回一张卡">恢复合并</text>
         <text class="account-change">更改</text>

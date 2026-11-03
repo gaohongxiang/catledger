@@ -14,12 +14,16 @@ function titleMatchesChoice(label, choiceName) {
 const signature = (rows, drafts) => JSON.stringify(rows.map(row => [row.issueId, row.version, row.status,
   row.accountContext?.accountId || '', drafts.get(row.issueId)?.revision || 0]))
 
+function hasOverlap(group) {
+  const separate = Number(group?.separateMemberCount), joined = Number(group?.memberCount)
+  return Number.isSafeInteger(separate) && Number.isSafeInteger(joined) && joined > 0 && separate > joined
+}
+
 function countNote(group, separated = false) {
+  if (!separated) return ''
   // 旧页面没有完整组信息时，只解释各来源可能重叠，不猜全组笔数。
-  if (!group) return separated ? '各来源可能包含同一笔交易' : ''
-  const separate = Number(group?.separateMemberCount || 0), joined = Number(group?.memberCount || 0)
-  if (!(separate > joined)) return ''
-  return separated ? '各来源包含相同交易，笔数不相加' : '同一笔交易只算一次'
+  if (!group) return '各来源可能包含同一笔交易'
+  return hasOverlap(group) ? '各来源有相同交易' : ''
 }
 
 function compact(mapping) {
@@ -231,7 +235,7 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       groupHint: !needsConfirmation ? '' : group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
         : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
-      groupCountNote: countNote(group),
+      groupSourceText: sourceChips.map(source => source.label).join(' · '), groupDeduplicated: hasOverlap(group),
       groupConfirmationText: '这些交易使用同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,

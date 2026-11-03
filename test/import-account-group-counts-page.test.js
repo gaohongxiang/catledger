@@ -8,8 +8,7 @@ const sessions = require('../miniprogram/packages/finance/services/import-local-
 
 const plain = value => JSON.parse(JSON.stringify(value))
 const tap = dataset => ({ currentTarget: { dataset } })
-const countNote = '同一笔交易只算一次'
-const separatedNote = '各来源包含相同交易，笔数不相加'
+const separatedNote = '各来源有相同交易'
 
 async function setup(t, options = {}) {
   const fixture = await accountGroupCountsFacts(options), { credit, wechat, alipay, value } = fixture
@@ -26,6 +25,11 @@ async function setup(t, options = {}) {
   for (const event of [...h.local.model.events.values()]) if (event.economicNature === 'repayment' && event.sourceType !== 'bank') {
     h.local.call('financeUpdates.setReview', { requestId: randomUUID(), eventId: event.eventId, eventVersion: event.version,
       editorVersion: 1, fields: { counterpartyLedgerAccountId: credit.accountId } })
+  }
+  if (options.beforePairing) {
+    await h.page.applyUpdateView(h.local.view)
+    await h.page.setStep({ currentStep: 2 })
+    return { ...h, ...fixture }
   }
   const pairs = [], first = h.local.call('reviewIssues.pairings', { mode: 'suggested', pageSize: 100 })
   pairs.push(...first.items)
@@ -51,13 +55,14 @@ function joined(page, credit, sourceCount = 2) {
   assert.equal(card.memberCount, 40, '合卡按不同交易计数，不把已确认同笔的两份凭据相加')
   assert.equal(card.needsConfirmation, false)
   assert.equal(card.groupSourceCount, sourceCount)
-  assert.deepEqual(plain(card.groupSourceChips), [{ label: '银行' }, { label: '微信' }],
-    '来源标签只显示平台名称，不混入还款付款端的微信零钱和支付宝余额')
+  assert.deepEqual(new Set(card.groupSourceText.split(' · ')), new Set(['银行', '微信']),
+    '来源文字只显示平台名称，不混入还款付款端的微信零钱和支付宝余额')
   const descriptor = page.businessData().accountDisplayGroups.find(group => group.groupId === card.groupId)
   assert.ok(descriptor)
   assert.deepEqual(plain(Object.fromEntries(descriptor.sourceCounts.map(source => [source.sourceType, source.count]))),
     { bank: 40, wechat: 29 }, '平台内部仍按本账户的事件并集计数，同平台多份文件不相加')
-  assert.equal(card.groupCountNote, countNote)
+  assert.equal(card.groupDeduplicated, true, '原卡范围有交集时，主笔数才标记去重后')
+  assert.equal(card.groupCountNote, undefined, '合卡不再保留另一行去重说明')
   assert.equal(card.groupConfirmationText, '这些交易使用同一账户')
   return card
 }
@@ -66,6 +71,7 @@ function separated(page, credit) {
   const cards = page.data.accountMappings.filter(card => card.choiceValue === 'account:' + credit.accountId)
   assert.deepEqual(plain(cards.map(card => card.memberCount)), [40, 29])
   assert.ok(cards.every(card => card.accountSeparatedGroupId && !card.needsConfirmation))
+  assert.ok(cards.every(card => !card.groupDeduplicated), '分卡保留原范围笔数，不显示合卡的去重后前缀')
   assert.equal(cards[0].accountSeparatedCountNote, separatedNote)
   assert.ok(!cards[1].accountSeparatedCountNote, '组计数说明只在拆分组首卡展示一次')
   return cards
@@ -84,7 +90,7 @@ async function cold(t, h) {
   await page.setStep({ currentStep: 2 })
 }
 
-test('真实账户合卡40笔：来源标签不再显示数字，内部去重与40笔详情保持一致', async t => {
+test('真实账户合卡40笔：来源仅文字，主笔数标记去重后，内部去重与40笔详情一致', async t => {
   const h = await setup(t), financial = plain(h.local.model.finalState()), card = joined(h.page, h.credit)
   const originals = h.page.mappingState().rawMappings.filter(mapping => mapping.choiceValue === 'account:' + h.credit.accountId)
   assert.deepEqual(plain(originals.map(mapping => mapping.memberCount).sort((a, b) => b - a)), [40, 29])
@@ -149,5 +155,27 @@ test('同一微信消费在两份文件重复导出：来源文件各保留，�
   await cold(t, h)
   joined(h.page, h.credit, 3)
   assert.deepEqual(plain(h.local.model.finalState()), financial)
+  assert.equal(h.network.length, 0)
+})
+
+test('同平台重复导出但原卡交易尚无交集：保留所有来源，不给69笔合卡标去重后', async t => {
+  const h = await setup(t, { duplicateWechat: true, beforePairing: true })
+  const card = h.page.data.accountMappings.find(item => item.groupId && item.choiceValue === 'account:' + h.credit.accountId)
+  assert.ok(card)
+  assert.equal(card.memberCount, 69)
+  assert.equal(card.groupSourceCount, 3)
+  assert.equal(card.groupDeduplicated, false, '同一原卡的重复文件，不代表不同原卡之间有重叠')
+  assert.equal(card.groupCountNote, undefined)
+  assert.deepEqual(new Set(card.groupSourceText.split(' · ')), new Set(['银行', '微信']))
+  const descriptor = h.page.businessData().accountDisplayGroups.find(group => group.groupId === card.groupId)
+  assert.equal(descriptor.separateMemberCount, descriptor.memberCount)
+  assert.equal(descriptor.sourceCounts.find(source => source.sourceType === 'wechat').count, 29)
+  assert.deepEqual(plain(descriptor.sources.filter(source => source.sourceType === 'wechat').map(source => source.count).sort((a, b) => b - a)), [29, 1])
+  assert.equal(h.local.model.events.size, 71)
+  assert.equal(h.local.model.evidence.size, 72)
+  assert.equal(h.local.model.choices.pairings.size, 0)
+  await h.page.openAccountRecords(tap({ id: card.issueId }))
+  assert.equal(h.page.data.accountRecordsSheet.count, 69)
+  assert.equal(h.page.data.accountRecordsSheet.error || '', '')
   assert.equal(h.network.length, 0)
 })
