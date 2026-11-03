@@ -44,7 +44,7 @@ test('真实 Page 联合候选：3笔支付宝和2笔微信为1卡，待确认�
   assert.equal(card.needsConfirmation, true)
   assert.equal(card.typeLocked, true)
   assert.equal(card.choiceValue, 'create', '未绑定的联合候选保留新建选择及交易入口')
-  assert.deepEqual(new Set(card.groupSourceText.split(' · ')), new Set(['支付宝', '微信']))
+  assert.equal(card.groupSourceText, label, '跨平台的同名5564来源只显示一次，原标签不替换为平台名')
   assert.equal(card.groupDeduplicated, false, '新建联合卡的3笔与2笔独立交易不标去重后')
   assert.equal(card.groupCountNote, undefined)
   assert.equal(card.groupIssueIds, undefined)
@@ -88,11 +88,13 @@ test('真实 Page 联合新建：单次保存两个原决定、只新建一个�
   assert.equal(page.data.accountStepError, '')
   assert.equal(h.local.model.accounts.get(id).name, '合成共同银行卡')
   assert.equal([...h.local.model.accounts.values()].filter(account => account.isDraft).length, 1)
+  assert.equal(page.data.accountMappings[0].groupSourceText, label, '已选择账户改名不能改掉原账单来源名')
   const reopened = await coldPage(t, h)
   assert.equal(reopened.local.model.invalid.size, 0)
   assert.equal(reopened.page.data.accountMappings.length, 1)
   assert.equal(reopened.page.data.accountMappings[0].needsConfirmation, false)
   assert.equal(reopened.page.data.accountMappings[0].groupDeduplicated, false)
+  assert.equal(reopened.page.data.accountMappings[0].groupSourceText, label, '冷恢复仍显示原来源名，而不是改后的账户名')
   assert.equal(reopened.local.model.accounts.get(id).name, '合成共同银行卡')
   assert.ok([...reopened.local.model.events.values()].every(event => event.ledgerAccountId === id))
   assert.equal(h.network.length, 0)
@@ -315,12 +317,19 @@ test('真实 Page 类型建议冲突保持待选择，多种合法类型不能�
   Object.assign(page.data, { accountIssues: issues, accountDisplayGroups: [group], accounts: [], accountDrafts: [] })
   const state = page.refreshAccountMappings()
   assert.equal(state.mappings.length, 1)
+  assert.equal(state.mappings[0].groupSourceText, '合成号码5564', '没有来源文件或平台统计时，仍显示去重后的原标签')
   assert.equal(state.mappings[0].groupDeduplicated, false, '缺完整原卡合计的旧组不能猜测去重标记')
   assert.equal(state.mappings[0].choiceValue, 'pending')
   assert.equal(state.mappings[0].draftTypeIndex, -1)
   assert.equal(state.mappings[0].canConfirm, false)
   assert.match(state.mappings[0].validationText, /类型不同/u)
   assert.equal(state.summary.suggested, 0)
+  // 仅变更旧展示输入中的来源元数据，不改交易或账户决定。
+  const sparse = issues.map((issue, index) => ({ ...issue, accountContext: { ...issue.accountContext,
+    sourceType: '', label: index ? '   ' : ' 合成号码5564 ' } }))
+  const compatible = page.buildAccountMappingState(sparse, [], [], [], [group])
+  assert.equal(compatible.mappings[0].groupSourceText, '合成号码5564',
+    '平台与文件元数据缺失时，保留非空原标签并去除空白来源，不能显示来源未识别')
 })
 
 test('真实 Page 联合输入拆分后保留，落盘失败不生成半个联合决定', async t => {

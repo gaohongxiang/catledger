@@ -19,7 +19,7 @@ test('账户标题始终显示当前账户或操作，并带下拉箭头', () =>
   assert.match(markup, /account-state-tag-done/)
 })
 
-test('来源单独一行，多来源用平台文字与分别确认，主笔数承接去重标记', () => {
+test('来源单独一行，多来源用原来源名与分别确认，主笔数承接去重标记', () => {
   assert.match(markup, /class="account-source-line[ "]/)
   assert.match(markup, /来源：\{\{item\.sourceLabel\}\}/)
   // 来源名缺失时不能拿问题类型名冒充，改成「来源未识别」并带上交易对方。

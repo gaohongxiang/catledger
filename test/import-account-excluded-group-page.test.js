@@ -107,7 +107,8 @@ function assertJoined(page, credit) {
   assert.equal(cards[0].choiceValue, 'account:' + credit.accountId)
   assert.ok(cards[0].groupId)
   assert.equal(cards[0].groupSourceCount, 2)
-  assert.deepEqual(plain(cards[0].groupSourceChips.map(chip => chip.label).sort()), ['支付宝', '银行'])
+  assert.deepEqual(cards[0].groupSourceText.split(' · ').sort(), [label, alias].sort(),
+    '逐笔排除不影响合卡展示各原账户来源名称')
   return cards[0]
 }
 

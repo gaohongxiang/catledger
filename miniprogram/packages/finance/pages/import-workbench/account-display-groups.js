@@ -2,7 +2,6 @@ const model = require('./model')
 const types = require('../../domain/import-review/account-type-policy')
 const names = require('../../domain/import-review/account-draft-policy')
 
-const sourceLabels = { alipay: '支付宝', wechat: '微信', bank: '银行' }
 const nameValid = value => Array.from(String(value || '').normalize('NFKC').trim()).length >= 1 &&
   Array.from(String(value || '').normalize('NFKC').trim()).length <= 32
 // 标题就是账单里的账户名。推荐选中同名账户时，再给一个下拉框只是把标题念第二遍。
@@ -224,9 +223,8 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
     const needsConfirmation = !ready || draft.dirty || (rows.some(row => row.needsConfirmation) && !draft.localConfirmed)
     const allowedOptions = typeOptions.filter(option => allowed.includes(option.value))
     const sources = group.sources || []
-    // 卡片只显示一个交易总数；来源只说明来自哪里，不把分平台计数并列展示。
-    const sourceTypes = new Set((group.sourceCounts || sources).map(source => source.sourceType))
-    const sourceChips = [...sourceTypes].slice(0, 3).map(source => ({ label: sourceLabels[source] || '账单' }))
+    // 合卡直接列出拆开时各原卡的来源名，不依赖平台或文件元数据，也不取所选账户标题。
+    const sourceNames = [...new Set(rows.map(row => String(row.sourceLabel || '').trim()).filter(Boolean))]
     const anchor = byId.get(group.anchorIssueId) || rows[0]
     const mapping = { ...anchor, issueId: group.groupId, groupId: group.groupId, groupIssueIds: group.issueIds.slice(),
       groupAnchorIssueId: group.anchorIssueId || rows[0].issueId, groupSources: sources,
@@ -234,8 +232,8 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       groupReason: group.groupReason || '',
       groupHint: !needsConfirmation ? '' : group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
         : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
-      groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
-      groupSourceText: sourceChips.map(source => source.label).join(' · '), groupDeduplicated: hasOverlap(group),
+      groupSourceCount: Number(group.sourceCount || sources.length),
+      groupSourceText: sourceNames.join(' · '), groupDeduplicated: hasOverlap(group),
       groupConfirmationText: '这些交易使用同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,

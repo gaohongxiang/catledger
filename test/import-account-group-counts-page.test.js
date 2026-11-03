@@ -9,6 +9,7 @@ const sessions = require('../miniprogram/packages/finance/services/import-local-
 const plain = value => JSON.parse(JSON.stringify(value))
 const tap = dataset => ({ currentTarget: { dataset } })
 const separatedNote = '各来源有相同交易'
+const originalSourceLabels = ['主卡6106', '合成测试银行信用卡(6106)'].sort()
 
 async function setup(t, options = {}) {
   const fixture = await accountGroupCountsFacts(options), { credit, wechat, alipay, value } = fixture
@@ -55,10 +56,13 @@ function joined(page, credit, sourceCount = 2) {
   assert.equal(card.memberCount, 40, '合卡按不同交易计数，不把已确认同笔的两份凭据相加')
   assert.equal(card.needsConfirmation, false)
   assert.equal(card.groupSourceCount, sourceCount)
-  assert.deepEqual(new Set(card.groupSourceText.split(' · ')), new Set(['银行', '微信']),
-    '来源文字只显示平台名称，不混入还款付款端的微信零钱和支付宝余额')
+  assert.deepEqual(card.groupSourceText.split(' · ').sort(), originalSourceLabels,
+    '合卡列出拆开时的原账户来源名，不用平台名或所选账户标题替代')
   const descriptor = page.businessData().accountDisplayGroups.find(group => group.groupId === card.groupId)
   assert.ok(descriptor)
+  const originals = page.mappingState().rawMappings.filter(mapping => descriptor.issueIds.includes(mapping.issueId))
+  assert.deepEqual([...new Set(originals.map(mapping => mapping.sourceLabel.trim()).filter(Boolean))].sort(),
+    originalSourceLabels, '原卡来源名称在合卡后仍完整保留')
   assert.deepEqual(plain(Object.fromEntries(descriptor.sourceCounts.map(source => [source.sourceType, source.count]))),
     { bank: 40, wechat: 29 }, '平台内部仍按本账户的事件并集计数，同平台多份文件不相加')
   assert.equal(card.groupDeduplicated, true, '原卡范围有交集时，主笔数才标记去重后')
@@ -70,6 +74,7 @@ function joined(page, credit, sourceCount = 2) {
 function separated(page, credit) {
   const cards = page.data.accountMappings.filter(card => card.choiceValue === 'account:' + credit.accountId)
   assert.deepEqual(plain(cards.map(card => card.memberCount)), [40, 29])
+  assert.deepEqual(plain(cards.map(card => card.sourceLabel).sort()), originalSourceLabels)
   assert.ok(cards.every(card => card.accountSeparatedGroupId && !card.needsConfirmation))
   assert.ok(cards.every(card => !card.groupDeduplicated), '分卡保留原范围笔数，不显示合卡的去重后前缀')
   assert.equal(cards[0].accountSeparatedCountNote, separatedNote)
@@ -166,7 +171,7 @@ test('同平台重复导出但原卡交易尚无交集：保留所有来源，�
   assert.equal(card.groupSourceCount, 3)
   assert.equal(card.groupDeduplicated, false, '同一原卡的重复文件，不代表不同原卡之间有重叠')
   assert.equal(card.groupCountNote, undefined)
-  assert.deepEqual(new Set(card.groupSourceText.split(' · ')), new Set(['银行', '微信']))
+  assert.deepEqual(card.groupSourceText.split(' · ').sort(), originalSourceLabels)
   const descriptor = h.page.businessData().accountDisplayGroups.find(group => group.groupId === card.groupId)
   assert.equal(descriptor.separateMemberCount, descriptor.memberCount)
   assert.equal(descriptor.sourceCounts.find(source => source.sourceType === 'wechat').count, 29)

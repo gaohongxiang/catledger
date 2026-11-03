@@ -75,6 +75,8 @@ test('旧拆分草稿冷恢复：异名同ID保持分卡相邻，现有合回入
   assert.deepEqual(plain(page.data.accountMappings.map(row => row.memberCount)), [5, 2, 3])
   const alias = page.data.accountMappings.find(row => row.issueId === h.aliasId)
   const full = page.data.accountMappings.find(row => row.issueId === h.fullId)
+  assert.equal(alias.sourceLabel, aliasLabel)
+  assert.equal(full.sourceLabel, fullLabel)
   const groupId = alias.accountSeparatedGroupId
   assert.ok(groupId)
   assert.equal(full.accountSeparatedGroupId, groupId)
@@ -99,6 +101,8 @@ test('旧拆分草稿冷恢复：异名同ID保持分卡相邻，现有合回入
   assert.equal(page.data.accountMappings.length, 2)
   const joint = page.data.accountMappings.find(row => row.groupId)
   assert.equal(joint.memberCount, 7)
+  assert.deepEqual(joint.groupSourceText.split(' · ').sort(), [alias.sourceLabel, full.sourceLabel].sort(),
+    '旧拆分组恢复合并后，来源文字对应原来两张卡的来源名')
   assert.equal(joint.choiceValue, 'account:' + h.credit.accountId)
   assert.equal(joint.needsConfirmation, false)
   assert.equal(joint.groupDeduplicated, false, '无重叠的5笔和2笔合回后不标去重后')
@@ -110,6 +114,7 @@ test('旧拆分草稿冷恢复：异名同ID保持分卡相邻，现有合回入
   assert.equal(h.page.data.accountMappings.length, 2)
   assert.equal(h.page.data.accountMappings.find(row => row.groupId).needsConfirmation, false)
   assert.equal(h.page.data.accountMappings.find(row => row.groupId).groupDeduplicated, false)
+  assert.equal(h.page.data.accountMappings.find(row => row.groupId).groupSourceText, joint.groupSourceText)
   assert.equal(h.page.data.accountMappings.find(row => row.groupId).groupCountNote, undefined)
   assert.deepEqual(plain(h.local.model.finalState()), h.before)
   assert.equal(h.network.length, 0)
