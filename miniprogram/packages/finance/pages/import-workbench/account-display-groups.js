@@ -222,7 +222,7 @@ function fold({ mappings, groups = [], drafts, accounts, accountDrafts, typeOpti
       groupHint: group.groupReason === 'manual_join' ? group.selectedAccountId ? '已选择同一账户' : '请选择共同账户'
         : group.groupReason === 'selected_account' ? '已选择同一账户' : group.candidate !== false ? '可能同一张卡' : '',
       groupSourceCount: Number(group.sourceCount || sources.length), groupSourceChips: sourceChips,
-      groupConfirmationText: '这 ' + group.memberCount + ' 笔将记在同一账户',
+      groupConfirmationText: '这 ' + group.memberCount + ' 笔使用同一账户',
       label: group.label, memberCount: group.memberCount, accountContext: context,
       status: rows.every(row => row.status === 'resolved') ? 'resolved' : 'open', paymentNeedsReview: false,
       canExternal, needsConfirmation, canConfirm: ready, dirty: draft.dirty,

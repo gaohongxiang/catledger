@@ -127,8 +127,9 @@ function buildIndex(model, issues, { separateIssueIds = [], accountSelections = 
     })
     const ids = new Set(contexts.map(context => context.decision.accountId).filter(Boolean))
     // 一个原事项内已有分歧时，保留原卡供核对；其完整号码仍参与全批冲突检测。
-    const excluded = (issue.reasonCodes || []).some(code => ['account_mapping_excluded', 'source_account_ignored_default'].includes(code)) ||
-      contexts.some(context => context.event.status === 'excluded')
+    // 单笔排除只决定这笔是否入账，不能把已确认的整个来源账户变成“不计入”。
+    // 只有账户事项自身的排除决定才阻止它参与同账户合卡。
+    const excluded = (issue.reasonCodes || []).some(code => ['account_mapping_excluded', 'source_account_ignored_default'].includes(code))
     const external = contexts.some(context => context.decision.kind === 'external')
     const confirmed = issue.status === 'resolved' && contexts.every(context => context.decision.kind === 'ledger' && context.decision.accountId)
     const conflict = ids.size > 1 || ids.size > 0 && !confirmed
@@ -169,6 +170,21 @@ function buildIndex(model, issues, { separateIssueIds = [], accountSelections = 
       allowedAccountTypes: types.forMembers(contexts), canExternal, members })
   }
   const byIssue = new Map(entries.map(entry => [entry.issueId, entry]))
+  // Older versions could remove the joint draft after confirming its last
+  // child, leaving only per-issue separation flags. Different source labels
+  // cannot recover that relationship by name; a shared saved ledger account
+  // can recover the separate layout without changing any account decision.
+  const related = new Set(preferences.flatMap(group => group.issueIds)), savedLegacy = new Map()
+  for (const entry of entries) if (legacyIds.has(entry.issueId) && !related.has(entry.issueId) &&
+      entry.status === 'resolved' && entry.originalDecision === 'account' && entry.accountId && !entry.memberConflict) {
+    const groupId = 'legacy:account:' + entry.accountId + ':' + entry.currency
+    if (!savedLegacy.has(groupId)) savedLegacy.set(groupId, [])
+    savedLegacy.get(groupId).push(entry.issueId)
+  }
+  for (const [groupId, issueIds] of savedLegacy) if (issueIds.length > 1) {
+    issueIds.sort()
+    preferences.push({ groupId: groupId + ':' + issueIds[0], issueIds, mode: 'separated' })
+  }
   const explicit = preferences.map(preference =>
     displayDescriptor(preference, preference.issueIds.map(id => byIssue.get(id)), model.accounts)).filter(Boolean)
   const eligible = explicit.filter(group => group.displayMode === 'joined' && group.selectedAccountId),

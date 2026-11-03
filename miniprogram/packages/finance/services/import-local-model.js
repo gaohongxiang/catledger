@@ -595,6 +595,22 @@ function create(facts) {
     accounts.set(id, account); drafts.set(id, account); creationOwners.set(id, fact.key); accountCreations.set(fact.key, fact)
     return id
   }
+  const exclusionReviewMembers = new WeakMap()
+  function independentlyExcluded(event) {
+    if (!choices.reviews.size) return false
+    // 账户归属与逐笔不计入是两份决定。整卡先忽略再恢复时，仍可从
+    // 原核对决定取回那一笔的排除，不能只看混在一起的 manual_exclusion。
+    for (const issue of eventIssues(event.eventId)) {
+      const choice = choices.reviews.get(issue.issueId)
+      // 历史候选决定会随账户变化失效，由 refreshHistory 处理。
+      if (choice?.decision !== 'exclude_events' || choice.reasonCode === historyPolicy.REASON) continue
+      if (!exclusionReviewMembers.has(choice)) exclusionReviewMembers.set(choice, new Set(choice.eventIds))
+      if (exclusionReviewMembers.get(choice).has(event.eventId)) return true
+    }
+    // 只承接提交时会再次重放的本机决定；旧快照本身的排除需要服务端
+    // 同步保护，不能只在本机保留一个与实际提交结果不一致的状态。
+    return false
+  }
   function mapAccount(input) {
     const external = input.paymentRuleAction === 'external'
     if (input.fields?.paymentRuleAction || input.paymentRuleAction && !external ||
@@ -663,10 +679,15 @@ function create(facts) {
         }
         if (ref) mappingPolicy.setMappingDecision(eventIndex, ref, external ? 'external' : 'account', id)
       }
+      const retainedExclusion = input.decision !== 'exclude_events' && independentlyExcluded(current)
       const next = input.decision === 'exclude_events' ? { ...current, status: 'excluded', reasonCodes: distinct([...current.reasonCodes,'manual_exclusion','account_mapping_excluded']) }
         : accountPolicy.applyMappedAccount({ ...current, status: 'needs_action', reasonCodes: policy.resolvedReasons('account_mapping', current.reasonCodes)
           .filter(code => !['manual_exclusion','account_mapping_excluded','source_account_ignored_default'].includes(code)) },
           member.memberRole, id, eventIndex, external ? 'external' : 'account', ref)
+      if (retainedExclusion) {
+        next.status = 'excluded'
+        next.reasonCodes = distinct([...next.reasonCodes, 'manual_exclusion'])
+      }
       if (input.decision !== 'exclude_events') validateReferences(next)
       if (referenceKey) {
         if (!accountMappingChoices.has(current.eventId)) accountMappingChoices.set(current.eventId, new Map())
