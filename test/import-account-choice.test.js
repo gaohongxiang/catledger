@@ -286,6 +286,21 @@ test('补充还入账户只改草稿，删到只剩一个账户就收回单账�
   assert.equal(editor.writes(h).length, 0)
 })
 
+// 旧草稿可能已经把「只剩一项的组合支付」存进库：打开时会停在只有一行、没有金额
+// 也没有删除入口的状态，保存只是把同一个未完成组成写回去，事件永远留在待核对。
+test('只剩一项的组合支付打开即收回单账户，保存显式提交单账户', async t => {
+  const { h, page } = await editor.open(t, { economicNature: 'expense', amountMinor: '10000', sourceDirection: 'expense',
+    ledgerAccountId: 'account-0',
+    fieldSources: { editorOverrides: { version: 1, composition: 'payment',
+      incompleteComposition: { kind: 'payment', parts: [{ accountId: 'account-0', amountMinor: '5000' }], evidenceNote: '分摊说明' } } } })
+  assert.equal(editor.draft(page).composition, 'single')
+  assert.deepEqual(editor.plain(editor.draft(page).parts), [])
+  assert.equal(editor.draft(page).ledgerAccountId, 'account-0')
+  assert.equal(editor.view(page).complete, true)
+  assert.equal(editor.view(page).payload.composition.kind, 'single')
+  assert.equal(editor.writes(h).length, 0)
+})
+
 // 组合支付里删掉最后一个账本内账户、只剩账本外份额时，也要收回单账户：
 // 留在「组合支付只有一项」的形态会一直报资金分配，保存后仍停在待核对里。
 test('组合支付删到只剩账本外份额也收回单账户', async t => {

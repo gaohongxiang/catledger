@@ -156,6 +156,18 @@ function create(row) {
   if (facts.ownershipRecheck?.action === 'refund' && ownershipEditable(row, draft)) {
     draft.destinationKind = 'external'; draft.ledgerAccountId = ''
   }
+  // 只剩一项的组合不再是组合：旧草稿可能已经把「一项的组合支付」存进库（那时保存
+  // 只写了 incomplete 组成），再打开会停在只有一行、没有金额也没有删除入口的状态，
+  // 点保存只是把同一个未完成组成写回去，事件因此永远留在待核对里。按那一项恢复成
+  // 单账户——总额全走这一项，付款端留空时用户点开就能重选。
+  if (draft.composition !== 'single' && draft.parts.length === 1) {
+    const part = draft.parts[0], keys = ownershipKeys(row, draft.economicNature)
+    const side = draft.composition === 'payment' ? 'source' : 'destination'
+    if (part.kind === 'external') draft[side + 'Kind'] = 'external'
+    else if (part.accountId) draft[keys[side]] = part.accountId
+    draft.composition = 'single'
+    draft.parts = []
+  }
   // 端点组一定有账户行：服务端可能声明了多账户组成却还没给任何分配（未完成组成），
   // 旧版本删到 0 条的草稿也是这个形态。留一条空行，端点组就不会只剩标题。
   if (draft.composition !== 'single' && !draft.parts.length) draft.parts = [{ accountId: '', amountInput: '' }]
@@ -486,6 +498,10 @@ function derive(row, draft, catalogs = {}) {
   if (ownership && draft.sourceKind === 'external' && draft.destinationKind === 'external' && !draft.noLedgerImpact) missing.push('确认对本账本无影响')
   if (fields.length === 2 && fields[0].accountId && fields[0].accountId === fields[1].accountId) invalid('funds', '两个资金账户必须不同')
   const output = {}, original = create(row)
+  // 服务端真正记录的组成。草稿投影可能已经把「只剩一项的组合」收回单账户，
+  // 这时 original 也是单账户，但保存仍要显式提交单账户：否则服务端会保留旧的
+  // 未完成组成，事件永远停在待核对。
+  const storedComposition = (row.editorFacts && row.editorFacts.composition) || 'single'
   // 分期登记必须有计划才能完成；现金借款的计划可暂不关联。新建参数只交给 loans.create，
   // 事件决定仍只记录计划 ID、名称、本金、期数及起始月。
   const disbursement = disbursementOf(row)
@@ -620,7 +636,7 @@ function derive(row, draft, catalogs = {}) {
           : inside === 0n ? '本次金额全部在账本外，保存后标记为对本账本无影响，不生成账目。'
             : '仅本人付款 ¥' + yuan(inside) + '计入支出；账本外份额 ¥' + yuan(outside) + '不计入。'
     }
-  } else if (draft.dirty.composition || draft.composition !== original.composition) {
+  } else if (draft.dirty.composition || draft.composition !== storedComposition) {
     // 简化成单账户是用户的正当决定：总额不变，只是不再区分各来源分摊。
     // 说明为选填，仅用于留下当时的判断依据，不阻塞保存。
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
@@ -699,7 +715,7 @@ function derive(row, draft, catalogs = {}) {
     disbursementPlan: disbursementPlanOf(row, draft, catalogs, fieldErrors),
     // 新建计划的请求参数只在保存时用；拿到计划 ID 前不出现在 payload 里。
     planRequest,
-    needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && original.composition !== 'single',
+    needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && storedComposition !== 'single',
     refundOriginalText: (row.detailFacts?.refund?.originals || []).map(item => [item.note, item.localAt, item.amountMinor == null ? '' : '¥' + yuan(item.amountMinor)].filter(Boolean).join(' · ')).join('；'),
     refundCategory: row.detailFacts?.refund?.originals?.[0]?.categoryName || '',
     // 自动关联的退款也要能回看和更换：把已绑定的原消费当成“当前选择”，
