@@ -502,6 +502,9 @@ function derive(row, draft, catalogs = {}) {
   // 这时 original 也是单账户，但保存仍要显式提交单账户：否则服务端会保留旧的
   // 未完成组成，事件永远停在待核对。
   const storedComposition = (row.editorFacts && row.editorFacts.composition) || 'single'
+  // 来源层说「这笔有几个付款方式，金额分不清」。它只由人工确认资金路径来解决。
+  const componentsAmbiguous = (row.reasonCodes || []).includes('payment_components_ambiguous') ||
+    Boolean(row.fieldSources && (row.fieldSources.semanticBlockers || []).includes('payment_components_ambiguous'))
   // 分期登记必须有计划才能完成；现金借款的计划可暂不关联。新建参数只交给 loans.create，
   // 事件决定仍只记录计划 ID、名称、本金、期数及起始月。
   const disbursement = disbursementOf(row)
@@ -600,6 +603,13 @@ function derive(row, draft, catalogs = {}) {
     delete output.ledgerAccountId
     delete output.counterpartyLedgerAccountId
     if (ownershipChanged) decisions.accountOwnership = ownershipDecision(row, draft)
+    else if (!detail.ownershipOf(row).explicit &&
+      ((!row.ledgerAccountId && draft.ledgerAccountId) || (!row.counterpartyLedgerAccountId && draft.counterpartyLedgerAccountId))) {
+      // 还没有出处明确的归属决定，存储层这两端又是空的——界面上的账户只是来源投影。
+      // 用户点保存就是在确认它们，不跟着提交的话服务端永远判缺账户，存多少次都还在待核对。
+      if (draft.ledgerAccountId) output.ledgerAccountId = draft.ledgerAccountId
+      if (draft.counterpartyLedgerAccountId) output.counterpartyLedgerAccountId = draft.counterpartyLedgerAccountId
+    }
     if (draft.sourceKind === 'external' && draft.destinationKind === 'external' && !draft.noLedgerImpact && ownershipChanged) {
       invalid('funds', '请确认这笔资金对本账本无影响')
     }
@@ -636,7 +646,11 @@ function derive(row, draft, catalogs = {}) {
           : inside === 0n ? '本次金额全部在账本外，保存后标记为对本账本无影响，不生成账目。'
             : '仅本人付款 ¥' + yuan(inside) + '计入支出；账本外份额 ¥' + yuan(outside) + '不计入。'
     }
-  } else if (draft.dirty.composition || draft.composition !== storedComposition) {
+  } else if (draft.dirty.composition || draft.composition !== storedComposition ||
+    // 账单声明「有几个付款方式、金额分不清」时，用户在这一步确认资金路径就是对它的答复。
+    // 组成即便没变也要提交，服务端据此清掉那条硬阻断；changed 也由它驱动，
+    // 「保存本笔核对」才不会因为没改动而一直灰着。
+    componentsAmbiguous && draft.composition === 'single') {
     // 简化成单账户是用户的正当决定：总额不变，只是不再区分各来源分摊。
     // 说明为选填，仅用于留下当时的判断依据，不阻塞保存。
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
