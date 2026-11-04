@@ -887,10 +887,15 @@
       <view class="directory-heading"><text class="directory-title">{{directorySheet.title || (directorySheet.kind === 'categories' ? '选择分类' : '选择账户')}}</text><button class="review-sheet-close" bindtap="closeDirectory" aria-label="返回编辑"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
       <!-- 归属随目录一起问：选下面的账户就是“我的”，这两项只在确实不属于本账本或要留待核对时点。 -->
       <view wx:if="{{directorySheet.ownership}}" class="directory-ownership">
-        <text class="directory-ownership-label">{{directorySheet.ownership.label}}归属</text>
+        <text class="directory-ownership-label">{{directorySheet.ownership.scope === 'part' ? '这一份' : directorySheet.ownership.label + '归属'}}</text>
         <view class="directory-ownership-options">
-          <button class="directory-ownership-option {{directorySheet.ownership.kind === 'external' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="external" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'external'}}"><text class="directory-ownership-title">别人的账户</text><text class="directory-ownership-copy">不创建账户，按资金方向记收支</text></button>
-          <button class="directory-ownership-option {{directorySheet.ownership.kind === 'unknown' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="unknown" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'unknown'}}"><text class="directory-ownership-title">暂不确定</text><text class="directory-ownership-copy">保留原文，继续待核对</text></button>
+          <block wx:if="{{directorySheet.ownership.scope === 'part'}}">
+            <button class="directory-ownership-option {{directorySheet.ownership.kind === 'external' ? 'is-selected' : ''}}" data-index="{{directorySheet.ownership.partIndex}}" data-kind="external" bindtap="changeFundsOwnership" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'external'}}"><text class="directory-ownership-title">账本外份额</text><text class="directory-ownership-copy">这部分不记进账本账户</text></button>
+          </block>
+          <block wx:else>
+            <button class="directory-ownership-option {{directorySheet.ownership.kind === 'external' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="external" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'external'}}"><text class="directory-ownership-title">别人的账户</text><text class="directory-ownership-copy">不创建账户，按资金方向记收支</text></button>
+            <button class="directory-ownership-option {{directorySheet.ownership.kind === 'unknown' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="unknown" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'unknown'}}"><text class="directory-ownership-title">暂不确定</text><text class="directory-ownership-copy">保留原文，继续待核对</text></button>
+          </block>
         </view>
         <text class="directory-ownership-note">选下面的账户，就是记在「我的账户」</text>
       </view>

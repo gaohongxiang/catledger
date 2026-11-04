@@ -55,18 +55,15 @@
           <text class="sheet-copy funds-note">不属于本账本，不创建账户。</text>
         </block>
         <block wx:if="{{endpoint.ownershipKind !== 'external'}}" wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex">
-          <view wx:if="{{endpoint.multi}}" class="editor-mode-choices">
-            <button class="{{account.kind !== 'external' ? 'editor-mode-selected' : ''}}" data-index="{{account.index}}" data-kind="ledger" bindtap="changeFundsOwnership" disabled="{{disabled || !canEdit || !editor.supported}}">我的账户</button>
-            <button class="{{account.kind === 'external' ? 'editor-mode-selected' : ''}}" data-index="{{account.index}}" data-kind="external" bindtap="changeFundsOwnership" disabled="{{disabled || !canEdit || !editor.supported}}">账本外份额</button>
-          </view>
           <!-- 单账户整行是一个按钮：名称、行尾箭头和左侧留白都能点开目录。 -->
-          <button wx:if="{{account.kind !== 'external' && !endpoint.split && canEdit && editor.supported && !account.readonly}}" class="funds-account-row is-action {{endpoint.required ? 'is-required' : ''}}" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
+          <button wx:if="{{!endpoint.split && canEdit && editor.supported && !account.readonly}}" class="funds-account-row is-action {{endpoint.required ? 'is-required' : ''}}" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
             <text class="funds-account-name {{account.accountId ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
             <text class="funds-account-chevron" aria-hidden="true">›</text>
           </button>
           <view wx:else class="funds-account-row {{endpoint.required ? 'is-required' : ''}}">
-            <button wx:if="{{account.kind !== 'external' && canEdit && editor.supported && !account.readonly}}" class="funds-account" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
-              <text class="funds-account-name {{account.accountId ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
+            <!-- 分摊中的每一份也点开目录改归属：账本外份额就在那一行的目录里，不再常驻两选。 -->
+            <button wx:if="{{canEdit && editor.supported && !account.readonly}}" class="funds-account" data-target="{{account.target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(account.accountId ? '修改' : '选择') + endpoint.label}}">
+              <text class="funds-account-name {{account.accountId || account.kind === 'external' ? '' : 'is-empty'}}">{{account.name || '请选择' + endpoint.label}}</text>
             </button>
             <view wx:else class="funds-account"><text class="funds-account-name">{{account.name || '待补充'}}</text></view>
             <input wx:if="{{endpoint.split && canEdit}}" type="digit" class="funds-account-amount" value="{{account.amountInput}}" data-endpoint="{{endpoint.key}}" data-index="{{account.index}}" bindinput="changeFundsAmount" bindfocus="beginInputEditing" bindblur="finishInputEditing" cursor-spacing="100" placeholder="0.00" placeholder-class="funds-amount-placeholder" disabled="{{disabled}}" aria-label="本账户金额（元）" />

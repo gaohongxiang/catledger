@@ -286,6 +286,21 @@ test('补充还入账户只改草稿，删到只剩一个账户就收回单账�
   assert.equal(editor.writes(h).length, 0)
 })
 
+// 组合支付里删掉最后一个账本内账户、只剩账本外份额时，也要收回单账户：
+// 留在「组合支付只有一项」的形态会一直报资金分配，保存后仍停在待核对里。
+test('组合支付删到只剩账本外份额也收回单账户', async t => {
+  const { h, page } = await editor.open(t, { economicNature: 'expense', amountMinor: '10000', sourceDirection: 'expense',
+    ledgerAccountId: '', editorFacts: { composition: 'payment', evidenceNote: '分摊说明' },
+    paymentResolution: { allocations: [{ componentIndex: 0, accountId: 'account-0', amountMinor: '5000' },
+      { componentIndex: 1, kind: 'external', amountMinor: '5000' }], evidenceNote: '分摊说明' } })
+  assert.equal(editor.view(page).complete, true)
+  page.removeFundsAccount(editor.tap({ endpoint: 'payer', index: 0 }))
+  assert.equal(editor.draft(page).composition, 'single')
+  assert.equal(editor.draft(page).parts.length, 0)
+  assert.deepEqual(editor.plain(editor.view(page).missing), ['付款账户'])
+  assert.equal(editor.writes(h).length, 0)
+})
+
 test('加号沿用这一端已选账户，收回单账户时两端账户都放回', async t => {
   const { h, page } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0',
     counterpartyLedgerAccountId: 'draft-1', amountMinor: '10000' })

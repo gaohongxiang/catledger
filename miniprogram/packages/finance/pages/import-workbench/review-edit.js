@@ -532,11 +532,13 @@ module.exports = {
   },
   // 分摊至少要有两行：删到只剩一行就收回单账户，这一端留剩下的那个账户；
   // 一个账户时总额必然全走它，不再需要金额输入。两端各自的账户都按原样放回。
+  // 剩下的是账本外份额时也要收回：一项就不再是组合支付，这一端留空等用户点开
+  // 选账户或选别人的账户，否则会停在「组合支付只有一项」的不完整态，保存后仍待核对。
   removeFundsAccount(event) {
     const token = this._reviewEditToken, index = Number(event.currentTarget.dataset.index)
     if (!editable(this, token) || !Number.isInteger(index) || !token.draft.parts[index]) return
     const parts = token.draft.parts.filter((_, i) => i !== index)
-    if (parts.length > 1 || parts.some(part => part.kind === 'external')) return update(this, 'parts', parts)
+    if (parts.length > 1) return update(this, 'parts', parts)
     const side = event.currentTarget.dataset.endpoint === 'payee' ? 'payee' : 'payer'
     const keep = (parts[0] && parts[0].accountId) || ''
     // composition 回 single 会按「不猜保留哪一端」清空两端；撤回前先记下另一端的账户。
@@ -564,10 +566,14 @@ module.exports = {
     if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId,
       allowedTypes: field.allowedTypes, currency: token.row.currency || 'CNY',
       ownership: field.ownershipSide && field.ownershipEditable
-        ? { field: field.ownershipSide + 'Kind', kind: field.ownershipKind, label: field.label } : null }
+        ? { scope: 'endpoint', field: field.ownershipSide + 'Kind', kind: field.ownershipKind, label: field.label } : null }
     if (token.view.repaymentChannel || token.view.registration) return null
-    if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId, currency: token.row.currency || 'CNY',
-      allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null }
+    if (/^editorPart\d+$/.test(target)) {
+      const index = Number(target.slice(10)), part = token.draft.parts[index]
+      return { kind: 'accounts', title: '选择分配账户', selectedId: part ? part.accountId : '', currency: token.row.currency || 'CNY',
+        allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null,
+        ownership: part ? { scope: 'part', partIndex: index, kind: part.kind === 'external' ? 'external' : 'ledger' } : null }
+    }
     if (target === 'editorCategory') return { kind: 'categories', title: '选择分类', selectedId: token.draft.categoryId,
       categoryKind: token.view.categoryKind }
     return null

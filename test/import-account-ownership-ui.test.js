@@ -241,7 +241,7 @@ test('归属选项移进账户目录：行内不再常驻三选，选账户即�
   assert.equal(endpoints.every(endpoint => endpoint.ownershipEditable), true)
   const before = JSON.stringify(editor.draft(page))
   await page.openDirectory(editor.tap({ target: 'reviewAccount' }))
-  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { field: 'sourceKind', kind: 'ledger', label: '付款账户' })
+  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { scope: 'endpoint', field: 'sourceKind', kind: 'ledger', label: '付款账户' })
   // 打开后直接关闭不改变原选择，也不会多出一次归属确认。
   page.closeDirectory()
   assert.equal(JSON.stringify(editor.draft(page)), before)
@@ -262,11 +262,32 @@ test('未确定的还入端在目录里回显“暂不确定”，选账户后�
   const { page } = await editor.open(t, { ...repayment(), counterpartyLedgerAccountId: null }, catalog)
   assert.equal(editor.view(page).routeFields[1].ownershipKind, 'unknown')
   await page.openDirectory(editor.tap({ target: 'reviewCounterparty' }))
-  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { field: 'destinationKind', kind: 'unknown', label: '还入账户' })
+  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { scope: 'endpoint', field: 'destinationKind', kind: 'unknown', label: '还入账户' })
   assert.equal(editor.select(page, 'reviewCounterparty', credit), true)
   assert.equal(editor.draft(page).counterpartyLedgerAccountId, credit.accountId)
   const next = policy.prepare({ ...repayment(), counterpartyLedgerAccountId: null }, editor.plain(editor.view(page).payload))
   assert.equal(next.counterpartyLedgerAccountId, credit.accountId)
+})
+
+test('分摊到两行时归属也收进目录：账本外份额不再常驻两选', async t => {
+  const { page } = await editor.open(t, repayment(), catalog)
+  page.addFundsAccount(editor.tap({ endpoint: 'payer' }))
+  assert.equal(editor.draft(page).parts.length, 2)
+  await page.openDirectory(editor.tap({ target: 'editorPart1' }))
+  const sheet = page.data.directorySheet
+  assert.equal(sheet.ownership.scope, 'part')
+  assert.equal(sheet.ownership.partIndex, 1)
+  assert.equal(sheet.ownership.kind, 'ledger')
+  page.changeFundsOwnership(editor.tap({ index: 1, kind: 'external' }))
+  assert.equal(page.data.directorySheet, null, '选完即关')
+  assert.equal(editor.draft(page).parts[1].kind, 'external')
+  assert.equal(editor.view(page).fundsEndpoints[0].accounts[1].name, '账本外账户')
+  // 账本外份额仍能点回目录改成账本账户，否则这一行改不回来。
+  await page.openDirectory(editor.tap({ target: 'editorPart1' }))
+  assert.equal(page.data.directorySheet.ownership.kind, 'external')
+  assert.equal(editor.select(page, 'editorPart1', bank), true)
+  assert.equal(editor.draft(page).parts[1].kind, 'ledger')
+  assert.equal(editor.draft(page).parts[1].accountId, bank.accountId)
 })
 
 test('新账户归属冻结请求恢复后重试保持原请求，不替换为新推导值', async t => {
