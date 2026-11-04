@@ -42,10 +42,18 @@
           <text class="funds-endpoint-label">{{endpoint.label}}<text wx:if="{{endpoint.required}}" class="funds-endpoint-required"> · 必选</text></text>
           <button wx:if="{{endpoint.open && canEdit}}" class="funds-add" data-endpoint="{{endpoint.key}}" bindtap="addFundsAccount" disabled="{{disabled || !endpoint.addable}}" aria-label="添加{{endpoint.label}}">＋ 添加</button>
         </view>
-        <view wx:if="{{endpoint.ownershipField}}" class="editor-mode-choices">
-          <button wx:for="{{endpoint.ownershipOptions}}" wx:key="value" class="{{endpoint.ownershipKind === item.value ? 'editor-mode-selected' : ''}}" data-field="{{endpoint.ownershipField}}" data-value="{{item.value}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit || !editor.supported}}" aria-role="radio" aria-checked="{{endpoint.ownershipKind === item.value}}">{{item.label}}</button>
-        </view>
-        <text wx:if="{{endpoint.ownershipKind === 'external'}}" class="sheet-copy funds-note">不属于本账本，不创建账户。</text>
+        <!-- 归属不在行内常驻提问：已确认的一端只显示结果，点开账户行才在目录里改归属。
+             外部端点也必须留一条可点的结果行，否则收掉三选后就没有改回账本账户的入口。 -->
+        <block wx:if="{{endpoint.ownershipKind === 'external'}}">
+          <button wx:if="{{canEdit && editor.supported && endpoint.ownershipEditable && endpoint.externalTarget}}" class="funds-account-row is-action {{endpoint.required ? 'is-required' : ''}}" data-target="{{endpoint.externalTarget}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="修改{{endpoint.label}}归属">
+            <text class="funds-account-name">别人的账户</text>
+            <text class="funds-account-chevron" aria-hidden="true">›</text>
+          </button>
+          <view wx:else class="funds-account-row {{endpoint.required ? 'is-required' : ''}}">
+            <text class="funds-account-name">别人的账户</text>
+          </view>
+          <text class="sheet-copy funds-note">不属于本账本，不创建账户。</text>
+        </block>
         <block wx:if="{{endpoint.ownershipKind !== 'external'}}" wx:for="{{endpoint.accounts}}" wx:key="index" wx:for-item="account" wx:for-index="accountIndex">
           <view wx:if="{{endpoint.multi}}" class="editor-mode-choices">
             <button class="{{account.kind !== 'external' ? 'editor-mode-selected' : ''}}" data-index="{{account.index}}" data-kind="ledger" bindtap="changeFundsOwnership" disabled="{{disabled || !canEdit || !editor.supported}}">我的账户</button>

@@ -419,9 +419,11 @@ function fundsEndpointsOf(draft, fields, accounts, { channel, principal, ownersh
       : [{ index: 0, target: field.target, accountId: field.accountId || '', name: field.name, amountInput: '',
         removable: false, readonly: Boolean(field.readonly), invalid: Boolean(field.invalid) }]
     const kind = field && field.ownershipKind
+    // 归属不再常驻三选：端点行本身是入口，归属选项移进账户目录。已确认的一端只显示结果，
+    // 想改归属就点开那一行。这里只留状态，供行内说明和目录标题使用。
     return { key, label: field ? field.label : key === 'payer' ? '付款账户' : '还入账户', multi, accounts: list,
-      ...(field && field.ownershipSide ? { ownershipField: field.ownershipEditable ? field.ownershipSide + 'Kind' : '', ownershipKind: kind,
-        ownershipOptions: [{ value: 'ledger', label: '我的账户' }, { value: 'external', label: '别人的账户' }, { value: 'unknown', label: '暂不确定' }] } : {}),
+      ...(field && field.ownershipSide ? { ownershipKind: kind, ownershipEditable: Boolean(field.ownershipEditable),
+        externalTarget: field.target } : {}),
       // 真正在分摊才有金额列：只剩一个账户时总额必然全走它，金额和删除都不必出现。
       split: multi && (list.length > 1 || list.some(part => part.kind === 'external')),
       required: !multi && kind !== 'external' && !list[0].accountId, open,

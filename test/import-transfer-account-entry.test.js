@@ -11,6 +11,9 @@ test('资金两端均由统一模板进入全目录，旧片段表单退出', ()
   assert.match(markup, /data-target="{{account.target}}" bindtap="openDirectory"/)
   const old = fs.readFileSync(path.join(root, 'index.wxml'), 'utf8')
   assert.doesNotMatch(old, /changeIssueNature|changePaymentRow|changeRepaymentAllocation|editLoanRepayment/)
+  // 本批新建不再占一个页签：账户目录只有一份清单，靠行内标注区分。
+  assert.doesNotMatch(old, /changeDirectoryKind|directory-tabs/)
+  assert.match(old, /item\.draft \? '（本批新建）' : ''/)
 })
 
 test('完整目录一次读完，搜索后稳定ID定位两端且选择仅改本笔草稿', async t => {
@@ -48,8 +51,13 @@ test('投影两端已有值仍可编辑，改变对端不交换原账单端', as
 test('目录支持本批账户与清空，清空保留缺口而不选择默认账户', async t => {
   const { page } = await open(t)
   await page.openDirectory(tap({ target: 'reviewAccount' }))
-  await page.changeDirectoryKind(tap({ kind: 'accountDrafts' }))
-  page.selectDirectory(tap({ index: 0 }))
+  // 本批新建的账户直接接在同一列表后面，不再切页签去找。
+  const items = page.data.directorySheet.items
+  const draftIndex = items.findIndex(item => item.accountId === 'draft-1')
+  assert.ok(draftIndex >= 0, '本批新建账户出现在账户列表里')
+  assert.equal(items[draftIndex].draft, true)
+  assert.equal(items.some(item => item.draft && item.accountId !== 'draft-1'), false)
+  page.selectDirectory(tap({ index: draftIndex }))
   assert.equal(draft(page).ledgerAccountId, 'draft-1')
   page.clearEditorChoice(tap({ field: 'ledgerAccountId' }))
   assert.equal(draft(page).ledgerAccountId, '')

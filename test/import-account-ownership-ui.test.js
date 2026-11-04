@@ -234,6 +234,41 @@ test('切换外部端点会关闭目录，迟到账户响应不能重新选回�
   assert.equal(h.calls.some(call => call.action === 'financeUpdates.setReview'), false)
 })
 
+test('归属选项移进账户目录：行内不再常驻三选，选账户即“我的”', async t => {
+  const { page } = await editor.open(t, repayment(), catalog)
+  const endpoints = editor.view(page).fundsEndpoints
+  assert.equal(endpoints.some(endpoint => endpoint.ownershipOptions || endpoint.ownershipField), false, '端点不再带行内三选数据')
+  assert.equal(endpoints.every(endpoint => endpoint.ownershipEditable), true)
+  const before = JSON.stringify(editor.draft(page))
+  await page.openDirectory(editor.tap({ target: 'reviewAccount' }))
+  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { field: 'sourceKind', kind: 'ledger', label: '付款账户' })
+  // 打开后直接关闭不改变原选择，也不会多出一次归属确认。
+  page.closeDirectory()
+  assert.equal(JSON.stringify(editor.draft(page)), before)
+  assert.equal(editor.view(page).changed, false)
+  await page.openDirectory(editor.tap({ target: 'reviewAccount' }))
+  page.changeEditorMode(editor.tap({ field: 'sourceKind', value: 'external' }))
+  assert.equal(page.data.directorySheet, null, '选完即关，不留半开的目录')
+  assert.equal(editor.draft(page).sourceKind, 'external')
+  assert.equal(editor.draft(page).ledgerAccountId, '')
+  // 外部端点收掉了行内三选，必须仍能点回目录改回账本账户。
+  await page.openDirectory(editor.tap({ target: 'reviewAccount' }))
+  assert.equal(page.data.directorySheet.ownership.kind, 'external', '外部端点打开目录时回显当前归属')
+  editor.mode(page, 'sourceKind', 'ledger')
+  assert.equal(editor.draft(page).ledgerAccountId, bank.accountId, '改回我的账户恢复原账户')
+})
+
+test('未确定的还入端在目录里回显“暂不确定”，选账户后转为账本端', async t => {
+  const { page } = await editor.open(t, { ...repayment(), counterpartyLedgerAccountId: null }, catalog)
+  assert.equal(editor.view(page).routeFields[1].ownershipKind, 'unknown')
+  await page.openDirectory(editor.tap({ target: 'reviewCounterparty' }))
+  assert.deepEqual(editor.plain(page.data.directorySheet.ownership), { field: 'destinationKind', kind: 'unknown', label: '还入账户' })
+  assert.equal(editor.select(page, 'reviewCounterparty', credit), true)
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, credit.accountId)
+  const next = policy.prepare({ ...repayment(), counterpartyLedgerAccountId: null }, editor.plain(editor.view(page).payload))
+  assert.equal(next.counterpartyLedgerAccountId, credit.accountId)
+})
+
 test('新账户归属冻结请求恢复后重试保持原请求，不替换为新推导值', async t => {
   const data = fixture(1, true)
   Object.assign(data.events[0], repayment())

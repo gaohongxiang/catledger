@@ -376,7 +376,7 @@ Page(theme.page({
   excludeRefundAsReversed: reviewEdit.excludeRefundAsReversed,
   pendingReviewEdit: reviewEdit.pendingReviewEdit,
   searchDirectory: accountReview.searchDirectory,
-  changeDirectoryKind: accountReview.changeDirectoryKind,
+  directoryDrafts: accountReview.directoryDrafts,
   changeDirectoryPage: accountReview.changeDirectoryPage,
   selectDirectory: accountReview.selectDirectory,
   closeDirectory: accountReview.closeDirectory,

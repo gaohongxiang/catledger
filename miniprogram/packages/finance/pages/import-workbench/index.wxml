@@ -885,18 +885,23 @@
     <view class="workflow-sheet directory-sheet">
       <view class="sheet-handle"></view>
       <view class="directory-heading"><text class="directory-title">{{directorySheet.title || (directorySheet.kind === 'categories' ? '选择分类' : '选择账户')}}</text><button class="review-sheet-close" bindtap="closeDirectory" aria-label="返回编辑"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
-      <view wx:if="{{directorySheet.kind === 'accounts' || directorySheet.kind === 'accountDrafts'}}" class="directory-tabs">
-        <button class="directory-tab {{directorySheet.kind === 'accounts' ? 'directory-tab-selected' : ''}}" data-kind="accounts" bindtap="changeDirectoryKind" aria-pressed="{{directorySheet.kind === 'accounts'}}">已有账户</button>
-        <button class="directory-tab {{directorySheet.kind === 'accountDrafts' ? 'directory-tab-selected' : ''}}" data-kind="accountDrafts" bindtap="changeDirectoryKind" aria-pressed="{{directorySheet.kind === 'accountDrafts'}}">本批新建</button>
+      <!-- 归属随目录一起问：选下面的账户就是“我的”，这两项只在确实不属于本账本或要留待核对时点。 -->
+      <view wx:if="{{directorySheet.ownership}}" class="directory-ownership">
+        <text class="directory-ownership-label">{{directorySheet.ownership.label}}归属</text>
+        <view class="directory-ownership-options">
+          <button class="directory-ownership-option {{directorySheet.ownership.kind === 'external' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="external" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'external'}}"><text class="directory-ownership-title">别人的账户</text><text class="directory-ownership-copy">不创建账户，按资金方向记收支</text></button>
+          <button class="directory-ownership-option {{directorySheet.ownership.kind === 'unknown' ? 'is-selected' : ''}}" data-field="{{directorySheet.ownership.field}}" data-value="unknown" bindtap="changeEditorMode" disabled="{{busy}}" aria-pressed="{{directorySheet.ownership.kind === 'unknown'}}"><text class="directory-ownership-title">暂不确定</text><text class="directory-ownership-copy">保留原文，继续待核对</text></button>
+        </view>
+        <text class="directory-ownership-note">选下面的账户，就是记在「我的账户」</text>
       </view>
       <view class="directory-search"><image src="/assets/icons/search.svg" class="directory-search-icon" mode="aspectFit" /><input class="directory-search-input" value="{{directorySheet.query}}" maxlength="80" placeholder="{{directorySheet.kind === 'categories' ? '搜索分类名称' : directorySheet.kind === 'loans' ? '搜索贷款名称' : '搜索账户名称'}}" bindinput="searchDirectory" /></view>
       <scroll-view class="directory-list" style="{{directoryBodyLayout && directoryBodyLayout.target === directorySheet.target ? 'height:' + directoryBodyLayout.height + 'px' : ''}}" scroll-y enhanced show-scrollbar="{{false}}">
         <view class="directory-list-content">
         <skeleton-rows wx:if="{{directorySheet.loading && !directorySheet.items.length}}" rows="{{4}}" />
         <view wx:if="{{directorySheet.error}}" class="directory-empty"><text>{{directorySheet.error}}</text><button class="directory-text-action" bindtap="changeDirectoryPage">重新读取</button></view>
-        <text wx:if="{{!directorySheet.loading && !directorySheet.error && !directorySheet.items.length}}" class="directory-empty">{{directorySheet.query ? '没有找到匹配项' : directorySheet.kind === 'accountDrafts' ? '本批还没有新建账户' : directorySheet.kind === 'categories' ? '暂无可选分类' : directorySheet.kind === 'loans' ? '暂无可选贷款' : '暂无可选账户'}}</text>
+        <text wx:if="{{!directorySheet.loading && !directorySheet.error && !directorySheet.items.length}}" class="directory-empty">{{directorySheet.query ? '没有找到匹配项' : directorySheet.kind === 'categories' ? '暂无可选分类' : directorySheet.kind === 'loans' ? '暂无可选贷款' : '暂无可选账户'}}</text>
         <button wx:for="{{directorySheet.items}}" wx:key="index" class="directory-row {{item.directorySelected ? 'directory-row-selected' : ''}} {{item.directoryDisabled ? 'directory-row-unavailable' : ''}}" data-index="{{index}}" bindtap="selectDirectory" disabled="{{directorySheet.loading || busy || item.directoryDisabled}}" aria-pressed="{{item.directorySelected}}">
-          <view class="directory-row-copy"><text class="directory-row-name">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}</text><text wx:if="{{item.directoryMeta}}" class="directory-row-meta">{{item.directoryMeta}}</text></view>
+          <view class="directory-row-copy"><text class="directory-row-name">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}{{item.draft ? '（本批新建）' : ''}}</text><text wx:if="{{item.directoryMeta}}" class="directory-row-meta">{{item.directoryMeta}}</text></view>
           <view wx:if="{{!item.directoryDisabled}}" class="directory-check {{item.directorySelected ? 'directory-check-selected' : ''}}"><image wx:if="{{item.directorySelected}}" src="/assets/icons/check.svg" mode="aspectFit" /></view>
         </button>
         </view>

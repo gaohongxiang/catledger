@@ -1081,9 +1081,13 @@ module.exports = {
         session: this._viewSession, version: this._viewSession.summary.viewVersion, scope: readCache.getSession(), owner: getApp().globalData.uid }
     }
     if (this._optionPager) this._optionPager.cancel()
+    if (this._optionsDraftPager) this._optionsDraftPager.cancel()
     const liabilityOnly = false
     this.setData({ directorySheet: { target, kind, ...issueOptions, ...(categoryKind ? { categoryKind } : {}),
       liabilityOnly, selectedId: editorOptions ? editorOptions.selectedId : directorySelection(this.data, target), query: '', items: [], loading: true } })
+    this._directoryDraftRows = null
+    this._optionsDraftPager = kind === 'accounts'
+      ? this._viewSession.pager('financeUpdates.options', { kind: 'accountDrafts', pageSize: optionPageSize('accountDrafts') }) : null
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: optionPageSize(kind) })
     return this.changeDirectoryPage(event)
   },
@@ -1098,12 +1102,19 @@ module.exports = {
     this.changeDirectoryPage(event)
   },
 
-  changeDirectoryKind: function (event) {
-    const kind = event.currentTarget.dataset.kind
-    if (!this.data.directorySheet || !currentIssueDirectory(this) || !['accounts', 'accountDrafts'].includes(this.data.directorySheet.kind) || !['accounts', 'accountDrafts'].includes(kind)) return
-    this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
-    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: optionPageSize(kind) })
-    return this.changeDirectoryPage(event)
+  // 本批新建账户不再另开一页：直接接在账户后面，列表里用“（本批新建）”区分。
+  // 切页签找账户会让“新建的账户去哪了”变成一个额外问题，而它本来就属于同一份选择。
+  // 草稿单独读一次并缓存，翻页和搜索都在本机过滤，不重复请求。
+  directoryDrafts: async function (sheet) {
+    if (!sheet || sheet.kind !== 'accounts' || !this._optionsDraftPager) return []
+    if (!this._directoryDraftRows) {
+      const response = await this._optionsDraftPager.load()
+      this._directoryDraftRows = response.items || []
+    }
+    const search = model.normalizePaymentAccountName(sheet.query || '')
+    return this._directoryDraftRows
+      .filter(account => !search || model.normalizePaymentAccountName(account.name).includes(search))
+      .map(account => ({ ...account, draft: true }))
   },
 
   changeDirectoryPage: async function (event) {
@@ -1112,11 +1123,13 @@ module.exports = {
     const active = () => this._viewActive && this._viewSession === session && readCache.getSession() === scope &&
       session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet && currentIssueDirectory(this)
     if (!pager || !active()) return
+    const sheet = this.data.directorySheet
     this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
     try {
-      const response = await pager.load(direction(event))
+      const [response, drafts] = await Promise.all([pager.load(direction(event)), this.directoryDrafts(sheet)])
       if (!active()) return
-      this.setData({ 'directorySheet.items': directoryRows(this.data.directorySheet, response.items), 'directorySheet.page': response.page, 'directorySheet.loading': false })
+      this.setData({ 'directorySheet.items': directoryRows(sheet, response.items.concat(drafts)),
+        'directorySheet.page': response.page, 'directorySheet.loading': false })
     } catch (error) { if (active()) this.setData({ 'directorySheet.loading': false, 'directorySheet.error': errorText(error) }) }
   },
 
@@ -1143,7 +1156,7 @@ module.exports = {
       if (sheet.loading || sheet.error) return
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
       if (!item) return
-      const selected = sheet.kind === 'accountDrafts' ? Object.assign({}, item, { isDraft: true, name: item.name + '（本批新建）' }) : item
+      const selected = item.draft ? Object.assign({}, item, { isDraft: true, name: item.name + '（本批新建）' }) : item
       const choices = this.data[property].filter(row => row.isPlaceholder).concat(selected,
         this.data[property].filter(row => row.isCreate))
       // 目录保持完整：截断会让后续卡片选不到其它账户，也匹配不到推荐。
@@ -1175,7 +1188,9 @@ module.exports = {
 
   closeDirectory: function () {
     if (this._optionPager) this._optionPager.cancel()
-    this._optionPager = null; this._issueDirectoryToken = null; this._editorDirectoryToken = null
+    if (this._optionsDraftPager) this._optionsDraftPager.cancel()
+    this._optionPager = null; this._optionsDraftPager = null; this._directoryDraftRows = null
+    this._issueDirectoryToken = null; this._editorDirectoryToken = null
     this.setData({ directorySheet: null })
   },
 

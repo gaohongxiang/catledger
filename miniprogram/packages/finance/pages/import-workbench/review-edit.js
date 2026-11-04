@@ -560,8 +560,11 @@ module.exports = {
     const token = this._reviewEditToken
     if (!editable(this, token)) return null
     const field = token.view.accountFields.find(field => field.target === target)
+    // 归属选项随账户目录下发：行内不再常驻三选，点开这一行才决定“是我的、别人的，还是暂不确定”。
     if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId,
-      allowedTypes: field.allowedTypes, currency: token.row.currency || 'CNY' }
+      allowedTypes: field.allowedTypes, currency: token.row.currency || 'CNY',
+      ownership: field.ownershipSide && field.ownershipEditable
+        ? { field: field.ownershipSide + 'Kind', kind: field.ownershipKind, label: field.label } : null }
     if (token.view.repaymentChannel || token.view.registration) return null
     if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId, currency: token.row.currency || 'CNY',
       allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null }

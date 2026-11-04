@@ -1536,11 +1536,14 @@ button::after { border: 0; }
 .account-choice-ignore-title,
 .account-choice-ignore-copy { display: block; width: 100%; }
 .account-choice-ignore-title { font-size: var(--font-caption, 24rpx); font-weight: 500; white-space: nowrap; }
+/* 两列并排时每列只有半个屏宽，解释必须换行；单行会顶出卡片被邻卡盖掉。 */
 .account-choice-ignore-copy {
   margin-top: 7rpx;
   color: var(--ui-muted);
   font-size: var(--font-caption, 24rpx);
-  white-space: nowrap;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .account-choice-other-section { min-height: 0; }
 .account-choice-search {
@@ -2853,9 +2856,16 @@ button::after { border: 0; }
 .directory-heading::before { content: ''; flex: 0 0 88rpx; }
 .directory-heading .review-sheet-close { margin: 0; }
 .directory-title { flex: 1; min-width: 0; color: var(--ui-ink); font-size: var(--font-section, 32rpx); font-weight: 500; line-height: 1.4; text-align: center; }
-.directory-tabs { display: flex; flex-shrink: 0; gap: var(--layout-space-1); margin-top: var(--layout-space-2); padding: 6rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface-muted); }
-.directory-sheet .directory-tab { display: flex; flex: 1; align-items: center; justify-content: center; min-height: 76rpx; margin: 0; padding: 0 12rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; line-height: 1.5; background: transparent; border-radius: var(--theme-radius-small, 12rpx); }
-.directory-sheet .directory-tab-selected { color: var(--ui-accent-strong); background: var(--ui-surface); font-weight: 500; }
+/* 归属区只在账户目录里出现：行内不再常驻三选，选下面的账户就是“我的”。 */
+.directory-ownership { flex-shrink: 0; margin-top: var(--layout-space-3); }
+.directory-ownership-label { display: block; margin-bottom: 10rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
+.directory-ownership-options { display: flex; gap: var(--layout-space-1); }
+.directory-sheet .directory-ownership-option { display: flex; flex: 1; flex-direction: column; align-items: flex-start; min-width: 0; margin: 0; padding: 14rpx 16rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: transparent; text-align: left; }
+.directory-sheet .directory-ownership-option.is-selected { border-color: var(--ui-accent-strong); background: var(--ui-accent-soft); }
+.directory-ownership-title { color: var(--ui-ink); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 1.5; }
+.directory-sheet .directory-ownership-option.is-selected .directory-ownership-title { color: var(--ui-accent-strong); }
+.directory-ownership-copy { margin-top: 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.45; white-space: normal; }
+.directory-ownership-note { display: block; margin-top: 10rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .directory-search { display: flex; flex-shrink: 0; align-items: center; gap: var(--layout-space-2); margin: 20rpx 0 8rpx; padding: 0 18rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--ui-surface-muted); }
 .directory-search-icon { flex: 0 0 28rpx; width: 28rpx; height: 28rpx; opacity: .6; }
 .directory-search-input { flex: 1; min-width: 0; height: 80rpx; color: var(--ui-ink); font-size: var(--font-body, 28rpx); }
@@ -2896,13 +2906,21 @@ button::after { border: 0; }
 
 /* 新建账户：选择、名称、类型、状态挤在同一行，笔数让给来源行，别再另起一行。 */
 .account-create-line { width: 100%; margin-top: 0; align-self: stretch; align-items: stretch; }
-.account-create-line .account-create-trigger { flex: 0 0 auto; align-self: center; padding: 0 10rpx 0 14rpx; }
+.account-create-line .account-create-trigger { flex: 0 0 auto; align-self: center; padding: 0 6rpx 0 12rpx; }
 .account-create-line .account-create-trigger .account-proof-title { min-width: 0; font-size: var(--font-caption, 24rpx); font-weight: 500; white-space: nowrap; }
-.account-create-line .account-compact-name { flex: 1 1 0; width: 0; }
-/* 「信用卡 / 消费信贷」是最长的类型名，单行不换行要留够宽度。 */
-.account-create-line .account-compact-type { flex: 0 0 236rpx; width: 236rpx; }
-.account-create-line .account-compact-type-value { font-size: var(--font-caption, 24rpx); white-space: nowrap; }
-.account-create-line .account-state-tag { flex: 0 0 auto; align-self: center; margin: 0 12rpx 0 6rpx; }
+/* 名称是可编辑的主信息，先吃掉剩余宽度；类型按自身文字宽度让位，长名才收缩。 */
+.account-create-line .account-compact-name { flex: 1 1 auto; width: 0; }
+/* 「信用卡 / 消费信贷」是最长的类型名，留 236rpx 上限；短类型不占满，把宽度还给名称。 */
+.account-create-line .account-compact-type { flex: 0 1 auto; width: auto; min-width: 128rpx; max-width: 236rpx; }
+.account-create-line .account-compact-type-control { padding: 8rpx 10rpx; gap: 4rpx; }
+.account-create-line .account-compact-type-value {
+  min-width: 0;
+  font-size: var(--font-caption, 24rpx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-create-line .account-state-tag { flex: 0 0 auto; align-self: center; margin: 0 8rpx 0 4rpx; padding: 2rpx 10rpx; }
 .account-source-line-create { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
 .account-source-line-create .account-source-text { flex: 1; min-width: 0; }
 .account-source-line-create .account-evidence-trigger { min-height: 0; padding: 6rpx 0; }
