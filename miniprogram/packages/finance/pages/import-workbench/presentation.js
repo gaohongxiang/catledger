@@ -11,7 +11,7 @@ function emptyLists() {
 function record(event) {
   const view = model.eventView(event), result = {}
   ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayTime', 'displayDetailMeta',
-    'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
+    'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'pendingReview', 'categoryName', 'natureLabel',
     'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision',
     'amountMinor', 'rowTitle', 'rowMeta', 'rowSource', 'rowRole', 'rowRoleKey', 'installmentRole',
     'installmentPeriod', 'installmentPlan', 'installmentKey', 'installmentNote', 'installmentPlanLabel',
@@ -119,9 +119,10 @@ function pendingCard(event, category) {
   const subject = listRecord(event)
   const result = {
     eventId: event.eventId, issueId: issue && issue.issueId || '',
-    label: view.label || (category ? '待分类 · 先核对交易' : '待核对交易'),
+    label: view.label || (category ? '待分类' : '待核对交易'),
     decisionText: view.decisionText || '',
-    batchDecision: issue ? (category ? '分类' : '处理') : category ? '去核对' : '查看详情',
+    // 待分类只缺分类。没挂上分类事项不表示这笔还没核对完，右边直接去补分类。
+    batchDecision: category ? '去分类' : issue ? '处理' : '查看详情',
     // 只有“同笔候选”这类事项的成员才是一组待判断的记录，才该连成一张卡；分类页签同理。
     // 账户确认等事项的成员是几十笔各自独立的交易，拿事项 id 当分组键会把它们粘成一片，
     // 每笔的边界就看不出来了——它们是同一个问题，不是同一笔钱。
@@ -130,6 +131,11 @@ function pendingCard(event, category) {
     groupPos: '',
     subjectCount: 1, hiddenSubjectCount: 0,
     natureLabel: subject.natureLabel, subjects: [subject]
+  }
+  if (category) {
+    result.version = event.version
+    // 收入用收入目录，支出和费用用支出目录。性质未定不能在卡片上猜分类。
+    result.categoryKind = event.economicNature === 'income' ? 'income' : ['expense', 'fee'].includes(event.economicNature) ? 'expense' : ''
   }
   return category ? result : pendingReviewCard(result, event.reviewAttention, issue)
 }

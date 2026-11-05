@@ -66,7 +66,7 @@ function boundedItem(item, key, kind) {
   const result = { [key]: item[key], detailRequired: true, detailKind: kind }
   for (const name of ['version', 'status', 'issueType', 'blocking', 'memberCount', 'candidateCount', 'economicNature',
     'flowDirection', 'localAt', 'sortLocalAt', 'amountMinor', 'currency', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId', 'categoryName',
-    'evidenceCount', 'duplicateEvidenceCount', 'pairCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision', 'repaymentChannel', 'summaryExpenseMinor']) {
+    'evidenceCount', 'duplicateEvidenceCount', 'pairCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision', 'repaymentChannel']) {
     if (item[name] != null) result[name] = item[name]
   }
   if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue
@@ -240,10 +240,7 @@ async function eventPage(connection, uid, context, state) {
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (status === 'excluded') where += ` AND NOT ${historicalDuplicateSql}`
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
-  if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (e.status IN ('posted','corrected') AND JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
-    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestMinor')) AS UNSIGNED)>0) OR
-    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeMinor')) AS UNSIGNED)>0))) OR
-    (JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.repaymentConfirmed')=TRUE AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.feeMinor')) AS UNSIGNED)>0))`
+  if (view === 'expense') where += " AND e.economic_nature IN ('expense','fee')"
   else if (view === 'posted') where += " AND e.status IN ('posted', 'corrected')"
   else if (view) {
     where += ' AND ' + activeSql
@@ -262,9 +259,6 @@ async function eventPage(connection, uid, context, state) {
   const [ids] = await connection.execute(`SELECT e.event_id AS eventId FROM catledger_economic_events e WHERE ${where}${after.sql}
     ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id LIMIT ?`, [...values, ...after.values, page.size + 1])
   const items = ids.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: ids.map(row => row.eventId) }) : []
-  if (view === 'expense') for (const item of items) {
-    if (item.repaymentChannel || item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
-  }
   if (view === 'review_pending' || view === 'category_pending') await attachPendingIssues(connection, uid, state.update.updateId, items, view)
   const byId = new Map(items.map(item => [item.eventId, item]))
   return finishPage(context, state, page, ids.map(row => byId.get(row.eventId)), count.total, 'eventId', 'event')

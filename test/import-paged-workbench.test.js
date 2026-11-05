@@ -248,8 +248,14 @@ test('121条跨页无遗漏；最后一页仍显示整批数量和金额', async
   await page.setStep({ currentStep: 4 })
   assert.equal(page.data.finalSummary.expenseText, '¥121.00')
   await page.openFinalDetail({ currentTarget: { dataset: { kind: 'expense' } } })
-  while (page.data.finalDetailSheet.page.hasNext) await page.changeFinalPage(event(1))
-  assert.equal(page.data.finalDetailSheet.records.length, 1)
+  assert.equal(page.data.finalDetailSheet.records.length, 50)
+  const seen = page.data.finalDetailSheet.records.map(row => row.eventId)
+  while (page.data.finalDetailSheet.page.hasNext) {
+    await page.changeFinalPage(event(1))
+    seen.push(...page.data.finalDetailSheet.records.map(row => row.eventId))
+  }
+  assert.equal(page.data.finalDetailSheet.records.length, 21)
+  assert.equal(new Set(seen).size, 121)
   assert.equal(page.data.finalDetailSheet.count, 121)
   page.onUnload()
 })

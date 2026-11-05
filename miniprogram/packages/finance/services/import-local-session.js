@@ -13,6 +13,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
   const accountCreations = new Map()
   let compactReceiptSaved=false
   let model, reader, closed=false, paused=false, errorMessage='', running=null, supplement=null, awaitingEdits=false
+  let createdCategories = []
   function guard() { if(closed||!alive())throw Object.assign(new Error('登录状态已改变，草稿操作已停止'),{code:'SESSION_CHANGED'}) }
   function mutable() {guard();if(state.postFlight||paused)throw Object.assign(new Error('上次入账结果尚未核实，请继续原请求'),{code:'OPERATION_UNCONFIRMED'})}
   function applyRecord(changes) {
@@ -27,13 +28,22 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
       else if(change.kind==='postPhase')posting.applyPhase(state,change)
       else if(change.kind==='supplement')supplement=change.value
       else if(change.kind==='awaitingEdits')awaitingEdits=change.value
+      else if(change.kind==='createdCategory' && change.value && change.value.categoryId){
+        createdCategories=createdCategories.filter(row=>row.categoryId!==change.value.categoryId).concat([clone(change.value)])
+        if(model)model.categories.set(change.value.categoryId,clone(change.value))
+      }
     }
+  }
+  function applyCreatedCategories() {
+    if(!model)return
+    for(const row of createdCategories)model.categories.set(row.categoryId,clone(row))
   }
   for(const record of restored.records||[])applyRecord(record.changes)
   function rebuild() {
     model=modelFactory.create(facts)
     // Catalog changes from a definitive recheck must be visible during replay.
     if(supplement){for(const row of supplement.accounts)model.accounts.set(row.accountId,row);for(const row of supplement.categories)model.categories.set(row.categoryId,row)}
+    applyCreatedCategories()
     const invalid=[]
     const attempt=(choice,work)=>{try{
       if(choice.needsRecheck)throw Object.assign(new Error('账户规则已更新，请重新确认保留的选择'),{code:'LOCAL_RECHECK_REQUIRED'})
@@ -60,6 +70,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     for(const decision of ['distinct','same'])for(const choice of final.pairings.values())if(choice.decision===decision)attempt(choice,()=>model.pair({...choice,pairKey:choice.key}))
     for(const choice of final.events.values())if(!banks.has(choice.eventId))attempt(choice,()=>replayEditor(choice))
     if(supplement)model.applySupplement(supplement)
+    applyCreatedCategories()
     for(const choice of final.reviews.values())attempt(choice,()=>model.review({...choice.input,issueId:choice.issueId,decision:choice.decision}))
     // Preserve invalid choices on disk and in the submission model; only their
     // effects are withheld until the user explicitly checks the affected item.
@@ -136,7 +147,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     if(receipt.outcome==='recheck'){
       const value=await files.download(receipt.recheck,callNetwork);guard()
       persist([{kind:'supplement',value},{kind:'ui',key:'postFlight',value:null},{kind:'awaitingEdits',value:true}])
-      model.applySupplement(value);errorMessage='服务端复核发现变化，已保留其他选择，请核对标记事项';emit()
+      model.applySupplement(value);applyCreatedCategories();errorMessage='服务端复核发现变化，已保留其他选择，请核对标记事项';emit()
       return {...receipt,localView:reader.summary()}
     }
     // A compact confirmed receipt survives removal of every sensitive file.
@@ -162,6 +173,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     get model(){return model},get status(){return{local:true,pending:0,syncing:Boolean(running),error:errorMessage,conflicts:model.invalid.size,saved:!errorMessage,serverReviewPending:model.needsCheck.size,frozen:Boolean(state.postFlight&&!state.confirmedReceipt)}},
     subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},accept(){},schedule(){},async flush(){guard();return reader.summary()},
     touch(){guard();try{files.touch()}catch(_){}},close(){closed=true;files.close();listeners.clear()},
+    rememberCategory(row){mutable();const value={categoryId:row.categoryId,name:row.name,kind:row.kind,parentId:row.parentId||null,parentName:row.parentName||'',systemKey:null,sortOrder:Number(row.sortOrder)||0,version:Number(row.version)||1,archivedAt:null};if(!value.categoryId||!value.name||(value.kind!=='income'&&value.kind!=='expense'))return;persist([{kind:'createdCategory',value}])},
     call(action,data){guard();if(action==='imports.commandResult'){const saved=receipts.get(data.requestId);if(!saved)throw Object.assign(new Error('原请求尚未保存'),{code:'OPERATION_UNCONFIRMED'});return saved.receipt}
       if(action==='financeUpdates.abandon')return session.abandon(data)
       if(action==='financeUpdates.post')return session.post()

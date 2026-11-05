@@ -5,7 +5,7 @@ const loginGuard = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
 const money = require('../../../../utils/money')
 const { present, form } = require('../loans/model')
-const scheduleForm = require('./schedule-form')
+const scheduleForm = require('../../../../services/loan-schedule-form')
 const detailReader = require('./detail-reader').create(api)
 const installmentActions = require('./installment-actions')
 
@@ -28,7 +28,7 @@ Page(theme.page({
   ...require('./charge-actions').methods,
   ...require('./upfront-fee').methods,
   data: businessInitialData,
-  onLoad(query) { this._retainedChargeId=query&&query.chargeId||null;this.setData({retainedChargeMode:!!this._retainedChargeId});this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId&&!this._retainedChargeId){this._redirecting=true;wx.redirectTo({url:'/packages/finance/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
+  onLoad(query) { this._retainedChargeId=query&&query.chargeId||null;this.setData({retainedChargeMode:!!this._retainedChargeId});this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId&&!this._retainedChargeId){this._redirecting=true;wx.redirectTo({url:'/packages/loans/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
   onShow() { if(this._redirecting)return;return loginGuard.run(this, () => this.load()) },
   onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this); if (this._repaymentAlert && typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload(); this._repaymentAlert = false },
@@ -99,22 +99,22 @@ Page(theme.page({
     if (this._sourceTransactionId && (!this.data.loan || this.data.loan.baselinePrincipalMinor == null || this.data.loan.baselineDate > source.transaction.occurredLocalAt.slice(0,10))) {
       this.edit(); this.setData({ errorMessage: '请先确认还款日期日初或更早的本金基准，不能把本次扣款当贷款本金' }); return
     }
-    if (this._sourceTransactionId && source.payment) { wx.navigateTo({ url:'/packages/finance/pages/repayment-entry/index?paymentId=' + encodeURIComponent(source.payment.paymentId) + '&loanId=' + encodeURIComponent(this._loanId) }); return }
+    if (this._sourceTransactionId && source.payment) { wx.navigateTo({ url:'/packages/loans/pages/repayment-entry/index?paymentId=' + encodeURIComponent(source.payment.paymentId) + '&loanId=' + encodeURIComponent(this._loanId) }); return }
     const options=event&&event.currentTarget&&event.currentTarget.dataset||{},period=Number(options.term)
-    wx.navigateTo({ url: '/packages/finance/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') + (Number.isInteger(period)&&period>0?'&periodNumber='+period:options.kind==='drawdown'?'&kind=drawdown':'') })
+    wx.navigateTo({ url: '/packages/loans/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') + (Number.isInteger(period)&&period>0?'&periodNumber='+period:options.kind==='drawdown'?'&kind=drawdown':'') })
   },
-  openPlan() { if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({ url: '/packages/finance/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
+  openPlan() { if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({ url: '/packages/loans/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
   openPayment(event) {
     if (!pageReadSession.isCurrent(this) || !this.data.periodOpen || this.data.periodLoading || this.data.saving) return
     const id = event.currentTarget.dataset.id
     if (!this.data.periodLegacy.some(payment => payment.paymentId === id)) return
     this.closeInstallment()
-    wx.navigateTo({ url: '/packages/finance/pages/loan-payment/index?paymentId=' + encodeURIComponent(id) })
+    wx.navigateTo({ url: '/packages/loans/pages/loan-payment/index?paymentId=' + encodeURIComponent(id) })
   },
   clearDate(event) { const field = event.currentTarget.dataset.field; if (['startDate','endDate'].includes(field)) this.setData({ [field]: '' }) },
   fillForm(loan) { const schedule = scheduleForm.fromLoan(loan); this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule, scheduleOpen: scheduleForm.touched(schedule) })) },
   contextFresh() { return api.isFresh('loans.get', { loanId: this._loanId }) && api.isFresh('catalog.get') && (!this._sourceTransactionId || api.isFresh('loans.transaction', { transactionId: this._sourceTransactionId })) },
-  edit() { if (!this.data.loan || this.data.saving || this.data.loading) return; if(!this.contextFresh()){this.setData({errorMessage:'请先重新读取与核实最新资料'});return} if(this.data.loan.installmentSetup){wx.navigateTo({url:'/packages/finance/pages/loan-form/index?loanId='+encodeURIComponent(this._loanId)+(this._sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')});return} this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
+  edit() { if (!this.data.loan || this.data.saving || this.data.loading) return; if(!this.contextFresh()){this.setData({errorMessage:'请先重新读取与核实最新资料'});return} if(this.data.loan.installmentSetup){wx.navigateTo({url:'/packages/loans/pages/loan-form/index?loanId='+encodeURIComponent(this._loanId)+(this._sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')});return} this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
   input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value, ...(this.data.fieldError === 'principal' ? { fieldError: '' } : {}) }) },
   scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value, ...(this.data.fieldError === 'schedule' ? { fieldError: '' } : {}) }) },

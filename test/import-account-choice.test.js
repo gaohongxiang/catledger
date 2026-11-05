@@ -301,9 +301,9 @@ test('只剩一项的组合支付打开即收回单账户，保存显式提交�
   assert.equal(editor.writes(h).length, 0)
 })
 
-// 账单说「这笔有几个付款方式、金额分不清」时，界面上是两行空账户。用户选一个账户、
-// 删掉另一个，保存才带得上账户并把组成收成单账户；否则服务端永远判缺账户 + 组成歧义。
-test('付款组成有歧义的行，删掉多余账户后确认保存会带账户并收成单账户', async t => {
+// 组合支付就按组合展示，删不删、删到几个账户由用户决定。这里验证用户删掉一个
+// 付款账户改成单账户付款后，保存会带上单账户组成和两端账户，服务端才能解除阻断。
+test('组合支付展示两行，删掉一个付款账户后按单账户保存', async t => {
   const { h, page, accounts } = await editor.open(t, { economicNature: 'repayment', amountMinor: '151217',
     ledgerAccountId: '', counterpartyLedgerAccountId: 'draft-1',
     reasonCodes: ['payment_components_ambiguous', 'ledger_account_required', 'account_source_required'],
@@ -311,15 +311,18 @@ test('付款组成有歧义的行，删掉多余账户后确认保存会带账�
     paymentComponents: [{ amountMinor: null, componentKind: 'financial', label: '浙江农商联合银行储蓄卡(5564)' },
       { amountMinor: null, componentKind: 'financial', label: '支付宝账户余额' }],
     pendingIssue: { issueType: 'shared_fields' } })
+  // 保持组合形态：两行付款账户，金额列和删除入口都在。
   assert.equal(editor.draft(page).composition, 'payment')
   assert.equal(editor.draft(page).parts.length, 2)
+  assert.equal(editor.view(page).fundsEndpoints[0].accounts.length, 2)
+  assert.equal(editor.view(page).fundsEndpoints[0].split, true)
+  // 用户给保留的那份选账户，再删掉另一份，改成单账户付款。
   assert.equal(editor.select(page, 'editorPart0', accounts[0]), true)
   page.removeFundsAccount(editor.tap({ endpoint: 'payer', index: 1 }))
   const view = editor.view(page)
   assert.equal(editor.draft(page).composition, 'single')
   assert.equal(view.canSave, true)
   assert.equal(view.payload.composition.kind, 'single')
-  // 账户跟着这次保存一起提交，服务端才能落库，不再判缺账户。
   assert.equal(view.payload.decisions.accountOwnership.source.accountId, 'account-0')
   assert.equal(view.payload.decisions.accountOwnership.destination.accountId, 'draft-1')
   assert.equal(editor.writes(h).length, 0)

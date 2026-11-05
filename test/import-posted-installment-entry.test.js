@@ -36,7 +36,7 @@ test('已入账卡按本批读取待补分期，显示条数与计划名，入�
   assert.equal(page.data.pendingInstallments, 4)
   assert.equal(page.data.pendingInstallmentNames, '电销总账分月12期、电销现分按月收12期')
   page.openInstallmentSources()
-  assert.deepEqual(navigation, ['/packages/finance/pages/installment-sources/index?updateId=synthetic-update'])
+  assert.deepEqual(navigation, ['/packages/loans/pages/installment-sources/index?updateId=synthetic-update'])
 })
 
 test('本批没有待补来源时不显示条数，也不残留上一批的提示', async () => {

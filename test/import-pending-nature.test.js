@@ -73,9 +73,11 @@ test('分类卡片保留交易性质和操作文案，不把费用性质覆盖�
   const view = presentation()
   const input = Object.assign(event('分期利息'), { economicNature: 'fee' })
   assert.equal(view.pendingCard(input, true).natureLabel, '分期利息')
-  assert.equal(view.pendingCard(input, true).batchDecision, '分类')
+  assert.equal(view.pendingCard(input, true).batchDecision, '去分类')
   delete input.pendingIssue
-  assert.equal(view.pendingCard(input, true).batchDecision, '去核对')
+  assert.equal(view.pendingCard(input, true).batchDecision, '去分类')
+  assert.equal(view.pendingCard(input, true).label, '待分类')
+  assert.equal(view.pendingCard(input, true).categoryKind, 'expense')
 })
 
 function reviewIssues(labels) {

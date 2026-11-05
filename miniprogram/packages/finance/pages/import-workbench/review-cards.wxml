@@ -4,6 +4,10 @@
     <view class="review-decision-copy"><text class="review-decision-title">{{pending ? card.label : card.natureLabel}}{{statusText ? ' · ' + statusText : ''}}{{reviewPending ? ' · 待核对' : ''}}</text></view>
     <view wx:if="{{categoryEditable}}" class="review-decision-action category-edit-action" data-id="{{card.eventId}}" catchtap="openCategoryEdit" aria-role="button" aria-label="修改分类"><text class="review-action-button">修改分类</text><chevron-icon size="{{22}}" /></view>
     <button wx:elif="{{categoryWaiting}}" class="review-inline-action" data-id="{{card.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button>
+    <button wx:elif="{{categoryAssign}}" class="review-inline-action" data-id="{{card.eventId}}" bindtap="openReviewEdit">去分类<chevron-icon size="{{22}}" /></button>
+    <view wx:elif="{{categoryQuick}}" class="category-quick-trigger" data-id="{{card.eventId}}" data-version="{{card.version}}" data-kind="{{card.categoryKind}}" catchtap="openCategoryQuick" aria-role="button" aria-label="选择分类">
+      <text class="category-quick-label">选择分类</text><view class="account-dropdown-chevron"></view>
+    </view>
     <view wx:else class="{{completed ? 'review-completed-side' : 'review-decision-action'}}">
       <text wx:if="{{card.groupCount > 1 && card.groupPos !== 'middle' && card.groupPos !== 'last'}}" class="review-action-count money-number">同组 {{card.groupCount}} 笔</text>
       <text class="review-action-button">{{card.batchDecision || '查看'}}</text><chevron-icon size="{{22}}" />

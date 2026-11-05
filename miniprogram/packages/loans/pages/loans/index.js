@@ -46,9 +46,9 @@ Page(theme.page({
   firstPage() { if (this.data.loading) return this._load || Promise.resolve(); this._cursor = null; this._previous = []; return this.loadLoans(true) },
   nextPage() { if (this.data.loading || !this.data.nextCursor) return; this._previous = (this._previous || []).concat([this._cursor || null]).slice(-5); this._cursor = this.data.nextCursor; return this.loadLoans() },
   previousPage() { if (this.data.loading || !this._previous || !this._previous.length) return; this._cursor = this._previous.pop(); return this.loadLoans() },
-  openLoan(event) { if (this.data.items.some(item => item.loanId === event.currentTarget.dataset.id)) wx.navigateTo({ url: '/packages/finance/pages/loan-detail/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
+  openLoan(event) { if (this.data.items.some(item => item.loanId === event.currentTarget.dataset.id)) wx.navigateTo({ url: '/packages/loans/pages/loan-detail/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   toggleRetained(){if(!this.data.loading)this.setData({retainedOpen:!this.data.retainedOpen})},
-  openRetainedCharge(event){if(pageReadSession.isCurrent(this)&&!this.data.loading&&this.data.retainedCharges.some(f=>f.chargeId===event.currentTarget.dataset.id))wx.navigateTo({url:'/packages/finance/pages/loan-detail/index?chargeId='+encodeURIComponent(event.currentTarget.dataset.id)})},
+  openRetainedCharge(event){if(pageReadSession.isCurrent(this)&&!this.data.loading&&this.data.retainedCharges.some(f=>f.chargeId===event.currentTarget.dataset.id))wx.navigateTo({url:'/packages/loans/pages/loan-detail/index?chargeId='+encodeURIComponent(event.currentTarget.dataset.id)})},
   async loadRetained(){
     if(this.data.loading||this.data.retainedLoading||!pageReadSession.isCurrent(this))return
     const current=pageReadSession.capture(this),token=this._retainedQuery={}
@@ -60,10 +60,10 @@ Page(theme.page({
   },
   nextRetained(){if(this.data.loading||this.data.retainedLoading||!this.data.retainedNextCursor)return;this._retainedPrevious=(this._retainedPrevious||[]).concat([this._retainedCursor||null]).slice(-5);this._retainedCursor=this.data.retainedNextCursor;return this.loadRetained()},
   previousRetained(){if(this.data.loading||this.data.retainedLoading||!this._retainedPrevious?.length)return;this._retainedCursor=this._retainedPrevious.pop();return this.loadRetained()},
-  openUnassigned() { return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/finance/pages/loan-link/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') })) },
-  openInstallmentSources() { wx.navigateTo({ url: '/packages/finance/pages/installment-sources/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') }) },
+  openUnassigned() { return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/loans/pages/loan-link/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') })) },
+  openInstallmentSources() { wx.navigateTo({ url: '/packages/loans/pages/installment-sources/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') }) },
   createLoan() {
     if (this.data.loading || (this._accountId && (!this.data.scopeAccount || this.data.scopeAccount.archived))) return
-    return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/finance/pages/loan-form/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') }))
+    return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/loans/pages/loan-form/index' + (this._accountId ? '?accountId=' + encodeURIComponent(this._accountId) : '') }))
   }
 }))

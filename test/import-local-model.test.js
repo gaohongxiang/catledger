@@ -168,6 +168,71 @@ test('本机计划候选按同一指纹判断：同名同长期数靠本金和�
     error => error.code === 'VALIDATION_ERROR')
 })
 
+test('组合支付删到一个账户就离开待核对，已核对后仍可改回分摊', async () => {
+  const { randomUUID } = require('node:crypto')
+  async function combinedRepayment() {
+    const value = await facts({ count: 1 }), event = value.events[0]
+    const card = value.accounts.find(account => account.type === 'wallet')
+    const target = value.accounts.find(account => account.type === 'credit')
+    const balance = { accountId: randomUUID(), name: '支付宝账户余额', type: 'wallet', nature: 'asset', currency: 'CNY', version: 1 }
+    value.accounts.push(balance)
+    Object.assign(event, {
+      economicNature: 'repayment', flowDirection: 'neutral', amountMinor: '151217',
+      ledgerAccountId: card.accountId, counterpartyLedgerAccountId: target.accountId,
+      status: 'needs_action', categoryId: null, reasonCodes: ['payment_components_ambiguous']
+    })
+    event.fieldSources = { ...event.fieldSources, semanticBlockers: ['payment_components_ambiguous'],
+      paymentComponents: [
+        { componentKind: 'financial', label: '浙江农商联合银行储蓄卡(5564)', amountMinor: null },
+        { componentKind: 'financial', label: '支付宝账户余额', amountMinor: null }
+      ] }
+    const issueId = randomUUID()
+    value.issues.push({ issueId, issueType: 'shared_fields', primaryReasonCode: 'payment_components_ambiguous',
+      reasonCodes: ['payment_components_ambiguous'], status: 'open', blocking: true, version: 1, memberCount: 1,
+      candidateCount: 0, subjectEventIds: [event.eventId] })
+    value.members.push({ memberId: randomUUID(), issueId, objectType: 'event', objectId: event.eventId,
+      objectVersion: event.version, memberRole: 'subject', sortOrder: 0 })
+    return { value, eventId: event.eventId, issueId, card, balance }
+  }
+  const pending = (model, eventId) => model.eventIssues(eventId).filter(issue => issue.status === 'open' && issue.blocking && issue.issueType !== 'category_assignment')
+  const draft = await combinedRepayment()
+  const draftModel = local.create(draft.value)
+  draftModel.edit({ eventId: draft.eventId, editorVersion: 1, composition: { kind: 'payment', incomplete: true, evidenceNote: '',
+    parts: [{ accountId: draft.card.accountId, amountMinor: null }, { accountId: draft.balance.accountId, amountMinor: null }] } })
+  assert.equal(draftModel.events.get(draft.eventId).status, 'needs_action')
+  assert.equal(draftModel.events.get(draft.eventId).reasonCodes.includes('payment_components_ambiguous'), true)
+  assert.equal(draftModel.issues.get(draft.issueId).status, 'open')
+  const single = await combinedRepayment()
+  const model = local.create(single.value)
+  assert.equal(model.issues.get(single.issueId).status, 'open')
+  model.edit({ eventId: single.eventId, editorVersion: 1, composition: { kind: 'single' } })
+  const confirmed = model.events.get(single.eventId)
+  assert.equal(confirmed.status, 'ready')
+  assert.equal(confirmed.fieldSources.editorOverrides.composition, 'single')
+  assert.equal(confirmed.reasonCodes.includes('payment_components_ambiguous'), false)
+  assert.equal((confirmed.fieldSources.semanticBlockers || []).includes('payment_components_ambiguous'), false)
+  assert.equal(model.issues.get(single.issueId).status, 'resolved')
+  assert.equal(pending(model, single.eventId).length, 0)
+  const splitAgain = await combinedRepayment()
+  const splitModel = local.create(splitAgain.value)
+  splitModel.edit({ eventId: splitAgain.eventId, editorVersion: 1, composition: { kind: 'single' } })
+  splitModel.edit({ eventId: splitAgain.eventId, editorVersion: 1, composition: { kind: 'payment', evidenceNote: '改回两个账户',
+    parts: [{ accountId: splitAgain.card.accountId, amountMinor: '100000' }, { accountId: splitAgain.balance.accountId, amountMinor: '51217' }] } })
+  const split = splitModel.events.get(splitAgain.eventId)
+  assert.equal(split.status, 'ready')
+  assert.equal(split.fieldSources.editorOverrides.composition, 'payment')
+  assert.equal(split.fieldSources.paymentResolution.allocations.length, 2)
+  assert.equal(pending(splitModel, splitAgain.eventId).length, 0)
+  const back = await combinedRepayment()
+  const backModel = local.create(back.value)
+  backModel.edit({ eventId: back.eventId, editorVersion: 1, composition: { kind: 'single' } })
+  backModel.edit({ eventId: back.eventId, editorVersion: 1, composition: { kind: 'payment', incomplete: true, evidenceNote: '',
+    parts: [{ accountId: back.card.accountId, amountMinor: null }, { accountId: back.balance.accountId, amountMinor: null }] } })
+  assert.equal(backModel.events.get(back.eventId).status, 'needs_action')
+  assert.equal(backModel.events.get(back.eventId).fieldSources.editorOverrides.incompleteComposition.kind, 'payment')
+  assert.ok(pending(backModel, back.eventId).length > 0)
+})
+
 test('账户与分类目录返回副本，页面按路径更新不会改写模型', async () => {
   const value = await facts({ count: 2 }), model = local.create(value), reader = read.create(model)
   const account = reader.read('financeUpdates.options', { kind: 'accounts', pageSize: 100 }).items
@@ -180,4 +245,17 @@ test('账户与分类目录返回副本，页面按路径更新不会改写模�
   category.name = '页面分类'
   assert.equal(model.accounts.get(account.accountId).name, value.accounts[0].name)
   assert.equal(model.categories.get(category.categoryId).name, value.categories[0].name)
+})
+
+test('受影响账户带上每户笔数，名称仍是账本账户名', async () => {
+  const value = await facts({ count: 1 }), model = local.create(value), reader = read.create(model)
+  const eventId = value.events[0].eventId, accountId = value.accounts[0].accountId
+  model.edit({ eventId, editorVersion: 1, fields: { economicNature: 'expense', ledgerAccountId: accountId,
+    categoryId: value.categories[0].categoryId, amountMinor: value.events[0].amountMinor } })
+  assert.equal(model.events.get(eventId).status, 'ready')
+  const row = reader.read('financeUpdates.options', { kind: 'affected_accounts', pageSize: 100 }).items
+    .find(item => item.accountId === accountId)
+  assert.ok(row)
+  assert.equal(row.name, '微信零钱')
+  assert.equal(row.count, 1)
 })

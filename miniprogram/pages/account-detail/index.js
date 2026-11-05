@@ -165,18 +165,18 @@ Page(themeService.page({
 
   openAccountLoans: function () {
     const account = this.data.account
-    if (account && account.nature === 'liability' && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loans/index?accountId=' + encodeURIComponent(account.accountId) })
+    if (account && account.nature === 'liability' && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/loans/pages/loans/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
   openAccountLoan: function (event) {
     const account = this.data.account
     const loan = this.data.accountLoans.find(item => item.loanId === event.currentTarget.dataset.id)
-    if (account && loan && loan.accountId === account.accountId && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loan-detail/index?loanId=' + encodeURIComponent(loan.loanId) })
+    if (account && loan && loan.accountId === account.accountId && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/loans/pages/loan-detail/index?loanId=' + encodeURIComponent(loan.loanId) })
   },
 
   createAccountLoan: function () {
     const account = this.data.account
-    if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
+    if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/loans/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
   startEditName: function () {

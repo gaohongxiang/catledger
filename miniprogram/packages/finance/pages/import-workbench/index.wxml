@@ -421,17 +421,17 @@
       <input wx:if="{{recordSummary.activeCount}}" class="category-search" value="{{categoryQuery}}" maxlength="80" placeholder="搜索商户、交易、分类或日期" bindinput="searchCategoryIssues" data-input-key="searchCategoryIssues" bindfocus="beginInputEditing" bindblur="finishInputEditing" aria-label="搜索当前分类列表，日期可输入2026-10-03或10-03" />
       <block wx:if="{{activeCategoryStatus === 'pending'}}">
         <skeleton-rows wx:if="{{pageLoading && !categoryCards.length && !categoryWaitingEvents.length}}" rows="{{3}}" />
-        <view wx:for="{{categoryCards}}" wx:key="eventId" class="review-decision-card category-decision-card {{item.groupPos ? 'card-group-' + item.groupPos : ''}}" data-id="{{item.eventId}}" data-issue-id="{{item.issueId}}" bindtap="openPendingRecord" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
-          <template is="review-card-heading" data="{{card: item, statusText: item.issueId ? '待分类' : '待分类 · 先核对交易'}}" />
+        <view wx:for="{{categoryCards}}" wx:key="eventId" class="review-decision-card category-decision-card {{item.groupPos ? 'card-group-' + item.groupPos : ''}}" data-id="{{item.eventId}}" data-issue-id="{{item.issueId}}" data-assign-category="1" bindtap="openPendingRecord" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
+          <template is="review-card-heading" data="{{card: item, categoryQuick: item.categoryKind, statusText: '待分类'}}" />
           <view class="review-preview-list review-decision-previews">
-            <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row" data-id="{{record.eventId}}" catchtap="openEvidence" aria-role="button" aria-label="查看交易证据">
+            <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row">
               <template is="review-record-content" data="{{record: record}}" />
             </view>
             <text wx:if="{{item.hiddenSubjectCount}}" class="review-preview-more">另有 {{item.hiddenSubjectCount}} 笔将应用同一分类</text>
           </view>
         </view>
         <view wx:for="{{categoryWaitingEvents}}" wx:key="eventId" class="review-decision-card category-decision-card">
-          <template is="review-card-heading" data="{{card: item, categoryWaiting: true, statusText: '待分类 · 先核对交易'}}" />
+          <template is="review-card-heading" data="{{card: item, categoryWaiting: item.pendingReview, categoryAssign: !item.pendingReview, statusText: item.pendingReview ? '待分类 · 先核对交易' : '待分类'}}" />
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
             <template is="review-record-content" data="{{record: item}}" />
           </view></view>
@@ -513,9 +513,10 @@
       </view>
       <view class="final-category-heading"><text class="review-title">资金流转</text></view>
       <view class="final-money-row funds-flow-grid">
-        <view wx:for="{{fundsFlowGroups}}" wx:key="nature" class="funds-flow-cell" data-kind="{{item.nature}}" bindtap="openFinalDetail" aria-role="button" aria-label="{{item.label}}，{{item.count}}笔，查看记录">
+        <view wx:for="{{fundsFlowGroups}}" wx:key="nature" class="funds-flow-cell" data-kind="{{item.nature}}" bindtap="openFinalDetail" aria-role="button" aria-label="{{item.label}}，{{item.count}}笔{{item.note ? '，' + item.note : ''}}，查看记录">
           <text class="final-money-label">{{item.label}}</text><text class="final-money-value money-number">{{item.amountText}}</text>
           <view class="funds-flow-count"><text class="money-number">{{item.count}} 笔</text><chevron-icon size="{{20}}" /></view>
+          <text wx:if="{{item.note}}" class="funds-flow-note">{{item.note}}</text>
         </view>
       </view>
 
@@ -699,8 +700,16 @@
         </view>
         <view wx:for="{{finalDetailSheet.records}}" wx:key="eventId" class="funds-flow-record">
           <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.displayTitle}}</text><text class="money-number">{{item.amountText}}</text></view>
-          <text class="funds-flow-record-meta">{{item.displayMeta}}</text>
-          <text wx:if="{{item.accountText}}" class="funds-flow-record-meta">关联账户：{{item.accountText}}</text>
+          <view class="funds-flow-record-body">
+            <view class="funds-flow-record-copy">
+              <text class="funds-flow-record-meta">{{item.displayMeta}}</text>
+              <text wx:if="{{finalDetailSheet.kind === 'categorized' && item.categoryName}}" class="funds-flow-record-meta">分类：{{item.categoryName}}</text>
+              <text wx:if="{{item.accountText}}" class="funds-flow-record-meta">关联账户：{{item.accountText}}</text>
+            </view>
+            <view wx:if="{{finalDetailSheet.kind === 'uncategorized' && item.categoryKind}}" class="category-quick-trigger final-category-trigger" data-id="{{item.eventId}}" data-version="{{item.version}}" data-kind="{{item.categoryKind}}" catchtap="openCategoryQuick" aria-role="button" aria-label="选择分类">
+              <text class="category-quick-label">选择分类</text><view class="account-dropdown-chevron"></view>
+            </view>
+          </view>
         </view>
         <text wx:if="{{!finalDetailSheet.loading && !finalDetailSheet.count}}" class="funds-flow-record-meta">本批暂无相关{{finalDetailSheet.mode === 'accounts' ? '账户' : '交易'}}。</text>
       </scroll-view>
@@ -904,11 +913,31 @@
         <view class="directory-list-content">
         <skeleton-rows wx:if="{{directorySheet.loading && !directorySheet.items.length}}" rows="{{4}}" />
         <view wx:if="{{directorySheet.error}}" class="directory-empty"><text>{{directorySheet.error}}</text><button class="directory-text-action" bindtap="changeDirectoryPage">重新读取</button></view>
-        <text wx:if="{{!directorySheet.loading && !directorySheet.error && !directorySheet.items.length}}" class="directory-empty">{{directorySheet.query ? '没有找到匹配项' : directorySheet.kind === 'categories' ? '暂无可选分类' : directorySheet.kind === 'loans' ? '暂无可选贷款' : '暂无可选账户'}}</text>
+        <text wx:if="{{!directorySheet.loading && !directorySheet.error && (directorySheet.kind === 'categories' ? !directorySheet.groups.length : !directorySheet.items.length)}}" class="directory-empty">{{directorySheet.query ? '没有找到匹配项' : directorySheet.kind === 'categories' ? '暂无可选分类' : directorySheet.kind === 'loans' ? '暂无可选贷款' : '暂无可选账户'}}</text>
+        <block wx:if="{{directorySheet.kind === 'categories'}}">
+          <text wx:if="{{directorySheet.groups.length && !directorySheet.query}}" class="directory-category-hint">一级可直接选用，二级列在对应一级下面</text>
+          <view wx:for="{{directorySheet.groups}}" wx:key="key" class="directory-category-group">
+            <view class="directory-category-parent">
+              <button class="directory-row directory-category-choice {{item.directorySelected ? 'directory-row-selected' : ''}} {{item.directoryDisabled ? 'directory-row-unavailable' : ''}}" data-index="{{item.optionIndex}}" bindtap="selectDirectory" disabled="{{directorySheet.loading || busy || item.directoryDisabled}}" aria-pressed="{{item.directorySelected}}">
+                <text class="directory-row-name">{{item.name}}</text>
+                <view wx:if="{{item.directorySelected}}" class="directory-check directory-check-selected"><image src="/assets/icons/check.svg" mode="aspectFit" /></view>
+              </button>
+              <view wx:if="{{item.hasChildren}}" class="directory-category-expand" data-key="{{item.key}}" catchtap="toggleCategoryGroup" aria-role="button" aria-label="{{item.expanded ? '收起' : '展开'}}{{item.name}}的二级分类"><chevron-icon direction="{{item.expanded ? 'down' : 'right'}}" size="{{24}}" /></view>
+            </view>
+            <view wx:if="{{item.expanded}}" class="directory-category-children">
+              <button wx:for="{{item.children}}" wx:for-item="child" wx:key="key" class="directory-row directory-category-child {{child.directorySelected ? 'directory-row-selected' : ''}} {{child.directoryDisabled ? 'directory-row-unavailable' : ''}}" data-index="{{child.optionIndex}}" bindtap="selectDirectory" disabled="{{directorySheet.loading || busy || child.directoryDisabled}}" aria-pressed="{{child.directorySelected}}">
+                <text class="directory-row-name">{{child.name}}</text>
+                <view wx:if="{{child.directorySelected}}" class="directory-check directory-check-selected"><image src="/assets/icons/check.svg" mode="aspectFit" /></view>
+              </button>
+            </view>
+          </view>
+        </block>
+        <block wx:else>
         <button wx:for="{{directorySheet.items}}" wx:key="index" class="directory-row {{item.directorySelected ? 'directory-row-selected' : ''}} {{item.directoryDisabled ? 'directory-row-unavailable' : ''}}" data-index="{{index}}" bindtap="selectDirectory" disabled="{{directorySheet.loading || busy || item.directoryDisabled}}" aria-pressed="{{item.directorySelected}}">
           <view class="directory-row-copy"><text class="directory-row-name">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}{{item.draft ? '（本批新建）' : ''}}</text><text wx:if="{{item.directoryMeta}}" class="directory-row-meta">{{item.directoryMeta}}</text></view>
           <view wx:if="{{!item.directoryDisabled}}" class="directory-check {{item.directorySelected ? 'directory-check-selected' : ''}}"><image wx:if="{{item.directorySelected}}" src="/assets/icons/check.svg" mode="aspectFit" /></view>
         </button>
+        </block>
         </view>
       </scroll-view>
       <view wx:if="{{directorySheet.page && directorySheet.page.canFirst}}" class="directory-pagination">
@@ -917,6 +946,20 @@
         <button class="directory-text-action" data-direction="1" bindtap="changeDirectoryPage" disabled="{{directorySheet.loading || !directorySheet.page.hasNext}}">下一页</button>
       </view>
       <view wx:elif="{{directorySheet.page && directorySheet.page.hasNext}}" class="directory-pagination"><text>{{directorySheet.page.start}}–{{directorySheet.page.end}} / {{directorySheet.page.count}}</text><button class="directory-text-action" data-direction="1" bindtap="changeDirectoryPage" disabled="{{directorySheet.loading}}">下一页</button></view>
+      <view wx:if="{{directorySheet.kind === 'categories'}}" class="directory-local-actions directory-category-actions">
+        <block wx:if="{{directorySheet.creating}}">
+          <input class="directory-create-input" value="{{directorySheet.createName}}" maxlength="32" placeholder="分类名称" disabled="{{directorySheet.createSaving}}" bindinput="bindCategoryCreateName" confirm-type="done" aria-label="新分类名称" />
+          <picker mode="selector" range="{{directorySheet.createParents}}" range-key="name" value="{{directorySheet.createParentIndex}}" disabled="{{directorySheet.createSaving}}" bindchange="changeCategoryCreateParent">
+            <view class="directory-create-parent">{{directorySheet.createParents[directorySheet.createParentIndex].name}}</view>
+          </picker>
+          <text wx:if="{{directorySheet.createError}}" class="directory-create-error">{{directorySheet.createError}}</text>
+          <view class="directory-create-actions">
+            <button class="directory-text-action" bindtap="cancelCategoryCreate" disabled="{{directorySheet.createSaving}}">取消</button>
+            <button class="directory-text-action directory-create" bindtap="saveCategoryCreate" disabled="{{directorySheet.createSaving}}">保存并选用</button>
+          </view>
+        </block>
+        <button wx:else class="directory-text-action directory-create" bindtap="beginCategoryCreate" disabled="{{busy || directorySheet.loading}}">＋ 新建分类</button>
+      </view>
       <view wx:if="{{directorySheet.issueDirectory && (directorySheet.canCreate || directorySheet.canClear)}}" class="directory-local-actions">
         <button wx:if="{{directorySheet.canCreate}}" class="directory-text-action directory-create" data-choice="create" bindtap="selectDirectory" disabled="{{busy}}">＋ {{directorySheet.liabilityOnly ? '新建负债账户' : '新建账户'}}</button>
         <button wx:if="{{directorySheet.canClear}}" class="directory-text-action directory-clear" data-choice="clear" bindtap="selectDirectory" disabled="{{busy}}">清除选择</button>

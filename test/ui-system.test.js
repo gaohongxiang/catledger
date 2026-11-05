@@ -434,13 +434,13 @@ test('page-head 统一全部页面页头，徽章按需只留真实业务上下�
     assert.ok(headers.length > 0, page + ' 应保留页内小节')
     headers.forEach(function (tag) { assert.match(tag, /compact/, page + ' section-header 仅允许 compact：' + tag) })
   })
-  assert.doesNotMatch(read('miniprogram/packages/finance/pages/loans/index.wxml'), /section-header/)
+  assert.doesNotMatch(read('miniprogram/packages/loans/pages/loans/index.wxml'), /section-header/)
 })
 
 test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
   assert.match(read('miniprogram/pages/index/panel.wxml'), /<empty-cat wx:else title="还没有账目"/)
   assert.match(read('miniprogram/pages/transactions/panel.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
-  assert.match(read('miniprogram/packages/finance/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
+  assert.match(read('miniprogram/packages/loans/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
   assert.match(read('miniprogram/packages/finance/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
   assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
   assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
@@ -466,9 +466,9 @@ test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
   sheetFiles.forEach(function (file) {
     assert.match(read(file), /border-radius:\s*var\(--theme-radius-xl, 32rpx\) var\(--theme-radius-xl, 32rpx\) 0 0/, file)
   })
-  assert.match(read('miniprogram/packages/finance/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.record-sheet \{[^}]*border-radius: 30rpx/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-detail/index.wxss'), /\.record-sheet \{[^}]*border-radius: 30rpx/)
 })
 
 test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，编辑逻辑不变', function () {
@@ -539,8 +539,8 @@ test('按压回弹：按钮体系与可点卡片统一 scale 回弹', function (
   assert.match(appStyle, /\.primary-button:active,[\s\S]*?transform:\s*scale\(var\(--motion-press-scale/)
   assert.match(appStyle, /\.primary-button\[disabled\][\s\S]*?opacity:\s*\.65/)
   assert.match(read('miniprogram/components/list-row/index.wxss'), /\.lr-active \{\s*transform:\s*scale\(var\(--motion-press-scale/)
-  assert.match(read('miniprogram/packages/finance/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
-  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
 })
 
 test('校验抖动：login-sheet、profile、loan-detail 三处接入', function () {
@@ -551,12 +551,12 @@ test('校验抖动：login-sheet、profile、loan-detail 三处接入', function
   assert.match(read('miniprogram/pages/profile/panel.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxml'), /nicknameShake \? 'login-nickname-shake'/)
   assert.match(read('miniprogram/components/login-sheet/index.wxss'), /@keyframes login-nickname-shake/)
-  const loanDetailMarkup = read('miniprogram/packages/finance/pages/loan-detail/index.wxml')
+  const loanDetailMarkup = read('miniprogram/packages/loans/pages/loan-detail/index.wxml')
   assert.match(loanDetailMarkup, /fieldError === 'account' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /fieldError === 'principal' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /fieldError === 'schedule' \? 'field-error-shake'/)
   assert.match(loanDetailMarkup, /errorMessage && !fieldError/)
-  assert.match(read('miniprogram/packages/finance/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
+  assert.match(read('miniprogram/packages/loans/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
 })
 
 test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻页不入场', function () {

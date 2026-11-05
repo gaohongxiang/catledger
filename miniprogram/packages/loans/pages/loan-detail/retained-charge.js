@@ -16,6 +16,6 @@ module.exports={
   },
   rebuildFromCharge(){
     if(!session.isCurrent(this)||this.data.saving||this.data.loading||!this._retainedView)return
-    wx.navigateTo({url:'/packages/finance/pages/loan-form/index?chargeContractId='+encodeURIComponent(this._retainedView.contractId)+'&accountId='+encodeURIComponent(this._retainedView.accountId)})
+    wx.navigateTo({url:'/packages/loans/pages/loan-form/index?chargeContractId='+encodeURIComponent(this._retainedView.contractId)+'&accountId='+encodeURIComponent(this._retainedView.accountId)})
   }
 }

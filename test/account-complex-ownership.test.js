@@ -67,8 +67,11 @@ test('我的1000还本人600及外部400，扣款总额1000且只400为支出', 
   assert.deepEqual(transactionDrafts(next).map(row => [row.type, row.sourceAccountId, row.destinationAccountId, row.amountMinor]).sort(),
     [['expense', payer, null, '40000'], ['transfer', payer, credit, '60000']].sort())
   const summary = workbenchSummary([{ ...next, status: 'ready' }], [], [], 0, 0)
-  assert.equal(summary.finalSummary.expenseText, '¥400.00'); assert.equal(summary.finalSummary.transferCount, 1)
-  assert.equal(summary.fundsFlowGroups.find(row => row.nature === 'repayment').amountText, '¥600.00')
+  const repayment = summary.fundsFlowGroups.find(row => row.nature === 'repayment')
+  assert.equal(summary.finalSummary.expenseText, '¥0.00'); assert.equal(summary.finalSummary.expenseCount, 0)
+  assert.equal(summary.finalSummary.transferCount, 1)
+  assert.equal(repayment.count, 1); assert.equal(repayment.amountText, '¥1000.00')
+  assert.equal(repayment.note, '含账本外还款 ¥400.00')
 })
 
 test('外部替我共同还款按收入入本人负债，空付款账户只接受已验证组成', () => {
@@ -77,7 +80,10 @@ test('外部替我共同还款按收入入本人负债，空付款账户只接�
   assert.equal(next.ledgerAccountId, null); assert.equal(evaluatePostability(next).status, 'ready')
   assert.equal(allocationAccountsValid(next, eventAllocation(next), accounts), true)
   assert.ok(transactionDrafts(next).every(row => row.type === 'income' && row.sourceAccountId === null && row.destinationAccountId === credit))
-  assert.equal(workbenchSummary([{ ...next, status: 'ready' }], [], [], 0, 0).finalSummary.incomeText, '¥100.00')
+  const summary = workbenchSummary([{ ...next, status: 'ready' }], [], [], 0, 0)
+  const repayment = summary.fundsFlowGroups.find(row => row.nature === 'repayment')
+  assert.equal(summary.finalSummary.incomeText, '¥0.00'); assert.equal(summary.finalSummary.incomeCount, 0)
+  assert.equal(repayment.count, 1); assert.equal(repayment.amountText, '¥100.00'); assert.equal(repayment.note, '含代还 ¥100.00')
   assert.ok(evaluatePostability(event({ ledgerAccountId: null })).reasonCodes.includes('ledger_account_required'))
 })
 
@@ -147,4 +153,46 @@ test('已确认外部份额改回本人账户先重开组成，不沿用漏记�
   assert.equal(evaluatePostability(next).status, 'needs_action')
   const confirmed = compose(next, 'payment', next.fieldSources.editorOverrides.incompleteComposition.parts.map(({ componentIndex, ...part }) => part))
   assert.equal(transactionDrafts(confirmed).reduce((sum, row) => sum + BigInt(row.amountMinor), 0n), 10000n)
+})
+
+test('确认入账六格按性质各算一次，还款手续费不另计支出', () => {
+  const expense = { ...event(), status: 'ready' }
+  const fee = event({ status: 'ready', economicNature: 'repayment', flowDirection: 'neutral', amountMinor: '50050',
+    counterpartyLedgerAccountId: credit, fieldSources: { repaymentChannelResolution: { repaymentConfirmed: true, feeMinor: '50', repaymentMinor: '50000' } } })
+  const summary = workbenchSummary([expense, fee], [], [], 0, 0)
+  const counts = summary.finalSummary.expenseCount + summary.finalSummary.incomeCount + summary.finalSummary.refundCount
+    + summary.fundsFlowGroups.reduce((total, group) => total + group.count, 0)
+  assert.equal(counts, 2)
+  assert.equal(summary.finalSummary.expenseCount, 1)
+  assert.equal(summary.finalSummary.expenseText, '¥100.00')
+  const repayment = summary.fundsFlowGroups.find(row => row.nature === 'repayment')
+  assert.equal(repayment.count, 1)
+  assert.equal(repayment.amountText, '¥500.50')
+  assert.equal(repayment.note, '含手续费 ¥0.50')
+  const view = require('../miniprogram/packages/finance/pages/import-workbench/model').eventView({
+    ...fee, localAt: '2026-09-02 08:35:00', primaryEvidence: { item: '信用卡还款', sourceType: 'alipay' } })
+  assert.equal(view.displayTitle, '信用卡还款')
+  assert.equal(view.amountText, '¥500.50')
+  assert.match(view.displayMeta, /含手续费 ¥0\.50/)
+})
+
+test('本机跨笔汇总仍把手续费留在还款说明里', () => {
+  const { create } = require('../miniprogram/packages/finance/services/import-local-summary')
+  const fee = event({ eventId: uid(21), status: 'ready', economicNature: 'repayment', flowDirection: 'neutral', amountMinor: '50050',
+    counterpartyLedgerAccountId: credit, fieldSources: { repaymentChannelResolution: { repaymentConfirmed: true, feeMinor: '50', repaymentMinor: '50000', platformRowIds: [], bankRowIds: [] } } })
+  const other = event({ eventId: uid(22), status: 'ready', economicNature: 'repayment', flowDirection: 'neutral', amountMinor: '10000',
+    counterpartyLedgerAccountId: credit, fieldSources: { repaymentChannelResolution: { repaymentConfirmed: true, feeMinor: '0', repaymentMinor: '10000', platformRowIds: [], bankRowIds: [] } } })
+  const events = new Map([[fee.eventId, fee], [other.eventId, other]])
+  const summary = create({
+    facts: { sources: [], rows: [], snapshotId: 's', update: { version: 1 } },
+    evidence: new Map(), rows: new Map(), events, issues: new Map(), drafts: new Set(),
+    invalid: new Set(), needsCheck: new Set(), dirtyEvents: new Set(), dirtyRows: new Set(), dirtyIssues: new Set(),
+    byEvent: new Map(), eventIssues: () => [], hiddenOffset: () => false
+  }).summary()
+  const repayment = summary.workbench.fundsFlowGroups.find(row => row.nature === 'repayment')
+  assert.equal(summary.workbench.finalSummary.expenseCount, 0)
+  assert.equal(summary.workbench.finalSummary.expenseText, '¥0.00')
+  assert.equal(repayment.count, 2)
+  assert.equal(repayment.amountText, '¥600.50')
+  assert.equal(repayment.note, '含手续费 ¥0.50')
 })

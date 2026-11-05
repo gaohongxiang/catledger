@@ -390,7 +390,7 @@ Page(themeService.page(Object.assign({}, require('./refund-lookup'), require('./
       const draft = this.buildRequest()
       if (draft.type !== 'transfer') return
       getApp().globalData.repaymentDraft = draft
-      wx.navigateTo({ url:'/packages/finance/pages/repayment-entry/index' })
+      wx.navigateTo({ url:'/packages/loans/pages/repayment-entry/index' })
     } catch(error) { this.setData({ errorMessage:error.message }) }
   },
 

@@ -10,8 +10,9 @@
 .pairing-review-sheet .stage-previous::after { border: 0; }
 .pairing-review-sheet .stage-previous[disabled] { color: var(--ui-muted); opacity: .5; }
 .pairing-review-sheet { display: flex; flex-direction: column; height: 88vh; overflow: hidden; }
-.pairing-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: var(--layout-space-3); }
-.pairing-heading .sheet-title { flex: 1; min-width: 0; margin: 0; }
+.pairing-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-end; gap: var(--layout-space-3); }
+.pairing-heading .sheet-title { flex: 1; min-width: 0; margin: 0; text-align: left; }
+.pairing-heading .stage-previous { margin-left: auto; margin-right: 0; text-align: right; }
 .pairing-scope { display: block; flex-shrink: 0; margin-top: var(--layout-space-2); font-size: var(--font-caption, 24rpx); line-height: 1.6; color: var(--ui-text); }
 .pairing-choice { flex: 0 0 auto; color: var(--ui-accent); white-space: nowrap; }
 .pairing-scroll { flex: 1; min-height: 0; height: 1px; margin-top: var(--layout-space-4); }

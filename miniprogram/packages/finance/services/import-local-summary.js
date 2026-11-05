@@ -1,6 +1,6 @@
 // Incremental presentation totals. Business classification remains in the same
 // workbenchSummary / row-disposition / coverage rules used by the server.
-const { workbenchSummary, accountIds } = require('../domain/import-review/workbench-summary')
+const { workbenchSummary, accountIds, componentNote } = require('../domain/import-review/workbench-summary')
 const { deriveRowDisposition } = require('../domain/import-review/row-disposition')
 const { explainedRowIds } = require('../domain/import-review/bank-channel-matching')
 const { analysisFullyObserved } = require('../domain/import-review/statement-analysis')
@@ -28,7 +28,8 @@ function create(model) {
     for(const key of ['categoryEventCount','categorizedEventCount'])add(key,packet[key]*direction)
     for(const [key,count]of Object.entries(packet.finalSummary))if(typeof count==='number'&&!['affectedAccountCount','newAccountCount'].includes(key))add('final:'+key,count*direction)
     for(const key of ['expenseText','incomeText','refundText'])scalars.set(key,(scalars.get(key)||0n)+minor(packet.finalSummary[key])*BigInt(direction))
-    for(const group of packet.fundsFlowGroups){add('funds:'+group.nature,group.count*direction);scalars.set('fundsMoney:'+group.nature,(scalars.get('fundsMoney:'+group.nature)||0n)+minor(group.amountText)*BigInt(direction))}
+    for(const group of packet.fundsFlowGroups){add('funds:'+group.nature,group.count*direction);scalars.set('fundsMoney:'+group.nature,(scalars.get('fundsMoney:'+group.nature)||0n)+minor(group.amountText)*BigInt(direction))
+      for(const key of ['feeMinor','outsideMinor','paidByOtherMinor'])scalars.set('fundsPart:'+key+':'+group.nature,(scalars.get('fundsPart:'+key+':'+group.nature)||0n)+BigInt(group[key]||0)*BigInt(direction))}
     for(const id of accounts){const count=(accountCounts.get(id)||0)+direction;if(count)accountCounts.set(id,count);else accountCounts.delete(id)}
     add('selected',Number(selected)*direction);add('ready',Number(ready)*direction);add('missingEvidence',Number(missingEvidence)*direction)
     add('excluded',Number(event.status==='excluded')*direction)
@@ -87,7 +88,9 @@ function create(model) {
     for(const key of ['expenseText','incomeText','refundText'])workbench.finalSummary[key]=money(scalars.get(key)||0n)
     workbench.finalSummary.affectedAccountCount=accountCounts.size
     const final=workbench.finalSummary;final.categoryCoverageText=final.categoryCount?final.categorizedCount+' / '+final.categoryCount:'无需分类';final.categoryComplete=final.categoryCount===final.categorizedCount
-    for(const group of workbench.fundsFlowGroups){group.count=get('funds:'+group.nature);group.amountText=money(scalars.get('fundsMoney:'+group.nature)||0n)}
+    for(const group of workbench.fundsFlowGroups){group.count=get('funds:'+group.nature);group.amountText=money(scalars.get('fundsMoney:'+group.nature)||0n)
+      for(const key of ['feeMinor','outsideMinor','paidByOtherMinor'])group[key]=String(scalars.get('fundsPart:'+key+':'+group.nature)||0n)
+      group.note=componentNote({fee:BigInt(group.feeMinor),outside:BigInt(group.outsideMinor),paidByOther:BigInt(group.paidByOtherMinor)})}
     const rowConservationPassed=staticConservation&&!get('missingEvidence')&&!get('badLink')&&!get('unassigned')&&!get('conflict')
     const recognizedRows=get('recognized'),selectedEvents=get('selected'),readySelectedEvents=get('ready'),openBlockingIssues=get('openBlocking')
     const coverage={dataRows,recognizedRows,unrecognizedRows:Math.max(0,dataRows-recognizedRows),invalidRows:get('disposition:invalid'),unresolvedSemanticRows:get('unresolved'),

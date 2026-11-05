@@ -912,6 +912,29 @@ button::after { border: 0; }
   font-weight: 400;
   line-height: 1.4;
 }
+.category-quick-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: 0 0 auto;
+  max-width: 48%;
+  min-height: 56rpx;
+  padding: 0 16rpx 0 18rpx;
+  box-sizing: border-box;
+  background: var(--ui-accent-soft);
+  border-radius: 999rpx;
+}
+.category-quick-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-accent-strong);
+  font-size: var(--font-caption, 24rpx);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.category-quick-trigger .account-dropdown-chevron { margin-left: 2rpx; color: var(--ui-accent-strong); }
 .review-preview-list {
   padding: 0 14rpx;
   background: var(--ui-surface);
@@ -1405,9 +1428,11 @@ button::after { border: 0; }
   line-height: 1.25;
 }
 .account-choice-cancel {
-  min-width: 88rpx;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
   min-height: 58rpx;
-  margin: 0;
+  margin: 0 0 0 auto;
   padding: 0;
   color: var(--ui-muted);
   font-size: var(--font-caption, 24rpx);
@@ -2825,6 +2850,7 @@ button::after { border: 0; }
 .final-category-heading { padding-top: 28rpx; color: var(--ui-ink); }
 
 .funds-flow-count { display: flex; align-items: center; gap: 2rpx; margin-top: var(--layout-space-1); color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; }
+.funds-flow-note { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; line-height: 1.45; overflow-wrap: anywhere; }
 .final-summary-side { display: flex; align-items: center; gap: 2rpx; }
 .funds-flow-record { padding: 18rpx 0; }
 .funds-flow-record + .funds-flow-record { border-top: 1rpx solid var(--ui-line); }
@@ -2832,11 +2858,14 @@ button::after { border: 0; }
 .funds-flow-record-title { flex: 1; min-width: 0; }
 .funds-flow-record-side { display: flex; align-items: center; gap: 2rpx; flex-shrink: 0; }
 .funds-flow-record-head .money-number { flex-shrink: 0; }
+.funds-flow-record-body { display: flex; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
+.funds-flow-record-copy { flex: 1; min-width: 0; }
 .funds-flow-record-meta { display: block; margin-top: 6rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.6; overflow-wrap: anywhere; }
+.final-category-trigger { align-self: flex-start; max-width: none; margin-top: 6rpx; }
 .final-detail-sheet { display: flex; flex-direction: column; height: 78vh; overflow: hidden; }
-.final-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-5); }
-.final-detail-heading .sheet-title { flex: 1; min-width: 0; }
-.final-detail-close { flex: 0 0 auto; width: auto; margin: 0; padding: 8rpx 0 8rpx 20rpx; min-height: 64rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 48rpx; background: transparent; }
+.final-detail-heading { display: flex; align-items: center; justify-content: flex-end; gap: var(--layout-space-5); }
+.final-detail-heading .sheet-title { flex: 1; min-width: 0; text-align: left; }
+.final-detail-close { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 auto; width: auto; min-width: 0; margin: 0 0 0 auto; padding: 8rpx 0; min-height: 64rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 48rpx; text-align: right; background: transparent; }
 .final-detail-close::after { border: 0; }
 .final-detail-scroll { flex: 1; min-height: 0; margin-top: var(--layout-space-3); }
 
@@ -2879,6 +2908,26 @@ button::after { border: 0; }
 .directory-sheet .directory-row-selected { background: var(--ui-accent-soft); }
 .directory-sheet .directory-row[disabled] { background: var(--ui-surface); }
 .directory-row-unavailable .directory-row-name, .directory-row-unavailable .directory-row-meta { color: var(--ui-subtle); }
+.directory-category-hint { display: block; margin: 8rpx 8rpx 4rpx; color: var(--ui-subtle); font-size: var(--font-caption, 24rpx); line-height: 1.4; }
+.directory-category-group { border-bottom: 1rpx solid var(--ui-line); }
+.directory-category-group:last-child { border-bottom: 0; }
+.directory-category-parent { display: flex; align-items: stretch; }
+.directory-sheet .directory-category-choice { flex: 1; min-width: 0; width: auto; border-bottom: 0; font-weight: 500; }
+.directory-category-choice { display: flex; align-items: center; gap: 12rpx; }
+.directory-category-expand { display: flex; align-items: center; justify-content: center; width: 88rpx; flex: 0 0 88rpx; color: var(--ui-subtle); }
+.directory-category-children { margin: 0 0 4rpx 28rpx; border-left: 2rpx solid var(--ui-line); }
+.directory-sheet .directory-category-child { width: 100%; min-height: 88rpx; padding: 12rpx 8rpx 12rpx 24rpx; border-bottom: 0; background: transparent; }
+.directory-sheet .directory-category-child + .directory-category-child { border-top: 1rpx solid var(--ui-line); }
+.directory-sheet .directory-category-child .directory-row-name { color: var(--ui-ink); }
+.directory-sheet .directory-category-choice.directory-row-selected,
+.directory-sheet .directory-category-child.directory-row-selected { background: transparent; border-radius: 0; }
+.directory-sheet .directory-category-choice.directory-row-selected .directory-row-name,
+.directory-sheet .directory-category-child.directory-row-selected .directory-row-name { color: var(--ui-accent-strong); font-weight: 500; }
+.directory-category-actions { flex-wrap: wrap; align-items: center; }
+.directory-create-input { flex: 1 0 100%; box-sizing: border-box; height: 72rpx; padding: 0 8rpx; color: var(--ui-ink); font-size: var(--font-body, 28rpx); background: transparent; border-bottom: 1rpx solid var(--ui-line); }
+.directory-create-parent { flex: 1 0 100%; min-height: 72rpx; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); line-height: 72rpx; }
+.directory-create-error { display: block; width: 100%; color: var(--ui-danger, #9c463a); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.directory-create-actions { display: flex; justify-content: flex-end; gap: 8rpx; width: 100%; }
 .directory-check { display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 32rpx; width: 32rpx; height: 32rpx; border: 1rpx solid var(--ui-border); border-radius: 50%; }
 .directory-check-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .directory-check image { width: 24rpx; height: 24rpx; }

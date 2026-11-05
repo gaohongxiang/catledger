@@ -125,11 +125,11 @@ Page(theme.page(Object.assign({}, require('./source'), require('./period-entry')
   toggleManagement() { if(session.isCurrent(this)&&this.data.payment&&!this.data.saving&&!this.data.loading&&!this.data.hasPending)this.setData({managementOpen:!this.data.managementOpen}) },
   openLoan(event) {
     const loan=this.data.allocations.find(a=>a.loanId===event.currentTarget.dataset.id)
-    if(session.isCurrent(this)&&loan&&this.data.payment&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/finance/pages/loan-detail/index?loanId='+encodeURIComponent(loan.loanId)})
+    if(session.isCurrent(this)&&loan&&this.data.payment&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/loans/pages/loan-detail/index?loanId='+encodeURIComponent(loan.loanId)})
   },
   allocatePlan(event) {
     const loan=this.data.allocations.find(a=>a.loanId===event.currentTarget.dataset.id)
-    if(session.isCurrent(this)&&loan&&this.data.payment&&this.data.payment.kind==='repayment'&&this.data.payment.status==='active'&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/finance/pages/loan-plan/index?loanId='+encodeURIComponent(loan.loanId)+'&paymentId='+encodeURIComponent(this.data.payment.paymentId)})
+    if(session.isCurrent(this)&&loan&&this.data.payment&&this.data.payment.kind==='repayment'&&this.data.payment.status==='active'&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/loans/pages/loan-plan/index?loanId='+encodeURIComponent(loan.loanId)+'&paymentId='+encodeURIComponent(this.data.payment.paymentId)})
   },
   confirm(event) { this.setData({ confirmed: event.detail.value.includes('confirmed') }) },
   async moreLoans(event) {

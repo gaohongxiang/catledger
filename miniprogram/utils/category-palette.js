@@ -45,6 +45,8 @@ const STYLE_BY_KEY = Object.freeze({
   shopping__electronics: ['electronics', 'blue'], shopping__beauty: ['beauty', 'red'],
   entertainment__fitness: ['fitness', 'green'], entertainment__pets: ['pets', 'orange'],
   entertainment__travel: ['travel', 'blue'], life_services: ['life-services', 'teal'],
+  software_services: ['subscriptions', 'teal'], software_services__software: ['subscriptions', 'teal'],
+  software_services__platform: ['service', 'teal'], software_services__hosting: ['internet', 'teal'],
   food__meal: ['meal', 'orange'], food__drink: ['drink', 'orange'], food__snack: ['snack', 'orange'],
   transport__public: ['bus', 'blue'], transport__taxi: ['taxi', 'blue'], transport__car: ['car', 'blue'],
   transport__train: ['train', 'blue'], transport__flight: ['flight', 'blue'],

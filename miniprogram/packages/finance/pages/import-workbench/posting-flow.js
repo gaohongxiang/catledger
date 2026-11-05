@@ -4,9 +4,29 @@ const { errorText, direction } = require('./presentation')
 const api = require('../../../../services/catledger-import')
 const drafts = require('../../../../services/import-draft-session')
 const readCache = require('../../../../services/read-cache')
-const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
+const { buildFinalDetail, presentAccountRows, presentFinalRecord, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
+const model = require('./model')
 const tabRouter = require('../../../../shell/router')
 const accountPending = require('./account-pending')
+
+// 确认页只带着当前这一屏的交易，账户名称在目录里。缺的按编号补齐，避免全部落到「未命名账户」。
+async function accountsForEvents(page, events) {
+  const known = [...(page.businessData().accounts || []), ...(page.businessData().accountDrafts || [])]
+  const have = new Set(known.map(account => account.accountId).filter(Boolean))
+  const missing = [...new Set((events || []).flatMap(event => model.eventAccountIds(event)))].filter(id => !have.has(id))
+  if (!missing.length || !page._viewSession) return known
+  const found = []
+  for (let start = 0; start < missing.length; start += 100) {
+    const ids = missing.slice(start, start + 100)
+    for (const kind of ['accounts', 'accountDrafts']) {
+      const response = await page._viewSession.read('financeUpdates.options', { kind, ids, pageSize: ids.length })
+      found.push(...(response.items || []))
+    }
+  }
+  const byId = new Map()
+  for (const account of known.concat(found)) if (account && account.accountId && !byId.has(account.accountId)) byId.set(account.accountId, account)
+  return [...byId.values()]
+}
 
 module.exports = {
   viewTransactions: function () {
@@ -29,7 +49,7 @@ module.exports = {
   openInstallmentSources: function () {
     // 已入账页直接带本批 updateId：列表只列这一批待补来源，计划名也取本批账单里的计划名。
     const updateId = this.data.update && this.data.update.updateId
-    wx.navigateTo({ url: '/packages/finance/pages/installment-sources/index' + (updateId ? '?updateId=' + encodeURIComponent(updateId) : '') })
+    wx.navigateTo({ url: '/packages/loans/pages/installment-sources/index' + (updateId ? '?updateId=' + encodeURIComponent(updateId) : '') })
   },
 
   backFinalDetail: function () {
@@ -108,7 +128,8 @@ module.exports = {
     else if (kind === 'expense') filter.view = 'expense'
     else if (kind !== 'all') filter.economicNature = kind
     this._finalKind = { kind, accountId }
-    this._finalPager = this._viewSession.pager(action, filter)
+    // 读取层会按体积提前截断，页长才会出现 31、38 这种数。这里补齐到固定 50 笔。
+    this._finalPager = this._viewSession.pager(action, Object.assign({ pageSize: presentation.PAGE_SIZE }, filter), { fillPage: true })
     const title = kind === 'account'
     ? ((this.businessData().accounts || []).concat(this.businessData().accountDrafts || [])
       .find(account => account.accountId === accountId) || {}).name || FINAL_DETAIL_TITLES.account
@@ -123,10 +144,10 @@ module.exports = {
       const response = await pager.load(direction(event))
       if (pager !== this._finalPager || !this.data.finalDetailSheet) return
       let sheet
-      if (['new_accounts', 'affected_accounts'].includes(target.kind)) sheet = { kind: target.kind, title: target.kind === 'new_accounts' ? '新建账户' : '受影响账户', mode: 'accounts', accounts: response.items, records: [] }
-      else sheet = buildFinalDetail(target.kind, Object.assign({}, this.businessData(), { events: response.items }), target.accountId)
+      if (['new_accounts', 'affected_accounts'].includes(target.kind)) sheet = { kind: target.kind, title: target.kind === 'new_accounts' ? '新建账户' : '受影响账户', mode: 'accounts', accounts: presentAccountRows(response.items), records: [] }
+      else sheet = buildFinalDetail(target.kind, Object.assign({}, this.businessData(), { events: response.items, accounts: await accountsForEvents(this, response.items) }), target.accountId)
       this._finalDetail = null
-      this.setData({ finalDetailSheet: Object.assign({}, sheet, { count: response.total, records: (sheet.records || []).map(presentation.record), page: response.page, loading: false }), finalDetailScrollTop: 0 })
+      this.setData({ finalDetailSheet: Object.assign({}, sheet, { count: response.total, records: (sheet.records || []).map(presentFinalRecord), page: response.page, loading: false }), finalDetailScrollTop: 0 })
     } catch (error) { if (pager === this._finalPager) this.setData({ 'finalDetailSheet.loading': false, errorMessage: errorText(error) }) }
   },
 

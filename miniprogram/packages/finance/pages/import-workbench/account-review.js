@@ -8,6 +8,8 @@ const accountTypes = require('../../domain/import-review/account-type-policy')
 const draftPolicy = require('../../domain/import-review/account-draft-policy')
 const displayGroups = require('./account-display-groups')
 const accountPending = require('./account-pending')
+const categoryTree = require('../../../../utils/category-tree')
+const pending = require('../../../../services/pending-ledger-write')
 
 function currentAccountRecords(page, token) {
   return token && page._viewActive && page._viewEpoch === token.epoch && page._accountEvidenceToken === token &&
@@ -43,6 +45,35 @@ const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'other_liability', label: '其他负债' }
   ])
 
+function sheetCategoryKind(page, sheet) {
+  if (sheet.categoryKind === 'income' || sheet.categoryKind === 'expense') return sheet.categoryKind
+  const editorKind = page.data.categoryEditSheet && page.data.categoryEditSheet.kind
+  if (editorKind === 'income' || editorKind === 'expense') return editorKind
+  const nature = page.data.currentIssue && page.data.currentIssue.subject && page.data.currentIssue.subject.economicNature
+  if (nature === 'income') return 'income'
+  if (nature === 'expense' || nature === 'fee') return 'expense'
+  return ''
+}
+function categoryExpanded(rows, current) {
+  const next = current ? Object.assign({}, current) : {}
+  for (const row of rows || []) if (!row.parentId && row.categoryId && !Object.prototype.hasOwnProperty.call(next, String(row.categoryId))) next[String(row.categoryId)] = true
+  return next
+}
+function categoryDirectoryView(rows, sheet, expanded) {
+  const prepared = (rows || []).map(item => {
+    const unavailable = Boolean(item.archived || item.archivedAt || item.unavailable)
+    return Object.assign({}, item, { directorySelected: item.categoryId === sheet.selectedId, directoryDisabled: unavailable,
+      directoryMeta: unavailable ? '分类不可用' : '' })
+  })
+  return categoryTree.orderedSelectionGroups(prepared, sheet.query || '', expanded)
+}
+function showCategoryDirectory(page) {
+  const sheet = page.data.directorySheet
+  if (!sheet || sheet.kind !== 'categories' || !page._categoryCatalog) return
+  page._categoryExpanded = categoryExpanded(page._categoryCatalog, page._categoryExpanded)
+  const view = categoryDirectoryView(page._categoryCatalog, sheet, sheet.query ? {} : page._categoryExpanded)
+  page.setData({ 'directorySheet.items': view.items, 'directorySheet.groups': view.groups, 'directorySheet.page': null, 'directorySheet.loading': false })
+}
 function directorySelection(data, target) {
   if (target === 'categoryEdit') return (data.categoryEditSheet || {}).selectedId || ''
   const entry = target === 'category' ? (data.issueCategories || [])[data.issueDraft.categoryIndex]
@@ -1084,7 +1115,9 @@ module.exports = {
     if (this._optionsDraftPager) this._optionsDraftPager.cancel()
     const liabilityOnly = false
     this.setData({ directorySheet: { target, kind, ...issueOptions, ...(categoryKind ? { categoryKind } : {}),
-      liabilityOnly, selectedId: editorOptions ? editorOptions.selectedId : directorySelection(this.data, target), query: '', items: [], loading: true } })
+      liabilityOnly, selectedId: editorOptions ? editorOptions.selectedId : directorySelection(this.data, target), query: '', items: [], groups: [], loading: true } })
+    this._categoryCatalog = null
+    this._categoryExpanded = null
     this._directoryDraftRows = null
     this._optionsDraftPager = kind === 'accounts'
       ? this._viewSession.pager('financeUpdates.options', { kind: 'accountDrafts', pageSize: optionPageSize('accountDrafts') }) : null
@@ -1095,6 +1128,11 @@ module.exports = {
   searchDirectory: function (event) {
     if (!this.data.directorySheet || !currentIssueDirectory(this)) return
     const query = String(event.detail.value || '').slice(0, 80)
+    if (this.data.directorySheet.kind === 'categories') {
+      this.setData({ 'directorySheet.query': query })
+      if (this._categoryCatalog) showCategoryDirectory(this)
+      return
+    }
     this.setData({ 'directorySheet.query': query })
     const categoryKind = this.data.directorySheet.categoryKind
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind,
@@ -1117,6 +1155,17 @@ module.exports = {
       .map(account => ({ ...account, draft: true }))
   },
 
+  toggleCategoryGroup: function (event) {
+    const sheet = this.data.directorySheet
+    const key = event.currentTarget.dataset.key
+    if (!sheet || sheet.kind !== 'categories' || !key) return
+    const group = (sheet.groups || []).find(row => row.key === key)
+    if (!group) return
+    this._categoryExpanded = categoryExpanded(this._categoryCatalog, this._categoryExpanded)
+    this._categoryExpanded[key] = !group.expanded
+    showCategoryDirectory(this)
+  },
+
   changeDirectoryPage: async function (event) {
     const pager = this._optionPager
     const session = this._viewSession, scope = readCache.getSession(), version = session && session.summary.viewVersion
@@ -1124,6 +1173,28 @@ module.exports = {
       session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet && currentIssueDirectory(this)
     if (!pager || !active()) return
     const sheet = this.data.directorySheet
+    if (sheet.kind === 'categories') {
+      this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
+      try {
+        if (!this._categoryCatalog) {
+          const catalogPager = this._viewSession.pager('financeUpdates.options', { kind: 'categories', ...(sheet.categoryKind ? { categoryKind: sheet.categoryKind } : {}), pageSize: 100 })
+          const rows = []
+          let step = 0
+          for (let page = 0; page < 3; page++) {
+            const response = await catalogPager.load(step)
+            if (!active()) return
+            rows.push(...(response.items || []))
+            if (!response.page.hasNext) break
+            step = 1
+          }
+          this._categoryCatalog = rows
+          this._categoryExpanded = null
+        }
+        if (!active()) return
+        showCategoryDirectory(this)
+      } catch (error) { if (active()) this.setData({ 'directorySheet.loading': false, 'directorySheet.error': errorText(error) }) }
+      return
+    }
     this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
     try {
       const [response, drafts] = await Promise.all([pager.load(direction(event)), this.directoryDrafts(sheet)])
@@ -1135,6 +1206,14 @@ module.exports = {
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
+    if (sheet && sheet.target === 'categoryQuick') {
+      if (!this._categoryQuick || sheet.loading || sheet.error || this.data.busy) return
+      const item = sheet.items[Number(event.currentTarget.dataset.index)]
+      if (!item || item.directoryDisabled || item.archivedAt || item.kind !== sheet.categoryKind || !item.categoryId) return
+      const quick = this._categoryQuick
+      this.closeDirectory()
+      return this.saveCategoryQuick(quick, item.categoryId)
+    }
     if (sheet && sheet.editorDirectory) {
       if (!currentIssueDirectory(this) || sheet.loading || sheet.error) return
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
@@ -1190,8 +1269,30 @@ module.exports = {
     if (this._optionPager) this._optionPager.cancel()
     if (this._optionsDraftPager) this._optionsDraftPager.cancel()
     this._optionPager = null; this._optionsDraftPager = null; this._directoryDraftRows = null
-    this._issueDirectoryToken = null; this._editorDirectoryToken = null
+    this._issueDirectoryToken = null; this._editorDirectoryToken = null; this._categoryQuick = null
+    this._categoryCatalog = null; this._categoryExpanded = null
     this.setData({ directorySheet: null })
+  },
+
+  // 待分类卡片上的下拉：只打开与这笔收支方向一致的分类目录，选中后直接保存。
+  openCategoryQuick: async function (event) {
+    const data = event.currentTarget.dataset
+    const kind = data.kind === 'income' ? 'income' : data.kind === 'expense' ? 'expense' : ''
+    const eventVersion = Number(data.version)
+    if (!kind || !data.id || !Number.isInteger(eventVersion) || eventVersion < 1) return
+    if (!this._viewActive || !this._viewSession || !this._viewSession.active || this.data.busy ||
+      !this.data.update || this.data.update.status !== 'review' || this.data.directorySheet) return
+    this._categoryQuick = { eventId: data.id, eventVersion, kind, viewVersion: this._viewSession.summary.viewVersion }
+    if (this._optionPager) this._optionPager.cancel()
+    if (this._optionsDraftPager) this._optionsDraftPager.cancel()
+    this._optionsDraftPager = null
+    this._directoryDraftRows = null
+    this._categoryCatalog = null
+    this._categoryExpanded = null
+    this.setData({ directorySheet: { target: 'categoryQuick', kind: 'categories', categoryKind: kind, title: '选择分类',
+      selectedId: '', query: '', items: [], groups: [], loading: true } })
+    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: 'categories', categoryKind: kind, pageSize: optionPageSize('categories') })
+    return this.changeDirectoryPage(event)
   },
 
   openAccountRecords: async function (event) {
@@ -1258,5 +1359,86 @@ module.exports = {
               count: response.total, loading: false, hasMore: false, page: response.page }) })
       await this.loadInlineEvidence('account', this._accountRecordList)
     } catch (error) { if (active()) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
+  },
+
+  beginCategoryCreate: function () {
+    const sheet = this.data.directorySheet
+    const kind = sheet && sheet.kind === 'categories' ? sheetCategoryKind(this, sheet) : ''
+    if (!sheet || !kind || sheet.loading || sheet.createSaving || this.data.busy) return
+    const roots = (this._categoryCatalog || []).filter(row => row.kind === kind && !row.parentId && !row.archivedAt && !row.archived)
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0) || String(a.name).localeCompare(String(b.name), 'zh'))
+    this.setData({
+      'directorySheet.creating': true, 'directorySheet.createKind': kind, 'directorySheet.createName': '', 'directorySheet.createError': '',
+      'directorySheet.createParentIndex': 0,
+      'directorySheet.createParents': [{ id: null, name: '作为一级分类', parentName: '' }].concat(roots.map(row => ({
+        id: row.categoryId, name: '放在「' + row.name + '」下面', parentName: row.name
+      })))
+    })
+  },
+
+  bindCategoryCreateName: function (event) {
+    if (!this.data.directorySheet || this.data.directorySheet.createSaving) return
+    this.setData({ 'directorySheet.createName': String(event.detail.value || '').slice(0, 32), 'directorySheet.createError': '' })
+  },
+
+  changeCategoryCreateParent: function (event) {
+    if (!this.data.directorySheet || this.data.directorySheet.createSaving) return
+    this.setData({ 'directorySheet.createParentIndex': Number(event.detail.value) || 0, 'directorySheet.createError': '' })
+  },
+
+  cancelCategoryCreate: function () {
+    const sheet = this.data.directorySheet
+    if (!sheet || sheet.createSaving) return
+    this.setData({ 'directorySheet.creating': false, 'directorySheet.createError': '' })
+  },
+
+  useCreatedCategory: function (item) {
+    const sheet = this.data.directorySheet
+    if (!sheet || !item || !item.categoryId) return
+    if (this._draftSession && this._draftSession.isLocal) this._draftSession.rememberCategory(item)
+    if (sheet.target === 'categoryQuick' && this._categoryQuick) {
+      const quick = this._categoryQuick
+      this.closeDirectory()
+      return this.saveCategoryQuick(quick, item.categoryId)
+    }
+    if (sheet.editorDirectory && this.selectEditorDirectory(item, sheet.target)) { this.closeDirectory(); return }
+    if (sheet.target === 'categoryEdit' && this.selectEditedCategory(item)) { this.closeDirectory(); return }
+    if (sheet.target === 'category' && this.data.currentIssue) {
+      const options = [this.data.issueCategories[0], item]
+      const categories = (this.data.categories || []).some(row => row.categoryId === item.categoryId) ? this.data.categories : (this.data.categories || []).concat(item)
+      this.setData({ issueCategories: options, categories, 'issueDraft.categoryIndex': 1, issueCategoryCanSave: true })
+      this.closeDirectory()
+      this.refreshIssueFieldsDraft()
+    }
+  },
+
+  saveCategoryCreate: async function () {
+    const sheet = this.data.directorySheet
+    if (!sheet || sheet.kind !== 'categories' || !sheet.creating || sheet.createSaving || this.data.busy) return
+    const name = String(sheet.createName || '').trim()
+    if (!name || Array.from(name).length > 32) {
+      this.setData({ 'directorySheet.createError': '请填写 1 到 32 个字的分类名称' })
+      return
+    }
+    const parent = (sheet.createParents || [])[sheet.createParentIndex] || { id: null, parentName: '' }
+    const kind = sheet.createKind
+    if (kind !== 'income' && kind !== 'expense') return
+    this.setData({ 'directorySheet.createSaving': true, 'directorySheet.createError': '' })
+    try {
+      const sent = await pending.send('api', 'categories.create', { kind, name, parentId: parent.id || null }, { exact: true,
+        canSend: () => Boolean(this._viewActive && this.data.directorySheet && this.data.directorySheet.creating && this.data.directorySheet.createKind === kind) })
+      const created = sent && sent.result
+      if (!this._viewActive || !this.data.directorySheet || !created || !created.id) return
+      const item = { categoryId: created.id, name: created.name, kind: created.kind, parentId: created.parentId || null,
+        parentName: parent.parentName || '', systemKey: null, sortOrder: created.sortOrder, version: created.version, archivedAt: null }
+      if (this._categoryCatalog && !this._categoryCatalog.some(row => row.categoryId === item.categoryId)) this._categoryCatalog.push(item)
+      this.useCreatedCategory(item)
+    } catch (error) {
+      if (!this._viewActive || !this.data.directorySheet) return
+      const message = error.code === 'CONFLICT' ? '这个层级下已有同名分类' : error.code === 'VALIDATION_ERROR' ? '请填写 1 到 32 个字的分类名称' : errorText(error)
+      this.setData({ 'directorySheet.createError': message })
+    } finally {
+      if (this._viewActive && this.data.directorySheet) this.setData({ 'directorySheet.createSaving': false })
+    }
   }
 }

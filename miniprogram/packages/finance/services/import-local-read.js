@@ -1,5 +1,5 @@
 const { sha256, byteLength } = require('../domain/import-review/portable-digest')
-const { accountIds, repaymentExpense } = require('../domain/import-review/workbench-summary')
+const { accountIds } = require('../domain/import-review/workbench-summary')
 const editor = require('../domain/import-review/review/editor-policy')
 const excluded = require('../domain/import-review/excluded-event-groups')
 const accountConfirmations = require('./import-account-confirmations')
@@ -148,7 +148,7 @@ function create(model) {
     const view=data.view
     if(view==='active'&&!active(event)||view==='review_pending'&&(!active(event)||!review)||view==='review_completed'&&(!active(event)||review)||
       view==='category_pending'&&(!active(event)||!needed)||view==='category_completed'&&(!active(event)||!category||needed)||view==='category_none'&&(!active(event)||category)||
-      view==='expense'&&(!active(event)||!['expense','fee'].includes(event.economicNature)&&repaymentExpense(event)<=0n)||view==='posted'&&event.status!=='posted')return false
+      view==='expense'&&(!active(event)||!['expense','fee'].includes(event.economicNature))||view==='posted'&&event.status!=='posted')return false
     if(data.query){const shown=model.publicRow(event.eventId),query=String(data.query).trim().toLowerCase();if(![shown.localAt,shown.counterparty,shown.note,shown.categoryName,shown.primaryEvidence?.item,shown.primaryEvidence?.counterparty].some(value=>String(value||'').toLowerCase().includes(query)))return false}
     return true
   }
@@ -235,7 +235,14 @@ function create(model) {
     if(action==='financeUpdates.options'){
       const dataFacts=model.supplemental||facts,key=data.kind==='loans'?'loanId':data.kind==='categories'?'categoryId':'accountId'
       summary()
-      let rows=data.kind==='categories'?[...model.categories.values()]:data.kind==='loans'?dataFacts.loans:data.kind==='accountDrafts'||data.kind==='new_accounts'?[...model.drafts.values()]:data.kind==='affected_accounts'?[...summaryIndex.accountCounts.keys()].map(id=>model.accounts.get(id)).filter(Boolean):[...model.accounts.values()].filter(row=>!model.drafts.has(row.accountId))
+      const counted = row => row && ({ ...row, count: summaryIndex.accountCounts.get(row.accountId) || 0, isDraft: model.drafts.has(row.accountId) })
+      let rows
+      if (data.kind === 'categories') rows = [...model.categories.values()]
+      else if (data.kind === 'loans') rows = dataFacts.loans
+      else if (data.kind === 'new_accounts') rows = [...model.drafts.values()].map(row => ({ ...counted(row), isDraft: true }))
+      else if (data.kind === 'accountDrafts') rows = [...model.drafts.values()]
+      else if (data.kind === 'affected_accounts') rows = [...summaryIndex.accountCounts.keys()].map(id => counted(model.accounts.get(id))).filter(Boolean)
+      else rows = [...model.accounts.values()].filter(row => !model.drafts.has(row.accountId))
       rows=rows.filter(row=>!row.archivedAt&&(!data.categoryKind||row.kind===data.categoryKind)&&(!data.id||row[key]===data.id)&&(!data.ids||data.ids.includes(row[key]))&&(!data.query||[row.name,row.parentName].join(' ').includes(data.query))).sort((a,b)=>a[key].localeCompare(b[key]))
       // 目录项会直接进入页面数据；必须像服务端 JSON 响应一样返回副本，
       // 否则页面按路径 setData 会改写模型内的账户/分类对象。

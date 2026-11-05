@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { createUserRepository } = require('../src/user-repository')
+const { createUserRepository, INITIALIZATION_VERSION } = require('../src/user-repository')
 
 function createConnection({ identity, identityInsertError, userInsertError, nickname = null, initializationVersion = 0, status = 'active' }) {
   const state = {
@@ -184,8 +184,22 @@ test('重复登录读取已存ID，不重新生成编号', async () => {
   assert.equal(result.nickname, '原有昵称')
 })
 
+test('初始化版本落后时补齐缺失预设，不改写已有同名分类', async () => {
+  const connection = createConnection({ identity: { uid: '3456789012' }, initializationVersion: 1 })
+  const repository = createUserRepository({
+    getPool: () => ({ getConnection: async () => connection }),
+    defaultCategories: [
+      { kind: 'expense', systemKey: 'software_services', name: '软件服务', sortOrder: 94 },
+      { kind: 'expense', systemKey: 'software_services__software', parentSystemKey: 'software_services', name: '软件订阅', sortOrder: 10 }
+    ]
+  })
+  await repository.bootstrap({ provider: 'wechat-mini', subjectHash: 'synthetic-subject' })
+  assert.equal(connection.statements.filter(sql => sql.includes('INSERT INTO catledger_categories')).length, 2)
+  assert.ok(connection.statements.some(sql => sql.includes('initialization_version=?')))
+})
+
 test('已初始化老用户只读身份和完整分类，不取写锁、不维护或递增 revision', async () => {
-  const connection=createConnection({identity:{uid:'3456789012'},initializationVersion:1,nickname:'合成昵称'})
+  const connection=createConnection({identity:{uid:'3456789012'},initializationVersion:INITIALIZATION_VERSION,nickname:'合成昵称'})
   const timings=[]
   const repository=createUserRepository({getPool:()=>({getConnection:async()=>connection})})
   const result=await repository.bootstrap({provider:'wechat-mini',subjectHash:'synthetic-subject'},sample=>timings.push(sample))

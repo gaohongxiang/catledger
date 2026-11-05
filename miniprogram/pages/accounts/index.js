@@ -95,7 +95,7 @@ Page(themeService.page({
   },
 
   openAllLoans: function () {
-    return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/finance/pages/loans/index' }))
+    return loginGuard.run(this, () => wx.navigateTo({ url: '/packages/loans/pages/loans/index' }))
   },
 
   toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },

@@ -27,7 +27,7 @@ Page(theme.page({
     }catch(error){if(current())this.setData({errorMessage:error.message})}
     finally{if(current())this.setData({loading:false})}
   },
-  create(event){const item=this.data.items.find(i=>i.itemId===event.currentTarget.dataset.id);if(item)wx.navigateTo({url:'/packages/finance/pages/loan-form/index?sourceItemId='+encodeURIComponent(item.itemId)})},
+  create(event){const item=this.data.items.find(i=>i.itemId===event.currentTarget.dataset.id);if(item)wx.navigateTo({url:'/packages/loans/pages/loan-form/index?sourceItemId='+encodeURIComponent(item.itemId)})},
   async choose(event){
     const item=this.data.items.find(i=>i.itemId===event.currentTarget.dataset.id)
     if(!item||this.data.loading||this.data.saving)return
@@ -56,7 +56,7 @@ Page(theme.page({
     const current=session.capture(this);this.setData({saving:true,errorMessage:''})
     try{
       const outcome=await pending.send('api','loans.linkInstallmentSource',{loanId:loan.loanId,version:loan.version,itemId:item.itemId},{exact:true})
-      if(current())wx.redirectTo({url:'/packages/finance/pages/loan-detail/index?loanId='+encodeURIComponent(outcome.result.loanId)})
+      if(current())wx.redirectTo({url:'/packages/loans/pages/loan-detail/index?loanId='+encodeURIComponent(outcome.result.loanId)})
     }catch(error){if(current())this.setData({errorMessage:error.message})}
     finally{if(current())this.setData({saving:false})}
   },

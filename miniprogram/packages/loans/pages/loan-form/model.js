@@ -1,7 +1,7 @@
 // 从 loan-cost-calculator 的 loan-form 适配；账户和本金核对使用本账本契约。
 const { addMinor } = require('../../../../utils/minor-arithmetic')
 const money = require('../../../../utils/money')
-const scheduleForm = require('../loan-detail/schedule-form')
+const scheduleForm = require('../../../../services/loan-schedule-form')
 const TYPE_OPTIONS = [{value:'',label:'不选择'},{value:'credit_card',label:'信用卡分期'},{value:'bank_loan',label:'银行借款'},{value:'online_loan',label:'网络借款'},{value:'other',label:'其他'}]
 const DISCOUNT_OPTIONS = [{value:'interest_rate',label:'利息打折'},{value:'per_period',label:'每期减免'},{value:'total',label:'总额减免'}]
 function today() { const d=new Date(),pad=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()) }

@@ -32,8 +32,17 @@ function apply(event, value, acknowledgements = []) {
   delete fields.editorOverrides.incompleteComposition
   const mask = FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations | FIELD_MASK.ledgerAccountId | FIELD_MASK.counterpartyLedgerAccountId
   let next = { ...event, fieldSources: fields, manualFieldMask: (event.manualFieldMask || 0) | mask }
+  // 账单声明「这笔有几个付款方式，但金额分不清」只是一种来源歧义，用户在这里确认
+  // 资金路径就是它的答案。不清掉这条硬阻断，事件保存多少次都还是待核对。
+  const resolveAmbiguity = () => {
+    const blockers = (fields.semanticBlockers || []).filter(code => code !== 'payment_components_ambiguous')
+    if (blockers.length) fields.semanticBlockers = blockers
+    else delete fields.semanticBlockers
+    next.reasonCodes = (next.reasonCodes || []).filter(code => code !== 'payment_components_ambiguous')
+  }
   if (value.kind === 'single') {
     if (value.parts != null && (!Array.isArray(value.parts) || value.parts.length)) fail()
+    resolveAmbiguity()
     return next
   }
   if (!Array.isArray(value.parts) || value.parts.length > 20) fail()
@@ -86,6 +95,7 @@ function apply(event, value, acknowledgements = []) {
     fields.repaymentAllocations = result.allocations
     next.counterpartyLedgerAccountId = null
   }
+  resolveAmbiguity()
   return next
 }
 module.exports = { sourceKind, apply }

@@ -558,11 +558,18 @@ function create(facts) {
     const refundCleared = !['refund_relation_required', 'refund_relation_invalid', 'refund_relation_ambiguous',
       'refund_amount_exceeded', 'refund_source_conflict'].some(reason => remaining.has(reason))
     // 字段冲突由这次修改消除时（例如分期本金改判成合法性质），成员和服务端一样立即退出。
-    for (const issue of eventIssues(current.eventId)) if (issue.issueType === 'field_conflict' && !remaining.has('core_fields_conflict') ||
-      editableIssues.has(issue.issueType) &&
-      (issue.issueType === 'refund_relation' && refundCleared || !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode))) {
-      removeSubject(issue, current.eventId)
-      if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false }
+    // 组合支付金额分不清是硬阻断，但用户确认单账户或完整分摊后，这条原因已经从事件上拿掉。
+    // 待办不关的话，列表仍把它留在待核对，再次打开也没有新的改动可保存。身份、状态未知等
+    // 受保护的硬阻断不在这里收。
+    for (const issue of eventIssues(current.eventId)) {
+      const conflictCleared = issue.issueType === 'field_conflict' && !remaining.has('core_fields_conflict')
+      const ambiguityCleared = issue.primaryReasonCode === 'payment_components_ambiguous' && !remaining.has('payment_components_ambiguous')
+      const ordinaryCleared = editableIssues.has(issue.issueType) &&
+        (issue.issueType === 'refund_relation' && refundCleared || !rules.HARD_BLOCKING_REASONS.has(issue.primaryReasonCode))
+      if (conflictCleared || ambiguityCleared || ordinaryCleared) {
+        removeSubject(issue, current.eventId)
+        if (!issue.subjectEventIds.length) { issue.status = 'resolved'; issue.blocking = false }
+      }
     }
     const old = choices.events.get(current.eventId)
     const { requestId, updateId, updateVersion, eventVersion, eventId, ...value } = data

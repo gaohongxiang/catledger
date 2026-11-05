@@ -4,7 +4,7 @@ const session=require('../../../../services/page-read-session')
 const login=require('../../../../services/login-guard')
 const theme=require('../../../../theme/service')
 const money=require('../../../../utils/money')
-const scheduleForm=require('../loan-detail/schedule-form')
+const scheduleForm=require('../../../../services/loan-schedule-form')
 const planModel=require('../loan-plan/model')
 const model=require('./model')
 function repaymentPreview(result,repaymentRows){
@@ -90,7 +90,7 @@ Page(theme.page({
   },
   confirm(event){this.setData({confirmed:event.detail.value.includes('confirmed')})},
   openAccounts(){wx.navigateTo({url:'/pages/accounts/index'})},
-  openPlan(){if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/finance/pages/loan-plan/index?loanId='+encodeURIComponent(this.data.loan.loanId)})},
+  openPlan(){if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/packages/loans/pages/loan-plan/index?loanId='+encodeURIComponent(this.data.loan.loanId)})},
   cancel(){if(!this.data.saving)wx.navigateBack()},
   async preview(){
     if(this.data.loading||this.data.saving||this.data.previewLoading||!this.data.sourceReady||(this._query.loanId&&!this.data.loan))return
@@ -109,7 +109,7 @@ Page(theme.page({
   },
   accept(outcome){
     this.setData({hasPending:false,savedMessage:outcome.recovered?'上次保存已确认成功':'分期记录已保存'})
-    if(/^loans\.(create|update)$/.test(outcome.action))wx.redirectTo({url:'/packages/finance/pages/loan-detail/index?loanId='+encodeURIComponent(outcome.result.loanId)+(this._query.sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._query.sourceTransactionId):'')})
+    if(/^loans\.(create|update)$/.test(outcome.action))wx.redirectTo({url:'/packages/loans/pages/loan-detail/index?loanId='+encodeURIComponent(outcome.result.loanId)+(this._query.sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._query.sourceTransactionId):'')})
   },
   async save(){
     if(this.data.loading||this.data.saving||(!this.data.sourceReady&&!pending.pending())||(this._query.loanId&&!this.data.loan))return

@@ -88,6 +88,39 @@ module.exports = {
     }
   },
 
+  // 卡片下拉的第一次分类走统一编辑保存。改已有分类仍用 setCategory，这里不放宽那条限制。
+  async saveCategoryQuick(quick, categoryId) {
+    if (!quick || !categoryId || !this._viewActive || !this._viewSession || !this._viewSession.active || this.data.busy ||
+      !this.data.update || this.data.update.status !== 'review') return
+    if (this._viewSession.summary.viewVersion !== quick.viewVersion) {
+      this.setData({ errorMessage: '账目已更新，请重新选择分类' })
+      return
+    }
+    const payload = { updateId: this.data.update.updateId, updateVersion: this.data.update.version,
+      eventId: quick.eventId, eventVersion: quick.eventVersion, editorVersion: 1, fields: { categoryId } }
+    this.setData({ busy: true, errorMessage: '' })
+    try {
+      if (this._draftSession && this._draftSession.flush) await this._draftSession.flush()
+      if (!this._viewActive || this._viewSession.summary.viewVersion !== quick.viewVersion) return
+      await pending.send('import', 'financeUpdates.setReview', payload, { exact: true,
+        canSend: () => this._viewActive && this._viewSession && this._viewSession.active && this._viewSession.summary.viewVersion === quick.viewVersion })
+      if (!this._viewActive) return
+      if (this._draftSession && this._draftSession.isLocal) {
+        if (this._viewSession.summary.viewVersion !== this._draftSession.view.viewVersion) {
+          await this.applyUpdateView(this._draftSession.view, false, false, true, true)
+        }
+      } else {
+        const summary = await api.readSummary(this.data.update.updateId)
+        if (this._viewActive) await this.applyUpdateView(summary, false, false, true, true)
+      }
+      if (this._viewActive && this.data.finalDetailSheet && this.data.finalDetailSheet.kind === 'uncategorized' && this._finalKind) {
+        await this.openFinalDetail({ currentTarget: { dataset: { kind: this._finalKind.kind, id: this._finalKind.accountId || '' } } })
+      }
+    } catch (error) {
+      if (this._viewActive) this.setData({ errorMessage: errorText(error) })
+    } finally { if (this._viewActive) this.setData({ busy: false }) }
+  },
+
   async saveCategoryEdit() {
     const token = this._categoryEditToken, sheet = this.data.categoryEditSheet
     if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave ||

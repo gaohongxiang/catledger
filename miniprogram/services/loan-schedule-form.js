@@ -1,6 +1,6 @@
 // 分期参数（选填）表单状态与校验的纯函数；口径与计算器 loan-form-model/repayment-entry 一致，金额一律整数分字符串。
-const money = require('../../../../utils/money')
-const { addMinor } = require('../../../../utils/minor-arithmetic')
+const money = require('../utils/money')
+const { addMinor } = require('../utils/minor-arithmetic')
 
 const METHOD_OPTIONS = [
   { value: 'flat', label: '等本等息' },

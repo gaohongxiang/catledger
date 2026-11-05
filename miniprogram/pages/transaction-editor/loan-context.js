@@ -29,12 +29,12 @@ function createLoanContext({ api, session, navigate }) {
     },
     openLoanLink() {
       if (!session.isCurrent(this) || this.data.saving || this.data.loanContextLoading || !this.data.loanContext || !['candidate','allocatable'].includes(this.data.loanContext.state)) return
-      navigate({ url: '/packages/finance/pages/loan-link/index?transactionId=' + encodeURIComponent(this.data.transactionId) })
+      navigate({ url: '/packages/loans/pages/loan-link/index?transactionId=' + encodeURIComponent(this.data.transactionId) })
     },
     openLinkedPayment() {
       const context = this.data.loanContext
-      if(session.isCurrent(this)&&!this.data.saving&&!this.data.loanContextLoading&&context&&context.state==='retained_charge'){navigate({url:'/packages/finance/pages/loan-detail/index?chargeId='+encodeURIComponent(context.chargeId)});return}
-      if (session.isCurrent(this) && !this.data.saving && !this.data.loanContextLoading && context && context.linked) navigate({ url: '/packages/finance/pages/loan-payment/index?paymentId=' + encodeURIComponent(context.payment.paymentId) })
+      if(session.isCurrent(this)&&!this.data.saving&&!this.data.loanContextLoading&&context&&context.state==='retained_charge'){navigate({url:'/packages/loans/pages/loan-detail/index?chargeId='+encodeURIComponent(context.chargeId)});return}
+      if (session.isCurrent(this) && !this.data.saving && !this.data.loanContextLoading && context && context.linked) navigate({ url: '/packages/loans/pages/loan-payment/index?paymentId=' + encodeURIComponent(context.payment.paymentId) })
     }
   }
 }

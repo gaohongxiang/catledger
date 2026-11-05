@@ -1,8 +1,7 @@
 // 由 pages/loans/model.js 提升而来：借款/分期列表的展示态纯函数。
-// 原依赖 loan-detail/schedule-form 的 METHOD_LABELS，这里内联该静态映射，
-// 使本模块可独立置于主包 services，被主包与 finance 分包共同引用。
+// 还款方式名称只用 loan-schedule-form 里的一份。账户详情会加载本模块，主包因此用到该表单。
 const money = require('../utils/money')
-const METHOD_LABELS = { flat: '等本等息', equal_payment: '等额本息', equal_principal: '等额本金', interest_only: '先息后本' }
+const { METHOD_LABELS } = require('./loan-schedule-form')
 function scheduleText(loan) {
   return loan.scheduleMethod && loan.scheduleTerms ? (METHOD_LABELS[loan.scheduleMethod] || loan.scheduleMethod) + ' · ' + loan.scheduleTerms + ' 期' : ''
 }

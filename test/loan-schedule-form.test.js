@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const scheduleForm = require('../miniprogram/packages/finance/pages/loan-detail/schedule-form')
-const planModel = require('../miniprogram/packages/finance/pages/loan-plan/model')
+const scheduleForm = require('../miniprogram/services/loan-schedule-form')
+const planModel = require('../miniprogram/packages/loans/pages/loan-plan/model')
 
 const base = () => Object.assign(scheduleForm.blank(), { terms: '12' })
 

@@ -1,4 +1,5 @@
 const model = require('./model')
+const presentation = require('./presentation')
 
 const TITLES = {
   expense: '本批支出', income: '本批收入', refund: '本批退款',
@@ -36,11 +37,38 @@ function buildFinalDetail(kind, data, accountId) {
   else if (kind === 'no_category') selected = state.noCategoryEvents
   else if (kind === 'account') selected = ready.filter(event => model.eventAccountIds(event).includes(accountId))
   else selected = ready.filter(event => kind === 'expense' ? ['expense', 'fee'].includes(event.economicNature) : event.economicNature === kind)
-  const records = selected.map(event => Object.assign({}, model.eventView(event), {
-    accountText: model.eventAccountIds(event).map(id => names.get(id) || '未命名账户').join('、')
-  })).sort((a, b) => String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId)))
+  const records = selected.map(event => {
+    const view = model.eventView(event)
+    const leaf = view.categoryName || ''
+    const parent = view.parentCategoryName || ''
+    const categoryName = !leaf ? '' : !parent || leaf === parent || leaf.startsWith(parent + ' / ') ? leaf : parent + ' / ' + leaf
+    const categoryKind = event.economicNature === 'income' ? 'income' : ['expense', 'fee'].includes(event.economicNature) ? 'expense' : ''
+    return Object.assign({}, view, {
+      categoryName,
+      accountText: model.eventAccountIds(event).map(id => names.get(id) || '未命名账户').join('、'),
+      // 确认页的未分类就地补分类。性质未定的仍回第三步，避免猜错收入或支出目录。
+      ...(kind === 'uncategorized' && categoryKind && event.version ? { version: event.version, categoryKind } : {})
+    })
+  }).sort((a, b) => String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId)))
   return { kind, accountId: accountId || '', title: kind === 'account' ? names.get(accountId) || TITLES.account : TITLES[kind],
     mode: 'records', count: records.length, records, accounts: [] }
 }
 
-module.exports = { buildFinalDetail, TITLES }
+function presentAccountRows(items) {
+  return (items || []).map(account => ({
+    accountId: account.accountId,
+    name: account.name || '未命名账户',
+    typeLabel: ACCOUNT_TYPES[account.type] || account.typeLabel || '账户',
+    isDraft: Boolean(account.isDraft),
+    count: Number(account.count) || 0
+  }))
+}
+
+// 列表投影会丢掉版本和分类方向，未分类行要留着，才能在确认页直接选。
+function presentFinalRecord(event) {
+  const row = presentation.record(event)
+  if (!event.categoryKind || !event.version) return row
+  return Object.assign({}, row, { version: event.version, categoryKind: event.categoryKind })
+}
+
+module.exports = { buildFinalDetail, presentAccountRows, presentFinalRecord, TITLES }

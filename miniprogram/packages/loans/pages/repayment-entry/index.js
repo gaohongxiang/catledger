@@ -113,7 +113,7 @@ Page(theme.page({
     const selected = this.data.loans[this.data.loanIndex]
     const debt=this.data.debts[this.data.debtIndex]
     const occurred=(this.data.payment || this.data.event || {}).occurredLocalAt || this.data.date
-    wx.navigateTo({ url:selected ? '/packages/finance/pages/loan-detail/index?loanId=' + encodeURIComponent(selected.loanId) : '/packages/finance/pages/loan-form/index' +
+    wx.navigateTo({ url:selected ? '/packages/loans/pages/loan-detail/index?loanId=' + encodeURIComponent(selected.loanId) : '/packages/loans/pages/loan-form/index' +
       (debt ? '?accountId='+encodeURIComponent(debt.accountId)+(occurred?'&baselineDate='+encodeURIComponent(occurred.slice(0,10)):'') : '') })
   },
   async submit(action, data, service) {

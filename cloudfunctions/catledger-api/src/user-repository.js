@@ -11,7 +11,8 @@ const {
 } = require('./database-errors')
 
 const MAX_BOOTSTRAP_ATTEMPTS = 5
-const INITIALIZATION_VERSION = 1
+// 2：给仍停在版本 1 的用户补齐「软件服务」及其二级。已有同名分类不接管、不重复。
+const INITIALIZATION_VERSION = 2
 function isRetryableTransactionError(error) {
   return error && (error.code === 'ER_DUP_ENTRY' || isRetryableDatabaseError(error))
 }
@@ -164,5 +165,5 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
 }
 
 module.exports = {
-  createUserRepository
+  createUserRepository, INITIALIZATION_VERSION
 }

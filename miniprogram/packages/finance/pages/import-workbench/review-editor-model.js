@@ -2,7 +2,7 @@
 const detail = require('./detail-fields')
 const bankAccounts = require('./bank-suggestion')
 const refundView = require('./refund-state')
-const scheduleForm = require('../loan-detail/schedule-form')
+const scheduleForm = require('../../../../services/loan-schedule-form')
 const accountOwnership = require('../../domain/import-review/account-ownership')
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const MOVEMENTS = ['internal_transfer', 'borrow', 'repayment']

@@ -20,6 +20,21 @@ function repaymentExpense(event) {
   if (!['posted','corrected'].includes(event.status) || !value || !value.confirmed) return 0n
   return ['interest','fee'].reduce((sum,field)=>sum + (value[field+'Treatment'] === 'expense' ? BigInt(value[field+'Minor'] || '0') : 0n),0n)
 }
+// 确认页按交易计一次。还款里的手续费、账本外份额和代还只作说明，不另计支出或收入。
+function repaymentParts(event) {
+  if (event.economicNature !== 'repayment') return { fee: 0n, outside: 0n, paidByOther: 0n }
+  const allocation = effectAmounts(event)
+  if (allocation) return { fee: 0n, outside: allocation.expense, paidByOther: allocation.income }
+  return { fee: repaymentExpense(event), outside: 0n, paidByOther: 0n }
+}
+function componentNote(parts) {
+  const bits = []
+  if (parts.fee > 0n) bits.push('含手续费 ' + money(parts.fee))
+  if (parts.outside > 0n) bits.push('含账本外还款 ' + money(parts.outside))
+  if (parts.paidByOther > 0n) bits.push('含代还 ' + money(parts.paidByOther))
+  return bits.join('，')
+}
+function flowNote(event) { return componentNote(repaymentParts(event)) }
 function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCount) {
   events = require('./installment-business').visibleEvents(events)
   const reviewIds = new Set(pending.filter(row => Number(row.review)).map(row => row.eventId))
@@ -48,17 +63,25 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
     categoryStatusTabs: [{ value: 'pending', label: '待分类', count: categoryPending }, { value: 'completed', label: '已分类', count: categoryComplete },
       { value: 'none', label: '无需分类', count: rows.filter(row => !categoryRequired(row)).length }],
     categoryEventCount: categoryPending, categorizedEventCount: categoryComplete,
-    finalSummary: { expenseCount: count(['expense', 'fee']) + ready.filter(e=>repaymentExpense(e)>0n).length,
-      incomeCount: count(['income']) + ready.filter(e => (effectAmounts(e)?.income || 0n) > 0n).length, refundCount: count(['refund']),
-      expenseText: money(sum(['expense', 'fee']) + ready.reduce((sum,e)=>sum+repaymentExpense(e),0n)),
-      incomeText: money(sum(['income']) + ready.reduce((sum,e)=>sum+(effectAmounts(e)?.income || 0n),0n)), refundText: money(sum(['refund'])),
-      transferCount: ready.filter(e => ['internal_transfer', 'repayment', 'borrow'].includes(e.economicNature) &&
-        (!effectAmounts(e) || effectAmounts(e).transfer > 0n)).length, categoryCount, categorizedCount,
+    finalSummary: { expenseCount: count(['expense', 'fee']),
+      incomeCount: count(['income']), refundCount: count(['refund']),
+      expenseText: money(sum(['expense', 'fee'])),
+      incomeText: money(sum(['income'])), refundText: money(sum(['refund'])),
+      transferCount: count(['internal_transfer', 'repayment', 'borrow']), categoryCount, categorizedCount,
       categoryCoverageText: categoryCount ? categorizedCount + ' / ' + categoryCount : '无需分类', categoryComplete: categoryCount === categorizedCount,
       newAccountCount: draftCount, affectedAccountCount: new Set(ready.flatMap(accountIds)).size },
-    fundsFlowGroups: [['internal_transfer', '内部转账'], ['borrow', '借款'], ['repayment', '还款']].map(([nature, label]) =>
-      ({ nature, label, count: count([nature]), amountText: money(ready.filter(row => row.economicNature === nature)
-        .reduce((total, row) => total + (effectAmounts(row)?.transfer ?? BigInt(row.fieldSources?.repaymentChannelResolution?.repaymentMinor || row.amountMinor)), 0n)), records: [] }))
+    fundsFlowGroups: [['internal_transfer', '内部转账'], ['borrow', '借款'], ['repayment', '还款']].map(([nature, label]) => {
+      const rows = ready.filter(row => row.economicNature === nature)
+      const parts = rows.reduce((total, row) => {
+        const part = repaymentParts(row)
+        total.fee += part.fee; total.outside += part.outside; total.paidByOther += part.paidByOther
+        return total
+      }, { fee: 0n, outside: 0n, paidByOther: 0n })
+      return { nature, label, count: rows.length,
+        amountText: money(rows.reduce((total, row) => total + BigInt(row.amountMinor || 0), 0n)),
+        feeMinor: String(parts.fee), outsideMinor: String(parts.outside), paidByOtherMinor: String(parts.paidByOther),
+        note: componentNote(parts), records: [] }
+    })
   }
 }
-module.exports = { workbenchSummary, accountIds, repaymentExpense, categoryRequired }
+module.exports = { workbenchSummary, accountIds, repaymentExpense, categoryRequired, componentNote, flowNote }

@@ -49,19 +49,19 @@ Page(theme.page({
   changeMonth(event) { this.setData({ month: event.detail.value, items: [], hasLoaded: false }); return this.firstPage() },
   clearMonth() { this.setData({ month: '', items: [], hasLoaded: false }); return this.firstPage() },
   changeAccount(event) { if (this.data.accountLocked) return; this.setData({ accountIndex: Number(event.detail.value), items: [], hasLoaded: false }); return this.firstPage() },
-  selectTransaction(event) { if (!this.data.loading) wx.navigateTo({ url: '/packages/finance/pages/loan-link/index?transactionId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
+  selectTransaction(event) { if (!this.data.loading) wx.navigateTo({ url: '/packages/loans/pages/loan-link/index?transactionId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   selectLoan(event) {
     if (this.data.loading || this.data.errorMessage || !this.data.context || !['candidate','allocatable'].includes(this.data.context.state)) return
     const loan = this.data.loans.find(l => l.loanId === event.currentTarget.dataset.id)
     if (!loan) return
-    if((this.data.context.state==='allocatable'||this.data.context.retained)&&loan.canLink){wx.navigateTo({url:'/packages/finance/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
+    if((this.data.context.state==='allocatable'||this.data.context.retained)&&loan.canLink){wx.navigateTo({url:'/packages/loans/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
     const target = loan.canLink ? 'repayment-entry' : 'loan-detail'
-    wx.navigateTo({ url: '/packages/finance/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
+    wx.navigateTo({ url: '/packages/loans/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
   },
   createLoan() {
     if (this.data.loading || this.data.errorMessage || !this.data.context || this.data.context.state !== 'candidate' || this.data.context.targetAccount.inactive) return
-    wx.navigateTo({ url: '/packages/finance/pages/loan-form/index?sourceTransactionId=' + encodeURIComponent(this._transactionId) + '&accountId=' + encodeURIComponent(this.data.context.targetAccount.accountId) + '&baselineDate=' + encodeURIComponent(this.data.context.transaction.occurredLocalAt.slice(0,10)) })
+    wx.navigateTo({ url: '/packages/loans/pages/loan-form/index?sourceTransactionId=' + encodeURIComponent(this._transactionId) + '&accountId=' + encodeURIComponent(this.data.context.targetAccount.accountId) + '&baselineDate=' + encodeURIComponent(this.data.context.transaction.occurredLocalAt.slice(0,10)) })
   },
-  managePending() { if (this.data.context && this.data.context.payment) wx.navigateTo({ url:'/packages/finance/pages/repayment-entry/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) },
-  openPayment() { if (this.data.context && this.data.context.linked) wx.navigateTo({ url: '/packages/finance/pages/loan-payment/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) }
+  managePending() { if (this.data.context && this.data.context.payment) wx.navigateTo({ url:'/packages/loans/pages/repayment-entry/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) },
+  openPayment() { if (this.data.context && this.data.context.linked) wx.navigateTo({ url: '/packages/loans/pages/loan-payment/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) }
 }))

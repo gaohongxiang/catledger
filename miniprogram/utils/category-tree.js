@@ -23,4 +23,24 @@ function selectionGroups(rows, query, expanded, selectedIndex) {
   })
   return groups
 }
-module.exports = { key, labelRows, selectionGroups }
+// 选择目录先按一级的顺序排，再把二级跟在自己的一级后面。不按编号穿插。
+function orderedSelectionGroups(rows, query, expanded) {
+  const list = rows || []
+  const byId = new Map(list.map(row => [key(row), row]))
+  const order = row => Number(row && row.sortOrder) || 0
+  const name = row => String(row && row.name || '')
+  const sorted = list.slice().sort((a, b) => {
+    const ap = a.parentId && byId.get(a.parentId)
+    const bp = b.parentId && byId.get(b.parentId)
+    const aHead = ap || a
+    const bHead = bp || b
+    return order(aHead) - order(bHead)
+      || name(aHead).localeCompare(name(bHead), 'zh')
+      || String(key(aHead)).localeCompare(String(key(bHead)))
+      || Number(Boolean(ap)) - Number(Boolean(bp))
+      || order(a) - order(b)
+      || name(a).localeCompare(name(b), 'zh')
+  })
+  return { items: sorted, groups: selectionGroups(sorted, query, expanded || {}, -1) }
+}
+module.exports = { key, labelRows, selectionGroups, orderedSelectionGroups }

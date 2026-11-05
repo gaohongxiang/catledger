@@ -25,6 +25,19 @@ test('可选层级搜索保留原索引，选择子类展开所属大类，允�
   assert.equal(tree.selectionGroups(rows, '找不到', {}, -1).length, 0)
   assert.equal(tree.selectionGroups([{ categoryId: 'c', parentId: 'p', parentName: '大类', name: '子类' }], '大类', {}, -1)[0].displayName, '大类 / 子类')
 })
+test('选择目录按一级归组，二级跟在所属一级下面', () => {
+  const view = tree.orderedSelectionGroups([
+    { categoryId: 'b2', parentId: 'b', name: '饮品', sortOrder: 2 },
+    { categoryId: 'a', name: '餐饮', sortOrder: 1 },
+    { categoryId: 'b', name: '交通', sortOrder: 2 },
+    { categoryId: 'a1', parentId: 'a', name: '美食', sortOrder: 1 },
+    { categoryId: 'a2', parentId: 'a', name: '水果', sortOrder: 2 }
+  ], '', { a: true, b: true })
+  assert.deepEqual(view.groups.map(group => group.name), ['餐饮', '交通'])
+  assert.deepEqual(view.groups[0].children.map(child => child.name), ['美食', '水果'])
+  assert.deepEqual(view.groups[1].children.map(child => child.name), ['饮品'])
+  assert.equal(view.items[view.groups[0].children[0].optionIndex].name, '美食')
+})
 test('真实预设目录每项有图标，改名保持图标，两级关系不依赖键名前缀', () => {
   const keys = new Set(DEFAULT_CATEGORIES.map(row => row.systemKey))
   assert.equal(keys.size, DEFAULT_CATEGORIES.length)

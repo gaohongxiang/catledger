@@ -1,4 +1,4 @@
-const scheduleForm = require('./schedule-form')
+const scheduleForm = require('../../../../services/loan-schedule-form')
 
 // 只定义业务初值；主题由页面生命周期适配器独立维护。
 module.exports = { ...require('../../services/historical-charge-coverage').initial,deletedPlan:false,deletingPreview:false,deleteBlockers:[],retainedChargeMode:false,retainedCharge:null, ...require('./upfront-fee').initial,...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,

@@ -361,7 +361,7 @@ function createHomePage(dependencies) {
         this.promptWechatLogin(this.openLoans.bind(this))
         return
       }
-      wx.navigateTo({ url: '/packages/finance/pages/loans/index' })
+      wx.navigateTo({ url: '/packages/loans/pages/loans/index' })
     },
 
     openStatistics: function () {

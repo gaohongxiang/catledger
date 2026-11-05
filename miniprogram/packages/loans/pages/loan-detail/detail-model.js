@@ -1,6 +1,6 @@
 const cost = require('./cost')
 const { addMinor } = require('../../../../utils/minor-arithmetic')
-const { METHOD_LABELS } = require('./schedule-form')
+const { METHOD_LABELS } = require('../../../../services/loan-schedule-form')
 
 function today() {
   const date = new Date(), pad = value => String(value).padStart(2, '0')

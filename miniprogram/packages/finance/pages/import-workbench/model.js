@@ -1,4 +1,5 @@
 const bankSuggestion = require('./bank-suggestion')
+const { flowNote } = require('../../domain/import-review/workbench-summary')
 const { fundsAccountLabels, natureLabel } = require('./detail-fields')
 const { normalizePaymentAccountName, suggestExistingAccount } = require('../../services/import-account-suggestions')
 
@@ -820,12 +821,12 @@ function eventView(event) {
   const installmentParts_ = installment ? installmentParts(event, installment, displayTitle, sourceText) : null
   const installmentLabel = installmentParts_ ? natureLabel(event) : ''
   const installmentMeta = installmentLabel && [installmentLabel, '第' + installment.periodNumber + '期' + (installment.totalTerms ? '／共' + installment.totalTerms + '期' : '')].join(' · ')
-  const displayMeta = [dateText, installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
+  const displayMeta = [dateText, installmentMeta || detailText, sourceText, flowNote(event)].filter(Boolean).join(' · ')
   const displayDetailMeta = [installmentMeta || detailText, sourceText].filter(Boolean).join(' · ')
   const displayTime = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/u.test(localAt) ? localAt.slice(11, 16) : ''
   return Object.assign({}, event, {
-    amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
-    displayTitle: event.summaryExpenseMinor == null ? displayTitle : event.repaymentChannel ? '还款手续费' : '还款利息及费用',
+    amountText: amountText(event.amountMinor),
+    displayTitle,
     displayMeta: displayMeta,
     displayDate: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(5, 10) : '',
     displayTime,

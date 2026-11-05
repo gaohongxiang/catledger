@@ -131,7 +131,7 @@ test('提醒各自进自己的工作台：待核对去导入工作台，待还�
   page.openImport()
   page.openLoans()
   assert.equal(h.navigation[0], '/packages/finance/pages/import-workbench/index')
-  assert.equal(h.navigation[1], '/packages/finance/pages/loans/index')
+  assert.equal(h.navigation[1], '/packages/loans/pages/loans/index')
 })
 
 test('旧服务端漏回累计范围时拒绝展示和缓存，重试可取得正确累计', async () => {

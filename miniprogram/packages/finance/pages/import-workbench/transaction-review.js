@@ -256,6 +256,10 @@ module.exports = {
       }
       return this.openReviewEdit({ currentTarget: { dataset: { id: data.id, focusIssueId: data.issueId || '' } } })
     }
+    // 待分类没有分类事项时，也进编辑器补分类，不打开只读核对。
+    if (data.assignCategory && this.data.update && this.data.update.status === 'review') {
+      return this.openReviewEdit({ currentTarget: { dataset: { id: data.id, focusIssueId: '' } } })
+    }
     return this.openReviewDetails({ currentTarget: { dataset: { id: data.id } } })
   },
 
