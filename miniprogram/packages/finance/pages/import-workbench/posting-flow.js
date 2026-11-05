@@ -147,7 +147,7 @@ module.exports = {
       if (['new_accounts', 'affected_accounts'].includes(target.kind)) sheet = { kind: target.kind, title: target.kind === 'new_accounts' ? '新建账户' : '受影响账户', mode: 'accounts', accounts: presentAccountRows(response.items), records: [] }
       else sheet = buildFinalDetail(target.kind, Object.assign({}, this.businessData(), { events: response.items, accounts: await accountsForEvents(this, response.items) }), target.accountId)
       this._finalDetail = null
-      this.setData({ finalDetailSheet: Object.assign({}, sheet, { count: response.total, records: (sheet.records || []).map(presentFinalRecord), page: response.page, loading: false }), finalDetailScrollTop: 0 })
+      this.setData({ finalDetailSheet: Object.assign({}, sheet, { count: response.eventTotal != null ? response.eventTotal : response.total, records: (sheet.records || []).map(presentFinalRecord), page: response.page, loading: false }), finalDetailScrollTop: 0 })
     } catch (error) { if (pager === this._finalPager) this.setData({ 'finalDetailSheet.loading': false, errorMessage: errorText(error) }) }
   },
 
@@ -194,7 +194,7 @@ module.exports = {
       if (!active()) return
       if (receipt.outcome === 'recheck') {
         this.applyUpdateView(receipt.localView || session.view, false)
-        this.setData({ currentStep: 3, busy: false, errorMessage: '服务端复核发现变化，其他选择已保留，请核对标记事项' })
+        this.setData({ currentStep: 3, busy: false, errorMessage: '' })
         return
       }
       if (this._unsubscribeDraft) this._unsubscribeDraft()

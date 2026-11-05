@@ -104,6 +104,37 @@ function planDecisionOf(row) {
   const value = row && row.installmentPlanDecision
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null
 }
+function compactAccountName(value) {
+  return String(value || '').normalize('NFKC').replace(/[|｜\s]/gu, '')
+}
+function huabeiRepayment(row) {
+  if (!row || row.economicNature !== 'repayment') return false
+  const target = row.fundsProjection && row.fundsProjection.to
+  if (target && (target.aggregateFamily === 'alipay_huabei_credit' || (target.aggregateFamilies || []).includes('alipay_huabei_credit'))) return true
+  const text = [row.primaryEvidence && row.primaryEvidence.counterparty, row.primaryEvidence && row.primaryEvidence.item, target && target.label, target && target.value].join('\n')
+  return /花呗|信用购/u.test(text) && !/借呗|网商贷|先采后付/u.test(text)
+}
+// 花呗、信用购是同一个负债账户。账单写成「花呗|信用购」时，还入账户就是本批已经确认过的这一户，
+// 不再留空等用户再选一遍。多个互不相同的账户时不猜。
+function locateHuabeiRepaymentAccount(row, events, accounts) {
+  if (!huabeiRepayment(row)) return ''
+  const ids = new Set()
+  for (const event of events || []) {
+    if (!event || event.eventId === row.eventId || !event.ledgerAccountId) continue
+    const reference = event.fieldSources && event.fieldSources.ledgerAccountReference || event.ledgerAccountReference
+    const label = reference && (reference.label || reference.displayName || '')
+    if (reference && ((reference.aggregateFamilies || []).includes('alipay_huabei_credit') || compactAccountName(label) === '支付宝花呗信用购')) ids.add(event.ledgerAccountId)
+  }
+  if (ids.size === 1) return [...ids][0]
+  if (ids.size > 1) return ''
+  const named = []
+  for (const account of accounts || []) {
+    if (!account || !account.accountId || account.archivedAt || account.archived || account.unavailable) continue
+    if (account.type && account.type !== 'credit') continue
+    if (['支付宝花呗信用购', '支付宝花呗', '花呗', '支付宝信用购', '信用购'].includes(compactAccountName(account.name))) named.push(account.accountId)
+  }
+  return new Set(named).size === 1 ? named[0] : ''
+}
 function create(row) {
   const source = row.primaryEvidence || {}, facts = row.editorFacts || {}
   const channel = repaymentChannelOf(row)
@@ -616,7 +647,21 @@ function derive(row, draft, catalogs = {}) {
   }
   let composition
   let compositionEffect = ''
-  if (draft.composition !== 'single') {
+  // 还入端只有一个账户时，界面不提供分摊金额，总额必然全额还入它。
+  // 若仍按未完成的多账户分配保存，服务端会清掉刚选的账户，卡片就停在「资金分配待补齐」。
+  const loneRepayment = draft.composition === 'repayment' && draft.parts.length <= 1 &&
+    !draft.parts.some(part => part.kind === 'external')
+  if (loneRepayment) {
+    const accountId = draft.parts[0] && draft.parts[0].accountId || ''
+    const account = accounts.find(item => item.accountId === accountId)
+    if (account && (account.archivedAt || !DEBTS.includes(account.type))) invalid('composition', '还入账户不可用或类型不符')
+    if (accountId && accountId === draft.ledgerAccountId) invalid('funds', '两个资金账户必须不同')
+    if (accountId) output.counterpartyLedgerAccountId = accountId
+    else missing.push('还入账户')
+    if (storedComposition !== 'single' || facts && facts.incompleteComposition) {
+      composition = { kind: 'single', evidenceNote: draft.evidenceNote }
+    }
+  } else if (draft.composition !== 'single') {
     let sum = 0n, partial = false
     for (const part of draft.parts) {
       if (part.kind !== 'external' && !part.accountId || minor(part.amountInput) == null) partial = true
@@ -839,4 +884,4 @@ function restore(row, payload) {
   draft.acknowledgedChanges = payload.acknowledgedChanges || []
   return draft
 }
-module.exports = { create, restore, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan, planSchedule }
+module.exports = { create, restore, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan, planSchedule, locateHuabeiRepaymentAccount }

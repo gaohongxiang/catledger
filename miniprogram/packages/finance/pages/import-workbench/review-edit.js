@@ -130,9 +130,10 @@ function refresh(page) {
     accountLabel: labels.find(field => field.key === 'account')?.label || '资金账户',
     destinationLabel: labels.find(field => field.key === 'counterparty')?.label || '资金账户',
     accountFields: labels, hasDestination: labels.length === 2, refundClosed: Boolean(view.refundConflict),
+    refundReversed: Boolean(token.refundReversed && view.refundConflict),
     attributionSelected: Boolean(
       (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)),
-    canSave: sheet.planCreatePending || view.canSave || Boolean(
+    canSave: sheet.planCreatePending || Boolean(token.refundReversed && view.refundConflict) || view.canSave || Boolean(
       (token.attributionSelections && token.attributionSelections.size) || (token.attributionClears && token.attributionClears.size)), error: '' } })
 }
 function update(page, key, value) {
@@ -144,7 +145,7 @@ function update(page, key, value) {
   // 避免保存时只写归属、漏掉本金改动。
   if (token.attributionSelections && token.attributionSelections.size) token.attributionSelections.clear()
   if (token.attributionClears && token.attributionClears.size) token.attributionClears.clear()
-  token.draft = next; token.editVersion = (token.editVersion || 0) + 1
+  token.draft = next; token.refundReversed = false; token.editVersion = (token.editVersion || 0) + 1
   if (['economicNature','ledgerAccountId','counterpartyLedgerAccountId'].includes(key)) {
     token.refundEpoch = (token.refundEpoch || 0) + 1; token.refundOptions = []; token.refundCursor = null
     token.draft.refund = null
@@ -240,7 +241,18 @@ module.exports = {
           token.createdPlanAccountId = recovery.data.accountId
         }
       }
-      for (const item of [].concat(this.data.accounts || [], this.data.accountDrafts || [], row.detailFacts?.accounts || [])) token.accounts.set(item.accountId, item)
+      const localModel = this._draftSession && this._draftSession.isLocal ? this._draftSession.model : null
+      for (const item of [].concat(localModel ? [...localModel.accounts.values()] : [], this.data.accounts || [], this.data.accountDrafts || [], row.detailFacts?.accounts || [])) if (item && item.accountId) token.accounts.set(item.accountId, item)
+      if (!packet) {
+        const known = model.locateHuabeiRepaymentAccount(row, localModel ? [...localModel.events.values()] : token.siblings, [...token.accounts.values()])
+        const chosen = token.draft.counterpartyLedgerAccountId || (token.draft.parts || []).some(part => part.accountId)
+        if (known && !chosen) {
+          token.draft.counterpartyLedgerAccountId = known
+          token.draft.composition = 'single'
+          token.draft.parts = []
+          token.draft.dirty = { ...token.draft.dirty, counterpartyLedgerAccountId: true, composition: true }
+        }
+      }
       for (const item of [].concat(this.data.categories || [], row.detailFacts?.categories || [])) token.categories.set(item.categoryId, item)
       if (row.categoryId && row.categoryName) token.categories.set(row.categoryId, { categoryId: row.categoryId, name: row.categoryName, kind: model.categoryKind(row.economicNature) })
       // 多来源合成、（重复页签的）记录都能改同笔判断；不能只看是不是还款渠道。
@@ -653,22 +665,21 @@ module.exports = {
   },
   // 原单关闭/失败却退款成功：默认按“已退回”处理——原单保持不入账，这笔退款也不入账，
   // 净额 0；这是明确的业务决定，会写进本批决定里，不是静默丢弃。
+  // 后果已经写在卡片上，勾选就是选择，底部「确认退回」才写入。不再叠一层系统弹窗。
+  chooseRefundReversed() {
+    const token = this._reviewEditToken
+    if (!editable(this, token) || !token.view?.refundConflict) return
+    token.refundReversed = !token.refundReversed
+    refresh(this)
+  },
   async excludeRefundAsReversed() {
     const token = this._reviewEditToken
     const issue = token && token.row && token.row.pendingIssue
     if (!editable(this, token)) return
-    // 按钮只在原因码带 refund_source_conflict 时出现，但可处理事项可能已被账户等其他
+    // 入口只在原因码带 refund_source_conflict 时出现，但可处理事项可能已被账户等其他
     // 问题顶到 pendingIssue 之外。这里明说原因，不能再静默返回让按钮看起来点不动。
     if (!issue || issue.issueType !== 'refund_relation') {
       this.setData({ 'reviewEditSheet.error': '这笔退款的核对事项已变化，请返回列表刷新后再试' })
-      return
-    }
-    const accepted = await new Promise(resolve => wx.showModal({ title: '按已退回处理',
-      content: '这笔退款对应的原单在账单里是“交易关闭／失败”。确认后原单和这笔退款都不入账，净额 0，原文仍保留。',
-      // confirmText 最多 4 个字符；超长时微信直接 fail，弹窗不会出现，看起来就像按钮没反应。
-      confirmText: '确认退回', success: resolve, fail: error => resolve({ confirm: false, error }) }))
-    if (!accepted.confirm) {
-      if (accepted.error && current(this, token)) this.setData({ 'reviewEditSheet.error': '确认窗口没有打开，请再点一次' })
       return
     }
     if (!current(this, token)) return
@@ -901,6 +912,7 @@ module.exports = {
   async saveReviewEdit() {
     const token = this._reviewEditToken, sheet = this.data.reviewEditSheet
     if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave || !sheet.pending && !sheet.planCreatePending && !editable(this, token)) return
+    if (sheet.refundReversed) return this.excludeRefundAsReversed()
     // 本金编辑器里勾选的利息是另一笔事件：先逐笔写回归属，再走原来的本笔保存/刷新。
     // 两件事不混在一个请求里，服务端仍按单笔事务复核；部分失败时保留未保存的勾选。
     const changes = pendingAttributionChanges(token)

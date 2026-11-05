@@ -77,6 +77,13 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     for(const {choice,error} of invalid)for(const id of choice.eventIds||[choice.eventId,choice.bankEventId,choice.platformEventId].filter(Boolean))model.invalid.set(id,error.message)
     for(const kind of Object.keys(final))for(const [key,value]of final[kind])model.choices[kind].set(key,clone(value))
     reader=readerFactory.create(model)
+    // 账户确认已经重放完。花呗信用购还款直接还入那一个账户；退款收款账户补上已确认的同一付款方式。两者都记入决定。
+    try {
+      const settled = model.settleHuabeiRepayments().concat(model.settleRefundAccounts())
+      if (settled.length) persist(settled)
+    } catch (error) {
+      if (error && error.code === 'SESSION_CHANGED') throw error
+    }
   }
   rebuild()
   function emit(){for(const fn of listeners)fn()}
@@ -132,7 +139,7 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     if(state.postRejection)throw posting.reorganizationError()
     if(!state.postFlight){
       if(Object.values(state.drafts).some(draft=>draft?.dirty&&!draft.localConfirmed))throw Object.assign(new Error('账户输入尚未确认，已保留，请先确认后再入账'),{code:'LOCAL_RECHECK_REQUIRED'})
-      if(awaitingEdits||model.invalid.size)throw Object.assign(new Error('请先重新确认受影响的事项，其他选择已保留'),{code:'LOCAL_RECHECK_REQUIRED'})
+      if(model.invalid.size)throw Object.assign(new Error('请先重新确认受影响的事项，其他选择已保留'),{code:'LOCAL_RECHECK_REQUIRED'})
       const value=model.finalState(),packed=protocol.split(JSON.stringify(value),'decisions'),id=requestId(),uploadId=requestId()
       const payload={protocolVersion:3,requestId:id,updateId:state.updateId,version:value.baseVersion,snapshotId:value.snapshotId,uploadId,payloadDigest:packed.digest}
       persist([{kind:'ui',key:'postFlight',value:{action:'financeUpdates.post',phase:posting.STAGING,payload,value}}]);emit()
@@ -146,15 +153,22 @@ function create({ files, restored, callNetwork, requestId, alive = () => true, s
     }
     if(receipt.outcome==='recheck'){
       const value=await files.download(receipt.recheck,callNetwork);guard()
-      persist([{kind:'supplement',value},{kind:'ui',key:'postFlight',value:null},{kind:'awaitingEdits',value:true}])
-      model.applySupplement(value);applyCreatedCategories();errorMessage='服务端复核发现变化，已保留其他选择，请核对标记事项';emit()
+      model.applySupplement(value);applyCreatedCategories()
+      const marked = model.invalid.size > 0
+      persist([{kind:'supplement',value},{kind:'ui',key:'postFlight',value:null},{kind:'awaitingEdits',value:marked}])
+      errorMessage = marked
+        ? '入账没有写入。复核时有事项和当前账本对不上，其他选择都还留着。请先处理交易核对里标出的那几笔。'
+        : '入账没有写入。已经保存的选择都还在，可以直接再入账一次。'
+      emit()
       return {...receipt,localView:reader.summary()}
     }
     // A compact confirmed receipt survives removal of every sensitive file.
     guard();state.confirmedReceipt=receipt
     const completed=posting.finish(receipt,{files,saveReceipt,cleanup})
     compactReceiptSaved=completed.saved
-    if(completed.cleanupPending)errorMessage='已入账，本机清理将在恢复时重试'
+    // 入账已确认成功：清掉之前 recheck/待核实遗留的旧提示，只在清理确有遗留时提示。
+    // 否则“上一次没写入”的文案会残留到这次成功之后，误导成“成功了却还说没写入”。
+    errorMessage = completed.cleanupPending ? '已入账，本机清理将在恢复时重试' : ''
     closed=true;emit()
     return receipt
   }

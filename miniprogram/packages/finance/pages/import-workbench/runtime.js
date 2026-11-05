@@ -959,7 +959,9 @@ module.exports = {
         accountConfirmationOptions: { separateIssueIds: filter.separateIssueIds, accountSelections: filter.accountSelections,
           displayGroups: filter.displayGroups }, accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
-      patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
+      const categoryGrouped = kind === 'categoryCards' && (Number(response.eventTotal) > Number(response.total) ||
+        events.some(event => Number(event.categoryPeerCount) > 1))
+      patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' || categoryGrouped ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed &&

@@ -128,7 +128,10 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     if (!channel.relationValid(event)) reasons.push('core_fields_conflict')
     else if (!channel.valid(event)) reasons.push('repayment_channel_details_required')
   }
-  if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
+  // 保存了组成决定但已与当前事实不符才重新要求核对；用户改回单账户后，
+  // 旧的 paymentResolution 是过期证据，不再把整笔拽回“组合支付待核对”。
+  if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid &&
+    !require('./funds-evidence').single(event)) reasons.push('payment_components_ambiguous')
   // 旧草稿的本息拆分/计划关联不再参与普通还款入账，必须重新确认全额转账。
   if (event.fieldSources && (event.fieldSources.loanRepayment || event.fieldSources.editorOverrides?.incompleteRepayment)) {
     reasons.push('loan_repayment_required')

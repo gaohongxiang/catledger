@@ -61,7 +61,17 @@ function repaymentAllocationsForEvent(event) {
   return allocation
 }
 
+function huabeiCreditFamily(event) {
+  const target = event && event.fieldSources && event.fieldSources.fundsProjection && event.fieldSources.fundsProjection.to
+  if (!target) return false
+  if (target.aggregateFamily === 'alipay_huabei_credit' || (target.aggregateFamilies || []).includes('alipay_huabei_credit')) return true
+  const label = String(target.label || target.displayName || target.value || '').normalize('NFKC').replace(/[|｜\s]/gu, '')
+  return label === '支付宝花呗信用购' || label === '花呗信用购'
+}
+
 function isAggregateRepayment(event) {
+  // 花呗和信用购是同一个负债账户。旧整理结果即使把它标成待拆分，也不再要求还款分配。
+  if (huabeiCreditFamily(event)) return false
   const fields = event && event.fieldSources || {}, editor = fields.editorOverrides
   if (editor && editor.version === 1 && editor.composition) return event.economicNature === 'repayment' && editor.composition === 'repayment'
   const projection = fields.fundsProjection

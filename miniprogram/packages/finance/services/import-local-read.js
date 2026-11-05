@@ -3,6 +3,7 @@ const { accountIds } = require('../domain/import-review/workbench-summary')
 const editor = require('../domain/import-review/review/editor-policy')
 const excluded = require('../domain/import-review/excluded-event-groups')
 const accountConfirmations = require('./import-account-confirmations')
+const { categoryLikenessKey } = require('../domain/import-review/category-likeness')
 const chronological = (a,b) => Number(!a.localAt) - Number(!b.localAt) || String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId || a.issueId || a.memberId || a.pairKey).localeCompare(String(b.eventId || b.issueId || b.memberId || b.pairKey))
 const historical = event => event.status === 'excluded' && event.reasonCodes.some(code => ['already_posted','linked_existing_transaction'].includes(code))
 const active = event => ['ready','needs_action','posted'].includes(event.status)
@@ -184,6 +185,38 @@ function create(model) {
       .sort((a,b)=>chronological({localAt:a.bank.localAt,pairKey:a.pairKey},{localAt:b.bank.localAt,pairKey:b.pairKey}))
   }
   function previewPair(pair){const view=event=>({...model.publicRow(event.eventId),sourceType:event.sourceType,counterparty:event.relationEvidence.rows[0]?.counterparty||'',item:event.relationEvidence.rows[0]?.item||''});return{pairKey:pair.pairKey,bank:view(pair.bank),platform:view(pair.platform),economicNature:pair.platform.economicNature,...pair.pairKind==='repayment'?{pairKind:'repayment',repayment:pair.repayment,reason:'repayment_channel_amounts_require_confirmation'}:{reason:'same_account_amount_currency_direction_minute_channel'}}}
+  function categoryPendingPage(action, data, rows) {
+    const pendingFilter = { ...data }
+    delete pendingFilter.query
+    delete pendingFilter.cursor
+    delete pendingFilter.pageSize
+    delete pendingFilter.viewVersion
+    const matched = new Set(rows.map(event => event.eventId))
+    const groups = new Map()
+    const ordered = []
+    for (const event of [...model.events.values()].filter(event => eventMatches(event, pendingFilter)).sort(chronological)) {
+      const shown = model.publicRow(event.eventId)
+      const key = categoryLikenessKey(shown) || ('\0' + event.eventId)
+      let group = groups.get(key)
+      if (!group) {
+        group = { peers: [], shown: null, sameAmount: true, amount: null }
+        groups.set(key, group)
+        ordered.push(group)
+      }
+      group.peers.push(event)
+      const amount = String(event.amountMinor)
+      if (group.amount == null) group.amount = amount
+      else if (group.amount !== amount) group.sameAmount = false
+      if (!group.shown && matched.has(event.eventId)) group.shown = shown
+    }
+    const visible = ordered.filter(group => group.shown)
+    const result = page(action, data, visible, 'eventId', group => {
+      if (group.peers.length < 2) return group.shown
+      return { ...group.shown, categoryPeerCount: group.peers.length, categorySameAmount: group.sameAmount }
+    })
+    result.eventTotal = matched.size
+    return result
+  }
   function read(action,data={}) {
     if(data.viewVersion!=null&&data.viewVersion!==version())error('STALE_VIEW','本地记录已变化，请重新打开')
     if(action==='financeUpdates.summary')return summary()
@@ -193,6 +226,7 @@ function create(model) {
         if(data.excludedGroupId)rows=rows.filter(event=>(groups.get(data.excludedGroupId)?.ids||[]).includes(event.eventId))
         else return page(action,data,[...groups.values()],'groupId',({ids,...group})=>group)
       }
+      if(data.view==='category_pending') return categoryPendingPage(action, data, rows)
       return page(action,data,rows,'eventId',event=>model.publicRow(event.eventId))
     }
     if(action==='reviewIssues.list'){

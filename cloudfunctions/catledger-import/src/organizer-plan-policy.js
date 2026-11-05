@@ -1,5 +1,6 @@
 const { resolveAccountMappings, accountIdFromIndex } = require('./account-mapping-policy')
 const { digestParts } = require('./portable-digest')
+const { categoryGoodsText } = require('./category-likeness')
 const {
   accountIdentityKeyForReference,
   expectedAccountType,
@@ -158,18 +159,32 @@ function sharedReviewDecisionSignature(event, classification) {
     .filter((reason) => SHARED_DECISION_REASON_CODES.has(reason))
     .sort()
   const evidenceRows = event.relationEvidence && event.relationEvidence.rows || []
-  const rowParts = unique(evidenceRows.map((row) => [
-    row.sourceType,
-    row.accountGroupingKey,
-    row.transactionType,
-    row.economicEffect,
-    row.direction,
-    row.currency,
-    row.sourceAction || '',
-    canonicalEvidenceText(row.counterparty),
-    canonicalEvidenceText(row.item),
-    canonicalEvidenceText(row.paymentMethod)
-  ].join('|')).sort())
+  // 分类按去掉发生日期后的商品归组。账户、付款方式和金额不拆开同一商品。
+  // 转账和共用字段仍按原文字段区分，避免两张卡被收成一次决定。
+  let rowParts
+  if (classification.issueType === 'category_assignment') {
+    const parts = evidenceRows.map((row) => {
+      const merchant = categoryGoodsText(row.counterparty)
+      const item = categoryGoodsText(row.item)
+      if (!merchant && !item) return ''
+      return [row.sourceType, row.economicEffect, row.direction, row.currency, row.sourceAction || '', merchant, item].join('|')
+    })
+    if (!parts.length || parts.some((part) => !part)) return event.eventKey
+    rowParts = unique(parts).sort()
+  } else {
+    rowParts = unique(evidenceRows.map((row) => [
+      row.sourceType,
+      row.accountGroupingKey,
+      row.transactionType,
+      row.economicEffect,
+      row.direction,
+      row.currency,
+      row.sourceAction || '',
+      canonicalEvidenceText(row.counterparty),
+      canonicalEvidenceText(row.item),
+      canonicalEvidenceText(row.paymentMethod)
+    ].join('|')).sort())
+  }
   return digestParts(
     'review-decision-signature-v2',
     classification.issueType,

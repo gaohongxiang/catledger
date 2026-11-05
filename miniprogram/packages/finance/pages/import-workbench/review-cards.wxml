@@ -1,7 +1,7 @@
 <!-- 各页签共用卡头；pending 的 label 已由展示层合成性质与真实待办，其余只读 natureLabel。 -->
 <template name="review-card-heading">
   <view class="review-decision-heading {{completed ? 'review-completed-heading' : ''}}">
-    <view class="review-decision-copy"><text class="review-decision-title">{{pending ? card.label : card.natureLabel}}{{statusText ? ' · ' + statusText : ''}}{{reviewPending ? ' · 待核对' : ''}}</text></view>
+    <view class="review-decision-copy"><text class="review-decision-title">{{pending ? card.label : card.natureLabel}}{{statusText ? ' · ' + statusText : ''}}{{reviewPending ? ' · 待核对' : ''}}</text><text wx:if="{{card.categoryPeerCount > 1}}" class="category-peer-count">共 {{card.categoryPeerCount}} 笔将应用同一分类</text></view>
     <view wx:if="{{categoryEditable}}" class="review-decision-action category-edit-action" data-id="{{card.eventId}}" catchtap="openCategoryEdit" aria-role="button" aria-label="修改分类"><text class="review-action-button">修改分类</text><chevron-icon size="{{22}}" /></view>
     <button wx:elif="{{categoryWaiting}}" class="review-inline-action" data-id="{{card.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button>
     <button wx:elif="{{categoryAssign}}" class="review-inline-action" data-id="{{card.eventId}}" bindtap="openReviewEdit">去分类<chevron-icon size="{{22}}" /></button>

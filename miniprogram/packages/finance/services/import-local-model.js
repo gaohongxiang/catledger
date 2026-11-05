@@ -5,8 +5,9 @@ const identity = require('../domain/import-review/local-review-identity')
 const matching = require('../domain/import-review/bank-channel-matching')
 const accountPolicy = require('../domain/import-review/review/account-mapping-policy')
 const { createMappingIndex } = require('../domain/import-review/source-funds')
-const { paymentReferenceKey } = require('../domain/import-review/payment-account')
+const { aggregateAccountFamily, expectedAccountType, paymentReferenceKey } = require('../domain/import-review/payment-account')
 const { publicEvent } = require('../domain/import-review/review-presentation')
+const { categoryLikenessKey } = require('../domain/import-review/category-likeness')
 const historyPolicy = require('../domain/import-review/historical-match-policy')
 const attribution = require('../domain/import-review/installment-plan')
 const business = require('../domain/import-review/installment-business')
@@ -14,6 +15,7 @@ const draftPolicy = require('../domain/import-review/account-draft-policy')
 const accountTypes = require('../domain/import-review/account-type-policy')
 const accountGrouping = require('../domain/import-review/account-issue-grouping')
 const creationFacts = require('../domain/import-review/account-creation-facts')
+const { referenceFailure } = require('../domain/import-review/review/event-references')
 const clone = value => JSON.parse(JSON.stringify(value))
 const fail = message => { throw Object.assign(new Error(message || '这项选择需重新核对'), { code: 'LOCAL_RECHECK_REQUIRED' }) }
 const active = event => event && ['ready','needs_action'].includes(event.status)
@@ -542,7 +544,46 @@ function create(facts) {
     return { ...old, ...next, fields: { ...old?.fields, ...next.fields }, decisions: { ...old?.decisions, ...next.decisions },
       acknowledgedChanges: distinct([...(old?.acknowledgedChanges || []), ...(next.acknowledgedChanges || [])]) }
   }
+  function categoryStillPending(event) {
+    if (!event || !['ready', 'needs_action', 'posted'].includes(event.status) || hiddenOffset(event)) return false
+    const needed = require('../domain/import-review/workbench-summary').categoryRequired(event)
+    return needed && (!event.categoryId || event.economicNature === 'unknown')
+  }
+  function categoryPeerEvents(eventId) {
+    const current = events.get(eventId)
+    if (!current) return []
+    const key = categoryLikenessKey(publicRow(current.eventId))
+    const targets = []
+    if (key) for (const event of events.values()) {
+      if (!categoryStillPending(event) || categoryLikenessKey(publicRow(event.eventId)) !== key) continue
+      targets.push(event)
+    }
+    targets.sort((a, b) => String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId)))
+    return targets.length ? targets : [current]
+  }
+  function categoryPeerRows(eventId) {
+    return categoryPeerEvents(eventId).map(event => publicRow(event.eventId))
+  }
+  function editCategoryGroup(data) {
+    const current = events.get(data.eventId); if (!current) fail()
+    if (data.eventVersion != null && data.eventVersion !== current.version) fail('这笔记录已变化，请重新打开')
+    const key = categoryLikenessKey(publicRow(current.eventId))
+    const targets = []
+    if (key) for (const event of events.values()) {
+      if (!categoryStillPending(event) || categoryLikenessKey(publicRow(event.eventId)) !== key) continue
+      targets.push(event)
+    }
+    if (!targets.some(event => event.eventId === current.eventId)) targets.unshift(current)
+    const changes = []
+    for (const event of targets) {
+      const next = { ...data, eventId: event.eventId, eventVersion: event.version }
+      delete next.sameCategory
+      changes.push(...edit(next))
+    }
+    return changes
+  }
   function edit(data) {
+    if (data && data.sameCategory) return editCategoryGroup(data)
     const current = events.get(data.eventId); if (!current) fail()
     if (data.eventVersion != null && data.eventVersion !== current.version) fail('这笔记录已变化，请重新打开')
     let next = editor.prepare(current, data)
@@ -617,6 +658,277 @@ function create(facts) {
     // 只承接提交时会再次重放的本机决定；旧快照本身的排除需要服务端
     // 同步保护，不能只在本机保留一个与实际提交结果不一致的状态。
     return false
+  }
+  function compactAccountName(value) {
+    return String(value || '').normalize('NFKC').replace(/[|｜\s]/gu, '')
+  }
+  function huabeiReference(reference) {
+    if (!reference) return false
+    if (reference.aggregateFamily === 'alipay_huabei_credit' || (reference.aggregateFamilies || []).includes('alipay_huabei_credit')) return true
+    // 花呗、江苏银行信用购、花呗|信用购都是这一族，不能只认整理时写下的显示名。
+    return aggregateAccountFamily(reference.sourceType || 'alipay', reference.label || reference.displayName || reference.value) === 'alipay_huabei_credit'
+  }
+  function huabeiRepaymentEvent(event) {
+    return Boolean(event && event.economicNature === 'repayment' && event.fieldSources &&
+      huabeiReference(event.fieldSources.fundsProjection && event.fieldSources.fundsProjection.to))
+  }
+  // 花呗消费确认过的那一个负债账户，就是「花呗|信用购」还款的还入账户。
+  // 多个互不相同的账户时不猜。
+  function confirmedHuabeiAccountId() {
+    const ids = new Set()
+    for (const event of events.values()) {
+      const reference = event.fieldSources && event.fieldSources.ledgerAccountReference
+      if (event.ledgerAccountId && huabeiReference(reference)) ids.add(event.ledgerAccountId)
+    }
+    if (ids.size === 1) return [...ids][0]
+    if (ids.size > 1) return ''
+    const named = []
+    for (const account of accounts.values()) {
+      if (!account || !account.accountId || account.archivedAt || account.archived || account.unavailable) continue
+      if (account.type && account.type !== 'credit') continue
+      if (['支付宝花呗信用购', '支付宝花呗', '花呗', '支付宝信用购', '信用购'].includes(compactAccountName(account.name))) named.push(account.accountId)
+    }
+    return new Set(named).size === 1 ? named[0] : ''
+  }
+  function huabeiSettled(event, accountId) {
+    const editor = choices.events.get(event.eventId) && choices.events.get(event.eventId).editor
+    return event.counterpartyLedgerAccountId === accountId &&
+      event.fieldSources.editorOverrides && event.fieldSources.editorOverrides.composition === 'single' &&
+      Boolean(editor && editor.composition && editor.composition.kind === 'single' &&
+        editor.fields && editor.fields.counterpartyLedgerAccountId === accountId)
+  }
+  // 付款端是账单上的银行卡，不是花呗。还入花呗信用购时不能把这张卡清掉。
+  function payerReference(event) {
+    const from = sourceOf(event).fundsProjection && sourceOf(event).fundsProjection.from
+    if (from && !huabeiReference(from)) return from
+    const ledger = sourceOf(event).ledgerAccountReference
+    if (ledger && !huabeiReference(ledger)) return ledger
+    return null
+  }
+  function instrumentKey(reference) {
+    if (!reference || huabeiReference(reference)) return ''
+    return reference.accountIdentityKey || reference.bindingKey || paymentReferenceKey(reference) || ''
+  }
+  function instrumentName(reference) {
+    return compactAccountName(reference && (reference.label || reference.displayName || reference.value))
+  }
+  function sameInstrument(left, right) {
+    if (!left || !right || huabeiReference(left) || huabeiReference(right)) return false
+    const key = instrumentKey(left)
+    if (key && key === instrumentKey(right)) return true
+    const name = instrumentName(left)
+    return Boolean(name && name === instrumentName(right))
+  }
+  function cardTail(value) {
+    const match = String(value || '').normalize('NFKC').match(/\((\d{4})\)\s*$/u)
+    return match ? match[1] : ''
+  }
+  function usablePayer(id, accountId) {
+    if (!id || id === accountId) return ''
+    const account = accounts.get(id)
+    if (!account || account.archivedAt || account.archived || account.unavailable || account.disabledAt) return ''
+    if (account.type && !require('../domain/import-review/funds-route').ASSETS.has(account.type)) return ''
+    return id
+  }
+  // 5564 这类卡已经在别的交易或已确认账户上对上时，空的付款账户就用这一张。两张对得上就不猜。
+  function confirmedPayerAccountId(event, accountId) {
+    const reference = payerReference(event)
+    if (!reference) return ''
+    const ids = new Set()
+    const add = id => { const usable = usablePayer(id, accountId); if (usable) ids.add(usable) }
+    for (const other of events.values()) {
+      if (!other.ledgerAccountId) continue
+      const projection = sourceOf(other).fundsProjection
+      if ([sourceOf(other).ledgerAccountReference, projection && projection.from].some(item => sameInstrument(item, reference))) add(other.ledgerAccountId)
+    }
+    for (const issue of issues.values()) {
+      if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved') continue
+      if (issue.accountContext && sameInstrument(issue.accountContext, reference)) add(issue.accountContext.accountId)
+    }
+    const name = instrumentName(reference)
+    if (name) for (const account of accounts.values()) if (compactAccountName(account && account.name) === name) add(account.accountId)
+    if (ids.size === 1) return [...ids][0]
+    if (ids.size) return ''
+    const tail = cardTail(reference.label || reference.displayName || reference.value)
+    if (!tail) return ''
+    const tailed = []
+    for (const account of accounts.values()) if (cardTail(account && account.name) === tail) {
+      const usable = usablePayer(account.accountId, accountId)
+      if (usable) tailed.push(usable)
+    }
+    return new Set(tailed).size === 1 ? tailed[0] : ''
+  }
+  function issueEventMembers(issue) {
+    return (members.get(issue.issueId) || []).filter(member => member.objectType === 'event' && member.memberRole !== 'candidate')
+  }
+  // 已确认的花呗信用购账户事项。消费写法已经并进这一张卡，还款目标要挂到同一张上。
+  function confirmedFamilyIssue(accountId) {
+    let found = null
+    for (const issue of issues.values()) {
+      if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved') continue
+      const matched = issueEventMembers(issue).some(member => {
+        const event = events.get(member.objectId)
+        const reference = event && accountGrouping.memberReference(event, member)
+        return event && event.ledgerAccountId === accountId && huabeiReference(reference)
+      })
+      if (!matched) continue
+      if (found) return null
+      found = issue
+    }
+    return found
+  }
+  function unrecognizedHuabeiCard(issue, accountId) {
+    if (!issue || issue.issueType !== 'account_mapping' || issue.status !== 'open') return false
+    if (String(issue.accountContext && issue.accountContext.label || '').trim()) return false
+    const issueMembers = issueEventMembers(issue)
+    return issueMembers.length > 0 && issueMembers.every(member => {
+      const event = events.get(member.objectId)
+      return Boolean(event && huabeiRepaymentEvent(event) && event.counterpartyLedgerAccountId === accountId &&
+        event.ledgerAccountId && event.ledgerAccountId !== accountId)
+    })
+  }
+  function otherInstrument(reference) {
+    return Boolean(reference && !huabeiReference(reference) &&
+      (reference.paymentMethodKey || reference.label || reference.displayName || reference.value))
+  }
+  // 单独问「花呗|信用购」归属的卡：成员自己的引用就是这一族，或者根本没有别的账户引用。
+  // 付款银行卡不能因为交易对方写着花呗就被改掉。
+  function strayHuabeiIssue(issue, familyIssueId, accountId) {
+    if (!issue || issue.issueId === familyIssueId || issue.issueType !== 'account_mapping' || issue.status !== 'open') return false
+    const issueMembers = issueEventMembers(issue)
+    if (!issueMembers.length) return false
+    return issueMembers.every(member => {
+      const event = events.get(member.objectId)
+      if (!event) return false
+      const reference = accountGrouping.memberReference(event, member)
+      if (otherInstrument(reference)) return false
+      if (event.counterpartyLedgerAccountId !== accountId && event.ledgerAccountId !== accountId) return false
+      return huabeiReference(reference) || huabeiRepaymentEvent(event)
+    })
+  }
+  function attachHuabeiRepayment(issue, event) {
+    const list = members.get(issue.issueId) || []
+    if (list.some(member => member.objectId === event.eventId && ['mapping_to', 'payment_target'].includes(member.memberRole))) return false
+    list.push({ memberId: identity.stableId(issue.issueId, event.eventId, 'mapping_to'), issueId: issue.issueId,
+      objectType: 'event', objectId: event.eventId, objectVersion: event.version, memberRole: 'mapping_to', sortOrder: list.length })
+    members.set(issue.issueId, list)
+    if (!Array.isArray(issue.subjectEventIds)) issue.subjectEventIds = []
+    if (!issue.subjectEventIds.includes(event.eventId)) issue.subjectEventIds.push(event.eventId)
+    issue.memberCount = new Set(issue.subjectEventIds).size
+    if (!issueEvents.has(event.eventId)) issueEvents.set(event.eventId, new Set())
+    issueEvents.get(event.eventId).add(issue.issueId)
+    dirtyIssues.add(issue.issueId)
+    return true
+  }
+  function joinHuabeiRepayments(accountId) {
+    const family = confirmedFamilyIssue(accountId)
+    if (!family) return false
+    let changed = false
+    for (const event of events.values()) {
+      if (!huabeiRepaymentEvent(event) || !active(event) || event.ledgerAccountId === accountId) continue
+      if (event.counterpartyLedgerAccountId !== accountId) continue
+      if (attachHuabeiRepayment(family, event)) changed = true
+    }
+    for (const issue of issues.values()) if (strayHuabeiIssue(issue, family.issueId, accountId) || unrecognizedHuabeiCard(issue, accountId)) {
+      issue.status = 'superseded'
+      issue.blocking = false
+      dirtyIssues.add(issue.issueId)
+      changed = true
+    }
+    if (changed) { revision++; summaryCache = null }
+    return changed
+  }
+  function settleHuabeiRepayments() {
+    const accountId = confirmedHuabeiAccountId()
+    if (!accountId) return []
+    const changes = []
+    for (const event of [...events.values()]) {
+      if (!huabeiRepaymentEvent(event) || !active(event) || event.ledgerAccountId === accountId) continue
+      if (event.counterpartyLedgerAccountId && event.counterpartyLedgerAccountId !== accountId &&
+          event.fieldSources.editorOverrides && event.fieldSources.editorOverrides.composition === 'single') continue
+      const payerReady = Boolean(event.ledgerAccountId)
+      const settled = huabeiSettled(event, accountId)
+      if (settled && payerReady) continue
+      const fields = {}
+      if (!settled) fields.counterpartyLedgerAccountId = accountId
+      if (!payerReady) {
+        const payerId = confirmedPayerAccountId(event, accountId)
+        if (payerId) fields.ledgerAccountId = payerId
+      }
+      if (!Object.keys(fields).length) continue
+      const payload = { eventId: event.eventId, editorVersion: 1, fields, ...(settled ? {} : { composition: { kind: 'single' } }) }
+      try {
+        changes.push(...edit(payload))
+      } catch (_) {
+        // 付款卡对不上时仍要先把还入账户落下，不能因为补付款账户失败把整笔退回待分配。
+        if (!fields.ledgerAccountId || !fields.counterpartyLedgerAccountId) continue
+        try {
+          changes.push(...edit({ eventId: event.eventId, editorVersion: 1,
+            fields: { counterpartyLedgerAccountId: accountId }, composition: { kind: 'single' } }))
+        } catch (_) {}
+      }
+    }
+    joinHuabeiRepayments(accountId)
+    return changes
+  }
+  function usableReceivingAccount(id, reference) {
+    if (!id) return ''
+    const account = accounts.get(id)
+    if (!account || account.archivedAt || account.archived || account.unavailable || account.disabledAt) return ''
+    const expected = expectedAccountType(reference.sourceType, reference.value || reference.label || reference.displayName)
+    if (expected && account.type && account.type !== expected) return ''
+    return id
+  }
+  // 退款的收款账户就是账单上的收/付款方式。同一方式已经确认到唯一账户时直接用它。
+  // 对上两个就不猜，也不把关闭的原单拿来当原消费。
+  function confirmedReceivingAccountId(event) {
+    const reference = sourceOf(event).ledgerAccountReference
+    if (!reference) return ''
+    if (huabeiReference(reference)) return confirmedHuabeiAccountId()
+    const ids = new Set()
+    const add = id => { const usable = usableReceivingAccount(id, reference); if (usable) ids.add(usable) }
+    for (const other of events.values()) {
+      if (other.eventId === event.eventId || !other.ledgerAccountId) continue
+      const projection = sourceOf(other).fundsProjection
+      if ([sourceOf(other).ledgerAccountReference, projection && projection.from, projection && projection.to]
+        .some(item => sameInstrument(item, reference))) add(other.ledgerAccountId)
+    }
+    for (const issue of issues.values()) {
+      if (issue.issueType !== 'account_mapping' || issue.status !== 'resolved') continue
+      if (issue.accountContext && sameInstrument(issue.accountContext, reference)) add(issue.accountContext.accountId)
+    }
+    const name = instrumentName(reference)
+    if (name) for (const account of accounts.values()) if (compactAccountName(account && account.name) === name) add(account.accountId)
+    if (ids.size === 1) return [...ids][0]
+    if (ids.size) return ''
+    const tail = cardTail(reference.label || reference.displayName || reference.value)
+    if (!tail) return ''
+    const tailed = []
+    for (const account of accounts.values()) if (cardTail(account && account.name) === tail) {
+      const usable = usableReceivingAccount(account.accountId, reference)
+      if (usable) tailed.push(usable)
+    }
+    return new Set(tailed).size === 1 ? tailed[0] : ''
+  }
+  function savedReceivingAccountId(event) {
+    const saved = choices.events.get(event.eventId)
+    const fields = saved && saved.editor && saved.editor.fields
+    return fields && Object.prototype.hasOwnProperty.call(fields, 'ledgerAccountId') ? fields.ledgerAccountId : undefined
+  }
+  function settleRefundAccounts() {
+    const changes = []
+    for (const event of [...events.values()]) {
+      if (!event || event.economicNature !== 'refund' || !active(event) || sourceOf(event).fundsProjection) continue
+      const accountId = confirmedReceivingAccountId(event)
+      if (!accountId) continue
+      const chosen = savedReceivingAccountId(event)
+      if (chosen !== undefined && chosen !== accountId) continue
+      if (chosen === accountId && event.ledgerAccountId === accountId) continue
+      try {
+        changes.push(...edit({ eventId: event.eventId, editorVersion: 1, fields: { ledgerAccountId: accountId } }))
+      } catch (_) {}
+    }
+    return changes
   }
   function mapAccount(input) {
     const external = input.paymentRuleAction === 'external'
@@ -712,8 +1024,11 @@ function create(facts) {
     if (issue.accountContext) Object.assign(issue.accountContext, { accountId: id || null,
       mappingAction: external ? 'external' : id ? 'account' : null })
     choices.accounts.set(decision.key, decision); finish(affected)
+    const touchesHuabei = issueMembers.some(member => huabeiReference(accountGrouping.memberReference(events.get(member.objectId), member)))
+    const settled = touchesHuabei ? settleHuabeiRepayments() : []
+    const refunds = settleRefundAccounts()
     return [{ kind: 'accounts', key: decision.key, value: decision },
-      ...(creation ? [{ kind: 'accountCreation', key: creation.key, value: creation }] : []), ...historyDiscarded.splice(0)]
+      ...(creation ? [{ kind: 'accountCreation', key: creation.key, value: creation }] : []), ...historyDiscarded.splice(0), ...settled, ...refunds]
   }
   function mapAccountGroups(groups, singleDecisions = []) {
     if (!Array.isArray(groups) || !Array.isArray(singleDecisions) || !groups.length && !singleDecisions.length) fail()
@@ -887,7 +1202,18 @@ function create(facts) {
       CONFLICT: '关联对象已变化，请重新核对',
       LOCAL_RECHECK_REQUIRED: '关联信息已变化，请重新核对',
       HISTORY_REVIEW_REQUIRED: '发现新的历史候选，请重新核对',
-      VALIDATION_ERROR: '当前决定与最新账本不符，请重新核对' }[reason] ||
+      VALIDATION_ERROR: '当前决定与最新账本不符，请重新核对',
+      account_roles: '账户类型和这笔资金对不上，请重新选择',
+      repayment_channel: '还款信息对不上，请重新核对',
+      category: '分类和这笔交易对不上，请重新选择',
+      account: '账户已不可用或币种不符，请重新选择',
+      allocation: '资金分配对不上，请重新核对',
+      payment: '付款组成对不上，请重新核对',
+      payment_accounts: '付款账户对不上，请重新核对',
+      ownership: '账户归属对不上，请重新核对',
+      allocation_accounts: '分配账户对不上，请重新核对',
+      target_type: '还入账户类型不符，请重新选择',
+      fee_category: '手续费分类须为支出，请重新选择' }[reason] ||
       (/^[a-zA-Z_]+$/.test(reason) ? '账本信息已变化，请重新核对' : reason))
     if (conflict) attention.reviewAttention.steps.unshift({ key: 'local_recheck', label: conflict })
     const legacyRepaymentReview = choices.events.get(id)?.editor?.decisions?.repayment != null
@@ -1005,8 +1331,39 @@ function create(facts) {
       issues.set(issue.issueId, clone(issue)); members.set(issue.issueId, value.members.filter(row => row.issueId === issue.issueId))
       for (const id of issue.subjectEventIds) { if (!issueEvents.has(id)) issueEvents.set(id,new Set()); issueEvents.get(id).add(issue.issueId) }
     }
-    for (const problem of value.problems) for (const id of problem.eventIds || []) invalid.set(id, problem.reason)
-    finish(distinct(value.problems.flatMap(problem => problem.eventIds || [])))
+    // 回滚后的服务端事项是提交前的样子。本机已经做出的决定仍然有效，不能被这次失败重新打开。
+    for (const issue of issues.values()) {
+      const choice = choices.reviews.get(issue.issueId) || choices.accounts.get(issue.issueId)
+      if (!choice || issue.status !== 'open') continue
+      const decided = new Set(choice.eventIds || [])
+      if (issue.subjectEventIds.every(id => decided.has(id))) {
+        issue.status = 'resolved'; issue.blocking = false; dirtyIssues.add(issue.issueId)
+      }
+    }
+    const mentioned = distinct((value.problems || []).flatMap(problem => problem.eventIds || []))
+    finish(mentioned)
+    const bound = new Map()
+    for (const problem of value.problems || []) for (const id of problem.eventIds || []) {
+      const reason = recheckReason(id, problem)
+      if (reason) bound.set(id, reason)
+    }
+    for (const id of mentioned) {
+      if (bound.has(id)) invalid.set(id, bound.get(id))
+      else invalid.delete(id)
+    }
+  }
+  // 复核标记只留在这笔自己没通过的检查上。已经排除、已经决定，或引用本身成立的交易，不因整批失败回到待核对。
+  function recheckReason(id, problem) {
+    const event = events.get(id)
+    if (!event || event.status === 'excluded' || event.status === 'corrected') return null
+    if (problem.issueId) {
+      const issue = issues.get(problem.issueId)
+      const choice = choices.reviews.get(problem.issueId) || choices.accounts.get(problem.issueId)
+      if (choice && issue && issue.subjectEventIds.every(subject => (choice.eventIds || []).includes(subject))) return null
+      if (issue && issue.status !== 'open') return null
+    }
+    if (problem.reason !== 'VALIDATION_ERROR') return problem.reason
+    return referenceFailure(event, { accounts, categories })
   }
   function finalState() {
     const represented = new Set([...choices.accounts.values()].filter(choice => creationFacts.draftOf(choice)).map(choice => {
@@ -1032,7 +1389,7 @@ function create(facts) {
   return { facts, base, events, rows, evidence, byEvent, baseEvidence, relations, issues, members, issueEvents, accounts, drafts, accountCreations, categories,
     choices, links, needsCheck, invalid, sourceIds, hydrate, context, eventIssues, publicRow, refundCandidates, hiddenOffset, evidenceFor,
     dirtyEvents, dirtyIssues, dirtyRows,
-    edit, mapAccount, mapAccountGroups, restoreAccountCreation, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState,
+    edit, mapAccount, mapAccountGroups, restoreAccountCreation, pair, review, reviseDuplicate, splitOrigins, finish, addIssue, applySupplement, finalState, settleHuabeiRepayments, settleRefundAccounts, categoryPeerRows,
     get pairs() { return pairs }, get revision() { return revision }, get supplemental() { return supplemental },
     get suggestedCount() { return suggestedPairs.size },
     get summaryCache() { return summaryCache }, set summaryCache(value) { summaryCache = value } }

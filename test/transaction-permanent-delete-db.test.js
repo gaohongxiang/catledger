@@ -209,7 +209,8 @@ test('普通永久删账：真实 handler、隔离 MySQL、依赖清理和最小
       assert.equal((await c.imp('financeUpdates.summary', { updateId: next.updateId })).posting.createdTransactionCount, 1)
     })
 
-    for (const kind of ['payment', 'repayment']) await t.test(`${kind}完整来源分配才可删除；拒绝部分选择，完整删除后同文件重导仍走分配确认`, async () => {
+    // 花呗|信用购还款已是一个账户的全额转账，不再产生必须整组删除的分配。组合支付仍覆盖这一组。
+    for (const kind of ['payment']) await t.test(`${kind}完整来源分配才可删除；拒绝部分选择，完整删除后同文件重导仍走分配确认`, async () => {
       const c = await context(), sibling = await c.manual(), wallet = await c.account('wallet', '100000', '合成组合零钱')
       const debt = await c.account('credit', '100000', '合成还款目标一'), debt2 = await c.account('credit', '100000', '合成还款目标二')
       const content = Buffer.from(kind === 'payment' ? ['微信支付账单明细',

@@ -372,6 +372,41 @@ test('真实 Page：退款候选晚到或失败不改写输入；暂记不依赖
   page.onUnload()
 })
 
+test('花呗信用购还款还入账户定位到已确认的同一个负债账户', () => {
+  const repayment = { eventId: 'repay', economicNature: 'repayment', primaryEvidence: { counterparty: '花呗|信用购', item: '自动还款-花呗|信用购2026年08月账单' },
+    fundsProjection: { to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购' } } }
+  const account = { accountId: 'huabei', type: 'credit', name: '支付宝花呗｜信用购' }
+  const spending = { eventId: 'spend', ledgerAccountId: 'huabei', fieldSources: { ledgerAccountReference: { aggregateFamilies: ['alipay_huabei_credit'], label: '支付宝花呗｜信用购' } } }
+  assert.equal(model.locateHuabeiRepaymentAccount(repayment, [spending], [account]), 'huabei')
+  assert.equal(model.locateHuabeiRepaymentAccount(repayment, [], [account]), 'huabei')
+  assert.equal(model.locateHuabeiRepaymentAccount(repayment, [], [account, { accountId: 'other', type: 'credit', name: '花呗' }]), '')
+  assert.equal(model.locateHuabeiRepaymentAccount({ ...repayment, primaryEvidence: { counterparty: '借呗' }, fundsProjection: null }, [], [account]), '')
+})
+
+test('只选择一个还入账户就按全额还款保存，不再留下未完成分配', () => {
+  const raw = base('repayment', { fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', label: '支付宝花呗｜信用购', candidates: [] } } },
+    reasonCodes: ['repayment_allocation_required'] })
+  const row = publicRow(raw)
+  const draft = model.change(row, model.create(row), 'parts', [{ accountId: credit.accountId, amountInput: '' }])
+  const view = model.derive(row, draft, catalog)
+  assert.equal(view.payload.composition.kind, 'single')
+  assert.equal(view.payload.composition.incomplete, undefined)
+  assert.equal(view.payload.fields.counterpartyLedgerAccountId, credit.accountId)
+  const next = prepare(raw, view.payload)
+  assert.equal(next.counterpartyLedgerAccountId, credit.accountId)
+  assert.equal(next.fieldSources.editorOverrides.composition, 'single')
+  assert.equal(next.fieldSources.editorOverrides.incompleteComposition, undefined)
+  assert.equal(evaluatePostability(next).status, 'ready')
+
+  const stuck = base('repayment', { fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', candidates: [] } },
+    editorOverrides: { version: 1, composition: 'repayment', incompleteComposition: { kind: 'repayment', parts: [{ accountId: credit.accountId, amountMinor: null }], evidenceNote: '' } } },
+    reasonCodes: ['editor_composition_incomplete', 'repayment_allocation_required'] })
+  const again = model.derive(publicRow(stuck), model.create(publicRow(stuck)), catalog)
+  assert.equal(again.payload.fields.counterpartyLedgerAccountId, credit.accountId)
+  assert.equal(again.payload.composition.kind, 'single')
+  assert.equal(evaluatePostability(prepare(stuck, again.payload)).status, 'ready')
+})
+
 test('普通还款缺账户和未完成多账户组成仍可保存，始终不产出贷款决定', () => {
   const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId }))
   const draft = model.create(row)

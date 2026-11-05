@@ -6,6 +6,7 @@ const { loadRefundPostingContext } = require('./refund-posting-context')
 const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid, allocationTransactionDrafts } = require('./funds-allocation')
 const { paymentResolutionForEvent } = require('./payment-resolution')
+const fundsEvidence = require('./funds-evidence')
 const { queryCashBalances, assertCashBalancesNotWorsened } = require('./import-cash-guard')
 const { readMapping } = require('./maintenance-side-effects')
 const { MAINTENANCE_POLICY_VERSION } = require('./maintenance-policy')
@@ -129,7 +130,9 @@ async function lockAccountsAndCategories(connection, uid, events) {
     if (!eventAllocation(event).valid) throw importError('UNRESOLVED_IMPORT')
     const allocation = isAggregateRepayment(event) ? repaymentAllocationsForEvent(event) : null
     if (allocation && !allocation.valid) throw importError('UNRESOLVED_IMPORT')
-    const payment = event.fieldSources && event.fieldSources.paymentResolution ? paymentResolutionForEvent(event) : null
+    // 用户改回单账户后，旧的逐成分 paymentResolution 是过期证据，不再据它判未解决。
+    const payment = event.fieldSources && event.fieldSources.paymentResolution && !fundsEvidence.single(event)
+      ? paymentResolutionForEvent(event) : null
     if (payment && !payment.valid) throw importError('UNRESOLVED_IMPORT')
     return [
       ...(payment ? payment.resolution.allocations.map((item) => item.accountId) : []),

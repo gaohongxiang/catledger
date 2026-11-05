@@ -76,6 +76,214 @@ test('已下载历史随字段重算，旧人工确认失效；快照外范围�
   assert.equal(JSON.stringify(decoded),original)
 })
 
+test('已确认的花呗信用购账户直接还入，不再留下还款分配', async () => {
+  const value = await facts({ count: 2 })
+  const huabei = value.accounts.find(account => account.type === 'credit')
+  huabei.name = '支付宝花呗｜信用购'
+  const bank = value.accounts.find(account => account.type === 'wallet')
+  const spend = value.events[0], repay = value.events[1]
+  spend.economicNature = 'expense'
+  spend.flowDirection = 'outflow'
+  spend.ledgerAccountId = huabei.accountId
+  spend.fieldSources = { ...spend.fieldSources, ledgerAccountReference: { aggregateFamilies: ['alipay_huabei_credit'], label: '支付宝花呗｜信用购', sourceType: 'alipay' } }
+  Object.assign(repay, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: bank.accountId,
+    counterpartyLedgerAccountId: null, status: 'needs_action', reasonCodes: ['repayment_allocation_required'], categoryId: null })
+  repay.fieldSources = { ...repay.fieldSources, fundsProjection: { kind: 'repayment',
+    to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', paymentMethodKey: null, candidates: [] } } }
+  const model = local.create(value)
+  const changes = model.settleHuabeiRepayments()
+  const next = model.events.get(repay.eventId)
+  assert.equal(next.counterpartyLedgerAccountId, huabei.accountId)
+  assert.equal(next.fieldSources.editorOverrides.composition, 'single')
+  assert.equal(next.reasonCodes.includes('repayment_allocation_required'), false)
+  assert.equal(next.status, 'ready')
+  assert.equal(model.finalState().decisions.events.some(row => row.eventId === repay.eventId && row.editor.composition.kind === 'single' && row.editor.fields.counterpartyLedgerAccountId === huabei.accountId), true)
+  assert.ok(changes.some(row => row.kind === 'events'))
+  assert.equal(model.settleHuabeiRepayments().length, 0)
+  const ambiguousFacts = await facts({ count: 2 })
+  const credit = ambiguousFacts.accounts.find(account => account.type === 'credit')
+  credit.name = '支付宝花呗｜信用购'
+  ambiguousFacts.accounts.push({ ...credit, accountId: require('node:crypto').randomUUID(), name: '花呗' })
+  const pending = ambiguousFacts.events[1]
+  Object.assign(pending, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: ambiguousFacts.accounts.find(account => account.type === 'wallet').accountId,
+    counterpartyLedgerAccountId: null, status: 'needs_action', categoryId: null })
+  pending.fieldSources = { ...pending.fieldSources, fundsProjection: { to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', candidates: [] } } }
+  assert.equal(local.create(ambiguousFacts).settleHuabeiRepayments().length, 0)
+})
+
+test('花呗|信用购还款并进已确认的花呗信用购账户，不再单独待确认', async () => {
+  const { randomUUID } = require('node:crypto')
+  const value = await facts({ count: 3, mapped: false })
+  const huabei = value.accounts.find(account => account.type === 'credit')
+  huabei.name = '支付宝花呗｜信用购'
+  const bank = value.accounts.find(account => account.type === 'wallet')
+  const spend = value.events[0], repay = value.events[1], other = value.events[2]
+  spend.ledgerAccountId = huabei.accountId
+  spend.fieldSources = { ...spend.fieldSources, ledgerAccountReference: {
+    sourceType: 'alipay', label: '支付宝花呗｜信用购', aggregateFamilies: ['alipay_huabei_credit'], paymentMethodKey: 'family-key'
+  } }
+  Object.assign(repay, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: bank.accountId,
+    counterpartyLedgerAccountId: null, status: 'needs_action', reasonCodes: ['repayment_account_required'], categoryId: null })
+  repay.fieldSources = { ...repay.fieldSources, ledgerAccountReference: {
+    sourceType: 'alipay', label: '浙江农商联合银行储蓄卡(5564)', paymentMethodKey: 'bank-key'
+  }, fundsProjection: { kind: 'repayment', to: {
+    referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', paymentMethodKey: null, candidates: []
+  } } }
+  other.fieldSources = { ...other.fieldSources, ledgerAccountReference: {
+    sourceType: 'alipay', label: '浙江农商联合银行储蓄卡(5564)', paymentMethodKey: 'bank-key', value: '浙江农商联合银行储蓄卡(5564)'
+  } }
+  const familyId = randomUUID(), strayId = randomUUID(), bankIssueId = randomUUID()
+  const member = (issueId, event, role) => ({ memberId: randomUUID(), issueId, objectType: 'event', objectId: event.eventId,
+    objectVersion: event.version, memberRole: role, sortOrder: 0 })
+  value.issues.push(
+    { issueId: familyId, issueType: 'account_mapping', primaryReasonCode: 'account_mapping_confirmed', reasonCodes: ['account_mapping_confirmed'],
+      status: 'resolved', blocking: false, version: 1, memberCount: 1, candidateCount: 0, subjectEventIds: [spend.eventId],
+      accountContext: { label: '支付宝花呗｜信用购', recognized: true, sourceType: 'alipay', paymentMethodKey: 'family-key',
+        accountId: huabei.accountId, mappingAction: 'account', currency: 'CNY' } },
+    { issueId: strayId, issueType: 'account_mapping', primaryReasonCode: 'payment_reference_mapping_required',
+      reasonCodes: ['payment_reference_mapping_required'], status: 'open', blocking: true, version: 1, memberCount: 1,
+      candidateCount: 0, subjectEventIds: [repay.eventId] },
+    { issueId: bankIssueId, issueType: 'account_mapping', primaryReasonCode: 'payment_reference_mapping_required',
+      reasonCodes: ['payment_reference_mapping_required'], status: 'open', blocking: true, version: 1, memberCount: 1,
+      candidateCount: 0, subjectEventIds: [other.eventId],
+      accountContext: { label: '浙江农商联合银行储蓄卡(5564)', recognized: true, sourceType: 'alipay', paymentMethodKey: 'bank-key', currency: 'CNY' } }
+  )
+  value.members.push(member(familyId, spend, 'subject'), member(strayId, repay, 'subject'), member(bankIssueId, other, 'subject'))
+  const model = local.create(value), reader = read.create(model)
+  model.settleHuabeiRepayments()
+  assert.equal(model.events.get(repay.eventId).counterpartyLedgerAccountId, huabei.accountId)
+  assert.equal(model.events.get(repay.eventId).ledgerAccountId, bank.accountId)
+  assert.equal(model.issues.get(strayId).status, 'superseded')
+  assert.ok(model.issues.get(familyId).subjectEventIds.includes(repay.eventId))
+  assert.equal(model.issues.get(familyId).subjectEventIds.length, 2)
+  assert.equal(model.issues.get(bankIssueId).status, 'open')
+  assert.equal(model.issues.get(bankIssueId).subjectEventIds.includes(repay.eventId), false)
+  const page = reader.read('reviewIssues.list', { group: 'accounts', view: 'account_confirmations', pageSize: 100 })
+  assert.equal(page.items.some(item => item.issueId === strayId), false)
+  const shown = page.items.find(item => item.issueId === familyId)
+  assert.ok(shown)
+  assert.equal(shown.memberCount, 2)
+  assert.equal(model.settleHuabeiRepayments().length, 0)
+  assert.equal(model.issues.get(familyId).subjectEventIds.length, 2)
+})
+
+test('花呗|信用购还款的付款账户仍是5564，还入花呗信用购不会把它清成待补充', async () => {
+  const { randomUUID } = require('node:crypto')
+  const editorModel = require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
+  const value = await facts({ count: 3, mapped: false })
+  const huabei = value.accounts.find(account => account.type === 'credit')
+  huabei.name = '支付宝花呗｜信用购'
+  const bank = value.accounts.find(account => account.type === 'wallet')
+  bank.name = '浙江农商联合银行储蓄卡(5564)'
+  const spend = value.events[0], repay = value.events[1], cardSpend = value.events[2]
+  const bankReference = { sourceType: 'alipay', label: '浙江农商联合银行储蓄卡(5564)', paymentMethodKey: 'bank-5564' }
+  spend.ledgerAccountId = huabei.accountId
+  spend.fieldSources = { ...spend.fieldSources, ledgerAccountReference: {
+    sourceType: 'alipay', label: '支付宝花呗｜信用购', aggregateFamilies: ['alipay_huabei_credit'], paymentMethodKey: 'family-key'
+  } }
+  cardSpend.ledgerAccountId = bank.accountId
+  cardSpend.fieldSources = { ...cardSpend.fieldSources, ledgerAccountReference: bankReference }
+  Object.assign(repay, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: null,
+    counterpartyLedgerAccountId: null, status: 'needs_action', reasonCodes: ['repayment_account_required'], categoryId: null })
+  repay.fieldSources = { ...repay.fieldSources, ledgerAccountReference: bankReference, fundsProjection: { kind: 'repayment',
+    from: bankReference, to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', paymentMethodKey: null, candidates: [] } } }
+  const familyId = randomUUID()
+  value.issues.push({ issueId: familyId, issueType: 'account_mapping', primaryReasonCode: 'account_mapping_confirmed',
+    reasonCodes: ['account_mapping_confirmed'], status: 'resolved', blocking: false, version: 1, memberCount: 1,
+    candidateCount: 0, subjectEventIds: [spend.eventId], accountContext: { label: '支付宝花呗｜信用购', recognized: true,
+      sourceType: 'alipay', paymentMethodKey: 'family-key', accountId: huabei.accountId, currency: 'CNY' } })
+  value.members.push({ memberId: randomUUID(), issueId: familyId, objectType: 'event', objectId: spend.eventId,
+    objectVersion: spend.version, memberRole: 'subject', sortOrder: 0 })
+  const model = local.create(value)
+  model.edit({ eventId: repay.eventId, editorVersion: 1, fields: { ledgerAccountId: null, counterpartyLedgerAccountId: huabei.accountId },
+    composition: { kind: 'single' } })
+  assert.equal(model.events.get(repay.eventId).ledgerAccountId, null)
+  model.settleHuabeiRepayments()
+  const next = model.events.get(repay.eventId)
+  assert.equal(next.ledgerAccountId, bank.accountId)
+  assert.equal(next.counterpartyLedgerAccountId, huabei.accountId)
+  const row = { ...model.publicRow(repay.eventId), editorFacts: { version: 1, composition: 'single' } }
+  const draft = editorModel.create(row)
+  const fields = editorModel.accountFields(row, draft, [...model.accounts.values()])
+  assert.equal(fields.find(field => field.label === '付款账户').name, '浙江农商联合银行储蓄卡(5564)')
+  assert.equal(fields.find(field => field.label === '还入账户').name, '支付宝花呗｜信用购')
+  const decision = model.finalState().decisions.events.find(item => item.eventId === repay.eventId)
+  assert.equal(decision.editor.fields.ledgerAccountId, bank.accountId)
+  assert.equal(model.settleHuabeiRepayments().length, 0)
+  const ambiguous = await facts({ count: 2, mapped: false })
+  const credit = ambiguous.accounts.find(account => account.type === 'credit')
+  credit.name = '支付宝花呗｜信用购'
+  const first = ambiguous.accounts.find(account => account.type === 'wallet')
+  first.name = '浙江农商联合银行储蓄卡(5564)'
+  const second = { ...first, accountId: randomUUID(), name: '另一家银行储蓄卡(5564)' }
+  ambiguous.accounts.push(second)
+  const pending = ambiguous.events[1]
+  Object.assign(pending, { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId: null,
+    counterpartyLedgerAccountId: null, status: 'needs_action', categoryId: null })
+  pending.fieldSources = { ...pending.fieldSources, fundsProjection: { kind: 'repayment',
+    from: { sourceType: 'alipay', label: '储蓄卡(5564)', paymentMethodKey: null },
+    to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', candidates: [] } } }
+  ambiguous.events[0].ledgerAccountId = credit.accountId
+  ambiguous.events[0].fieldSources = { ...ambiguous.events[0].fieldSources, ledgerAccountReference: {
+    sourceType: 'alipay', aggregateFamilies: ['alipay_huabei_credit'], label: '支付宝花呗｜信用购'
+  } }
+  const unresolved = local.create(ambiguous)
+  unresolved.settleHuabeiRepayments()
+  assert.equal(unresolved.events.get(pending.eventId).counterpartyLedgerAccountId, credit.accountId)
+  assert.equal(unresolved.events.get(pending.eventId).ledgerAccountId, null)
+})
+
+test('关闭原单的退款：收款账户用本批已确认的同一张卡，两张对得上就不猜', async () => {
+  const { randomUUID } = require('node:crypto')
+  const editorModel = require('../miniprogram/packages/finance/pages/import-workbench/review-editor-model')
+  const HEAD = ['微信支付账单明细,,,,,,,,,,,',
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注']
+  const value = await facts({ content: Buffer.from(HEAD.concat([
+    '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-A1,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-A2,SYNTH-ORDER-A,SYNTH-M-A,',
+    '2026-08-01 09:00:00,商户消费,合成平台商户,合成订单-B,支出,12.00,合成信用卡(0001),支付成功,SYNTH-TX-B,SYNTH-ORDER-B,SYNTH-M-B,'
+  ]).join('\n')), mapped: false })
+  const card = value.accounts.find(account => account.type === 'credit')
+  card.name = '已确认的信用卡'
+  const refund = value.events.find(event => event.economicNature === 'refund')
+  const spend = value.events.find(event => event.economicNature === 'expense' && event.status !== 'excluded')
+  spend.ledgerAccountId = card.accountId
+  assert.equal(refund.ledgerAccountId, null)
+  const model = local.create(value)
+  model.settleRefundAccounts()
+  const next = model.events.get(refund.eventId)
+  assert.equal(next.ledgerAccountId, card.accountId)
+  assert.ok(next.reasonCodes.includes('refund_source_conflict'))
+  assert.equal([...model.relations.values()].some(row => row.relationType === 'refund_of' && row.status === 'confirmed'), false)
+  const row = model.publicRow(refund.eventId)
+  const fields = editorModel.accountFields(row, editorModel.create(row), [...model.accounts.values()])
+  assert.equal(fields.find(field => field.label === '收款账户').name, '已确认的信用卡')
+  const decision = model.finalState().decisions.events.find(item => item.eventId === refund.eventId)
+  assert.equal(decision.editor.fields.ledgerAccountId, card.accountId)
+  assert.equal(model.settleRefundAccounts().length, 0)
+  model.edit({ eventId: refund.eventId, editorVersion: 1, fields: { ledgerAccountId: null } })
+  model.settleRefundAccounts()
+  assert.equal(model.events.get(refund.eventId).ledgerAccountId, null)
+
+  const ambiguous = await facts({ content: Buffer.from(HEAD.concat([
+    '2026-08-05 15:40:58,商户消费,合成平台商户,合成订单-A,支出,0.90,合成信用卡(0001),交易关闭,SYNTH-TX-C1,SYNTH-ORDER-C,SYNTH-M-C,',
+    '2026-08-12 11:48:01,合成平台商户-退款,合成平台商户,合成平台商户,收入,0.90,合成信用卡(0001),已退款¥0.90,SYNTH-TX-C2,SYNTH-ORDER-C,SYNTH-M-C,',
+    '2026-08-01 09:00:00,商户消费,合成平台商户,合成订单-B,支出,12.00,合成信用卡(0001),支付成功,SYNTH-TX-C3,SYNTH-ORDER-C3,SYNTH-M-C3,',
+    '2026-08-02 09:00:00,商户消费,合成平台商户,合成订单-D,支出,8.00,合成信用卡(0001),支付成功,SYNTH-TX-C4,SYNTH-ORDER-C4,SYNTH-M-C4,'
+  ]).join('\n')), mapped: false })
+  const first = ambiguous.accounts.find(account => account.type === 'credit')
+  first.name = '甲信用卡'
+  const second = { ...first, accountId: randomUUID(), name: '乙信用卡' }
+  ambiguous.accounts.push(second)
+  const pending = ambiguous.events.find(event => event.economicNature === 'refund')
+  const spends = ambiguous.events.filter(event => event.economicNature === 'expense' && event.status !== 'excluded')
+  spends[0].ledgerAccountId = first.accountId
+  spends[1].ledgerAccountId = second.accountId
+  const unresolved = local.create(ambiguous)
+  unresolved.settleRefundAccounts()
+  assert.equal(unresolved.events.get(pending.eventId).ledgerAccountId, null)
+})
+
 test('分期本金改判解决字段冲突：本机草稿同步收起冲突事项', async () => {
   const { randomUUID } = require('node:crypto'), value = await facts({ count: 1 }), event = value.events[0]
   const credit = value.accounts.find(account => account.type === 'credit')
@@ -258,4 +466,47 @@ test('受影响账户带上每户笔数，名称仍是账本账户名', async ()
   assert.ok(row)
   assert.equal(row.name, '微信零钱')
   assert.equal(row.count, 1)
+})
+
+test('整批复核失败不把已经通过的交易标成待核对，已做的决定也不被重新打开', async () => {
+  const value = await facts({ count: 4 }), model = local.create(value), reader = read.create(model)
+  const issue = [...model.issues.values()].find(row => row.status === 'open' && row.subjectEventIds.length)
+  const covered = [issue.subjectEventIds[0]]
+  model.review({ issueId: issue.issueId, decision: 'exclude_events', selection: { mode: 'include', eventIds: covered } })
+  const rest = [...model.events.values()].filter(event => !covered.includes(event.eventId) && event.status !== 'excluded')
+  assert.ok(rest.length >= 2)
+  const wallet = value.accounts.find(account => account.type === 'wallet')
+  const credit = value.accounts.find(account => account.type === 'credit')
+  const category = value.categories.find(row => row.kind === 'expense')
+  const expense = rest[0], repayment = rest[1]
+  model.edit({ eventId: expense.eventId, editorVersion: 1, fields: { economicNature: 'expense', ledgerAccountId: wallet.accountId,
+    categoryId: category.categoryId, amountMinor: expense.amountMinor } })
+  const fields = { ...model.events.get(repayment.eventId).fieldSources }
+  delete fields.repaymentChannelResolution
+  delete fields.repaymentAllocations
+  delete fields.repaymentAllocationVersion
+  delete fields.paymentResolution
+  delete fields.paymentAccounts
+  model.events.set(repayment.eventId, { ...model.events.get(repayment.eventId), economicNature: 'repayment', flowDirection: 'neutral',
+    sourceDirection: 'expense', ledgerAccountId: credit.accountId, counterpartyLedgerAccountId: wallet.accountId, categoryId: null,
+    status: 'needs_action', reasonCodes: [], fieldSources: fields })
+  const reopened = { ...model.issues.get(issue.issueId), status: 'open', blocking: true, subjectEventIds: covered }
+  model.applySupplement({
+    historyCoverage: value.historyCoverage, history: [], accounts: value.accounts, categories: value.categories,
+    issues: [reopened], members: value.members.filter(row => row.issueId === issue.issueId),
+    problems: [
+      { eventIds: [expense.eventId], reason: 'VALIDATION_ERROR', issueType: 'server_recheck' },
+      { eventIds: [repayment.eventId], reason: 'VALIDATION_ERROR', issueType: 'server_recheck' },
+      { issueId: issue.issueId, eventIds: covered, reason: 'refund_source_conflict', issueType: 'refund_relation' }
+    ]
+  })
+  assert.equal(model.invalid.has(expense.eventId), false)
+  assert.equal(model.publicRow(expense.eventId).localConflict, undefined)
+  assert.equal(model.invalid.get(repayment.eventId), 'account_roles')
+  assert.equal(model.issues.get(issue.issueId).status, 'resolved')
+  assert.equal(covered.every(id => !model.invalid.has(id)), true)
+  const page = reader.read('economicEvents.list', { view: 'review_pending', viewVersion: reader.version(), pageSize: 20 })
+  assert.equal(page.items.some(row => row.eventId === expense.eventId), false)
+  assert.equal(page.items.some(row => row.eventId === repayment.eventId), true)
+  assert.equal(reader.summary().coverage.selectedEventsReadyToPost, false)
 })

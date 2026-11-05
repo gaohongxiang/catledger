@@ -243,9 +243,42 @@ module.exports = {
     return showIssueEditor.call(this, event)
   },
 
+  openCategoryGroup: function (card) {
+    const reader = this._draftSession && this._draftSession.model
+    const rows = reader && reader.categoryPeerRows ? reader.categoryPeerRows(card.eventId) : []
+    const records = rows.map(row => {
+      const item = presentation.listRecord(row)
+      return {
+        eventId: item.eventId,
+        displayDate: item.displayDate || '',
+        displayTitle: item.displayTitle || '',
+        displayDetailMeta: item.displayDetailMeta || item.displayMeta || '',
+        amountText: item.amountText || '',
+        directionClass: item.directionClass || ''
+      }
+    })
+    if (records.length < 2) {
+      return this.openReviewEdit({ currentTarget: { dataset: { id: card.eventId, focusIssueId: card.issueId || '' } } })
+    }
+    this._categoryGroupOpenedAt = Date.now()
+    this.setData({ categoryGroupSheet: {
+      title: (card.subjects && card.subjects[0] && card.subjects[0].displayTitle) || '相同交易',
+      count: records.length, records
+    } })
+  },
+
+  closeCategoryGroup: function () {
+    if (Date.now() - (this._categoryGroupOpenedAt || 0) < 350) return
+    if (this.data.categoryGroupSheet) this.setData({ categoryGroupSheet: null })
+  },
+
   openPendingRecord: function (event) {
     const data = event.currentTarget.dataset
     if (!data.id || this.data.busy) return
+    if (data.assignCategory) {
+      const card = (this.data.categoryCards || []).find(row => row.eventId === data.id)
+      if (card && Number(card.categoryPeerCount) > 1) return this.openCategoryGroup(card)
+    }
     const editingMember = Boolean(this.data.currentIssue)
     if (this.data.currentIssue) this.closeIssue()
     if (data.issueId && this.data.update && this.data.update.status === 'review') {
@@ -432,6 +465,12 @@ module.exports = {
             categoryChanged: Boolean(form.categoryChanged) }),
         historicalSelection: form.historicalSelection || '',
         historicalSelectionVerified: Boolean(form.historicalSelection && this.data.historicalCandidates.some(row => row.transactionId === form.historicalSelection && !row.stale)) })
+  },
+
+  openMarkedReview: function () {
+    if (this.data.busy) return
+    this.setData({ activeReviewTab: 'review', activeReviewStatus: 'pending' })
+    return this.renderReview(true)
   },
 
   recheckDraftConflicts: function () {

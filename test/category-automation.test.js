@@ -2,7 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { DEFAULT_CATEGORIES } = require('../cloudfunctions/catledger-api/src/default-categories')
 const { buildCategoryEvidence, suggestedCategory } = require('../cloudfunctions/catledger-import/src/category-mapping')
-const { categoryMemory } = require('../cloudfunctions/catledger-import/src/category-memory')
+const { canonicalName, categoryMemory } = require('../cloudfunctions/catledger-import/src/category-memory')
+const { categoryGoodsText } = require('../cloudfunctions/catledger-import/src/category-likeness')
 const { digestParts } = require('../cloudfunctions/catledger-import/src/digest')
 const { refreshAutomaticCategory } = require('../cloudfunctions/catledger-import/src/semantic-plan-upgrade')
 const { FIELD_MASK } = require('../cloudfunctions/catledger-import/src/review/policy')
@@ -94,6 +95,21 @@ test('新的具体记忆可保留用户细类/自定义选择，不扩散到同�
   const apiMemory = require('../cloudfunctions/catledger-api/src/category-memory').categoryMemory
   assert.deepEqual(apiMemory('wechat', input), memory)
   assert.ok(!JSON.stringify(buildCategoryEvidence('wechat', input)).includes('合成商户'))
+})
+
+test('发生日期不拆开同一商品的分类记忆，没有日期的原文键不变', () => {
+  const dated = (item, counterparty = '天弘基金管理有限公司') => categoryMemory('alipay', row(item, counterparty, '收入', 'income', 'alipay'))
+  const first = dated('余额宝-2026.08.25-收益发放')
+  assert.equal(first.pairKey, dated('余额宝-2026.08.26-收益发放').pairKey)
+  assert.equal(first.pairKey, dated('余额宝-2026年8月27日-收益发放').pairKey)
+  assert.notEqual(first.pairKey, dated('余额宝-2026.08.25-收益发放', '另一家基金').pairKey)
+  const lunch = categoryMemory('alipay', row('午餐', '合成餐馆', '商户消费', 'expense', 'alipay'))
+  const dinner = categoryMemory('alipay', row('晚餐', '合成餐馆', '商户消费', 'expense', 'alipay'))
+  assert.notEqual(lunch.pairKey, dinner.pairKey)
+  assert.equal(categoryGoodsText('合成特别商品'), canonicalName('合成特别商品'))
+  assert.equal(categoryGoodsText('合成 特别-商品'), canonicalName('合成 特别-商品'))
+  assert.notEqual(categoryGoodsText('订单4200002026082512345678'), categoryGoodsText('订单4200002026082612345678'))
+  assert.deepEqual(categoryMemory('wechat', row('2026-08-01', '合成商户')).aliasKeys, [])
 })
 
 test('旧草稿只更新未人工决定的自动分类，已入账、排除和资金字段保持原状', () => {

@@ -3,6 +3,7 @@
 const { paymentReferenceKey } = require('./payment-account')
 const { FIELD_MASK } = require('./manual-field-mask')
 const { importError } = require('./errors')
+const evidence = require('./funds-evidence')
 
 const VERSION = 'account-ownership-recheck-v1'
 const REASON = 'account_ownership_recheck_required'
@@ -41,12 +42,15 @@ function decision(event, role, reference = referenceFor(event, role)) {
 }
 function requiresReview(event) {
   const fields = event.fieldSources || {}, editor = fields.editorOverrides || {}
-  return Boolean(event.economicNature === 'refund' || event.economicNature === 'borrow' ||
-    fields.paymentResolution || editor.composition !== 'single' && (fields.paymentAccounts?.length ||
-      fields.paymentAccountReferences?.some(ref => /^payment_component_/.test(ref.memberRole))) ||
-    fields.repaymentAllocations?.length || editor.incompleteComposition || fields.repaymentChannelResolution ||
-    fields.bankChannelResolution || fields.mergeOrigins?.length || fields.loanRepayment || editor.incompleteRepayment ||
-    fields.installment || fields.disbursement || fields.installmentPlan)
+  // 资金组成类事实按“有效证据”判断：用户已选单账户时，旧的逐成分账户/分摊证据
+  // 不再要求重核，否则同一份数据会在入账阶段被再一次拦下。
+  const compositionActive = !evidence.single(event) && Boolean(fields.paymentResolution ||
+    (fields.paymentAccounts || []).length ||
+    (fields.paymentAccountReferences || []).some(ref => /^payment_component_/.test(ref.memberRole || '')) ||
+    (fields.repaymentAllocations || []).length || editor.incompleteComposition)
+  return Boolean(event.economicNature === 'refund' || event.economicNature === 'borrow' || compositionActive ||
+    fields.repaymentChannelResolution || fields.bankChannelResolution || fields.mergeOrigins?.length ||
+    fields.loanRepayment || editor.incompleteRepayment || fields.installment || fields.disbursement || fields.installmentPlan)
 }
 function record(event, role, reference = referenceFor(event, role), side = null) {
   if (!roleValid(role) || !['ready', 'needs_action', 'excluded'].includes(event.status) || !inspect(event).valid) {

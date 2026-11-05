@@ -53,11 +53,26 @@ async function restoreLegacyAccountPlan(pool, uid, updateId) {
       const method = sourceByEvent.get(event.eventId)?.method
       const fieldSources = legacyFields(parse(event.fields), methods.has(method) ? method : null)
       const target = fieldSources.fundsProjection?.to
-      if (target?.referenceKind === 'aggregate') target.candidates = candidates
-        .filter(reference => (reference.aggregateFamilies || []).includes(target.aggregateFamily))
-        .map(({ sourceType, paymentMethodKey, label, accountIdentityKey, aggregateFamilies }) =>
-          ({ sourceType, paymentMethodKey, label, accountIdentityKey, aggregateFamilies }))
-      await connection.execute('UPDATE catledger_economic_events SET field_sources_json=? WHERE uid=? AND update_id=? AND event_id=?',
+      // 现行规则把花呗|信用购还入端收成一个原子账户。这条夹具要保留的是当时拆成两个账户的分配，
+      // 所以在这里把还入端改回旧的聚合目标，并挂上两个互不相同的旧引用。
+      const legacyAggregate = target && (target.referenceKind === 'aggregate' || target.aggregateFamily === 'alipay_huabei_credit' ||
+        (target.aggregateFamilies || []).includes('alipay_huabei_credit'))
+      if (legacyAggregate) {
+        target.referenceKind = 'aggregate'
+        target.aggregateFamily = 'alipay_huabei_credit'
+        target.paymentMethodKey = null
+        target.accountIdentityKey = ''
+        target.unresolvedReason = 'aggregate_allocation_required'
+        delete target.resolvedAccountId
+        target.candidates = candidates
+          .filter(reference => (reference.aggregateFamilies || []).includes(target.aggregateFamily))
+          .map(({ sourceType, paymentMethodKey, label, accountIdentityKey, aggregateFamilies }) =>
+            ({ sourceType, paymentMethodKey, label, accountIdentityKey, aggregateFamilies }))
+      }
+      if (legacyAggregate) await connection.execute(
+        'UPDATE catledger_economic_events SET field_sources_json=?, counterparty_ledger_account_id=NULL WHERE uid=? AND update_id=? AND event_id=?',
+        [JSON.stringify(fieldSources), uid, updateId, event.eventId])
+      else await connection.execute('UPDATE catledger_economic_events SET field_sources_json=? WHERE uid=? AND update_id=? AND event_id=?',
         [JSON.stringify(fieldSources), uid, updateId, event.eventId])
       byId.set(event.eventId, { eventId: event.eventId, fieldSources })
     }
@@ -96,6 +111,18 @@ async function restoreLegacyAccountPlan(pool, uid, updateId) {
         first = false
       }
     }
+    // 还入端在现行规则下会单独成组。旧夹具不承认这第三个账户，删掉只属于族键的成员。
+    const familyKey = 'account-identity-v2:alipay:alipay_huabei_credit'
+    for (const [, groups] of byIssue) {
+      const family = groups.get(familyKey) || []
+      for (const member of family) await connection.execute(
+        'DELETE FROM catledger_review_issue_members WHERE uid=? AND member_id=?', [uid, member.memberId])
+    }
+    const [emptyIssues] = await connection.execute(`SELECT issue.issue_id AS issueId FROM catledger_review_issues issue
+      LEFT JOIN catledger_review_issue_members member ON member.uid=issue.uid AND member.issue_id=issue.issue_id
+      WHERE issue.uid=? AND issue.update_id=? AND issue.issue_type='account_mapping' AND member.member_id IS NULL`, [uid, updateId])
+    for (const issue of emptyIssues) await connection.execute(
+      'DELETE FROM catledger_review_issues WHERE uid=? AND issue_id=?', [uid, issue.issueId])
     await connection.commit()
   } catch (error) {
     await connection.rollback()

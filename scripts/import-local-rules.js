@@ -8,7 +8,7 @@ const target = path.join(root, 'miniprogram/packages/finance/domain/import-revie
 const roots = ['review/editor-policy','organizer-model','organizer-plan-policy','source-funds','bank-channel-matching',
   'coverage-report','review/bank-channel-graph','workbench-summary','excluded-event-groups','repayment-policy',
   'refund-relation-policy','historical-match-policy','local-review-protocol','local-review-snapshot','local-review-identity','account-draft-policy','account-confirmation-groups','account-creation-facts','review/account-mapping-policy',
-  'review/evidence-hydration','review/merge-origins','review/pair-primary-policy','review-presentation','review-attention']
+  'review/evidence-hydration','review/merge-origins','review/pair-primary-policy','review/event-references','review-presentation','review-attention']
 const visited = new Set()
 function visit(name) {
   if (!name.endsWith('.js')) name = fs.existsSync(path.join(source, name + '.js')) ? name + '.js' : name + '/index.js'

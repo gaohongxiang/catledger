@@ -122,6 +122,20 @@ test('v2 人工分配不依赖候选覆盖，账户资格由服务端可信目�
 })
 
 
+test('花呗信用购合并账单不是还款分配，确认这一个账户后就是普通还款', () => {
+  const { isAggregateRepayment } = require('../src/repayment-allocation')
+  const { evaluatePostability } = require('../src/organizer-model')
+  const event = { economicNature: 'repayment', flowDirection: 'neutral', amountMinor: '1006402', currency: 'CNY',
+    localAt: '2026-08-09 13:20:56.000', utcAt: '2026-08-09 05:20:56.000',
+    ledgerAccountId: '51000000-0000-4000-8000-000000000201', counterpartyLedgerAccountId: null,
+    fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', aggregateFamily: 'alipay_huabei_credit', label: '支付宝花呗｜信用购', candidates: [] } } } }
+  assert.equal(isAggregateRepayment(event), false)
+  assert.equal(evaluatePostability(event).reasonCodes.includes('repayment_allocation_required'), false)
+  assert.equal(evaluatePostability(event).reasonCodes.includes('repayment_account_required'), true)
+  event.counterpartyLedgerAccountId = '51000000-0000-4000-8000-000000000202'
+  assert.equal(evaluatePostability(event).status, 'ready')
+})
+
 test('自动唯一结论不能抹去已保存v1/v2分配，显式single仍优先', () => {
   const { isAggregateRepayment } = require('../src/repayment-allocation')
   for (const version of ['repayment-allocation-v1', 'repayment-allocation-v2']) {

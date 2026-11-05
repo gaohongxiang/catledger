@@ -68,7 +68,7 @@
 
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
   <view wx:if="{{prepareProgress && currentStep === 1}}" class="draft-sync-note">正在准备核对资料：{{prepareProgress}}，请稍候。</view>
-  <view wx:if="{{phase === 'review' && draftSync.local && (draftSync.frozen || draftSync.error)}}" class="draft-sync-note">
+  <view wx:if="{{phase === 'review' && draftSync.local && (draftSync.frozen || (draftSync.error && currentStep !== 2 && currentStep !== 3))}}" class="draft-sync-note draft-sync-alert">
     <text>{{draftSync.frozen ? '入账结果待核实，原请求已冻结；请继续核实后再修改。' : draftSync.error}}</text>
     <button wx:if="{{draftSync.frozen}}" class="text-action" bindtap="postUpdate" disabled="{{busy}}">继续核实入账结果</button>
   </view>
@@ -217,10 +217,10 @@
     </view>
   </block>
 
-  <view wx:if="{{update && phase === 'review' && (currentStep === 2 || currentStep === 3) && draftSync.error}}" class="draft-sync-note">
-    <text>{{draftSync.error || '正在自动保存…'}}</text>
-    <button wx:if="{{draftSync.conflicts}}" class="text-action" bindtap="recheckDraftConflicts" disabled="{{busy}}">重新核对</button>
-    <button wx:if="{{draftSync.error && !draftSync.conflicts}}" class="text-action" bindtap="retryDraftSync" disabled="{{busy || draftSync.syncing}}">重试</button>
+  <view wx:if="{{update && phase === 'review' && (currentStep === 2 || currentStep === 3) && draftSync.error}}" class="draft-sync-note draft-sync-alert">
+    <text>{{draftSync.error}}</text>
+    <button wx:if="{{draftSync.conflicts}}" class="text-action" bindtap="openMarkedReview" disabled="{{busy}}">去交易核对</button>
+    <button wx:elif="{{draftSync.error}}" class="text-action" bindtap="retryDraftSync" disabled="{{busy || draftSync.syncing}}">重试</button>
   </view>
   <view wx:if="{{currentStep === 2 && preparingAccount}}" class="step-section account-stage">
     <view class="step-heading content-inset">
@@ -427,7 +427,6 @@
             <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row">
               <template is="review-record-content" data="{{record: record}}" />
             </view>
-            <text wx:if="{{item.hiddenSubjectCount}}" class="review-preview-more">另有 {{item.hiddenSubjectCount}} 笔将应用同一分类</text>
           </view>
         </view>
         <view wx:for="{{categoryWaitingEvents}}" wx:key="eventId" class="review-decision-card category-decision-card">
@@ -598,7 +597,7 @@
             <text class="account-choice-account-name">{{accountChoiceSheet.recommendedAccount.name}}</text>
             <text class="account-choice-account-detail">{{accountChoiceSheet.recommendedAccount.detail}}</text>
           </view>
-          <view class="account-choice-check"></view>
+          <view class="account-choice-check"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
         </button>
       </view>
 
@@ -680,6 +679,21 @@
     </view>
   </view>
 
+  <view wx:if="{{categoryGroupSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+    <view class="sheet-scrim" bindtap="closeCategoryGroup"></view>
+    <view class="workflow-sheet editor-sheet">
+      <view class="sheet-handle"></view>
+      <text class="sheet-title">{{categoryGroupSheet.title}}</text>
+      <text class="sheet-copy category-peer-count">共 {{categoryGroupSheet.count}} 笔将应用同一分类</text>
+      <scroll-view class="account-records-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:for="{{categoryGroupSheet.records}}" wx:key="eventId" class="review-preview-row">
+          <template is="review-record-content" data="{{record: item}}" />
+        </view>
+      </scroll-view>
+      <button class="evidence-return" bindtap="closeCategoryGroup">返回</button>
+    </view>
+  </view>
+
   <view wx:if="{{finalDetailSheet}}" class="sheet-layer final-detail-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeFinalDetail"></view>
     <view class="workflow-sheet editor-sheet final-detail-sheet">
@@ -703,6 +717,7 @@
           <view class="funds-flow-record-body">
             <view class="funds-flow-record-copy">
               <text class="funds-flow-record-meta">{{item.displayMeta}}</text>
+              <text wx:if="{{item.categoryPeerCount > 1}}" class="funds-flow-record-meta category-peer-count">共 {{item.categoryPeerCount}} 笔将应用同一分类</text>
               <text wx:if="{{finalDetailSheet.kind === 'categorized' && item.categoryName}}" class="funds-flow-record-meta">分类：{{item.categoryName}}</text>
               <text wx:if="{{item.accountText}}" class="funds-flow-record-meta">关联账户：{{item.accountText}}</text>
             </view>

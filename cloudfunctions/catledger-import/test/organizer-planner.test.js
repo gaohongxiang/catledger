@@ -1258,12 +1258,11 @@ test('花呗信用购合并还款指向同一族账户，不拆成两笔负债',
 
   const repayment = plan.events.find((event) => event.amountMinor === '1036610')
   assert.equal(repayment.ledgerAccountId, bankId)
-  // 两种写法的付款方式键相同，映射只会落到同一个族账户。
+  // 两种写法的付款方式键相同，合并还款直接还入这一个族账户，不再拆成两笔负债。
   assert.equal(buildPaymentMethodKey('alipay', '花呗'), buildPaymentMethodKey('alipay', '江苏银行信用购'))
-  assert.equal(repayment.fieldSources.fundsProjection.to.referenceKind, 'aggregate')
-  assert.deepEqual(
-    repayment.fieldSources.fundsProjection.to.candidates.map((candidate) => candidate.accountId),
-    [familyId]
-  )
+  assert.equal(buildPaymentMethodKey('alipay', '花呗|信用购'), buildPaymentMethodKey('alipay', '花呗'))
+  assert.equal(repayment.counterpartyLedgerAccountId, familyId)
+  assert.equal(repayment.fieldSources.fundsProjection.to.referenceKind, 'atomic')
+  assert.equal(repayment.fieldSources.fundsProjection.to.paymentMethodKey, buildPaymentMethodKey('alipay', '花呗'))
   assert.equal(plan.issues.filter((issue) => issue.status === 'open' && issue.issueType === 'transfer_accounts').length, 0)
 })

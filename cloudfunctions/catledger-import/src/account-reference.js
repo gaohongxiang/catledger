@@ -74,6 +74,10 @@ function ledgerAccountReference(sourceType, paymentMethod) {
 function repaymentTargetReference(sourceType, value) {
   const raw = clean(value)
   const label = raw.replace(/还款(?:成功)?$/u, '').trim() || raw
+  // 花呗与信用购已是同一个原子账户，还入端必须带上这个账户的付款方式键，
+  // 才能对上账户步骤确认过的那一个账户。不能再把「花呗|信用购」当成待拆分的合并账单。
+  const atomic = accountReference(sourceType, label, 'repayment_target')
+  if (atomic) return atomic
   const aggregateFamily = aggregateAccountFamily(sourceType, label)
   if (aggregateFamily) {
     return {

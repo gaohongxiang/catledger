@@ -48,7 +48,7 @@
 .unified-editor-sheet .detail-actions { display: flex; flex-direction: column; gap: var(--layout-space-2); }
 .unified-editor-sheet .detail-actions .editor-actions-row { width: 100%; }
 .unified-editor-sheet .detail-actions .editor-judgment-btn,
-.unified-editor-sheet .detail-actions .sheet-confirm { min-height: 88rpx; margin: 0; line-height: 1.5; }
+.unified-editor-sheet .detail-actions .sheet-confirm { display: flex; align-items: center; justify-content: center; min-height: 88rpx; margin: 0; padding: 0 24rpx; line-height: 1.2; text-align: center; }
 .unified-editor-sheet .detail-actions .sheet-confirm-wide { margin: 0; }
 .unified-editor-sheet .detail-actions .editor-cancel { margin-top: 0; }
 .unified-editor-sheet .editor-judgment-btn {
@@ -85,7 +85,10 @@
 .unified-editor-sheet .channel-confirm .ownership-option-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .unified-editor-sheet .channel-confirm .ownership-treatment-check { width: 36rpx; height: 36rpx; border-color: var(--theme-warning, #a76416); background: var(--ui-surface, #fff); }
 .unified-editor-sheet .channel-confirm .ownership-option-selected .ownership-treatment-check { border-color: var(--ui-accent); background: var(--ui-accent); }
-.unified-editor-sheet .channel-confirm .ownership-option-selected .ownership-treatment-check::after { left: 10rpx; top: 5rpx; }
+.unified-editor-sheet .channel-confirm .mark-check-icon,
+.unified-editor-sheet .refund-candidate-radio .mark-check-icon,
+.unified-editor-sheet .attribution-check .mark-check-icon,
+.unified-editor-sheet .attribution-plan-radio .mark-check-icon { width: 20rpx; height: 20rpx; }
 .unified-editor-sheet .channel-confirm-action { color: var(--theme-warning, #a76416); }
 .unified-editor-sheet .channel-breakdown-note { display: block; margin-top: 14rpx; padding-top: var(--layout-space-2); border-top: 1rpx solid var(--ui-line); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .channel-confirm { margin-top: 14rpx; padding-bottom: 0; border-top: 1rpx solid var(--ui-line); }
@@ -126,9 +129,8 @@
 .unified-editor-sheet .refund-candidate-item { display: block; margin-top: 2rpx; overflow: hidden; color: var(--ui-muted); font-size: 22rpx; text-overflow: ellipsis; white-space: nowrap; }
 .unified-editor-sheet .refund-candidate-meta { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .refund-candidate-match { display: block; margin-top: 6rpx; color: var(--ui-accent-strong); font-size: 22rpx; line-height: 1.5; }
-.unified-editor-sheet .refund-candidate-radio { position: absolute; top: 22rpx; right: 22rpx; width: 32rpx; height: 32rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.unified-editor-sheet .refund-candidate-radio { display: flex; align-items: center; justify-content: center; box-sizing: border-box; position: absolute; top: 22rpx; right: 22rpx; width: 32rpx; height: 32rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
-.unified-editor-sheet .refund-candidate.is-selected .refund-candidate-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 
 /* 退款区：状态一行说清“现在是什么关系”，下面是候选卡或空态，最后一行操作。
    之前这里是一列灰色文字，看着像没加载成功。 */
@@ -314,9 +316,8 @@
 .unified-editor-sheet .attribution-plan-amount { margin-top: 4rpx; font-size: 24rpx; color: var(--ui-muted); }
 /* 计划本期已被另一笔利息占用：就写在计划名右侧，选它照常写入，不再弹框。 */
 .unified-editor-sheet .attribution-plan-taken { flex-shrink: 0; font-size: 22rpx; color: var(--theme-warning, #a76416); }
-.unified-editor-sheet .attribution-plan-radio { position: absolute; top: 50%; right: 22rpx; width: 32rpx; height: 32rpx; margin-top: -16rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.unified-editor-sheet .attribution-plan-radio { display: flex; align-items: center; justify-content: center; box-sizing: border-box; position: absolute; top: 50%; right: 22rpx; width: 32rpx; height: 32rpx; margin-top: -16rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio { border-color: var(--ui-accent); background: var(--ui-accent); }
-.unified-editor-sheet .attribution-plan.is-selected .attribution-plan-radio::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 /* 本金行里的未归属利息：一个容器＋分隔线，不再每张卡各套一层边框。
    第一行说明“这是什么 + 多少钱”，第二行补账单时间与账户；整卡只负责勾选。 */
 .unified-editor-sheet .attribution-candidates { margin-top: var(--layout-space-2); border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small); background: var(--ui-surface); overflow: hidden; }
@@ -332,13 +333,12 @@
 .unified-editor-sheet .attribution-plan-hint { margin-top: 2rpx; color: var(--ui-accent-strong); }
 .unified-editor-sheet .attribution-candidate .attribution-check { position: absolute; top: 50%; right: 22rpx; margin: -16rpx 0 0; }
 .unified-editor-sheet .attribution-candidate.is-selected .attribution-check { border-color: var(--ui-accent); background: var(--ui-accent); }
-.unified-editor-sheet .attribution-candidate.is-selected .attribution-check::after { content: ''; position: absolute; left: 9rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 .unified-editor-sheet .attribution-candidate.is-disabled .attribution-candidate-title,
 .unified-editor-sheet .attribution-candidate.is-disabled .attribution-candidate-amount { color: var(--ui-muted); }
 /* 已归到别的本金：只读说明占第二行，勾选圈留空表示不可点。 */
 .unified-editor-sheet .attribution-candidate.is-disabled .attribution-check { border-style: dashed; border-color: var(--ui-line); background: transparent; }
 .unified-editor-sheet .attribution-assigned-note { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
-.unified-editor-sheet .attribution-check { flex-shrink: 0; width: 32rpx; height: 32rpx; margin-left: var(--layout-space-3); border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
+.unified-editor-sheet .attribution-check { display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex-shrink: 0; width: 32rpx; height: 32rpx; margin-left: var(--layout-space-3); border: 2rpx solid var(--ui-border); border-radius: 50%; background: var(--ui-surface); }
 .unified-editor-sheet .attribution-required { display: block; margin-top: var(--layout-space-2); font-size: 24rpx; color: var(--sem-expense, #b54738); }
 .unified-editor-sheet .source-note { display: block; margin-top: var(--layout-space-3); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
 .unified-editor-sheet .evidence-section { margin-top: var(--layout-space-4); }

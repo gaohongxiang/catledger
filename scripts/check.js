@@ -129,6 +129,8 @@ assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/r
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-policy.js'), 'utf8'), '还款组成与路径契约必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/category-memory.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/category-memory.js'), 'utf8'), '分类记忆契约必须一致')
+assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/category-likeness.js'), 'utf8'),
+  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/category-likeness.js'), 'utf8'), '分类相同商品口径必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-items.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-items.js'), 'utf8'), '分期来源与费用防重复规则必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-plan.js'), 'utf8'),

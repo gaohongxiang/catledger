@@ -97,7 +97,8 @@ module.exports = {
       return
     }
     const payload = { updateId: this.data.update.updateId, updateVersion: this.data.update.version,
-      eventId: quick.eventId, eventVersion: quick.eventVersion, editorVersion: 1, fields: { categoryId } }
+      eventId: quick.eventId, eventVersion: quick.eventVersion, editorVersion: 1, fields: { categoryId },
+      ...(this._draftSession && this._draftSession.isLocal ? { sameCategory: true } : {}) }
     this.setData({ busy: true, errorMessage: '' })
     try {
       if (this._draftSession && this._draftSession.flush) await this._draftSession.flush()

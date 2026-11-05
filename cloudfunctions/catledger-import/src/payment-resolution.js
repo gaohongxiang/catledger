@@ -1,4 +1,5 @@
 const { FIELD_MASK } = require('./manual-field-mask')
+const evidence = require('./funds-evidence')
 const PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v2'
 const EDITOR_PAYMENT_VERSION = 'payment-resolution-v3'
 const EXTERNAL_PAYMENT_VERSION = 'payment-resolution-v4'
@@ -19,6 +20,15 @@ function paymentEvidenceFields(rows) {
   })) : [] }
 }
 
+// 付款成分引用的序号既可能显式写在 componentIndex 上，也可能只由 memberRole
+// 的 `payment_component_N` 表达；旧来源只保证了后者，因此必须从这里统一解析。
+function referenceComponentIndex(reference) {
+  if (!reference) return null
+  if (Number.isInteger(reference.componentIndex)) return reference.componentIndex
+  const match = /^payment_component_(\d+)$/.exec(reference.memberRole || '')
+  return match ? Number(match[1]) : null
+}
+
 function inspectPaymentAccounts(event, value, { partial = false } = {}) {
   const fields = event.fieldSources || {}
   const parts = (fields.paymentComponents || []).map((part, componentIndex) => ({ ...part, componentIndex }))
@@ -26,7 +36,8 @@ function inspectPaymentAccounts(event, value, { partial = false } = {}) {
   if (!fields.semanticBlockers || !fields.semanticBlockers.includes('payment_components_ambiguous') ||
       parts.length < 2 || parts.length > 20 || !Array.isArray(value) || (partial ? value.length > parts.length : value.length !== parts.length)) return { valid: false }
   const indexes = new Set(), ids = new Map()
-  const identities = new Map((fields.paymentAccountReferences || []).map(reference => [reference.componentIndex, reference.accountIdentityKey]))
+  const identities = new Map((fields.paymentAccountReferences || [])
+    .map(reference => [referenceComponentIndex(reference), reference.accountIdentityKey]))
   for (const item of value) {
     if (!item || !Number.isInteger(item.componentIndex) || !parts.some((part) => part.componentIndex === item.componentIndex) ||
         indexes.has(item.componentIndex) || !UUID.test(item.accountId || '') ||
@@ -91,13 +102,9 @@ function paymentResolutionForEvent(event) {
 }
 
 function effectiveSemanticReasons(event, reasons) {
-  const editor = event.fieldSources && event.fieldSources.editorOverrides
   // 用户把组成确认为单账户即视为已决：金额整笔记在一个账户上，不再要求分摊。
-  // 说明是给人看的备注，不参与判定；完整性由未完成草稿标记、账户与金额共同保证。
-  const singleConfirmed = editor && editor.version === 1 && editor.composition === 'single' &&
-    !editor.incompleteComposition && event.ledgerAccountId && event.amountMinor != null &&
-    ['expense','repayment'].includes(event.economicNature)
-  const paymentResolved = paymentResolutionForEvent(event).valid || Boolean(singleConfirmed)
+  // 判定统一取 funds-evidence，保证金额/账户完整性判定与其他校验一致。
+  const paymentResolved = paymentResolutionForEvent(event).valid || evidence.single(event)
   const natureConfirmed = Boolean(event.manualFieldMask & FIELD_MASK.economicNature) && CONFIRMABLE_NATURES.has(event.economicNature)
   // 明确选择性质只解除“交易类型未知”；原始语义和其他阻断仍保留。
   return reasons.filter(reason => !(paymentResolved && RESOLVABLE.has(reason)) &&

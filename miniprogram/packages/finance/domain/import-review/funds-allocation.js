@@ -1,10 +1,13 @@
 const { paymentResolutionForEvent } = require('./payment-resolution')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
+const fundsEvidence = require('./funds-evidence')
 
 // 分配决定只有一个解释入口。来源候选不参与账户授权；账户元数据由调用方按 uid 锁定。
 function eventAllocation(event) {
   const fields = event.fieldSources || {}
-  const payment = Boolean(fields.paymentResolution)
+  // 用户已把组成确认成单账户后，旧的逐成分 paymentResolution 是过期证据，
+  // 不再作为分摊决定；整笔按单账户资金路径处理。
+  const payment = Boolean(fields.paymentResolution) && !fundsEvidence.single(event)
   const repayment = isAggregateRepayment(event)
   const repaymentDecision = fields.repaymentAllocations != null || fields.repaymentAllocationVersion != null
   if ((payment && (repayment || repaymentDecision)) || (repaymentDecision && !repayment)) {

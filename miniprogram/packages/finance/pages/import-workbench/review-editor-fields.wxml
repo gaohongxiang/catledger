@@ -74,7 +74,7 @@
       </block>
       <text wx:if="{{editor.splitRepayment}}" class="sheet-copy funds-note">还入我的负债账户记转账；替别人偿还的份额记支出。</text>
       <view wx:if="{{editor.bothExternal}}" class="ownership-treatment">
-        <button class="ownership-option {{draft.noLedgerImpact ? 'ownership-option-selected' : ''}}" data-field="noLedgerImpact" data-value="{{!draft.noLedgerImpact}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit || !editor.supported}}" aria-role="checkbox" aria-checked="{{draft.noLedgerImpact}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">确认对本账本无影响</text><text class="ownership-treatment-detail">两端均在账本外，保留来源，不生成账目</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+        <button class="ownership-option {{draft.noLedgerImpact ? 'ownership-option-selected' : ''}}" data-field="noLedgerImpact" data-value="{{!draft.noLedgerImpact}}" bindtap="changeEditorMode" disabled="{{disabled || !canEdit || !editor.supported}}" aria-role="checkbox" aria-checked="{{draft.noLedgerImpact}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">确认对本账本无影响</text><text class="ownership-treatment-detail">两端均在账本外，保留来源，不生成账目</text></view><view class="ownership-treatment-check" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view></button>
       </view>
       <text wx:if="{{editor.ownershipEffect}}" class="sheet-copy funds-note">{{editor.ownershipEffect}}</text>
       <text wx:if="{{editor.compositionEffect}}" class="sheet-copy funds-note">{{editor.compositionEffect}}</text>
@@ -112,7 +112,7 @@
               <text class="attribution-candidate-meta">{{item.meta}}</text>
               <text wx:if="{{item.disabledReason}}" class="attribution-plan-taken">{{item.disabledReason}}</text>
             </view>
-            <view class="attribution-plan-radio" aria-hidden="true" />
+            <view class="attribution-plan-radio" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
           </button>
         </block>
       </block>
@@ -149,7 +149,7 @@
         data-id="{{item.eventId}}" bindtap="toggleEditorPendingInterest"
         aria-role="checkbox" aria-checked="{{item.selected}}" aria-disabled="{{disabled || !canEdit || editor.changed || item.disabled}}"
         aria-label="{{item.disabled ? '已归到 ' + item.assignedPlan + '，不可选' : '把' + item.title + '归到本计划'}}">
-        <view class="attribution-check" aria-hidden="true" />
+        <view class="attribution-check" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
         <view class="attribution-candidate-copy">
           <text class="attribution-candidate-title">{{item.title}}</text>
           <text wx:if="{{item.meta}}" class="attribution-candidate-meta">{{item.meta}}</text>
@@ -176,7 +176,7 @@
       <text wx:if="{{editor.fieldErrors.repaymentChannel}}" class="editor-field-error">{{editor.fieldErrors.repaymentChannel}}</text>
       <view wx:if="{{!editor.repaymentChannel.confirmed}}" class="ownership-treatment channel-confirm">
         <text class="channel-confirm-caption">这一步需要你确认</text>
-        <button wx:if="{{canEdit && editor.supported}}" class="ownership-option {{draft.repaymentChannelConfirmed ? 'ownership-option-selected' : ''}}" data-field="repaymentChannelConfirmed" data-value="{{!draft.repaymentChannelConfirmed}}" bindtap="changeEditorMode" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{draft.repaymentChannelConfirmed}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">{{editor.repaymentChannel.confirmationText}}</text><text class="ownership-treatment-detail channel-confirm-action">{{editor.repaymentChannel.confirmationAction}}</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
+        <button wx:if="{{canEdit && editor.supported}}" class="ownership-option {{draft.repaymentChannelConfirmed ? 'ownership-option-selected' : ''}}" data-field="repaymentChannelConfirmed" data-value="{{!draft.repaymentChannelConfirmed}}" bindtap="changeEditorMode" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{draft.repaymentChannelConfirmed}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">{{editor.repaymentChannel.confirmationText}}</text><text class="ownership-treatment-detail channel-confirm-action">{{editor.repaymentChannel.confirmationAction}}</text></view><view class="ownership-treatment-check" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view></button>
       </view>
     </view>
   </view>
@@ -209,7 +209,7 @@
         <view wx:if="{{sheet.refundClosed}}" class="refund-conflict">
           <text class="refund-conflict-title">原单已关闭，退款却成功了</text>
           <text class="refund-conflict-copy">同一订单的消费在账单里是「交易关闭／失败」，之后又有一条退款成功。钱等于出去了又回来，净额是 0。</text>
-          <text class="refund-conflict-copy">默认按已退回处理：原单保持不入账、这笔退款也不入账，原文与决定都保留。如果你确认当时确实消费过，请先核对两条原文再改判。</text>
+          <text class="refund-conflict-copy">如果当时确实消费过，请先核对两条原文再改判。</text>
         </view>
         <view wx:if="{{editor.refundBlocked && !sheet.refundClosed}}" class="refund-conflict">
           <text class="refund-conflict-title">{{editor.refundBlocked === 'amount' ? '可退金额不足' : '原消费关系已失效'}}</text>
@@ -243,7 +243,7 @@
             <text class="refund-candidate-meta">{{item.localAtText}}{{item.sourceTypeLabel ? ' · ' + item.sourceTypeLabel : ''}}</text>
             <text wx:if="{{item.remainingText}}" class="refund-candidate-meta">原消费 {{item.amountText}} · 已退 {{item.refundedText || '¥0.00'}} · 可退 {{item.remainingText}}</text>
             <text wx:if="{{item.matchLabel}}" class="refund-candidate-match">匹配依据：{{item.matchLabel}}</text>
-            <view class="refund-candidate-radio" aria-hidden="true" />
+            <view class="refund-candidate-radio" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
           </button>
           <view wx:if="{{!sheet.refundLoading && !sheet.refundError && !sheet.refundStale && !sheet.refundChoices.length}}" class="refund-empty">
             <text class="refund-empty-title">{{sheet.refundKind === 'transaction' ? '已入账记录里没有可关联的原消费' : '本批没有能退这笔的消费'}}</text>
@@ -254,8 +254,11 @@
           <text wx:if="{{sheet.refundScope === 'all' && sheet.refundChoices.length}}" class="refund-note">没有匹配依据时列本批全部支出；选中即视为人工确认，保存时重新核验额度。</text>
           <text wx:if="{{sheet.refundHistoryPending}}" class="refund-note">已入账候选未全部下载，整批入账时会再复核；暂记后仍可在账本里补关联。</text>
         </view>
-        <view wx:if="{{sheet.refundClosed}}" class="refund-actions">
-          <button class="refund-action" bindtap="excludeRefundAsReversed" disabled="{{disabled}}">按已退回处理</button>
+        <view wx:if="{{sheet.refundClosed}}" class="ownership-treatment channel-confirm">
+          <text class="channel-confirm-caption">这一步需要你确认</text>
+          <button class="ownership-option {{sheet.refundReversed ? 'ownership-option-selected' : ''}}" bindtap="chooseRefundReversed" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{sheet.refundReversed}}" aria-label="按已退回处理，原单和这笔退款都不入账">
+            <view class="ownership-treatment-copy"><text class="ownership-treatment-title">按已退回处理</text><text class="ownership-treatment-detail channel-confirm-action">原单和这笔退款都不入账，净额 0，原文保留</text></view><view class="ownership-treatment-check" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
+          </button>
         </view>
         <block wx:else>
           <view class="refund-actions">
@@ -276,7 +279,7 @@
         <button wx:for="{{editor.attribution.plans}}" wx:key="planName" class="attribution-plan {{item.selected ? 'is-selected' : ''}}"
           data-plan="{{item.planName}}" bindtap="selectEditorInstallmentPlan" disabled="{{disabled}}" aria-role="radio" aria-checked="{{item.selected}}" aria-label="{{item.takenBy ? item.planName + '，' + item.takenBy : item.planName}}">
           <view class="attribution-plan-copy"><view class="attribution-plan-line"><text class="attribution-plan-name">{{item.planName}}</text><text wx:if="{{item.takenBy}}" class="attribution-plan-taken">{{item.takenBy}}</text></view><text class="attribution-plan-amount money-number">{{item.amountText}}</text></view>
-          <view class="attribution-plan-radio" aria-hidden="true" />
+          <view class="attribution-plan-radio" aria-hidden="true"><image class="mark-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
         </button>
         <text wx:if="{{editor.attribution.required}}" class="attribution-required">选择一个计划才能入账。</text>
       </block>

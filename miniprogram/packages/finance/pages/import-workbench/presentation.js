@@ -1,4 +1,5 @@
 const model = require('./model')
+const { categoryGoodsLabel } = require('../../domain/import-review/category-likeness')
 const PAGE_SIZE = 50
 
 function emptyLists() {
@@ -136,6 +137,15 @@ function pendingCard(event, category) {
     result.version = event.version
     // 收入用收入目录，支出和费用用支出目录。性质未定不能在卡片上猜分类。
     result.categoryKind = event.economicNature === 'income' ? 'income' : ['expense', 'fee'].includes(event.economicNature) ? 'expense' : ''
+    if (Number(event.categoryPeerCount) > 1) {
+      const evidence = event.primaryEvidence || {}
+      const title = categoryGoodsLabel(evidence.item) || categoryGoodsLabel(evidence.counterparty)
+      if (title) subject.displayTitle = title
+      subject.displayDate = ''
+      if (event.categorySameAmount === false) subject.amountText = ''
+      result.categoryPeerCount = Number(event.categoryPeerCount)
+      result.subjectCount = result.categoryPeerCount
+    }
   }
   return category ? result : pendingReviewCard(result, event.reviewAttention, issue)
 }

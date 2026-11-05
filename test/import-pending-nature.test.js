@@ -16,7 +16,10 @@ function presentation() {
     categoryIssueCards: issues => issues
   }
   const module = { exports: {} }
+  // 展示层除了 ./model，还按商品归组引用分类相似度；这里只隔离展示边界，不复制其规则。
+  const categoryLikeness = require('../miniprogram/packages/finance/domain/import-review/category-likeness')
   vm.runInNewContext(source, { module, require: name => {
+    if (name === '../../domain/import-review/category-likeness') return categoryLikeness
     assert.equal(name, './model')
     return model
   } }, { filename })

@@ -1,13 +1,11 @@
 const { chunks, updateEvents, loadEventContexts } = require('../sql-batch')
-const repaymentOwnership = require('../repayment-ownership')
-const { eventAllocation, allocationAccountsValid } = require('../funds-allocation')
-const { inspectPaymentAccounts, paymentEvidenceFields, paymentResolutionForEvent } = require('../payment-resolution')
+const { paymentEvidenceFields } = require('../payment-resolution')
 const { importError } = require('../errors')
 const { parseJson } = require('../finance-update-repository')
 const { evaluatePostability } = require('../organizer-model')
-const { ECONOMIC_NATURE, unique } = require('../organizer-values')
-const { isAggregateRepayment, repaymentAllocationsForEvent } = require('../repayment-allocation')
+const { unique } = require('../organizer-values')
 const { FIELD_MASK, resolvedReasons } = require('./policy')
+const { referencedAccountIds, referencedCategoryIds, referenceFailure } = require('./event-references')
 
 function domainEvent(row) {
   return {
@@ -98,81 +96,53 @@ async function eventContext(connection, uid, updateId, eventId) {
 }
 
 async function validateEventReferences(connection, uid, event, catalog = null, { forUpdate = true } = {}) {
-  const fieldSources = event && event.fieldSources || {}
-  if (fieldSources.repaymentChannelResolution && !require('../repayment-channel').relationValid(event)) throw importError('VALIDATION_ERROR')
-  const plan = eventAllocation(event)
-  if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
-  const hasAllocationDraft = Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocationVersion') ||
-    Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocations')
-  const allocation = isAggregateRepayment(event) && hasAllocationDraft ? repaymentAllocationsForEvent(event) : null
-  if (allocation && !allocation.valid) throw importError('VALIDATION_ERROR')
-  if (allocation && allocation.allocations.some((item) => item.accountId === event.ledgerAccountId)) {
-    throw importError('VALIDATION_ERROR')
-  }
-  const payment = event.fieldSources && event.fieldSources.paymentResolution ? paymentResolutionForEvent(event) : null
-  if (payment && !payment.valid) throw importError('VALIDATION_ERROR')
-  const paymentAccounts = fieldSources.paymentAccounts ? inspectPaymentAccounts(event, fieldSources.paymentAccounts, { partial: true }) : null
-  if (paymentAccounts && !paymentAccounts.valid) throw importError('VALIDATION_ERROR')
-  const incomplete = fieldSources.editorOverrides && fieldSources.editorOverrides.incompleteComposition
-  const accountIds = unique([
-    ...(incomplete ? incomplete.parts.map(item => item.accountId) : []),
-    ...(paymentAccounts ? paymentAccounts.accounts.map((item) => item.accountId) : []),
-    ...(payment ? payment.resolution.allocations.map((item) => item.accountId) : []),
-    event.ledgerAccountId,
-    event.counterpartyLedgerAccountId,
-    ...(allocation ? allocation.allocations.map((item) => item.accountId) : [])
-  ])
-  if (accountIds.length > 0) {
-    const [accounts] = catalog ? [accountIds.map(id => catalog.accounts.get(id)).filter(Boolean)] : await connection.execute(
-      `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
-         FROM catledger_accounts
-        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
-      [uid, ...accountIds]
-    )
-    if (accounts.some((account) => account.archivedAt != null || account.currency !== event.currency)) {
-      throw importError('VALIDATION_ERROR')
-    }
-    const existingIds = new Set(accounts.map((account) => account.accountId))
-    const draftIds = accountIds.filter((accountId) => !existingIds.has(accountId))
-    if (draftIds.length > 0) {
-      const [drafts] = catalog ? [draftIds.map(id => catalog.drafts.get(id)).filter(Boolean)] : await connection.execute(
-        `SELECT draft_account_id AS accountId, type, currency, superseded_at AS supersededAt
-           FROM catledger_finance_update_account_drafts
-          WHERE uid = ? AND update_id = ?
-            AND draft_account_id IN (${draftIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
-        [uid, event.updateId, ...draftIds]
-      )
-      if (drafts.length !== draftIds.length || drafts.some((draft) => draft.currency !== event.currency || draft.supersededAt != null)) {
-        throw importError('VALIDATION_ERROR')
+  const accountIds = referencedAccountIds(event)
+  const categoryIds = referencedCategoryIds(event)
+  const accounts = new Map()
+  const categories = new Map()
+  if (accountIds.length) {
+    if (catalog) {
+      for (const id of accountIds) {
+        const row = catalog.accounts.get(id) || catalog.drafts.get(id)
+        if (row) accounts.set(row.accountId, row)
       }
-      drafts.forEach((draft) => accounts.push(draft))
-    }
-    if (!require('../editor-fields').accountRolesValid(event, new Map(accounts.map(account => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
-    if (fieldSources.accountOwnership && require('../account-ownership').resolve(event, { accounts }).reasons
-      .some(reason => ['account_ownership_invalid','account_ownership_business_required'].includes(reason))) throw importError('VALIDATION_ERROR')
-    if (plan.valid && !allocationAccountsValid(event, plan, new Map(accounts.map((account) => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
-    if (event.counterpartyLedgerAccountId && ((fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target') || repaymentOwnership.decisionFor(event)?.owner === 'self' && repaymentOwnership.decisionFor(event)?.version === repaymentOwnership.VERSION)) {
-      const target = accounts.find((account) => account.accountId === event.counterpartyLedgerAccountId)
-      if (!target || !['credit', 'other_liability'].includes(target.type)) throw importError('VALIDATION_ERROR')
+    } else {
+      const [rows] = await connection.execute(
+        `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
+           FROM catledger_accounts
+          WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
+        [uid, ...accountIds]
+      )
+      for (const row of rows) accounts.set(row.accountId, row)
+      const missing = accountIds.filter(id => !accounts.has(id))
+      if (missing.length) {
+        const [drafts] = await connection.execute(
+          `SELECT draft_account_id AS accountId, type, currency, superseded_at AS supersededAt
+             FROM catledger_finance_update_account_drafts
+            WHERE uid = ? AND update_id = ?
+              AND draft_account_id IN (${missing.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
+          [uid, event.updateId, ...missing]
+        )
+        for (const draft of drafts) accounts.set(draft.accountId, draft)
+      }
     }
   }
-  if (event.categoryId) {
-    const [categories] = catalog ? [[catalog.categories.get(event.categoryId)].filter(Boolean)] : await connection.execute(
-      `SELECT kind FROM catledger_categories
-        WHERE uid = ? AND category_id = ? AND archived_at IS NULL LIMIT 1`,
-      [uid, event.categoryId]
-    )
-    const expectedKind = event.economicNature === ECONOMIC_NATURE.INCOME ? 'income' : 'expense'
-    if (!categories[0] || !['income', 'expense', 'fee'].includes(event.economicNature) || categories[0].kind !== expectedKind) {
-      throw importError('VALIDATION_ERROR')
+  if (categoryIds.length) {
+    if (catalog) {
+      for (const id of categoryIds) {
+        const row = catalog.categories.get(id)
+        if (row && row.archivedAt == null) categories.set(row.categoryId || id, row)
+      }
+    } else {
+      const [rows] = await connection.execute(
+        `SELECT category_id AS categoryId, kind FROM catledger_categories
+          WHERE uid = ? AND category_id IN (${categoryIds.map(() => '?').join(', ')}) AND archived_at IS NULL`,
+        [uid, ...categoryIds]
+      )
+      for (const row of rows) categories.set(row.categoryId, row)
     }
   }
-  const feeCategoryId = fieldSources.repaymentChannelResolution?.feeCategoryId
-  if (feeCategoryId) {
-    const [categories] = catalog ? [[catalog.categories.get(feeCategoryId)].filter(Boolean)] : await connection.execute(
-      `SELECT kind FROM catledger_categories WHERE uid=? AND category_id=? AND archived_at IS NULL LIMIT 1`, [uid, feeCategoryId])
-    if (categories[0]?.kind !== 'expense') throw importError('VALIDATION_ERROR')
-  }
+  if (referenceFailure(event, { accounts, categories })) throw importError('VALIDATION_ERROR')
 }
 
 function finalizeSavedEvent(current, next, actionId, context, actionSource = 'user') {
@@ -222,6 +192,10 @@ async function saveEvents(connection, uid, updateId, pairs, actionId, { openBloc
   const catalog = await loadReferenceCatalog(connection, uid, updateId, pairs.map(pair => pair.next))
   const contexts = await loadEventContexts(connection, uid, updateId)
   for (const { current, next } of pairs) {
+    // 整批入账先逐笔准备，再在这里统一校验。失败时要标出正在校验的这笔，
+    // 不能沿用准备循环留下的最后一笔，否则待核对着落在无关交易上。
+    const batch = require('../local-review-batch').get(connection)
+    if (batch) batch.affected = [next.eventId]
     await validateEventReferences(connection, uid, next, catalog)
     finalizeSavedEvent(current, next, actionId, { ...contexts.get(next.eventId), openBlockingIssues: openBlockingIssues instanceof Map ? openBlockingIssues.get(next.eventId) || 0 : openBlockingIssues })
   }

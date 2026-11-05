@@ -128,7 +128,7 @@ test('微信信用卡还款有卡尾号时可生成稳定转入账户引用', ()
   assert.ok(projection.to.paymentMethodKey)
 })
 
-test('支付宝花呗信用购合并账单还款保留真实转出卡并把目标建模为聚合分配', () => {
+test('支付宝花呗信用购合并账单还款保留真实转出卡，还入端就是花呗这一个账户', () => {
   const projection = projectSourceFunds({
     sourceType: 'alipay', rawTransactionType: '信用借还',
     item: '自动还款-花呗|信用购2026年07月账单', counterparty: '花呗|信用购',
@@ -139,12 +139,15 @@ test('支付宝花呗信用购合并账单还款保留真实转出卡并把目�
   assert.equal(projection.kind, 'repayment')
   assert.equal(projection.from.label, '浙江农商联合银行储蓄卡(5564)')
   assert.ok(projection.from.paymentMethodKey)
-  assert.equal(projection.to.referenceKind, 'aggregate')
-  assert.equal(projection.to.aggregateFamily, 'alipay_huabei_credit')
+  assert.equal(projection.to.referenceKind, 'atomic')
   assert.equal(projection.to.label, '支付宝花呗｜信用购')
-  assert.equal(projection.to.paymentMethodKey, null)
-  assert.equal(projection.to.accountIdentityKey, '')
-  assert.equal(projection.to.unresolvedReason, 'aggregate_allocation_required')
+  assert.equal(projection.to.paymentMethodKey, buildPaymentMethodKey('alipay', '花呗'))
+  assert.equal(projection.to.accountIdentityKey, 'account-identity-v2:alipay:alipay_huabei_credit')
+  assert.equal(projection.to.unresolvedReason, undefined)
+  const resolved = resolveSourceFunds(projection, createMappingIndex([
+    confirmedMapping(projection.to, 'huabei', { accountType: 'credit' })
+  ]))
+  assert.equal(resolved.toAccountId, 'huabei')
 })
 
 test('普通支付宝消费和普通微信转账不伪造成两个自有账户', () => {

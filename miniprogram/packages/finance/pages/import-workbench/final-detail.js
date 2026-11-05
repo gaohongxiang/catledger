@@ -1,5 +1,6 @@
 const model = require('./model')
 const presentation = require('./presentation')
+const { categoryGoodsLabel } = require('../../domain/import-review/category-likeness')
 
 const TITLES = {
   expense: '本批支出', income: '本批收入', refund: '本批退款',
@@ -67,8 +68,16 @@ function presentAccountRows(items) {
 // 列表投影会丢掉版本和分类方向，未分类行要留着，才能在确认页直接选。
 function presentFinalRecord(event) {
   const row = presentation.record(event)
-  if (!event.categoryKind || !event.version) return row
-  return Object.assign({}, row, { version: event.version, categoryKind: event.categoryKind })
+  const extra = {}
+  if (event.categoryKind && event.version) Object.assign(extra, { version: event.version, categoryKind: event.categoryKind })
+  if (Number(event.categoryPeerCount) > 1) {
+    const evidence = event.primaryEvidence || {}
+    const title = categoryGoodsLabel(evidence.item) || categoryGoodsLabel(evidence.counterparty)
+    if (title) row.displayTitle = title
+    if (event.categorySameAmount === false) row.amountText = ''
+    extra.categoryPeerCount = Number(event.categoryPeerCount)
+  }
+  return Object.keys(extra).length ? Object.assign({}, row, extra) : row
 }
 
 module.exports = { buildFinalDetail, presentAccountRows, presentFinalRecord, TITLES }

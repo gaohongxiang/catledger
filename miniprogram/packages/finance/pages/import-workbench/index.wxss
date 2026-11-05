@@ -1023,7 +1023,8 @@ button::after { border: 0; }
   box-sizing: border-box;
   background: transparent;
 }
-.review-decision-heading .review-decision-copy { display: block; }
+.review-decision-heading .review-decision-copy { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 8rpx; min-width: 0; }
+.category-peer-count { color: var(--theme-warning, #a76416); font-size: 22rpx; font-weight: 500; line-height: 1.4; }
 .review-decision-title {
   flex: 0 0 auto;
   color: var(--ui-accent-strong);
@@ -1486,7 +1487,9 @@ button::after { border: 0; }
 .account-choice-account-name { font-size: var(--font-caption, 24rpx); font-weight: 500; }
 .account-choice-account-detail { margin-top: 5rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 .account-choice-check {
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 32rpx;
   height: 32rpx;
   box-sizing: border-box;
@@ -1496,18 +1499,6 @@ button::after { border: 0; }
 }
 .account-choice-selected { background: var(--ui-accent-soft); }
 .account-choice-selected .account-choice-check { background: var(--ui-accent); }
-.account-choice-selected .account-choice-check::after {
-  position: absolute;
-  top: 8rpx;
-  left: 7rpx;
-  width: 14rpx;
-  height: 7rpx;
-  box-sizing: border-box;
-  content: '';
-  border-bottom: 3rpx solid var(--ui-on-accent);
-  border-left: 3rpx solid var(--ui-on-accent);
-  transform: rotate(-45deg);
-}
 .account-choice-ignore-grid { display: flex; gap: var(--layout-space-2); }
 .account-choice-ignore-card {
   position: relative;
@@ -1898,6 +1889,9 @@ button::after { border: 0; }
 .sheet-utility-actions { display: flex; width: 100%; gap: var(--layout-space-2); }
 .sheet-secondary,
 .sheet-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 84rpx;
   margin: 0;
   padding: 0 18rpx;
@@ -1905,7 +1899,8 @@ button::after { border: 0; }
   flex: 1;
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
-  line-height: 84rpx;
+  line-height: 1.2;
+  text-align: center;
   border-radius: var(--theme-radius-small, 12rpx);
 }
 .sheet-secondary { color: var(--ui-muted); background: var(--ui-accent-soft); }
@@ -2343,12 +2338,16 @@ button::after { border: 0; }
   border-top: 0;
 }
 .review-editor-sheet .sheet-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 88rpx;
+  padding: 0 24rpx;
   font-size: var(--font-body, 28rpx);
-  line-height: 1.5;
+  line-height: 1.2;
+  text-align: center;
   border-radius: var(--theme-radius-medium, 18rpx);
   font-weight: 500;
-  padding: 20rpx 18rpx;
 }
 .review-editor-sheet .sheet-utility-actions { justify-content: space-between; }
 .review-editor-sheet .sheet-secondary,
@@ -2357,12 +2356,16 @@ button::after { border: 0; }
   min-width: 0;
   min-height: 88rpx;
   height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   margin: 0;
-  padding: 18rpx 8rpx;
+  padding: 0 8rpx;
   font-size: var(--font-caption, 24rpx);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.2;
+  text-align: center;
   background: transparent;
   border-radius: 0;
 }
@@ -2793,9 +2796,10 @@ button::after { border: 0; }
 .abandon-batch-actions button { flex: 1; width: 0; min-width: 0; margin: 0; padding: 0 12rpx; min-height: 88rpx; font-size: var(--font-caption, 24rpx); line-height: 88rpx; border-radius: var(--theme-radius-small, 12rpx); }
 .abandon-batch-actions .abandon-batch-button { border: 1rpx solid currentColor; }
 
-.draft-sync-note { display: flex; align-items: center; gap: var(--layout-space-3); margin: 12rpx 0; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
-.draft-sync-note text { flex: 1; }
-.draft-sync-note button { margin: 0; padding: 0 12rpx; font-size: var(--font-caption, 24rpx); }
+.draft-sync-note { display: flex; align-items: flex-start; flex-direction: column; gap: 8rpx; margin: 12rpx 0; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.draft-sync-note text { display: block; width: 100%; line-height: 1.5; }
+.draft-sync-note button { align-self: flex-start; width: auto; min-height: 56rpx; margin: 0; padding: 0; line-height: 56rpx; font-size: var(--font-caption, 24rpx); }
+.draft-sync-alert { padding-top: 16rpx; padding-bottom: 16rpx; color: var(--theme-warning, #a76416); background: var(--theme-warning-soft, #fdf6e6); border-radius: var(--theme-radius-small, 12rpx); }
 
 /* 导入各步骤及读取结果共用文字边界；卡片保留自身内边距。 */
 .import-page .file-stage-heading,
@@ -2835,9 +2839,13 @@ button::after { border: 0; }
 .ownership-treatment-copy { flex: 1; min-width: 0; }
 .ownership-treatment-title { display: block; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 1.45; }
 .ownership-treatment-detail { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; line-height: 1.45; }
-.ownership-treatment-check { position: relative; flex-shrink: 0; width: 28rpx; height: 28rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; }
+.ownership-treatment-check { display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex-shrink: 0; width: 28rpx; height: 28rpx; border: 2rpx solid var(--ui-border); border-radius: 50%; }
 .ownership-option-selected .ownership-treatment-check { background: var(--ui-accent); border-color: var(--ui-accent); }
-.ownership-option-selected .ownership-treatment-check::after { content: ''; position: absolute; left: 8rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid var(--ui-on-accent); border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+.mark-check-icon { display: none; width: 18rpx; height: 18rpx; }
+.account-choice-check .mark-check-icon { width: 20rpx; height: 20rpx; }
+.ownership-option-selected .mark-check-icon,
+.account-choice-selected .mark-check-icon,
+.is-selected .mark-check-icon { display: block; }
 
 /* 入账确认与完成页共用常驻公式，内容边缘与标题一致。 */
 .final-stage .final-summary {

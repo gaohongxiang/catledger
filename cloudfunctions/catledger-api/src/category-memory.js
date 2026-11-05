@@ -1,4 +1,5 @@
 const { createHash } = require('node:crypto')
+const { categoryGoodsText } = require('./category-likeness')
 
 const CATEGORY_ALIAS_VERSION = 'category-alias-v2'
 const GENERIC = new Set([
@@ -24,16 +25,19 @@ function sourceFields(row) {
 function categoryMemory(sourceType, row) {
   const raw = sourceFields(row), type = canonicalName(raw.transactionType)
   const meaningful = value => {
-    const name = canonicalName(value)
+    // 发生日期不算商品本身。没有日期的原文与原先的规范名一致，已有记忆仍能对上。
+    const name = categoryGoodsText(value)
     return !GENERIC.has(name) && !PLATFORM.test(name) && name !== type ? name : ''
   }
   const merchant = meaningful(raw.counterparty), item = meaningful(raw.item)
+  // 原文只剩日期时不能当成“没有商品”，否则一次选择会推广到该商户的全部消费。
+  const itemWasOnlyOccurrence = String(raw.item || '').trim() && !item
   const pairKey = merchant && item ? digest(CATEGORY_ALIAS_VERSION, sourceType, 'merchant-item', merchant, item) : null
   const merchantKey = merchant ? digest(CATEGORY_ALIAS_VERSION, sourceType, 'merchant', merchant) : null
   return {
     version: CATEGORY_ALIAS_VERSION,
     // 有商品时只记住商户+商品，不把一次选择推广到该商户的所有消费。
-    aliasKeys: pairKey ? [pairKey] : merchantKey && !item ? [merchantKey] : [],
+    aliasKeys: pairKey ? [pairKey] : merchantKey && !item && !itemWasOnlyOccurrence ? [merchantKey] : [],
     pairKey,
     merchantKey,
     legacyItemKey: item ? digest('category-alias-v1', sourceType, item) : null,

@@ -1,6 +1,7 @@
 const { ASSETS, DEBTS, MOVEMENTS, funds, overrides } = require('./funds-route')
 const { FIELD_MASK } = require('./manual-field-mask')
 const { importError } = require('./errors')
+const evidence = require('./funds-evidence')
 
 const VERSION = 'account-ownership-v1'
 const KINDS = new Set(['ledger', 'external', 'unknown'])
@@ -60,11 +61,14 @@ function read(event = {}) {
 }
 
 function complex(event) {
-  const fields = event.fieldSources || {}, editor = overrides(event)
-  return Boolean(fields.paymentResolution || editor.composition !== 'single' && (fields.paymentAccounts || []).length ||
-    (fields.repaymentAllocations || []).length || editor.incompleteComposition ||
-    fields.repaymentChannelResolution || fields.bankChannelResolution ||
-    fields.loanRepayment || editor.incompleteRepayment)
+  const fields = event.fieldSources || {}
+  // 用户已确认单账户后，残留的组成证据不再让这笔被视为“复杂”，否则保存归属
+  // 会一直要求重核资金关系。
+  const composition = !evidence.single(event) && (Boolean(fields.paymentResolution) ||
+    (fields.paymentAccounts || []).length || (fields.repaymentAllocations || []).length ||
+    Boolean(fields.editorOverrides && fields.editorOverrides.incompleteComposition))
+  return Boolean(composition || fields.repaymentChannelResolution || fields.bankChannelResolution ||
+    fields.loanRepayment || (fields.editorOverrides && fields.editorOverrides.incompleteRepayment))
 }
 
 function protectedBusiness(event) {

@@ -144,29 +144,30 @@ test('贷款已有交易关联与整组更正保留来源、版本和一次付�
       assert.equal(await balance(),String(BigInt(before)-100n))
       assert.equal((await api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'80000')
     })
-    await t.test('同一导入还款的两个目标必须整组关联；单成员自动展开并保护两笔交易',async()=>{
-      const debt2=await makeAccount('credit','80000','合成第二负债'),first=await createLoan()
-      const second=await api('loans.create',{...metadata,accountId:debt2,requestId:randomUUID()})
+    await t.test('花呗信用购还款只形成一笔转账，关联贷款后保护这一笔',async()=>{
+      const first=await createLoan()
       const content=Buffer.from(['支付宝(中国)网络技术有限公司 电子客户回单','交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
         '2026-09-02 12:00:00,信用借还,花呗|信用购,自动还款-花呗|信用购2026年09月账单,1.00,不计收支,合成银行储蓄卡(1234),还款成功,,SYNTHETIC-LOAN-GROUP,,'].join('\n'))
       let update=await prepareContent(content)
       const issues=await imp('reviewIssues.list',{updateId:update.updateId,group:'accounts'})
-      const decisions=issues.items.filter(i=>i.status==='open').map(i=>({issueId:i.issueId,issueVersion:i.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:assetAccountId}}))
+      const decisions=issues.items.filter(i=>i.status==='open').map(i=>({issueId:i.issueId,issueVersion:i.version,operation:'resolve',decision:'apply_fields',
+        fields:{mappingAccountId:/花呗|信用购/.test(i.accountContext.label)?debt:assetAccountId}}))
       if(decisions.length) update=await imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,decisions})
-      const review=(await imp('reviewIssues.list',{updateId:update.updateId,group:'review',status:'open',pageSize:1})).items[0]
-      update=await imp('reviewIssues.resolve',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,issueId:review.issueId,issueVersion:review.version,
-        decision:'apply_fields',fields:{repaymentAllocations:[{accountId:debt,amountMinor:'60'},{accountId:debt2,amountMinor:'40'}]}})
+      for (const issue of (await imp('reviewIssues.list',{updateId:update.updateId,status:'open'})).items) {
+        assert.equal(issue.issueType,'category_assignment')
+        update=await imp('reviewIssues.resolve',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,issueId:issue.issueId,issueVersion:issue.version,
+          decision:'apply_fields',fields:{categoryId}})
+      }
       await imp('financeUpdates.post',{requestId:randomUUID(),updateId:update.updateId,version:update.appliedVersion})
       const [links]=await lab.owner.execute('SELECT transaction_id FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? AND superseded_at IS NULL',[user.uid,update.updateId])
-      assert.equal(links.length,2)
-      const selection=await source([links[0].transaction_id]);assert.equal(selection.transactionIds.length,2)
-      const before=await balance(),data={...smallBase,occurredLocalAt:'2026-09-02T12:00:00',requestId:randomUUID(),mode:'associate',source:selection,
-        allocations:[{...small(first.loanId),principalMinor:'60',interestMinor:'0',feeMinor:'0'},{...small(second.loanId),principalMinor:'40',interestMinor:'0',feeMinor:'0'}]}
+      assert.equal(links.length,1)
+      const selection=await source([links[0].transaction_id]);assert.equal(selection.transactionIds.length,1)
+      const before=await balance(),data={...smallBase,occurredLocalAt:'2026-09-02T12:00:00',requestId:randomUUID(),mode:'associate',source:selection,allocations:[small(first.loanId)]}
       const payment=await api('loans.record',data);assert.equal(await balance(),before)
-      for(const row of links) await assert.rejects(api('transactions.delete',{requestId:randomUUID(),transactionId:row.transaction_id,version:1}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
+      await assert.rejects(api('transactions.delete',{requestId:randomUUID(),transactionId:links[0].transaction_id,version:1}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
       await api('loans.reverse',{requestId:randomUUID(),paymentId:payment.paymentId,version:1,confirmed:true,loans:payment.loans})
       assert.equal(await balance(),before)
-      assert.equal((await source([links[1].transaction_id])).transactionIds.length,2)
+      assert.equal((await source([links[0].transaction_id])).transactionIds.length,1)
     })
   } finally {await lab.close()}
 })
