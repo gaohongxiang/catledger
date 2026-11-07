@@ -159,6 +159,33 @@ function createInstallmentService({getPool,selectLoan}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1,linked}
     })
   }
+  // 自动补偿：把「同计划名 + 同期次」但漏归的未关联来源补进计划。
+  // 起因：早期做计划时只按编号/交易归组（这两列常为空），只带上当行本金，利息/手续费被落下。
+  // 判据：该卡上仍 active、loan_id IS NULL 的来源，若其 (plan_label, period_number) 与本计划已关联的
+  // 某条来源相同，就视为同一笔分期的其余组件，逐个走 attachSource 归入（不改账户余额、不造交易）。
+  // 幂等：无可补项时返回 linked=0，不推进版本；有补项才 +1 版本并回写。
+  async function reconcileInstallmentSources(context) {
+    return write(context,'loans.reconcileInstallmentSources',async(c,uid,data)=>{
+      const loan=await editable(c,uid,data)
+      const [linkedRows]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.loan_id=? AND i.active=1
+        AND i.plan_label IS NOT NULL AND i.plan_label<>'' LIMIT 3601`,[uid,loan.loanId])
+      if(linkedRows.length>3600)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
+      const keys=new Set(linkedRows.map(row=>row.planLabel+'|'+Number(row.periodNumber)))
+      if(!keys.size)return {loanId:loan.loanId,version:Number(loan.version),linked:0}
+      const [orphans]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.account_id=? AND i.active=1 AND i.loan_id IS NULL
+        AND i.plan_label IS NOT NULL AND i.plan_label<>'' LIMIT 3601`,[uid,loan.accountId])
+      if(orphans.length>3600)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
+      const targets=orphans.filter(row=>keys.has(row.planLabel+'|'+Number(row.periodNumber)))
+      let linked=0
+      for(const row of targets){
+        try { linked+=await attachSource(c,uid,loan,row.itemId) }
+        catch(error){ if(!error||!['LOAN_SOURCE_MISMATCH','NOT_FOUND'].includes(error.code))throw error }
+      }
+      if(!linked)return {loanId:loan.loanId,version:Number(loan.version),linked:0}
+      await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
+      return {loanId:loan.loanId,version:Number(loan.version)+1,linked}
+    })
+  }
   async function archiveInstallment(context) {
     return write(context,'loans.archiveInstallment',async(c,uid,data)=>{
       const loan=await selectLoan(c,uid,data.loanId,true)
@@ -197,6 +224,6 @@ function createInstallmentService({getPool,selectLoan}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     })
   }
-  return {installments,installment,planCandidates,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,archiveInstallment,removeInstallmentItem}
+  return {installments,installment,planCandidates,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,reconcileInstallmentSources,archiveInstallment,removeInstallmentItem}
 }
 module.exports={createInstallmentService,loadView,populateTracking}

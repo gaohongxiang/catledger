@@ -75,6 +75,11 @@ Page(themeService.page({
         self.setData({ loading: false })
         self._readLoad = null
       })
+      .then(function (ok) {
+        // 首轮加载完成后（_readLoad 已清空，可安全重入）再尝试自动补偿漏归的分期来源。
+        if (ok && isCurrent()) self.reconcileOrphanSources(isCurrent)
+        return ok
+      })
     return this._readLoad
   },
 
@@ -178,6 +183,28 @@ Page(themeService.page({
     return fetchPage(null)
       .catch(error => { if (valid()) this.setData({ accountSourcesError: error.message || '账单分期暂未读取，请重试' }) })
       .finally(() => { if (valid()) this.setData({ accountSourcesLoading: false }) })
+  },
+
+  // 自动补偿：把「同计划名 + 同期次」但漏归的利息/手续费补进已有计划，免去逐条手点「归入」。
+  // 触发条件：本页还有未归来源、且已存在分期计划。逐个计划调用服务端 reconcile（只认与已关联来源同
+  // 计划名+期次的项，绝不误并另一笔分期）。补到东西后重载一次，带 _reconcileDone 防循环。
+  reconcileOrphanSources: async function (isCurrent) {
+    if (this._reconciling || this.data.saving) return
+    const groups = this.data.accountSources || []
+    const plans = (this.data.accountLoans || []).filter(loan => loan.kind === 'installment' && loan.scheduleTerms)
+    if (!groups.length || !plans.length) return
+    this._reconciling = true
+    let linked = 0
+    try {
+      for (const loan of plans) {
+        if (!isCurrent()) return
+        try {
+          const result = await api.callApi('loans.reconcileInstallmentSources', { loanId: loan.loanId, version: loan.version })
+          linked += Number(result && result.linked || 0)
+        } catch (error) { /* 单个计划补失败不打断页面；下一次进入可再补 */ }
+      }
+    } finally { this._reconciling = false }
+    if (linked > 0 && isCurrent()) await this.loadAccount({ force: true })
   },
 
   // 从账单识别出的分期新建分期计划：带出已知信息到 loan-form。
