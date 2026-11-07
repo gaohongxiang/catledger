@@ -90,6 +90,7 @@ function createHomePage(dependencies) {
       liabilitiesText: '—',
       assetShares: emptyShares(),
       liabilityShares: emptyShares(),
+      installmentPlanPromptText: '',
       asOfText: '',
       alertImportText: '',
       alertDueText: '',
@@ -228,7 +229,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'asOfText', 'alertImportText', 'alertDueText', 'alertImportParts', 'alertDueParts', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'installmentPlanPromptText', 'asOfText', 'alertImportText', 'alertDueText', 'alertImportParts', 'alertDueParts', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }
@@ -245,9 +246,17 @@ function createHomePage(dependencies) {
           const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
           let assetsMinor = '0', liabilitiesMinor = '0'
           ;(Array.isArray(dashboard.accounts) ? dashboard.accounts : []).forEach(function (account) {
-            if (account.nature === 'liability') liabilitiesMinor = addMinor(liabilitiesMinor, account.bookBalanceMinor || '0')
-            else assetsMinor = addMinor(assetsMinor, account.bookBalanceMinor || '0')
+            if (account.nature === 'liability') {
+              // 负债按欠款（账单本期应还 + 未来分期剩余本息）汇总，不再用账面净额。
+              liabilitiesMinor = addMinor(liabilitiesMinor, account.debtMinor == null ? '0' : account.debtMinor)
+            } else {
+              assetsMinor = addMinor(assetsMinor, account.bookBalanceMinor || '0')
+            }
           })
+          const planPromptCount = (Array.isArray(dashboard.accounts) ? dashboard.accounts : []).filter(function (account) {
+            const debtMinor = account.debtMinor == null ? '0' : String(account.debtMinor)
+            return account.nature === 'liability' && !account.archived && account.needsInstallmentPlan && debtMinor !== '0'
+          }).length
           // 本月收支不再上首屏：导入滞后一个月，本月结构性为 0，摆在净资产旁边会读成「这个月没花钱」。
           const shares = composition.composition(dashboard.accounts)
           self.setData({
@@ -255,9 +264,10 @@ function createHomePage(dependencies) {
             incomeText: money.formatMinor(dashboard.summary.incomeMinor),
             expenseText: money.formatMinor(dashboard.summary.expenseMinor),
             assetsText: money.formatMinor(assetsMinor),
-            liabilitiesText: liabilitiesMinor === '0' ? '—' : money.formatMinor(liabilitiesMinor.charAt(0) === '-' ? liabilitiesMinor.slice(1) : liabilitiesMinor),
+            liabilitiesText: liabilitiesMinor === '0' ? '—' : money.formatMinor(liabilitiesMinor),
             assetShares: shares.assets,
             liabilityShares: shares.liabilities,
+            installmentPlanPromptText: planPromptCount > 0 ? planPromptCount + ' 个账户需要新建分期计划' : '',
             asOfText: asOfLabel(dashboard.recentTransactions),
             hasDashboard: true,
             dashboardFresh: Boolean(state && state.complete),
@@ -278,9 +288,13 @@ function createHomePage(dependencies) {
             accounts: dashboard.accounts.filter(function (account) {
               return !account.archived
             }).slice(0, 3).map(function (account) {
+              const liability = account.nature === 'liability'
+              const debtMinor = account.debtMinor == null ? '0' : String(account.debtMinor)
+              const hasDebt = debtMinor !== '0' && debtMinor.charAt(0) !== '-'
+              const directionText = liability ? (hasDebt ? '待还' : '已还清') : '余额'
               return Object.assign({}, account, {
-                balanceText: money.formatMinor(account.displayBalanceMinor),
-                directionText: account.balanceDirection === 'liability' ? '待还' : '余额',
+                balanceText: liability ? money.formatMinor(debtMinor) : money.formatMinor(account.displayBalanceMinor),
+                directionText: directionText,
                 iconPath: ACCOUNT_ICONS[account.type] || ACCOUNT_ICONS.other_asset
               })
             }),

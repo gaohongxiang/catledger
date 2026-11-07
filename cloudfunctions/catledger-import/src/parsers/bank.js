@@ -3,6 +3,7 @@ const { importError } = require('../errors')
 const { observeField } = require('../field-observation')
 const { bankProfile } = require('../profiles/bank')
 const { normalizeRow, parseAmountMinor, parseLocalDateTime } = require('./normalize')
+const { statementSummary } = require('./bank-statement')
 
 const ALIASES = Object.freeze({
   transactionTime: ['交易时间', '交易日期', '交易日', '记账日期', '入账日期', '日期', 'trans date', 'transaction date', 'transaction time', 'date'],
@@ -107,13 +108,18 @@ function inspectBank(sheets, contentHash, requested = {}) {
       samples.push(values.map(value => clean(value).slice(0, 32)))
     }
   }
+  const suggestedKind = /信用卡/.test(sheet.records.slice(0,index+1).map(record=>record.values.join(' ')).join(' ')) ? 'credit' : 'standard'
+  // 预览阶段顺手试解析表头区的账单汇总（本期应还/最低/到期日/周期），供信用卡确认页预填；
+  // 解析不到为 null，不影响既有预览结构（只增字段、不改原有字段）。
+  const statement = suggestedKind === 'credit'
+    ? statementSummary(sheet.records.slice(0, index).map(record => record.values)) : null
   const preview = {
     schemaVersion: 1, sheetIndex, headerRow: recordNumber(header, index), headerToken: headerToken(contentHash, sheetIndex, header),
     sheets: sheets.map((value, i) => ({ index: i, name: value.name.slice(0, 64) })),
     headers: header.values.map((value, i) => ({ index: i, name: clean(value).slice(0, 48) || `第 ${i + 1} 列` })),
     samples,
-    suggested: { columns, amountMode, positiveDirection: '', debitDirection: '', currency: 'CNY',
-      statementKind: /信用卡/.test(sheet.records.slice(0,index+1).map(record=>record.values.join(' ')).join(' ')) ? 'credit' : 'standard' }
+    statement,
+    suggested: { columns, amountMode, positiveDirection: '', debitDirection: '', currency: 'CNY', statementKind: suggestedKind }
   }
   return preview
 }
@@ -279,10 +285,16 @@ function parseBank(sheets, { content, extension, timezoneOffsetMinutes, bankMapp
   const issues = []
   if (controls.some(control => !control.passed)) issues.push({ code: 'statement_count_mismatch', field: 'statement', severity: 'error' })
   if (controlFields.length > countControls.length) issues.push({ code: 'bank_controls_unverified', field: 'statement', severity: 'warning' })
+  // 仅信用卡账单解析表头区的汇总数（本期应还/最低/到期日/周期）；活期等标准账单不写。
+  // 传表头前记录的二维 values，兼容「表头行 + 值行」与「键值文本」两种布局。
+  const headerRecords = sheet.records.slice(0, selectedHeaderIndex).map(record => record.values)
+  const statement = descriptor && /^bank_/u.test(descriptor.profileId) && mapping.statementKind === 'credit'
+    ? statementSummary(headerRecords) : null
   return { descriptor, profile: { profileId: descriptor.profileId, profileVersion: descriptor.profileVersion,
     adapterVersion: descriptor.adapterVersion, policyVersion: descriptor.policyVersion }, bankMapping: mapping,
     metadata: { sourceProfile: { kind: 'missing', identifier: '', displayName: '' },
-      statementStartLocal: dates[0] || null, statementEndLocal: dates[dates.length - 1] || null },
+      statementStartLocal: dates[0] || null, statementEndLocal: dates[dates.length - 1] || null,
+      ...(statement ? { statement } : {}) },
     controls, diagnostics: { unknownHeaders: [], missingFields: [], duplicateFields: [] },
     records: { dataRows: rows, metadataRows, controlFields, decorativeRows },
     issues, rows }

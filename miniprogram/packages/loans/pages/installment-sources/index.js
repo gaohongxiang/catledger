@@ -4,10 +4,8 @@ const session=require('../../../../services/page-read-session')
 const login=require('../../../../services/login-guard')
 const theme=require('../../../../theme/service')
 const money=require('../../../../utils/money')
+const { sourceName } = require('../../../../services/installment-source-model')
 const labels={principal:'本金',interest:'利息',fee:'手续费'}
-// 计划名优先用来源上持久化的账单计划（本金摘要去掉期次后缀），其次才是合同编号标签。
-// 旧来源两者都没有时保留原占位，不拿利息摘要里的“分期付款利息”泛称冒充计划名。
-function sourceName(item){return String(item.planLabel||item.referenceLabel||'').trim()||'待确认所属分期'}
 const businessInitialData = {items:[],nextCursor:null,loading:false,saving:false,errorMessage:'',hasLoaded:false,selected:null,loans:[],loanCursor:null,choosing:false,scopedLabel:''}
 
 Page(theme.page({

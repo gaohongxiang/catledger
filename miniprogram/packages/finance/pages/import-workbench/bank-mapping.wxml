@@ -45,6 +45,21 @@
         </picker>
       </view>
 
+      <view wx:if="{{bankMappingSheet.isCredit}}" class="bank-statement-block">
+        <view class="bank-group-head">
+          <text class="bank-group-title">本期待还款</text>
+          <text class="bank-group-note {{bankMappingSheet.statementDetected ? '' : 'is-warning'}}">{{bankMappingSheet.statementDetected ? '已自动识别，可修改' : '未自动识别，请对照账单填写'}}</text>
+        </view>
+        <view class="bank-statement-field">
+          <text>本期应还（元）</text>
+          <input class="bank-statement-input money-number" type="digit" value="{{bankMappingSheet.statementDueYuan}}" placeholder="对照账单填写，可留空" data-key="statementDueYuan" bindinput="changeBankStatement" disabled="{{busy}}" cursor-spacing="32" aria-label="本期应还" />
+        </view>
+        <view class="bank-statement-field">
+          <text>最低还款（元）</text>
+          <input class="bank-statement-input money-number" type="digit" value="{{bankMappingSheet.statementMinimumYuan}}" placeholder="对照账单填写，可留空" data-key="statementMinimumYuan" bindinput="changeBankStatement" disabled="{{busy}}" cursor-spacing="32" aria-label="最低还款" />
+        </view>
+      </view>
+
       <view wx:if="{{bankMappingSheet.ask && bankMappingSheet.directionMissing && !bankMappingSheet.settingsOpen}}" class="bank-ask">
         <text class="bank-ask-copy">{{bankMappingSheet.ask.copy}}</text>
         <view class="bank-ask-options">

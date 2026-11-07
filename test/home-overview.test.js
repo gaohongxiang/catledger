@@ -39,7 +39,7 @@ test('净值卡按账户性质拆成资产与负债两侧，本月收支不再�
     month: '2026-10',
     accounts: [
       { nature: 'asset', bookBalanceMinor: '1737920' },
-      { nature: 'liability', bookBalanceMinor: '-2062255' }
+      { nature: 'liability', bookBalanceMinor: '-2062255', debtMinor: '2062255' }
     ],
     summary: { incomeMinor: '123400', expenseMinor: '129000', netIncomeMinor: '-5600' },
     cashFlowTrend: [{ month: '2026-10', incomeMinor: '0', expenseMinor: '42881' }], recentTransactions: [] } } : undefined
@@ -146,4 +146,28 @@ test('旧服务端漏回累计范围时拒绝展示和缓存，重试可取得�
   await page.loadDashboard()
   assert.equal(page.data.incomeText, '¥1,234.00')
   assert.equal(page.data.errorMessage, '')
+})
+
+test('负债账户有账单却无分期计划时，首页账户余额标题后提示补建', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = action => action === 'dashboard.get' ? { ok: true, data: { summaryScope: 'all', netWorthMinor: '0', month: '2026-10',
+    accounts: [
+      { nature: 'liability', bookBalanceMinor: '-813739', debtMinor: '813739', needsInstallmentPlan: true },
+      { nature: 'liability', bookBalanceMinor: '-100', debtMinor: '100', needsInstallmentPlan: true },
+      { nature: 'liability', bookBalanceMinor: '0', debtMinor: '0', needsInstallmentPlan: true },
+      { nature: 'asset', bookBalanceMinor: '50000' }
+    ],
+    summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' }, cashFlowTrend: [], recentTransactions: [] } } : undefined
+  await page.loadDashboard()
+  // 只统计有欠款且需补建的活动负债账户：第一、二个（第三个欠款为 0 不计）
+  assert.equal(page.data.installmentPlanPromptText, '2 个账户需要新建分期计划')
+})
+
+test('无需补建分期计划时不出现首页提示', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = action => action === 'dashboard.get' ? { ok: true, data: { summaryScope: 'all', netWorthMinor: '0', month: '2026-10',
+    accounts: [{ nature: 'liability', bookBalanceMinor: '-100', debtMinor: '100', needsInstallmentPlan: false }],
+    summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' }, cashFlowTrend: [], recentTransactions: [] } } : undefined
+  await page.loadDashboard()
+  assert.equal(page.data.installmentPlanPromptText, '')
 })

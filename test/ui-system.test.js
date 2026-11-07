@@ -231,7 +231,8 @@ test('账户页以净资产和异常余额为主，行内图标直达改名与�
   assert.match(template, /wealth-primary[\s\S]*wealth-label[\s\S]*wealth-value[\s\S]*wealth-caption/)
   assert.doesNotMatch(template, /account-row-edit/)
   assert.doesNotMatch(template, /catchtap="openRename"|catchtap="archive"/)
-  assert.match(template, /全部贷款与还款/)
+  // 负债列表去掉「全部贷款与还款」跨账户入口，分期管理走各账户详情页。
+  assert.doesNotMatch(template, /全部贷款与还款|openAllLoans/)
   assert.doesNotMatch(template, /accountDetail|detail-sheet|detail-action-list/)
   assert.doesNotMatch(template, /<button[^>]+class="account-row/)
   assert.doesNotMatch(template, /<button[^>]+class="archived-toggle/)
@@ -247,7 +248,10 @@ test('账户页以净资产和异常余额为主，行内图标直达改名与�
   assert.match(source, /archivedExpanded/)
   assert.match(source, /pages\/account-detail\/index\?accountId=/)
   assert.doesNotMatch(source, /openRename|openCorrection|loadAccountLoans|closeAccountDetail|findAccount/)
-  assert.match(model, /溢缴余额/)
+  // 负债账户改为「欠款」口径：不再出现「溢缴余额」，保留待还/已还清与统计口径。
+  assert.doesNotMatch(model, /溢缴余额/)
+  assert.match(model, /待还/)
+  assert.match(model, /已还清/)
   assert.match(model, /amountTone/)
 })
 

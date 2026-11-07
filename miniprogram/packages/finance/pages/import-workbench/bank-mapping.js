@@ -33,7 +33,9 @@ function displayAmount(value) {
 
 function view(clientId, name, preview, draft) {
   const current = Object.assign({}, preview.suggested, draft, {
-    columns: Object.assign({}, draft ? draft.columns : preview.suggested.columns)
+    columns: Object.assign({}, draft ? draft.columns : preview.suggested.columns),
+    // 账单汇总：用户改过的优先，其次用后端预览时自动识别的，最后空。
+    statement: Object.assign({}, (draft && draft.statement) || preview.statement || {})
   })
   const amountFields = { direction: ['amount', 'direction'], split: ['income', 'expense'], signed: ['amount'] }[current.amountMode]
   const required = ['transactionTime'].concat(amountFields)
@@ -143,7 +145,15 @@ function view(clientId, name, preview, draft) {
     amountModes: MODES, modeIndex: MODES.findIndex(mode => mode.value === current.amountMode),
     directionOptions: DIRECTIONS, positiveIndex: DIRECTIONS.findIndex(option => option.value === current.positiveDirection),
     debitIndex: DIRECTIONS.findIndex(option => option.value === current.debitDirection), headerRowInput: String(preview.headerRow),
-    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0, error: '' }
+    statementOptions:STATEMENTS,statementIndex:current.statementKind==='credit'?1:0, error: '',
+    // 信用卡账单汇总（本期应还/最低还款可编辑；到期日/周期自动带出可改）。
+    // 预览里的 statement 金额是「元」字符串（如 8137.39），直接作为输入框初值。
+    isCredit: (current.statementKind || 'standard') === 'credit',
+    statementDueYuan: current.statement && current.statement.statementDueMinor != null ? String(current.statement.statementDueMinor) : '',
+    statementMinimumYuan: current.statement && current.statement.statementMinimumMinor != null ? String(current.statement.statementMinimumMinor) : '',
+    statementDueDate: (current.statement && current.statement.statementDueDate) || '',
+    statementCycle: (current.statement && current.statement.statementCycle) || '',
+    statementDetected: Boolean(current.statement && (current.statement.statementDueMinor != null || current.statement.statementMinimumMinor != null)) }
 }
 
 function payload(sheet) {
@@ -156,9 +166,22 @@ function payload(sheet) {
   if (sheet.draft.amountMode === 'direction' && !sheet.draft.debitDirection && sheet.preview.samples.some(function (row) {
     return /^(借|贷|借方|贷方|debit|credit|dr|cr|d|c)$/i.test(String(row[columns.direction] || '').trim())
   })) return { error: '请确认借方 / DR / D 表示流入还是流出账户' }
-  return { value: { schemaVersion: 1, sheetIndex: sheet.preview.sheetIndex, headerRow: sheet.preview.headerRow,
+  const statementKind = sheet.draft.statementKind || 'standard'
+  const value = { schemaVersion: 1, sheetIndex: sheet.preview.sheetIndex, headerRow: sheet.preview.headerRow,
     headerToken: sheet.preview.headerToken, columns: columns, amountMode: sheet.draft.amountMode,
-    positiveDirection: sheet.draft.positiveDirection || '', debitDirection: sheet.draft.debitDirection || '', currency: 'CNY',statementKind:sheet.draft.statementKind || 'standard' } }
+    positiveDirection: sheet.draft.positiveDirection || '', debitDirection: sheet.draft.debitDirection || '', currency: 'CNY', statementKind: statementKind }
+  // 信用卡账单：把用户在确认页填/改的汇总数一并提交（可空，后端会校验）。
+  if (statementKind === 'credit') {
+    const statement = {}
+    const due = String(sheet.statementDueYuan == null ? '' : sheet.statementDueYuan).trim()
+    const minimum = String(sheet.statementMinimumYuan == null ? '' : sheet.statementMinimumYuan).trim()
+    if (due) statement.statementDueMinor = due
+    if (minimum) statement.statementMinimumMinor = minimum
+    if (sheet.statementDueDate) statement.statementDueDate = String(sheet.statementDueDate).trim()
+    if (sheet.statementCycle) statement.statementCycle = String(sheet.statementCycle).trim()
+    value.statement = statement
+  }
+  return { value: value }
 }
 
 module.exports = { view, payload }

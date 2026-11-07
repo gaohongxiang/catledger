@@ -150,3 +150,22 @@
 .account-loan-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .account-loan-amount { text-align: right; overflow-wrap: anywhere; max-width: 45%; }
 .account-loans-error { padding: 20rpx 0; color: var(--theme-danger); font-size: var(--font-caption); }
+
+/* 账单里的分期（未建计划）：与分期计划区分开，引导新建/归入。 */
+.account-sources-count { color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
+.account-source-row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; width: 100%; box-sizing: border-box; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); }
+.account-source-row .account-loan-copy { flex: 1 1 auto; min-width: 0; display: block; overflow: hidden; }
+.account-source-row .account-loan-copy text { display: block; }
+.account-source-actions { display: flex; flex: 0 0 auto; gap: 16rpx; }
+.account-source-actions .account-source-btn { display: inline-flex !important; align-items: center; justify-content: center; flex: 0 0 auto; width: auto !important; height: 60rpx; min-height: 60rpx; margin: 0; padding: 0 28rpx; box-sizing: border-box; font-size: var(--font-caption, 26rpx); font-weight: 500; line-height: 1; color: var(--theme-accent-strong) !important; background: var(--theme-accent-soft, rgba(190,91,36,.14)) !important; border: 2rpx solid var(--theme-accent-strong) !important; border-radius: 999rpx !important; }
+.account-source-actions .account-source-btn::after { border: 0 !important; }
+.account-source-actions .account-source-btn:active { opacity: .7; }
+.account-source-actions .account-source-btn[disabled] { opacity: .4; }
+.account-statement-sources { margin-top: 20rpx; padding-top: 16rpx; border-top: 1rpx solid var(--theme-line); }
+.account-sources-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.account-statement-subtitle { font-size: var(--font-body, 28rpx); font-weight: 500; color: var(--theme-ink); }
+.sources-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
+.sources-sheet { width: 100%; box-sizing: border-box; max-height: 70vh; overflow-y: auto; padding: 28rpx 24rpx calc(28rpx + env(safe-area-inset-bottom)); background: var(--theme-surface); color: var(--theme-ink); box-shadow: 0 -8rpx 32rpx rgba(0,0,0,.35); border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0; }
+.sources-title { display: block; margin-bottom: 12rpx; font-size: var(--font-section, 32rpx); font-weight: 500; color: var(--theme-ink); }
+.sources-choice { padding: 26rpx 20rpx; margin-top: 12rpx; border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-medium, 18rpx); color: var(--theme-ink); font-size: var(--font-body, 28rpx); }
+.sources-choice:active { opacity: .7; }

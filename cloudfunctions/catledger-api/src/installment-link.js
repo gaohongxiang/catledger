@@ -29,12 +29,16 @@ async function collapseDuplicate(c,uid,item,canonical) {
 async function sourceGroup(c,uid,loan,source) {
   const items=new Map(),references=new Set(),transactions=new Set()
   let referenceKeys=source.referenceKey?[source.referenceKey]:[],transactionIds=source.transactionId?[source.transactionId]:[],first=true
+  // 无编号、无共同交易时，用「同一计划名 + 同一期次」把本金与利息归成一组（同一笔分期的两行）。
+  const planLabel=String(source.planLabel||'').trim()
   while (first || referenceKeys.length || transactionIds.length) {
     const filters=[],values=[uid,loan.accountId]
     if(first){filters.push('i.item_id=?');values.push(source.itemId)}
     for(const [column,keys] of [['reference_key',referenceKeys],['transaction_id',transactionIds]]) {
       if(keys.length){filters.push(`i.${column} IN (${keys.map(()=>'?').join(',')})`);values.push(...keys)}
     }
+    // 首轮按计划名+期次兜底圈同组（仅当计划名非空，避免误把同额不同笔合并）。
+    if(first && planLabel){filters.push('(i.plan_label=? AND i.period_number=?)');values.push(planLabel,source.periodNumber)}
     referenceKeys.forEach(key=>references.add(key));transactionIds.forEach(id=>transactions.add(id))
     const [rows]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.account_id=? AND i.active=1 AND (${filters.join(' OR ')})
       ORDER BY i.period_number,i.created_at,i.item_id LIMIT 3601`,values)

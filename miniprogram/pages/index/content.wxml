@@ -128,6 +128,7 @@
       <section-header class="home-card-head" compact title="账户余额">
           <text class="section-link" bindtap="openAccounts">全部</text>
       </section-header>
+      <view wx:if="{{installmentPlanPromptText}}" class="account-plan-prompt">{{installmentPlanPromptText}}</view>
 
       <view wx:if="{{accounts.length > 0}}" class="account-list">
         <view wx:for="{{accounts}}" wx:key="accountId" class="account-row" bindtap="openAccounts">

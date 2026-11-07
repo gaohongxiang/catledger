@@ -26,6 +26,9 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
   const sourcesByNumber=new Map(),prepaidByNumber=new Map()
   for(const item of items)if(item.active!==false){const n=Number(item.periodNumber);if(!sourcesByNumber.has(n))sourcesByNumber.set(n,[]);sourcesByNumber.get(n).push(item)}
   for(const item of prepaid){const n=Number(item.periodNumber);prepaidByNumber.set(n,(prepaidByNumber.get(n)||0n)+BigInt(item.amountMinor))}
+  // 账单锚点：导入账单里出现的最早期次。它之前的期次视为已还（账单能到第 N 期，前面都过了）。
+  let anchorTerm = null
+  for (const item of items) if (item.active !== false) { const n = Number(item.periodNumber); if (anchorTerm == null || n < anchorTerm) anchorTerm = n }
   const rows = original.map(plan => {
     const old = saved.get(plan.periodNumber), row = { ...plan, ...old }, exception = exceptions[plan.periodNumber]
     const prepaidFee=prepaidByNumber.get(plan.periodNumber)||0n
@@ -35,7 +38,9 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
     const actualPaid=old&&(old.status==='paid'||prepaidFee>0n&&FIELDS.every(f=>BigInt(row['paid'+f[0].toUpperCase()+f.slice(1)+'Minor']||'0')>=BigInt(row[f+'Minor']))),actualPartial=old&&!actualPaid&&old.status==='partial'
     const historyFact = (progress.historyFacts||{})[plan.periodNumber]
     const partial = Boolean(!historyFact && (actualPartial || !actualPaid && exception === 'partial'))
-    const complete = Boolean(!row.cancelled && (actualPaid || exception !== 'unpaid' && !partial && (exception === 'completed' || plan.periodNumber <= through)))
+    // 账单锚点之前的期次（未被显式标为未还/部分）按已还处理。
+    const beforeAnchor = anchorTerm != null && plan.periodNumber < anchorTerm
+    const complete = Boolean(!row.cancelled && (actualPaid || exception !== 'unpaid' && !partial && (exception === 'completed' || plan.periodNumber <= through || beforeAnchor)))
     const amounts = Object.fromEntries(FIELDS.map(field => {
       const key = 'unpaid' + field[0].toUpperCase() + field.slice(1) + 'Minor'
       return [key, complete || row.cancelled ? '0' : String(row[key] != null ? row[key] : row[field + 'Minor'])]

@@ -212,3 +212,20 @@ test('旧借款的历史行和后续期次也连续追加，不重复历史期�
   assert.deepEqual(page.data.periodRows.map(r=>r.term),Array.from({length:12},(_,i)=>i+1))
   assert.equal(page.data.scheduleMore,false);assert.equal(page.data.scheduleHistorical,true)
 })
+
+test('未还期次按时点与证据区分：未到期 / 待核对 / 部分已还 / 已还，不把过期未导入叫未还或逾期', () => {
+  const today = '2026-06-20'
+  // 未来日期、无还款 → 未到期
+  const future = { ...period(9, 'unpaid'), dueDate: '2026-08-15' }
+  assert.equal(model.rowView(future, today).state, '未到期')
+  assert.equal(model.rowView(future, today).overdue, false)
+  // 已过日期、无证据 → 待核对（不是"未还"，也不标逾期）
+  const past = { ...period(2, 'unpaid'), dueDate: '2026-02-15' }
+  assert.equal(model.rowView(past, today).state, '待核对')
+  assert.equal(model.rowView(past, today).overdue, false)
+  // 部分已还
+  assert.equal(model.rowView(period(3, 'partial'), today).state, '部分已还')
+  // 已还（实际付款确认）
+  const paidRow = { ...period(1, 'paid'), paymentConfirmed: true }
+  assert.equal(model.rowView(paidRow, today).state, '已还')
+})

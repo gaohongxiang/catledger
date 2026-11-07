@@ -103,8 +103,10 @@
 .schedule-repayment { min-width: 0; padding-left: var(--layout-space-1); text-align: center; color: var(--detail-muted); font-size: 20rpx; }
 .schedule-repayment .schedule-repayment-button { box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 64rpx; margin: 0; padding: 8rpx 4rpx; border: 1rpx solid var(--detail-line); border-radius: 10rpx; background: var(--detail-soft); color: var(--detail-accent); font-size: 20rpx; line-height: 1.4; white-space: nowrap; }
 .schedule-repayment-button::after { border: 0; }
-.schedule-choice { display: flex; align-items: center; justify-content: center; min-height: 64rpx; white-space: nowrap; color: var(--detail-accent); }
-.schedule-choice checkbox { transform: scale(.7); margin: 0 -4rpx; }
+.schedule-choice { display: flex; align-items: center; justify-content: center; gap: 8rpx; min-height: 64rpx; white-space: nowrap; color: var(--detail-accent); }
+.schedule-choice .schedule-check { width: 38rpx; height: 38rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 2rpx solid var(--theme-line, rgba(255,255,255,.35)); border-radius: 9rpx; background: transparent; }
+.schedule-choice .schedule-check.is-checked { background: var(--detail-accent, #be5b24); border-color: var(--detail-accent, #be5b24); }
+.schedule-choice .schedule-check.is-checked::after { content: ''; width: 9rpx; height: 16rpx; margin-top: -4rpx; border: solid #fff; border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 .schedule-choice-note { display: block; margin: 0 4rpx 16rpx; color: var(--detail-muted); font-size: 20rpx; line-height: 1.6; }
 .schedule-row-paid { color: var(--detail-muted); }
 .schedule-row-paid .schedule-interest { opacity: .65; }

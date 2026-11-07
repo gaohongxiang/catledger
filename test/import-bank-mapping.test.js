@@ -372,3 +372,36 @@ test('必填未选时“确认并解析”不可点击，文案仍说明缺什�
   assert.equal(sheet.ready, false)
   assert.match(sheet.copyText, /点列名换列/, '预览表头要保留换列提示')
 })
+
+test('信用卡账单：确认页预填解析出的汇总数，且提交时带上用户填/改的值', () => {
+  const creditPreview = {
+    schemaVersion: 1, sheetIndex: 0, headerRow: 3, headerToken: 'tok',
+    sheets: [{ index: 0, name: '账单' }], headers: ['交易日期', '交易金额', '收支', '摘要', '卡号'].map((name, index) => ({ name, index })),
+    samples: [['2026-08-31', '-1737.39', '收入', '还款', '6106']],
+    statement: { statementDueMinor: '8137.39', statementMinimumMinor: '7016.04', statementDueDate: '2026-09-02', statementCycle: '20260714-20260813' },
+    suggested: { columns: { transactionTime: 0, amount: 1, direction: 2, item: 3, paymentMethod: 4 }, amountMode: 'signed', positiveDirection: '', debitDirection: '', currency: 'CNY', statementKind: 'credit' }
+  }
+  let sheet = mapping.view('file', '合成信用卡.xls', creditPreview)
+  assert.equal(sheet.isCredit, true)
+  assert.equal(sheet.statementDetected, true)
+  // 预填为元显示（预览里的 statement 金额即元字符串）
+  assert.equal(sheet.statementDueYuan, '8137.39')
+  assert.equal(sheet.statementMinimumYuan, '7016.04')
+  assert.equal(sheet.statementDueDate, '2026-09-02')
+  assert.equal(sheet.statementCycle, '20260714-20260813')
+  // 用户改金额后，payload 带上 statement（元）
+  const edited = Object.assign({}, sheet, { statementDueYuan: '9000.00', statementMinimumYuan: '8000.00' })
+  edited.draft = Object.assign({}, sheet.draft, { positiveDirection: 'expense' })
+  const payload = mapping.payload(edited).value
+  assert.equal(payload.statementKind, 'credit')
+  assert.deepEqual(payload.statement, { statementDueMinor: '9000.00', statementMinimumMinor: '8000.00', statementDueDate: '2026-09-02', statementCycle: '20260714-20260813' })
+})
+
+test('标准账单不显示账单汇总、也不提交 statement', () => {
+  const standard = { schemaVersion: 1, sheetIndex: 0, headerRow: 1, headerToken: 'tok', sheets: [{ index: 0, name: '明细' }],
+    headers: ['交易日期', '交易金额', '借贷', '摘要'].map((name, index) => ({ name, index })), samples: [['2026-09-01', '10', 'DR', 'x']],
+    suggested: { columns: { transactionTime: 0, amount: 1, direction: 2, item: 3 }, amountMode: 'direction', positiveDirection: '', debitDirection: '', currency: 'CNY', statementKind: 'standard' } }
+  const sheet = mapping.view('file', '合成.xls', standard, { columns: { transactionTime: 0, amount: 1, direction: 2 }, amountMode: 'direction', debitDirection: 'expense' })
+  assert.equal(sheet.isCredit, false)
+  assert.equal(mapping.payload(sheet).value.statement, undefined)
+})

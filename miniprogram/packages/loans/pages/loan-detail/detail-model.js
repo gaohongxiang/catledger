@@ -23,13 +23,20 @@ function historicalRows(loan, preview) {
 function rowView(row, date) {
   const paid = row.status === 'paid' || row.status === 'historical'
   const manualConfirmed = paid && !row.paymentConfirmed && (Boolean(row.completedByProgress) || row.status === 'historical')
-  const overdue = row.stateText ? row.stateText === '已逾期' : !paid && !row.cancelled && row.dueDate <= date
+  // 后端「逾期」仅按日期判断，无法区分真逾期与到期未导入账单，故不标逾期红行，统一按四态展示。
+  const overdue = false
+  let state
+  if (row.cancelled) state = '已取消'
+  else if (manualConfirmed || row.paymentConfirmed || paid) state = '已还'
+  else if (row.status === 'partial' || row.stateText === '部分未还') state = '部分已还'
+  else if (String(row.dueDate || '') > String(date)) state = '未到期'
+  else state = '待核对'
   return {
     key: row.periodId || 'history-' + row.periodNumber, term: row.periodNumber, date: String(row.dueDate || '').replace(/-/g, '.'),
     payment: cost.amount(cost.total(row)), principal: cost.amount(row.principalMinor), interestFee: cost.amount(addMinor(row.interestMinor, row.feeMinor)),
     paid, manualConfirmed, overdue, current: Boolean(row.current), cancelled: Boolean(row.cancelled), historical: row.status === 'historical',
     difference: Boolean(row.differences && row.differences.length),
-    state: row.cancelled ? '已取消' : manualConfirmed ? '已还' : row.paymentConfirmed ? '已还' : row.stateText || (row.status === 'partial' ? '部分已还' : paid ? '已还' : overdue ? '待确认' : '')
+    state
   }
 }
 function build(loan, view, preview, date) {

@@ -62,8 +62,7 @@ function createObjectKey(uid, importId, extension) {
   return `catledger-import/${userScope}/${importId}/${randomUUID()}.${extension}`
 }
 
-async function markContentDeleted(getPool, provider, subjectHash, importId, fileID) {
-  // 同一个已清理对象的提交后重试沿用同一请求；post/abandon重放不重复推进账本修订。
+async function markContentDeleted(getPool, provider, subjectHash, importId, fileID) {  // 同一个已清理对象的提交后重试沿用同一请求；post/abandon重放不重复推进账本修订。
   const digest = digestParts('cleanup-file-v1', importId, fileID)
   const requestId = digest.slice(0, 8) + '-' + digest.slice(8, 12) + '-4' + digest.slice(13, 16) + '-8' + digest.slice(17, 20) + '-' + digest.slice(20, 32)
   return executeIdempotentMutation({
@@ -82,6 +81,45 @@ async function markContentDeleted(getPool, provider, subjectHash, importId, file
       return { cleaned: true }
     }
   })
+}
+
+// 校验前端确认页填/改的账单汇总（本期应还/最低/到期日/周期）。返回规范化对象，非法抛 VALIDATION_ERROR。
+// 金额按「元」字符串传入（如 8137.39），转成整数分保存；到期日 YYYY-MM-DD；周期 YYYYMMDD-YYYYMMDD。
+function normalizeStatementInput(input) {
+  if (input == null) return null
+  if (typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).some(key => !['statementDueMinor', 'statementMinimumMinor', 'statementDueDate', 'statementCycle'].includes(key))) {
+    throw importError('VALIDATION_ERROR')
+  }
+  const out = {}
+  const money = (value, label) => {
+    if (value == null || value === '') return null
+    const text = String(value).replace(/,/gu, '').trim()
+    const matched = text.match(/^(\d+)(?:\.(\d{1,2}))?$/u)
+    if (!matched) throw importError('VALIDATION_ERROR')
+    const minor = matched[1] + (matched[2] || '').padEnd(2, '0')
+    if (minor.length > 19 || (minor.length === 19 && minor > '9223372036854775807')) throw importError('VALIDATION_ERROR')
+    return minor
+  }
+  const due = money(input.statementDueMinor)
+  const minimum = money(input.statementMinimumMinor)
+  if (due != null) out.statementDueMinor = due
+  if (minimum != null) out.statementMinimumMinor = minimum
+  if (input.statementDueDate != null && input.statementDueDate !== '') {
+    const date = String(input.statementDueDate)
+    const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/u)
+    if (!m) throw importError('VALIDATION_ERROR')
+    const y = Number(m[1]), mo = Number(m[2]), da = Number(m[3])
+    const probe = new Date(Date.UTC(y, mo - 1, da))
+    if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== da) throw importError('VALIDATION_ERROR')
+    out.statementDueDate = date
+  }
+  if (input.statementCycle != null && input.statementCycle !== '') {
+    const cycle = String(input.statementCycle)
+    if (!/^\d{8}-\d{8}$/u.test(cycle)) throw importError('VALIDATION_ERROR')
+    out.statementCycle = cycle
+  }
+  return Object.keys(out).length ? out : null
 }
 
 function createImportService({ getPool, storage }) {
@@ -239,6 +277,12 @@ function createImportService({ getPool, storage }) {
       // returned to the owner, never copied into receipts or diagnostic logs.
       return saved.import.state === 'failed' && saved.import.errorCode === 'BANK_MAPPING_REQUIRED'
         ? { ...saved, mappingRequired: true, bankPreview: document.bankPreview } : saved
+    }
+
+    // 信用卡账单：前端确认页填/改的账单汇总优先于自动解析结果（用户可核对修正）。
+    const overlayStatement = normalizeStatementInput(context.data.statement)
+    if (overlayStatement && document.descriptor && document.descriptor.sourceType === 'bank') {
+      document.metadata = { ...(document.metadata || {}), statement: overlayStatement }
     }
 
     const result = await diagnosePhase('persist_file', () => executeIdempotentMutation({

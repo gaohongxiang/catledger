@@ -45,7 +45,7 @@ test('停用列表进入原账户详情后可以恢复，原 ID、版本和余�
 
 test('停用前说明余额保留、转账与贷款还款限制和恢复入口；取消不写入', async () => {
   const h = runtime()
-  h.accounts = [account({ archived: false, nature: 'liability', type: 'other_liability', bookBalanceMinor: '-123400', balanceDirection: 'liability' })]
+  h.accounts = [account({ archived: false, nature: 'liability', type: 'other_liability', bookBalanceMinor: '-123400', balanceDirection: 'liability', debtMinor: '123400' })]
   h.respond = action => action === 'loans.list' ? { ok: true, data: { items: [], nextCursor: null } } : undefined
   const page = await detail(h), work = page.archive()
   assert.match(h.modals[0].content, /1,234\.00/)

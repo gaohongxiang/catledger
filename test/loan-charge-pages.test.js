@@ -306,26 +306,6 @@ test('本期费用/费用更正预览迟到，不跨期回填也不恢复旧选�
  assert.equal(p.data.chargeImpact,null);assert.equal(p.data.chargeEdit.operation,'refund')
 })
 
-test('逐期列表直接进入指定期的还款草稿，不打开明细或写账；已还/取消/历史期、过期视图保持保护',async()=>{
- const {h,p}=detail(),base=h.respond
- h.respond=(action,data)=>{
-  const result=base(action,data)
-  if(action==='loans.installments')return ok({...result.data,items:['unpaid','partial','paid','historical','unpaid'].map((status,index)=>({periodNumber:index+1,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status,cancelled:index===4}))})
-  return result
- }
- await p.load()
- const calls=h.calls.length
- for(const term of [1,2])p.recordListedPayment({currentTarget:{dataset:{term}}})
- assert.deepEqual(h.navigation,['/packages/loans/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=1','/packages/loans/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=2'])
- assert.equal(p.data.periodOpen,false);assert.equal(h.calls.length,calls)
- for(const term of [3,4,5,99])p.recordListedPayment({currentTarget:{dataset:{term}}})
- const event={currentTarget:{dataset:{term:2}}}
- for(const field of ['saving','loading','detailLoading']){p.setData({[field]:true});p.recordListedPayment(event);p.setData({[field]:false})}
- p.setData({'loan.archived':true});p.recordListedPayment(event);p.setData({'loan.archived':false})
- assert.equal(h.navigation.length,2)
- p.onHide();p.recordListedPayment(event);assert.equal(h.navigation.length,2)
-})
-
 test('从第二期记还款带入未付金额和上次银行卡；保存一次提交本息费，失败保留草稿',async()=>{
  const {h,p}=detail(),base=h.respond
  h.accounts.push({accountId:'bank',type:'bank',name:'合成银行卡',archived:false})

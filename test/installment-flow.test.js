@@ -2,15 +2,14 @@ const test = require('node:test'), assert = require('node:assert/strict')
 const {buildView,updateProgress}=require('../cloudfunctions/catledger-api/src/installment-view')
 const {installmentEvidence}=require('../cloudfunctions/catledger-import/src/profiles/bank-installment')
 const loan={kind:'installment',scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',feePerTermMinor:null,feeUpfrontMinor:null,firstPaymentDate:'2025-10-31',remainingPrincipalMinor:'2400000',installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',discountKind:null,discountValue:null}}
-test('L09 第12期账单只证明出账；单期确认10不扩散，缺11不定逾期',()=>{
+test('L09 账单锚点：第12期出现即前11期已还，第12期本身仍需证据',()=>{
  const items=[{periodNumber:12,component:'principal',active:true}]
- const before=buildView(loan,[],items,'2026-09-23');assert.equal(before.summary.paidPeriods,0);assert.equal(before.rows[11].billed,true)
+ const before=buildView(loan,[],items,'2026-09-23')
+ assert.equal(before.summary.paidPeriods,11);assert.equal(before.rows[11].billed,true);assert.equal(before.rows[11].complete,false)
+ assert.equal(before.rows[10].complete,true);assert.equal(before.summary.completedThrough,11)
  const progress=updateProgress(loan,{periodNumber:10,status:'completed'}),after=buildView({...loan,progress},[],items,'2026-09-23')
- assert.equal(after.summary.paidPeriods,1);assert.equal(after.rows[9].complete,true);assert.equal(after.summary.completedThrough,0)
- assert.equal(after.rows[10].complete,false);assert.equal(after.rows[11].complete,false)
- assert.deepEqual(before.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:12},(_,i)=>i+1))
- assert.ok(before.summary.repaymentPrompts.every(r=>r.paid))
- assert.equal(after.summary.remainingPrincipalMinor,'2400000');assert.equal(after.summary.estimatedPrincipalMinor,'2200000')
+ assert.equal(after.rows[9].complete,true);assert.equal(after.rows[10].complete,true);assert.equal(after.rows[11].complete,false)
+ assert.equal(after.summary.remainingPrincipalMinor,'2400000');assert.equal(after.summary.estimatedPrincipalMinor,'200000')
 })
 test('L09 批量范围需明确确认；保留未还/部分及范围外的单期确认，实付12不扩散',()=>{
  let progress=updateProgress(loan,{periodNumber:9,status:'unpaid'});progress=updateProgress({...loan,progress},{periodNumber:12,status:'completed'})

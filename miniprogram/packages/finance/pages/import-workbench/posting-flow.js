@@ -206,6 +206,15 @@ module.exports = {
         const summary = await api.readSummary(receipt.update.updateId)
         if (active()) this.applyUpdateView(summary)
       } catch (error) { /* 已入账状态保留，用户可独立刷新。 */ }
+      // 账单已导入但负债账户还没有分期计划时提醒补建/关联，避免总欠款漏掉分期部分。
+      try {
+        const ledgerApi = require('../../../../services/catledger-api')
+        const list = await ledgerApi.callApi('accounts.list', {})
+        const missing = (Array.isArray(list && list.accounts) ? list.accounts : []).filter(function (a) {
+          return a.nature === 'liability' && !a.archived && a.needsInstallmentPlan
+        }).length
+        if (active() && missing > 0) wx.showToast({ title: missing + ' 个账户需要新建分期计划', icon: 'none', duration: 3000 })
+      } catch (error) { /* 提示失败不阻断入账结果。 */ }
     } catch (error) {
       if (active() && error.code === 'LOCAL_REORGANIZE_REQUIRED') {
         this.showResumeNotice({source:'local',state:'server_changed',canContinue:true,

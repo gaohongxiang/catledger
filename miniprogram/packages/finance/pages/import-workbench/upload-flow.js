@@ -410,8 +410,14 @@ module.exports = {
     this.setData({ bankMappingSheet: next })
   },
 
-  chooseBankDirection: function (event) {
+  changeBankStatement: function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
+    const key = event.currentTarget.dataset.key
+    if (key !== 'statementDueYuan' && key !== 'statementMinimumYuan') return
+    this.setData({ ['bankMappingSheet.' + key]: event.detail.value, 'bankMappingSheet.error': '' })
+  },
+
+  chooseBankDirection: function (event) {    if (this.data.busy || !this.data.bankMappingSheet) return
     const sheet = this.data.bankMappingSheet, key = event.currentTarget.dataset.key, value = event.currentTarget.dataset.value
     if ((key !== 'positiveDirection' && key !== 'debitDirection') || (value !== 'income' && value !== 'expense')) return
     const draft = Object.assign({}, sheet.draft, { columns: Object.assign({}, sheet.draft.columns) })
@@ -520,9 +526,13 @@ module.exports = {
     if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
     const file = this.data.files.find(item => item.clientId === sheet.clientId)
     if (!file) return
-    this.setFileState(file.clientId, { bankMapping: result.value })
+    // bankMapping 里只带映射；账单汇总单独作为 statement 传给后端（信用卡才带）。
+    const mappingValue = Object.assign({}, result.value)
+    const statement = mappingValue.statement
+    delete mappingValue.statement
+    this.setFileState(file.clientId, { bankMapping: mappingValue })
     this.setData({ busy: true })
-    await this.parsePreparedFile(file.clientId, file.fileID, { bankMapping: result.value })
+    await this.parsePreparedFile(file.clientId, file.fileID, statement ? { bankMapping: mappingValue, statement: statement } : { bankMapping: mappingValue })
     this.syncUploadSummary()
     const updated = this.data.files.find(item => item.clientId === file.clientId)
     this.setData({ busy: false, phase: 'files_ready', bankMappingSheet: updated.state === 'ready' || updated.state === 'duplicate'

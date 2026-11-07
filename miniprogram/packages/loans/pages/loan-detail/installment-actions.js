@@ -26,13 +26,6 @@ module.exports = {
     finally { if (current() && token === this._periodToken) this.setData({ periodLoading: false }) }
   },
   closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.closeHistoricalCoverage();this.setData({ periodOpen: false });this.prepareRepaymentCoverage() } },
-  recordListedPayment(event) {
-    if (!session.isCurrent(this) || !this.data.loan || this.data.loan.archived || this.data.detailLoading) return
-    const term = Number(event.currentTarget.dataset.term)
-    const row = this.data.periodRows.find(item => item.term === term)
-    if (!row || row.paid || row.cancelled) return
-    return this.recordPayment({currentTarget:{dataset:{term}}})
-  },
   recordPeriodPayment(){if(this.data.selectedPeriod&&!this.data.periodLoading)return this.recordPayment({currentTarget:{dataset:{term:this.data.selectedPeriod.term}}})},
   async installmentWrite(action, data) {
     if (this.data.saving || this.data.loading || !session.isCurrent(this)) return
@@ -63,6 +56,17 @@ module.exports = {
     if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.detailLoading) return
     const selected = new Set(event.detail.value), visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     this.setData({ repaymentRows: this.data.repaymentRows.map(r=>visible.has(r.periodNumber)?{...r,paid:selected.has(String(r.periodNumber))}:r) })
+    this.setData(this.repaymentSelection())
+    this.syncRepaymentAlert()
+    this.prepareRepaymentCoverage()
+  },
+  // 自定义勾选（跟随主题）：点某期翻转其“已还”勾选，等价于原 checkbox-group 的单选切换。
+  toggleRepayment(event) {
+    if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.detailLoading) return
+    const term = Number(event.currentTarget.dataset.term)
+    const visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
+    if (!visible.has(term)) return
+    this.setData({ repaymentRows: this.data.repaymentRows.map(r=>r.periodNumber===term?{...r,paid:!r.paid}:r) })
     this.setData(this.repaymentSelection())
     this.syncRepaymentAlert()
     this.prepareRepaymentCoverage()

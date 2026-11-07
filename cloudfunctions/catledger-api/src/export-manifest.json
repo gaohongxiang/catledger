@@ -17,7 +17,11 @@
       "updated_at",
       "statement_day",
       "repayment_day",
-      "credit_limit_minor"
+      "credit_limit_minor",
+      "statement_due_minor",
+      "statement_minimum_minor",
+      "statement_due_date",
+      "statement_cycle"
     ],
     "json": []
   },

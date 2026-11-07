@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { composition, shortAccountName } = require('../miniprogram/pages/index/net-worth-composition')
 
 const asset = (name, minor, extra) => Object.assign({ accountId: name, nature: 'asset', name, bookBalanceMinor: minor }, extra)
-const liability = (name, minor) => ({ accountId: name, nature: 'liability', name, bookBalanceMinor: minor })
+const liability = (name, minor) => ({ accountId: name, nature: 'liability', name, bookBalanceMinor: minor, debtMinor: minor.charAt(0) === '-' ? minor.slice(1) : minor })
 
 test('资产按金额降序，百分比用最大余数法凑满 100', () => {
   const shares = composition([asset('微信零钱', '551551'), asset('农商行', '1737920'), asset('支付宝', '3200')]).assets

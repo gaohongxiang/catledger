@@ -8,6 +8,7 @@ const themeService = require('../../theme/service')
 const { decorateAccount } = require('../accounts/model')
 const { present: presentLoan } = require('../../services/loan-present')
 const billing = require('../../utils/account-billing')
+const installmentSource = require('../../services/installment-source-model')
 
 Page(themeService.page({
   data: {
@@ -20,6 +21,8 @@ Page(themeService.page({
     accountStatusRefresh: false,
     pendingAccountAction: '',
     accountLoans: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0,
+    accountSources: [], accountSourcesLoading: false, accountSourcesLoaded: false, accountSourcesError: '', accountSourcesMore: false,
+    sourceChoosing: null,
     editingName: false,
     nameDraft: '',
     nameError: '',
@@ -44,7 +47,7 @@ Page(themeService.page({
   onHide: function () { pageReadSession.end(this); this._archiveConfirming = false; this.setData({ saving: false }) },
 
   loadAccount: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountStatusMessage', 'accountStatusRefresh', 'pendingAccountAction', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'editingName', 'nameDraft', 'nameError', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
+    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountStatusMessage', 'accountStatusRefresh', 'pendingAccountAction', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'accountSources', 'accountSourcesLoading', 'accountSourcesLoaded', 'accountSourcesError', 'accountSourcesMore', 'editingName', 'nameDraft', 'nameError', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -59,7 +62,7 @@ Page(themeService.page({
         if (self.data.accountStatusRefresh) self.setData({ accountStatusRefresh: false, accountStatusMessage: '' })
         self.setData(Object.assign({ account: account, billingSupported: result.liabilitySettingsVersion === 1, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
           { accountLoans: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0 }))
-        if (account) await self.loadAccountLoans()
+        if (account) await Promise.all([self.loadAccountLoans(), self.loadAccountSources()])
         return true
       })
       .catch(function (error) {
@@ -155,6 +158,70 @@ Page(themeService.page({
         accountLoansMore: Boolean(result.nextCursor), accountPendingCount: Number(result.pendingRepaymentCount || 0) })
     }).catch(error => { if (valid()) this.setData({ accountLoansError: error.message || '贷款暂未读取，请重试' }) })
       .finally(() => { if (valid()) this.setData({ accountLoansLoading: false }) })
+  },
+
+  // 账单里的分期（还没归到任何分期计划的来源）：按账户拉取，聚合「一笔分期一条」展示。
+  loadAccountSources: function () {
+    const account = this.data.account
+    if (!account || account.nature !== 'liability') return Promise.resolve()
+    const current = pageReadSession.capture(this), accountId = account.accountId
+    this.setData({ accountSourcesLoading: true, accountSourcesError: '' })
+    const valid = () => current() && this.data.account && this.data.account.accountId === accountId
+    const items = [], seen = new Set()
+    const fetchPage = (cursor) => api.callApi('loans.installmentSources', { accountId, pageSize: 40, cursor }).then(result => {
+      if (!valid()) return
+      for (const item of result.items || []) { if (!seen.has(item.itemId)) { seen.add(item.itemId); items.push(item) } }
+      if (result.nextCursor && items.length < 300) return fetchPage(result.nextCursor)
+      const groups = installmentSource.aggregate(items).map(installmentSource.presentGroup)
+      this.setData({ accountSources: groups, accountSourcesLoaded: true })
+    })
+    return fetchPage(null)
+      .catch(error => { if (valid()) this.setData({ accountSourcesError: error.message || '账单分期暂未读取，请重试' }) })
+      .finally(() => { if (valid()) this.setData({ accountSourcesLoading: false }) })
+  },
+
+  // 从账单识别出的分期新建分期计划：带出已知信息到 loan-form。
+  createLoanFromSource: function (event) {
+    const source = this.data.accountSources.find(item => item.sourceItemId === event.currentTarget.dataset.id)
+    const account = this.data.account
+    if (!source || !account || account.archived) return
+    wx.navigateTo({ url: '/packages/loans/pages/loan-form/index?sourceItemId=' + encodeURIComponent(source.sourceItemId) })
+  },
+
+  // 把账单识别出的分期归入已有计划：用本页已加载的分期计划做候选（不再额外请求，免偶发失败）。
+  chooseLoanForSource: function (event) {
+    const account = this.data.account
+    const source = this.data.accountSources.find(item => item.sourceItemId === event.currentTarget.dataset.id)
+    if (!source || !account || account.archived || this.data.saving) return
+    const plan = String(source.name || '').trim()
+    const matches = (this.data.accountLoans || [])
+      .filter(loan => loan.kind === 'installment' && Number(loan.scheduleTerms || 0) >= source.latestPeriod && (!source.totalTerms || loan.scheduleTerms === source.totalTerms))
+      .map(loan => Object.assign({}, loan, { samePlan: Boolean(plan) && String(loan.name || '').trim() === plan }))
+      .sort((a, b) => Number(b.samePlan) - Number(a.samePlan))
+    this.setData({ sourceChoosing: { source, loans: matches, loading: false, error: '' } })
+  },
+
+  closeSourceChoosing: function () { if (!this.data.saving) this.setData({ sourceChoosing: null }) },
+
+  stopPropagation: function () {},
+
+  confirmSourceLink: async function (event) {
+    const choosing = this.data.sourceChoosing
+    if (!choosing || this.data.saving) return
+    const loan = choosing.loans.find(item => item.loanId === event.currentTarget.dataset.id)
+    if (!loan) return
+    const current = pageReadSession.capture(this), source = choosing.source
+    this.setData({ saving: true })
+    try {
+      await pendingWrites.send('api', 'loans.linkInstallmentSource', { loanId: loan.loanId, version: loan.version, itemId: source.sourceItemId }, { exact: true })
+      if (!current()) return
+      this.setData({ sourceChoosing: null })
+      wx.showToast({ title: '已归入分期', icon: 'success' })
+      await this.loadAccount({ force: true })
+    } catch (error) {
+      if (!current()) return
+      this.setData({ 'sourceChoosing.error': error.message || '归入失败，请重试' })
+    } finally { if (current()) this.setData({ saving: false }) }
   },
 
   openAccountTransactions: function () {
@@ -264,11 +331,19 @@ Page(themeService.page({
 
   startEditBilling: function (event) {
     const account = this.data.account, field = event.currentTarget.dataset.field
-    if (!account || account.archived || account.nature !== 'liability' || this.data.saving || !['statementDay', 'repaymentDay', 'creditLimit'].includes(field)) return
+    // 账单日/还款日/额度是固定属性；本期应还/最低/到期日/周期是每期账单快照（补录兜底）。
+    const editable = ['statementDay', 'repaymentDay', 'creditLimit', 'statementDue', 'statementMinimum', 'statementDueDate', 'statementCycle']
+    if (!account || account.archived || account.nature !== 'liability' || this.data.saving || !editable.includes(field)) return
     if (!this.data.billingSupported) { this.setData({ errorMessage: billing.UNAVAILABLE }); return }
     const draft = billing.draft(account)
-    const value = field === 'creditLimit' ? draft.creditLimitYuan : (draft[field] ? String(draft[field]) : '')
-    this.setData({ editingBilling: field, editingBillingLabel: { statementDay: '账单日', repaymentDay: '还款日', creditLimit: '信用额度' }[field], billingFieldDraft: value, billingFieldError: '', errorMessage: '' })
+    const value = field === 'creditLimit' ? draft.creditLimitYuan
+      : field === 'statementDue' ? draft.statementDueYuan
+        : field === 'statementMinimum' ? draft.statementMinimumYuan
+          : field === 'statementDueDate' ? draft.statementDueDate
+            : field === 'statementCycle' ? draft.statementCycle
+              : (draft[field] ? String(draft[field]) : '')
+    const labels = { statementDay: '账单日', repaymentDay: '还款日', creditLimit: '信用额度', statementDue: '本期应还', statementMinimum: '最低还款', statementDueDate: '到期还款日', statementCycle: '账单周期' }
+    this.setData({ editingBilling: field, editingBillingLabel: labels[field], billingFieldDraft: value, billingFieldError: '', errorMessage: '' })
   },
 
   cancelEditBilling: function () { if (!this.data.saving) this.setData({ editingBilling: '', billingFieldError: '' }) },
@@ -279,9 +354,14 @@ Page(themeService.page({
     const account = this.data.account, field = this.data.editingBilling
     if (this.data.saving || !field || !account || account.archived) return
     const draft = billing.draft(account)
+    const text = String(this.data.billingFieldDraft || '').trim()
     if (field === 'creditLimit') draft.creditLimitYuan = this.data.billingFieldDraft
+    else if (field === 'statementDue') draft.statementDueYuan = this.data.billingFieldDraft
+    else if (field === 'statementMinimum') draft.statementMinimumYuan = this.data.billingFieldDraft
+    else if (field === 'statementDueDate') draft.statementDueDate = text
+    else if (field === 'statementCycle') draft.statementCycle = text
     else {
-      const raw = String(this.data.billingFieldDraft).trim()
+      const raw = text
       if (raw && !/^\d{1,2}$/.test(raw)) { this.setData({ billingFieldError: '请选择每月 1 至 31 日，或未设置' }); return }
       draft[field] = raw ? Number(raw) : 0
     }

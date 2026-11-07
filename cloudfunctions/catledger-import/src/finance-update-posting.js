@@ -268,8 +268,7 @@ async function promoteAccountMappings(connection, uid, updateId) {
   return audit
 }
 
-async function promoteCategoryMappings(connection, uid, updateId) {
-  const [rows] = await connection.execute(
+async function promoteCategoryMappings(connection, uid, updateId) {  const [rows] = await connection.execute(
     `SELECT source.source_type_snapshot AS sourceType,
             event.category_id AS categoryId,
             import_row.transaction_type_raw AS rawTransactionType,
@@ -312,6 +311,68 @@ async function promoteCategoryMappings(connection, uid, updateId) {
     audit.push({ before, after: await readMapping(connection, uid, 'category', mapping) })
   }
   return audit
+}
+
+// 把「元」金额字符串（如 8137.39 / 8137 / 8,137.3）转成整数分；非法返回 null。不用浮点求和。
+function yuanToMinor(value) {
+  const text = String(value == null ? '' : value).replace(/,/gu, '').trim()
+  const matched = text.match(/^(\d+)(?:\.(\d{1,2}))?$/u)
+  if (!matched) return null
+  return matched[1] + (matched[2] || '').padEnd(2, '0')
+}
+
+// 把信用卡账单表头区的汇总数（本期应还/最低/到期日/周期）写回该来源绑定的负债账户。
+// 只在入账事务内、按已 posted 事件的绑定账户写入；解析时未识别到的字段保持原值，不擦除。
+// 账单账户由该批次的银行信用卡来源与账户映射确定，取最近一期账单覆盖即可。
+async function applyStatementSnapshot(connection, uid, updateId) {
+  const [rows] = await connection.execute(
+    `SELECT DISTINCT account.account_id AS accountId,
+            JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.statement.statementDueMinor')) AS statementDueMinor,
+            JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.statement.statementMinimumMinor')) AS statementMinimumMinor,
+            JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.statement.statementDueDate')) AS statementDueDate,
+            JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.statement.statementCycle')) AS statementCycle
+       FROM catledger_import_batches batch
+       JOIN catledger_finance_update_sources s
+         ON s.uid = batch.uid AND s.batch_id = batch.batch_id AND s.update_id = ?
+       JOIN catledger_economic_events event
+         ON event.uid = s.uid AND event.update_id = s.update_id AND event.status = 'posted'
+       JOIN catledger_event_evidence evidence
+         ON evidence.uid = event.uid AND evidence.update_id = event.update_id
+        AND evidence.event_id = event.event_id AND evidence.evidence_role <> 'discarded'
+       JOIN catledger_import_rows import_row
+         ON import_row.uid = evidence.uid AND import_row.row_id = evidence.row_id
+        AND import_row.batch_id = batch.batch_id
+       JOIN catledger_import_account_mappings mapping
+         ON mapping.uid = s.uid AND mapping.source_type = s.source_type_snapshot
+        AND mapping.payment_method_key = import_row.payment_method_key AND mapping.mapping_action = 'account'
+       JOIN catledger_accounts account ON account.uid = mapping.uid AND account.account_id = mapping.account_id
+      WHERE batch.uid = ? AND s.source_type_snapshot = 'bank'
+        AND JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.bankMapping.statementKind')) = 'credit'
+        AND JSON_EXTRACT(batch.analysis_json, '$.statement') IS NOT NULL
+        AND account.nature = 'liability' AND account.archived_at IS NULL`,
+    [updateId, uid]
+  )
+  const seen = new Set()
+  for (const row of rows) {
+    if (!row.accountId || seen.has(row.accountId)) continue
+    seen.add(row.accountId)
+    const columns = [], values = []
+    const dueMinor = yuanToMinor(row.statementDueMinor)
+    if (dueMinor != null) { columns.push('statement_due_minor = ?'); values.push(dueMinor) }
+    const minimumMinor = yuanToMinor(row.statementMinimumMinor)
+    if (minimumMinor != null) { columns.push('statement_minimum_minor = ?'); values.push(minimumMinor) }
+    if (row.statementDueDate != null && /^\d{4}-\d{2}-\d{2}$/u.test(String(row.statementDueDate))) {
+      columns.push('statement_due_date = ?'); values.push(row.statementDueDate)
+    }
+    if (row.statementCycle != null && String(row.statementCycle).length > 0) {
+      columns.push('statement_cycle = ?'); values.push(String(row.statementCycle).slice(0, 40))
+    }
+    if (!columns.length) continue
+    await connection.execute(
+      `UPDATE catledger_accounts SET ${columns.join(', ')} WHERE uid = ? AND account_id = ?`,
+      [...values, uid, row.accountId]
+    )
+  }
 }
 
 async function existingTransactionsForUpdate(connection, uid, updateId) {
@@ -661,6 +722,7 @@ async function postInTransaction(connection, uid, data, requestDigest) {
   // reusable ledger rule crosses the write barrier only inside this same
   // all-or-nothing posting transaction.
   const accountMappings = await promoteAccountMappings(connection, uid, updateId)
+  await applyStatementSnapshot(connection, uid, updateId)
   const categoryMappings = await promoteCategoryMappings(connection, uid, updateId)
   await connection.execute(`UPDATE catledger_finance_updates SET side_effects_json = ? WHERE uid = ? AND update_id = ?`,
     [JSON.stringify({ version: MAINTENANCE_POLICY_VERSION, accounts: newAccounts.map((row) => ({ accountId: row.accountId, version: 1 })),
@@ -715,6 +777,7 @@ function createFinanceUpdatePosting({ getPool }) {
 
 module.exports = {
   existingTransactionsForUpdate,
+  applyStatementSnapshot,
   createTransactions,
   linkEventTransaction,
   lockAccountsAndCategories,

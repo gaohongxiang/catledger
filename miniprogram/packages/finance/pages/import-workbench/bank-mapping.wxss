@@ -107,3 +107,10 @@
 .bank-header-actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
 .bank-header-actions button { flex: 1 1 0; width: 0; min-width: 0; max-width: none; margin: 0; }
 .bank-header-actions button { flex: 1; margin: 0; }
+
+/* 信用卡账单汇总：导入确认页可核对/修改本期应还与最低还款。 */
+.bank-statement-block { margin-top: 12rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-large, 20rpx); padding: 14rpx 16rpx; }
+.bank-statement-block .bank-group-head { margin-bottom: 6rpx; }
+.bank-statement-field { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); min-height: 78rpx; border-bottom: 1rpx solid var(--ui-line); color: var(--ui-ink); font-size: 25rpx; }
+.bank-statement-field:last-child { border-bottom: none; }
+.bank-statement-input { width: 260rpx; text-align: right; color: var(--ui-ink); font-size: 26rpx; }

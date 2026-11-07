@@ -45,8 +45,19 @@ Page(theme.page({
         const result=await api.callApi('loans.installmentSources',{itemId:this._query.sourceItemId},{force:true});if(!current())return
         const source=result.items[0];if(!source)throw new Error('该账单已关联或状态变化，请返回重新读取')
         accountId=source.accountId
-        // 计划名优先用账单里持久化的计划名；没有时才退回合同编号标签，最后才是通用名。
-        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'，保存后放入对应期次。请填写分期方案，再勾选已还的期次。',
+        // 同一期次的主息两条来源各存一行，拼在一起展示"第N期 本金X · 利息Y"。
+        let relate={principal:null,interest:null,fee:null}
+        try {
+          const all=await api.callApi('loans.installmentSources',{accountId:source.accountId,pageSize:40},{force:true})
+          if(current()){
+            const same=(all.items||[]).filter(it=>it.periodNumber===source.periodNumber && (it.planLabel||it.referenceLabel||'')===(source.planLabel||source.referenceLabel||''))
+            for(const c of ['principal','interest','fee']){const hit=same.find(it=>it.component===c);if(hit)relate[c]=hit.amountMinor}
+          }
+        } catch(e){ /* 取不到其它组件时退化为单组件展示 */ }
+        if(relate[source.component]==null)relate[source.component]=source.amountMinor
+        const parts=[]
+        for(const c of ['principal','interest','fee'])if(relate[c]!=null)parts.push({principal:'本金',interest:'利息',fee:'手续费'}[c]+' '+money.formatMinor(relate[c]))
+        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期 '+parts.join(' · ')+'。填好分期方案，勾选已还期次即可。',
         ...(!this._initialized?{name:source.planLabel||source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
       }
       const accountIndex=accounts.findIndex(a=>a.accountId===accountId)
@@ -80,6 +91,14 @@ Page(theme.page({
   selectRepayments(event){
     if(this.data.saving||this.data.loading||!this._preview)return
     const selected=new Set(event.detail.value),repaymentRows=this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))}))
+    this.setData({repaymentRows,preview:repaymentPreview(this._preview,repaymentRows),remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
+    this.prepareFormCoverage()
+  },
+  // 自定义勾选：点某期翻转其已还状态（替代原生 checkbox，跟随主题）。
+  toggleRepayment(event){
+    if(this.data.saving||this.data.loading||!this._preview)return
+    const term=Number(event.currentTarget.dataset.term)
+    const repaymentRows=this.data.repaymentRows.map(r=>r.periodNumber===term?{...r,paid:!r.paid}:r)
     this.setData({repaymentRows,preview:repaymentPreview(this._preview,repaymentRows),remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
     this.prepareFormCoverage()
   },

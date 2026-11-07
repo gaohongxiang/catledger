@@ -35,12 +35,11 @@
   </view>
 
   <view wx:if="{{hasLoaded}}" class="account-group liability-group">
-    <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text class="group-note">按待还金额汇总负债</text></view>
+    <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text wx:if="{{installmentPlanPromptCount > 0}}" class="group-alert group-alert-inline">{{installmentPlanPromptCount}} 个账户有分期待处理</text></view>
     <view class="account-list">
-      <view class="account-row" bindtap="openAllLoans" hover-class="account-row-active" role="button" aria-label="全部贷款与还款"><view class="account-row-main"><text class="account-row-name">全部贷款与还款</text><text class="account-row-type">跨账户查看贷款和待关联还款</text></view><chevron-icon size="{{26}}" /></view>
       <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
-        <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
+        <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}<text wx:if="{{item.needsInstallmentPlan}}" class="account-row-warn"> · 有分期待处理</text></text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
         <chevron-icon size="{{26}}" />
       </view>

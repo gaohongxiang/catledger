@@ -22,3 +22,10 @@
 .confirm-row { display: flex; align-items: flex-start; margin-top: var(--layout-space-5); gap: var(--layout-space-2); font-size: var(--font-caption); line-height: 1.6; }
 .confirm-row checkbox { flex-shrink: 0; }
 .local-note { margin: 24rpx 8rpx 0; }
+
+/* 已还期次勾选：自定义主题化勾选框，替代原生 checkbox。 */
+.plan-row .schedule-choice { display: flex; align-items: center; justify-content: flex-end; gap: 10rpx; }
+.schedule-check { width: 40rpx; height: 40rpx; box-sizing: border-box; border: 2rpx solid var(--theme-line, rgba(255,255,255,.35)); border-radius: 10rpx; background: transparent; display: flex; align-items: center; justify-content: center; }
+.schedule-check.is-checked { background: var(--theme-accent, #be5b24); border-color: var(--theme-accent, #be5b24); }
+.schedule-check.is-checked::after { content: ''; width: 10rpx; height: 18rpx; margin-top: -4rpx; border: solid #fff; border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+.schedule-choice.is-paid text { color: var(--theme-text-muted, #958b82); }

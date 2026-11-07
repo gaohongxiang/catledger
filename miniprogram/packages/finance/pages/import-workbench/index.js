@@ -194,6 +194,7 @@ Page(theme.page({
   closeBankMapping: uploadFlow.closeBankMapping,
   cancelBankPreview: uploadFlow.cancelBankPreview,
   changeBankMapping: uploadFlow.changeBankMapping,
+  changeBankStatement: uploadFlow.changeBankStatement,
   chooseBankDirection: uploadFlow.chooseBankDirection,
   toggleBankSettings: uploadFlow.toggleBankSettings,
   toggleBankMoreColumns: uploadFlow.toggleBankMoreColumns,
