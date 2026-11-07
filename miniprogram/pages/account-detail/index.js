@@ -199,7 +199,7 @@ Page(themeService.page({
       for (const loan of plans) {
         if (!isCurrent()) return
         try {
-          const result = await api.callApi('loans.reconcileInstallmentSources', { loanId: loan.loanId, version: loan.version })
+          const result = await api.callApi('loans.reconcileInstallmentSources', { requestId: api.createRequestId(), loanId: loan.loanId, version: loan.version })
           linked += Number(result && result.linked || 0)
         } catch (error) { /* 单个计划补失败不打断页面；下一次进入可再补 */ }
       }

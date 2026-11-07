@@ -88,6 +88,11 @@ test('分期来源自动补偿：同计划名+同期次的利息漏归后由 rec
       assert.equal(row.loan_id,null,'另一计划名的来源仍未被归入')
     })
 
+    await t.test('缺 requestId 的调用被拒绝（客户端必须补 requestId）',async()=>{
+      // 复现真实 bug：前端若漏传 requestId，幂等写会直接 VALIDATION_ERROR。
+      await assert.rejects(api('loans.reconcileInstallmentSources',{loanId:loan.loanId,version:loan.version}),{publicCode:'VALIDATION_ERROR'})
+    })
+
     assert.ok(!JSON.stringify(logs).includes('SYNTHETIC-CARD'))
     assert.ok(afterPrincipal.n>=1)
   } finally {await lab.close()}
