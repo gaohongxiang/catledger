@@ -168,7 +168,8 @@ test('首期天数 ↔ 起息日 双向联动：改起息日算出天数，改�
 test('只填首期天数也能提交：payload 由首还日反推起息日', () => {
   const sf = scheduleForm
   const dailyIdx = sf.QUOTE_OPTIONS.findIndex(o => o.value === 'daily')
-  const s = Object.assign(sf.selectQuote(base(), dailyIdx), { terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', firstPeriodDays: '28', principalYuan: '5000' })
+  const eqPrincipalIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_principal')
+  const s = Object.assign(sf.selectQuote(base(), dailyIdx), { methodIndex: eqPrincipalIdx, terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', firstPeriodDays: '28', principalYuan: '5000' })
   const p = sf.payload(s, '5000')
   assert.equal(p.interestStartDate, '2018-10-21')
 })
@@ -176,10 +177,50 @@ test('只填首期天数也能提交：payload 由首还日反推起息日', () 
 test('起息日晚于或等于首还日 → 报错，不静默算成 0 利息', () => {
   const sf = scheduleForm
   const dailyIdx = sf.QUOTE_OPTIONS.findIndex(o => o.value === 'daily')
+  const eqPrincipalIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_principal')
   // 起息 2026-10-18 晚于首还 2018-11-18：必须报错
-  const bad = Object.assign(sf.selectQuote(base(), dailyIdx), { terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', interestStartDate: '2026-10-18', principalYuan: '5000' })
+  const bad = Object.assign(sf.selectQuote(base(), dailyIdx), { methodIndex: eqPrincipalIdx, terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', interestStartDate: '2026-10-18', principalYuan: '5000' })
   assert.throws(() => sf.payload(bad, '5000'), /起息日不能晚于/)
   // 起息日 = 首还日 也拒绝
-  const eq = Object.assign(sf.selectQuote(base(), dailyIdx), { terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', interestStartDate: '2018-11-18', principalYuan: '5000' })
+  const eq = Object.assign(sf.selectQuote(base(), dailyIdx), { methodIndex: eqPrincipalIdx, terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', interestStartDate: '2018-11-18', principalYuan: '5000' })
   assert.throws(() => sf.payload(eq, '5000'), /起息日不能晚于/)
+})
+
+test('日利率 + 等额本金/先息后本：起息日随 payload 下发（按实际天数计息）', () => {
+  const sf = scheduleForm
+  const dailyIdx = sf.QUOTE_OPTIONS.findIndex(o => o.value === 'daily')
+  const eqPrincipalIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_principal')
+  const interestOnlyIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'interest_only')
+  const mk = methodIndex => Object.assign(sf.selectQuote(base(), dailyIdx), {
+    methodIndex, terms: '6', ratePercent: '0.045', firstPaymentDate: '2018-11-18', interestStartDate: '2018-10-21', principalYuan: '5000' })
+  assert.equal(sf.payload(mk(eqPrincipalIdx), '5000').interestStartDate, '2018-10-21')
+  assert.equal(sf.payload(mk(interestOnlyIdx), '5000').interestStartDate, '2018-10-21')
+})
+
+test('等本等息/等额本息（月利率）也下发起息日：所有方式所有口径都支持首期天数折算', () => {
+  const sf = scheduleForm
+  const monthlyIdx = sf.QUOTE_OPTIONS.findIndex(o => o.value === 'monthly')
+  const flatIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'flat')
+  const equalPaymentIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_payment')
+  const mk = methodIndex => Object.assign(sf.selectQuote(base(), monthlyIdx), {
+    methodIndex, terms: '12', ratePercent: '0.384', firstPaymentDate: '2024-06-18', interestStartDate: '2024-05-21', principalYuan: '156000' })
+  assert.equal(sf.payload(mk(flatIdx), '156000').interestStartDate, '2024-05-21')
+  assert.equal(sf.payload(mk(equalPaymentIdx), '156000').interestStartDate, '2024-05-21')
+})
+
+test('每期费率口径不下发起息日（按约定费率整期收，不参与天数折算）', () => {
+  const sf = scheduleForm
+  const instIdx = sf.QUOTE_OPTIONS.findIndex(o => o.value === 'installment')
+  const flatIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'flat')
+  const s = Object.assign(sf.selectQuote(base(), instIdx), {
+    methodIndex: flatIdx, terms: '12', ratePercent: '1.5', firstPaymentDate: '2024-06-18', interestStartDate: '2024-05-21', principalYuan: '12000' })
+  assert.equal(sf.payload(s, '12000').interestStartDate, undefined)
+})
+
+test('按还款额测算不下发起息日（首期额已由用户直接给出）', () => {
+  const sf = scheduleForm
+  const measIdx = sf.MEASUREMENT_OPTIONS.findIndex(o => o.value === 'repayment')
+  const s = Object.assign(base(), { measurementIndex: measIdx, methodIndex: 0, terms: '12',
+    repaymentYuan: '13599.06', firstPaymentDate: '2024-06-18', interestStartDate: '2024-05-21', principalYuan: '156000' })
+  assert.equal(sf.payload(s, '156000').interestStartDate, undefined)
 })

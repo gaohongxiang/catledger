@@ -67,12 +67,12 @@ function buildSchedule(input, options = {}) {
   })
   // 日利率口径：按「实际天数」计息。每期利息 = 期初剩余本金 × 日利率 × 本期天数；
   // 天数由相邻还款日相减得出，首期 = 起息日(interestStartDate) → 首期还款日。
-  // 仅利率口径 + 日利率 + 按本金逐期还的方式（等额本金 / 等本等息 / 先息后本）启用；
-  // 等额本息需要年金公式，仍按月简化；年/月利率口径完全不动。
+  // 仅利率口径 + 日利率 + 按本金逐期还的方式（等额本金 / 先息后本）启用；
+  // 等额本息需年金公式、等本等息是约定固定费率，仍按月简化，但二者支持「首期按起息日天数折算」。
   const dailyRatePpm = params.measurement.kind === 'rate' && params.measurement.quoteType === 'daily'
     ? params.measurement.ratePpm : null
-  // 仅「等额本金 / 先息后本」这类按余额逐期还本的方式按实际天数计息；
-  // 等额本息需年金公式、等本等息是约定固定费率，二者仍按月简化（×30），不改历史口径。
+  // 仅「等额本金 / 先息后本」这类按余额逐期还本的方式按实际天数计息（逐期天数都要用）；
+  // 等额本息需年金公式、等本等息是约定固定费率，逐期仍按月简化。
   const actualDaysMode = dailyRatePpm != null && params.discountKind !== 'interest_rate' && (method === 'equal_principal' || method === 'interest_only')
   const dailyRate = actualDaysMode ? (dailyRatePpm / 1000000) : 0
   const periodDays = []
@@ -84,6 +84,19 @@ function buildSchedule(input, options = {}) {
       periodDays.push(Math.max(0, differenceInDays(previousDue, due)))
       previousDue = due
     }
+  }
+  // 首期按起息日天数折算：适用于「按月简化」的方式（等本等息 / 等额本息，逐期按月但首期可能不满整月）。
+  // 日利率逐期路径已按真实天数计息，无需再折。仅在填了起息日、且首期天数与「标准期天数」不同时生效，
+  // 未填起息日的历史贷款不受影响（保留旧口径）。利率口径为「每期费率(installment)」本质按约定费率整期收，
+  // 不参与天数折算（与「每期费率只支持等本等息」一致）。
+  const standardPeriodDays = 30
+  let firstPeriodFactor = 1
+  const monthlyMethod = !actualDaysMode && params.discountKind !== 'interest_rate' &&
+    params.measurement.kind === 'rate' && params.measurement.quoteType !== 'installment' &&
+    (method === 'flat' || method === 'equal_payment')
+  if (monthlyMethod && params.interestStartDate && isDate(params.interestStartDate)) {
+    const firstDays = Math.max(0, differenceInDays(params.interestStartDate, anchor))
+    if (firstDays > 0 && firstDays !== standardPeriodDays) firstPeriodFactor = firstDays / standardPeriodDays
   }
   let balance = principal
   let equalPayment = Math.round(annuityPayment(principal, terms, rate))
@@ -123,6 +136,20 @@ function buildSchedule(input, options = {}) {
     if (actualDaysMode) {
       // 期初剩余本金 × 日利率 × 本期实际天数（先息后本末期本金已结清，利息也只在期末一次计，这里按余额照算）。
       interestPart = Math.round(balance * dailyRate * periodDays[index - 1])
+    }
+    // 首期不满整月时，按月简化的方式（等本等息 / 等额本息）首期利息按「起息日→首还日」天数折算。
+    // 首期省下的利息不回摊到后续期（银行就是首期实际少收这几天），总额相应减少。
+    // 等额本息首期的本金排期保持不变（仍按正常月本金走），仅首期利息打折 → 首期应还相应变小，
+    // 后续余额因此少扣了首期省的利息，等于把首期少收的部分留到后期慢慢还（与账单"首期略少、后面恒定"一致）。
+    if (firstPeriodFactor !== 1 && index === 1) {
+      const beforeInterest = interestPart
+      interestPart = Math.round(interestPart * firstPeriodFactor)
+      if (method === 'equal_payment') {
+        // 等额本息：本金按正常月本金（equalPayment − 折前利息），应还 = 该本金 + 折后利息。
+        principalPart = Math.round(equalPayment - beforeInterest)
+        if (principalPart < 0) principalPart = 0
+        principalPart = Math.max(0, Math.min(balance, principalPart))
+      }
     }
     interestPart = Math.max(0, interestPart)
     const endingBalance = index === terms ? 0 : Math.max(0, balance - principalPart)

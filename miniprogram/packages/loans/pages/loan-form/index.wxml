@@ -38,12 +38,19 @@
     <view class="ld-block"><view class="ld-block-label"><text>测算依据</text><text>按已有还款额或利率填写</text></view><view class="ld-segment"><view class="ld-segment-option {{schedule.measurementIndex === 1 ? 'ld-segment-on' : ''}}" data-index="1" bindtap="selectMeasurement">还款额</view><view class="ld-segment-option {{schedule.measurementIndex === 0 ? 'ld-segment-on' : ''}}" data-index="0" bindtap="selectMeasurement">利率</view></view></view>
     <view wx:if="{{schedule.measurementIndex === 0}}" class="ld-block {{fieldErrors.quote ? 'ld-field-error' : ''}}"><view class="ld-block-label"><text>利率口径</text><text>按账单给出的利率类型填写</text></view><view class="ld-segment"><view wx:for="{{quotes}}" wx:key="value" class="ld-segment-option {{schedule.quoteIndex === index ? 'ld-segment-on' : ''}} {{item.value === 'installment' && schedule.methodIndex !== 0 ? 'choice-disabled' : ''}}" data-index="{{index}}" bindtap="selectQuote">{{item.label}}</view></view></view>
     <view class="measurement-row {{(fieldErrors.rate || fieldErrors.repayment) ? 'ld-field-error' : ''}}"><text class="measurement-label">{{schedule.measurementIndex === 0 ? quotes[schedule.quoteIndex].label : (schedule.methodIndex === 3 ? '每期利息 / 费' : schedule.methodIndex === 2 ? '首期应还' : '每期应还')}}</text><input class="money-number" type="digit" data-field="{{schedule.measurementIndex === 0 ? 'ratePercent' : 'repaymentYuan'}}" value="{{schedule.measurementIndex === 0 ? schedule.ratePercent : schedule.repaymentYuan}}" bindinput="scheduleInput" /><text class="ld-cell-unit">{{schedule.measurementIndex === 0 ? '%' : '元'}}</text></view>
-    <text class="ld-note form-hint">{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value === 'installment' ? '每期费率按最初借款金额计费，对应等本等息。' : '按合同或账单填写；另收的费用可在补充信息中添加。'}}</text>
-    <block wx:if="{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value === 'daily'}}">
-      <date-field class="ld-cell {{fieldErrors.interestStart ? 'ld-field-error' : ''}}" granularity="date" value="{{schedule.interestStartDate}}" bindchange="scheduleDateInput" data-field="interestStartDate"><view class="ld-cell-label"><text>起息日</text><text>可选</text></view><view class="ld-cell-value"><text>{{schedule.interestStartDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view></date-field>
-      <label class="ld-cell {{fieldErrors.interestStart ? 'ld-field-error' : ''}}"><view class="ld-cell-label"><text>或 首期天数</text><text>可选</text></view><view class="ld-cell-amount"><input class="ld-cell-input money-number" type="number" data-field="firstPeriodDays" value="{{schedule.firstPeriodDays}}" bindinput="scheduleDaysInput" /><text class="ld-cell-unit">天</text></view></label>
-      <view class="ld-note form-hint"><text class="ld-note-line">每期利息 = 剩余本金 × 日利率 × 实际天数。</text><text class="ld-note-line">起息日与首期天数填其一即可，另一个自动换算；都留空则首期按整月。</text></view>
-    </block>
+    <text wx:if="{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value === 'installment'}}" class="ld-note form-hint">每期费率按最初借款金额计费，对应等本等息。</text>
+    <view wx:if="{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value !== 'installment'}}" class="ld-block">
+      <view class="ld-block-label"><text>首期计息</text><text>填其一即可，都留空则首期按整月</text></view>
+      <view class="ld-start-row {{fieldErrors.interestStart ? 'ld-field-error' : ''}}">
+        <view class="ld-start-half">
+          <date-field class="ld-start-date" granularity="date" value="{{schedule.interestStartDate}}" bindchange="scheduleDateInput" data-field="interestStartDate"><view class="ld-start-inner"><text class="ld-start-label">起息日</text><view class="ld-start-value"><text>{{schedule.interestStartDate || '选择日期'}}</text><chevron-icon size="{{18}}" /></view></view></date-field>
+        </view>
+        <view class="ld-start-half">
+          <label class="ld-start-inner"><text class="ld-start-label">首期天数</text><view class="ld-start-days"><input class="ld-start-input money-number" type="number" data-field="firstPeriodDays" value="{{schedule.firstPeriodDays}}" bindinput="scheduleDaysInput" /><text class="ld-cell-unit">天</text></view></label>
+        </view>
+      </view>
+    </view>
+
 
     <view class="ld-advanced-toggle" bindtap="toggleAdvanced"><text class="ld-advanced-title">补充信息</text><text class="ld-advanced-symbol">{{advancedOpen ? '收起' : '展开'}}</text></view>
     <view wx:if="{{advancedOpen}}">

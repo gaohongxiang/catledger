@@ -135,14 +135,17 @@ function payload(state, principalYuan) {
       }
     }
   }
-  // 起息日仅在「日利率」口径下有意义（按实际天数计息的首期起点）；其它口径不下发该键，保持契约干净。
   const base = {
     scheduleMethod: method, scheduleTerms: terms, measurementKind: measurement,
     quoteType: measurement === 'rate' ? quote : null, ratePpm, repaymentMinor,
     principalRounding: rounding,
     feePerTermMinor, feeUpfrontMinor, firstPaymentDate: form.firstPaymentDate || null
   }
-  if (measurement === 'rate' && quote === 'daily') {
+  // 起息日只在「按利率」测算时才有意义：用于按「起息日→首还日」天数折算首期利息（首期不满整月的常见情形）。
+  // 日利率下等额本金/先息后本更会逐期按实际天数计息。「按还款额」测算时首期额由用户直接给出，无需起息日；
+  // 「每期费率(installment)」按约定费率整期收、也不参与天数折算。二者都不下发该键。
+  const supportsInterestStart = measurement === 'rate' && quote !== 'installment'
+  if (supportsInterestStart) {
     // 起息日：优先用起息日；只填了首期天数时由首还日反推。二者都基于首还日校验，起息日不得晚于首还日。
     let start = form.interestStartDate || null
     if (!start) {

@@ -9,6 +9,18 @@
 .measurement-label { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-1); width: 200rpx; font-size: var(--font-caption); }
 .measurement-row input { flex: 1; min-width: 0; text-align: right; font-size: var(--font-body); }
 .form-hint { margin-top: 14rpx; }
+/* 起息日 + 首期天数：一行两段，各占 50%；每段内部「标签左 / 值右」横向一行。 */
+.ld-start-row { display: flex; align-items: center; flex-wrap: nowrap; margin-top: var(--layout-space-3); border-bottom: 1rpx solid var(--theme-line, rgba(255,255,255,.12)); }
+.ld-start-half { flex: 1 1 0; min-width: 0; }
+.ld-start-half:first-child { border-right: 1rpx solid var(--theme-line, rgba(255,255,255,.12)); padding-right: var(--layout-space-2); }
+.ld-start-half:last-child { padding-left: var(--layout-space-2); }
+.ld-start-date { display: block; width: 100%; }
+.ld-start-inner { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-2); min-height: 92rpx; white-space: nowrap; }
+.ld-start-label { flex: 0 0 auto; font-size: var(--font-caption); color: var(--theme-text-muted); }
+.ld-start-value { display: flex; align-items: center; gap: 4rpx; font-size: var(--font-body); }
+.ld-start-days { display: flex; align-items: center; gap: 4rpx; flex: 0 1 auto; min-width: 0; }
+.ld-start-input { width: 120rpx; text-align: right; font-size: var(--font-body); }
+
 .ld-note-line { display: block; }
 .choice-disabled { opacity: .45; }
 .remaining-principal { display: block; margin: 12rpx 0 24rpx; font-size: var(--font-display); color: var(--theme-ink); }

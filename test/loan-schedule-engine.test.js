@@ -346,3 +346,54 @@ test('后端参数校验：起息日不得晚于或等于首期还款日（否�
   assert.throws(() => parseScheduleParams({ ...base, interestStartDate: '2026-10-18' }), { publicCode: 'SCHEDULE_DATE_INVALID' })
   assert.throws(() => parseScheduleParams({ ...base, interestStartDate: '2018-11-18' }), { publicCode: 'SCHEDULE_DATE_INVALID' })
 })
+
+// 首期按起息日天数折算：适用于按月简化的等本等息 / 等额本息（首期不满整月的常见情形）。
+// 未填起息日不受影响（保留旧口径），确保历史贷款计算结果不变。
+test('等本等息 + 月利率：填起息日后首期利息按天数折算，其余期不变', () => {
+  // 15.6万 / 12期 / 月费率0.384% → 每期利息 599.04 元；首还 2024-06-18，起息 2024-05-21（28天）。
+  const base = { principalMinor: '15600000', scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate',
+    quoteType: 'monthly', ratePpm: '3840', firstPaymentDate: '2024-06-18', principalRounding: 'cent' }
+  const noStart = buildSchedule(base)
+  const withStart = buildSchedule({ ...base, interestStartDate: '2024-05-21' })
+  // 未填起息日：每期利息相同
+  assert.equal(noStart.periods[0].interestMinor, noStart.periods[1].interestMinor)
+  // 填起息日：首期利息 = round(59904 × 28/30) = 55910（少 39.94 元）
+  assert.equal(withStart.periods[0].interestMinor, Math.round(noStart.periods[0].interestMinor * 28 / 30))
+  assert.ok(withStart.periods[0].interestMinor < noStart.periods[0].interestMinor)
+  // 第 2 期起利息不变
+  assert.equal(withStart.periods[1].interestMinor, noStart.periods[1].interestMinor)
+  // 本金排期不变，末期余额仍归零
+  assert.equal(withStart.periods[0].principalMinor, noStart.periods[0].principalMinor)
+  assert.equal(withStart.periods[11].endingBalanceMinor, 0)
+})
+
+test('等额本息 + 月利率：填起息日后仅首期应还变小（本金排期不变），后面保持恒定', () => {
+  const base = { principalMinor: '1000000', scheduleMethod: 'equal_payment', scheduleTerms: 12, measurementKind: 'rate',
+    quoteType: 'monthly', ratePpm: '10000', firstPaymentDate: '2026-09-10', principalRounding: 'cent' }
+  const noStart = buildSchedule(base)
+  const withStart = buildSchedule({ ...base, interestStartDate: '2026-08-20' })
+  // 首期应还变小，但本金部分不变
+  assert.ok(withStart.periods[0].paymentMinor < noStart.periods[0].paymentMinor)
+  assert.equal(withStart.periods[0].principalMinor, noStart.periods[0].principalMinor)
+  // 第 2 期应还保持与未折算一致
+  assert.equal(withStart.periods[1].paymentMinor, noStart.periods[1].paymentMinor)
+  assert.equal(withStart.periods[11].endingBalanceMinor, 0)
+})
+
+test('首期起息日恰好整月（30天）不折算，与不带起息日结果一致', () => {
+  const base = { principalMinor: '15600000', scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate',
+    quoteType: 'monthly', ratePpm: '3840', firstPaymentDate: '2024-06-18', principalRounding: 'cent' }
+  const noStart = buildSchedule(base)
+  // 起息 = 首还日前 30 天 → 折算因子=1，结果应与不带起息日完全相同
+  const start30 = '2024-05-19' // 2024-05-19 → 2024-06-18 = 30 天
+  const withStart = buildSchedule({ ...base, interestStartDate: start30 })
+  assert.equal(withStart.periods[0].interestMinor, noStart.periods[0].interestMinor)
+})
+
+test('每期费率口径不带起息日折算：首期利息仍按整期费率', () => {
+  const base = { principalMinor: '1200000', scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate',
+    quoteType: 'installment', ratePpm: '15000', firstPaymentDate: '2024-06-18', principalRounding: 'cent' }
+  const noStart = buildSchedule(base)
+  const withStart = buildSchedule({ ...base, interestStartDate: '2024-05-21' })
+  assert.equal(withStart.periods[0].interestMinor, noStart.periods[0].interestMinor)
+})
