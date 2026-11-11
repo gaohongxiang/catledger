@@ -229,3 +229,20 @@ test('未还期次按时点与证据区分：未到期 / 待核对 / 部分已�
   const paidRow = { ...period(1, 'paid'), paymentConfirmed: true }
   assert.equal(model.rowView(paidRow, today).state, '已还')
 })
+
+test('加载中（计划未就绪）不泄露静态剩余本金：pending 且剩余/本金均为 —', () => {
+  // 复现：loan 已到、plan 还没读回的半加载状态，不能拿 loan.remainingPrincipalMinor（静态）冒充剩余本金。
+  const result = model.build(loan({ remainingPrincipalMinor: '416989' }), null, null)
+  assert.equal(result.pending, true)
+  assert.equal(result.remaining, '—')
+  assert.equal(result.remainingPrincipal, '—')
+  assert.equal(result.remainingTerms, 0)
+})
+
+test('加载完成：剩余本金与剩余总额同源（summary 未还本金），不再取 loan 静态值', () => {
+  const view = periodView({ items: Array.from({ length: 9 }, (_, i) => period(i + 4)) })
+  // loan.remainingPrincipalMinor 故意给一个错的静态值，确认详情以 summary 为准。
+  const result = model.build(loan({ remainingPrincipalMinor: '416989' }), view, preview(loan()))
+  assert.equal(result.pending, false)
+  assert.equal(result.remainingPrincipal, '9,000.00') // 9 期 × 100000 分 = 900000 分 = 9,000.00 元（取自 summary 未还本金，非静态 416989）
+})

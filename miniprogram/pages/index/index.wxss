@@ -141,6 +141,18 @@
   word-break: break-word;
 }
 .mix-total-empty { text-align: center; }
+/* 负债金额列上下两行：上面「待还负债」合计，下面「其中利息」——与待还负债同级、右对齐同一条基准。 */
+.mix-total-col { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.mix-interest {
+  margin-top: 2rpx;
+  color: var(--theme-hero-muted, #FFFFFF);
+  font-size: var(--font-caption, 22rpx);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  opacity: .82;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .mix-legend-scroll { grid-column: 1 / -1; min-width: 0; margin: 8rpx 0; white-space: nowrap; }
 .mix-legend { display: inline-flex; align-items: center; gap: 20rpx; min-height: 40rpx; }
 .mix-legend-item { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 8rpx; }

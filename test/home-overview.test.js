@@ -36,6 +36,7 @@ test('已有本月快照不能作为累计展示，累计读取返回前保留�
 test('净值卡按账户性质拆成资产与负债两侧，本月收支不再进首页数据', async () => {
   const h = runtime(), page = h.page('index')
   h.respond = action => action === 'dashboard.get' ? { ok: true, data: { summaryScope: 'all', netWorthMinor: '-324335',
+    assetsMinor: '1737920', liabilitiesMinor: '2062255',
     month: '2026-10',
     accounts: [
       { nature: 'asset', bookBalanceMinor: '1737920' },
@@ -126,12 +127,12 @@ test('草稿提示和待还互不牵连：一条没有或读不到不影响另�
   assert.equal(page.data.alertDueText, '')
 })
 
-test('提醒各自进自己的工作台：待核对去导入工作台，待还去贷款页', async () => {
+test('提醒各自进自己的工作台：待核对去导入工作台，待还去本月待还明细页', async () => {
   const h = runtime(), page = h.page('index')
   page.openImport()
   page.openLoans()
   assert.equal(h.navigation[0], '/packages/finance/pages/import-workbench/index')
-  assert.equal(h.navigation[1], '/packages/loans/pages/loans/index')
+  assert.equal(h.navigation[1], '/packages/loans/pages/due-this-month/index')
 })
 
 test('旧服务端漏回累计范围时拒绝展示和缓存，重试可取得正确累计', async () => {
@@ -170,4 +171,59 @@ test('无需补建分期计划时不出现首页提示', async () => {
     summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' }, cashFlowTrend: [], recentTransactions: [] } } : undefined
   await page.loadDashboard()
   assert.equal(page.data.installmentPlanPromptText, '')
+})
+
+test('净资产 = 资产(账面余额) − 负债(账单应还+未还分期本息)，与卡片资产/负债同口径', () => {
+  const { netWorthOf } = require('../cloudfunctions/catledger-api/src/reporting-service')
+  // 复现实例：资产 57,129.94、负债 21,364.59（含未入账分期欠款），净资产应为 35,765.35，不是 ΣbookBalance 的虚高值。
+  const accounts = [
+    { nature: 'asset', bookBalanceMinor: '5712994' },
+    // 负债账户账面净额只含已入账交易（可能为 -1,506,045 之类），但真实欠款（debtMinor）是 2,136,459。
+    { nature: 'liability', bookBalanceMinor: '-1506045', debtMinor: '2136459' }
+  ]
+  assert.equal(netWorthOf(accounts).toString(), '3576535')
+  // 无分期、无账单的普通负债：debtMinor 缺省按 0，净资产仍按资产账面。
+  assert.equal(netWorthOf([{ nature: 'asset', bookBalanceMinor: '100' }]).toString(), '100')
+})
+
+test('首页账户余额同时展示资产与负债：各取前两条，负债显示待还/已还清', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = (action, data) => action === 'dashboard.get' ? { ok: true, data: {
+    summaryScope: data.summaryScope, month: '2026-10', netWorthMinor: '0', assetsMinor: '0', liabilitiesMinor: '0',
+    accounts: [
+      { accountId: 'a1', name: '资产甲', type: 'bank', nature: 'asset', displayBalanceMinor: '100', bookBalanceMinor: '100', archived: false },
+      { accountId: 'a2', name: '资产乙', type: 'wallet', nature: 'asset', displayBalanceMinor: '200', bookBalanceMinor: '200', archived: false },
+      { accountId: 'a3', name: '资产丙', type: 'bank', nature: 'asset', displayBalanceMinor: '300', bookBalanceMinor: '300', archived: false },
+      { accountId: 'l1', name: '负债甲', type: 'credit', nature: 'liability', debtMinor: '500', bookBalanceMinor: '-500', archived: false },
+      { accountId: 'l2', name: '负债乙', type: 'credit', nature: 'liability', debtMinor: '0', bookBalanceMinor: '0', archived: false },
+      { accountId: 'l3', name: '负债丙', type: 'credit', nature: 'liability', debtMinor: '900', bookBalanceMinor: '-900', archived: false }
+    ],
+    summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' },
+    cashFlowTrend: [{ month: '2026-10', incomeMinor: '0', expenseMinor: '0' }], recentTransactions: [] } } : undefined
+  await page.loadDashboard()
+  const ids = page.data.accounts.map(a => a.accountId)
+  // 资产取前 2（a1,a2，不取 a3），负债取前 2（l1,l2，不取 l3）
+  assert.deepEqual(ids, ['a1', 'a2', 'l1', 'l2'])
+  assert.equal(page.data.accounts[2].directionText, '待还')
+  assert.equal(page.data.accounts[2].balanceText, '¥5.00')
+  assert.equal(page.data.accounts[3].directionText, '已还清')
+  assert.equal(page.data.accounts[0].directionText, '余额')
+})
+
+test('净值卡负债侧显示「其中利息」：取 dashboard.liabilitiesInterestMinor，0 或缺失时不显示', async () => {
+  const { runtime } = require('./helpers/read-runtime')
+  const h = runtime(), page = h.page('index'); page.onLoad()
+  // 直接给 dashboard 一个带利息合计的响应（其余字段复用默认）。
+  const base = { ok: true, data: { month: page.data.month, summaryScope: 'all', netWorthMinor: '-9046375',
+    assetsMinor: '5144024', liabilitiesMinor: '14190399', liabilitiesInterestMinor: '669170',
+    summary: { incomeMinor: '0', expenseMinor: '0' }, cashFlowTrend: [], recentTransactions: [], accounts: [] } }
+  h.respond = action => action === 'loans.dueCharges' ? { ok: true, data: { count: 0, cutoff: '2026-10-01' } }
+    : action === 'dashboard.get' ? base : undefined
+  await page.loadDashboard({ force: true })
+  assert.equal(page.data.liabilitiesInterestText, '¥6,691.70')
+  // 0 利息时不显示
+  h.respond = action => action === 'loans.dueCharges' ? { ok: true, data: { count: 0, cutoff: '2026-10-01' } }
+    : action === 'dashboard.get' ? { ok: true, data: { ...base.data, liabilitiesInterestMinor: '0' } } : undefined
+  await page.loadDashboard({ force: true })
+  assert.equal(page.data.liabilitiesInterestText, '')
 })

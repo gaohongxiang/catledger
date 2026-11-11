@@ -1,5 +1,5 @@
 // 只生成授权 SQL，不连接数据库、不自动执行。部署时使用已核实的 API 运行账号。
-const TABLES = Object.freeze(['catledger_transactions', 'catledger_economic_event_transactions', 'catledger_review_issue_members'])
+const TABLES = Object.freeze(['catledger_transactions', 'catledger_economic_event_transactions', 'catledger_review_issue_members', 'catledger_accounts'])
 function statements({ database, user, host }) {
   if (typeof database !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(database) ||
       typeof user !== 'string' || !/^[a-zA-Z0-9_]+$/.test(user) ||

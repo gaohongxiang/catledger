@@ -32,6 +32,7 @@ const IDEMPOTENT_MUTATION_ACTIONS = Object.freeze({
   'accounts.correctBalance': true,
   'accounts.create': true,
   'accounts.createBatch': true,
+  'accounts.remove': true,
   'accounts.update': true,
   'categories.archive': true,
   'categories.create': true,

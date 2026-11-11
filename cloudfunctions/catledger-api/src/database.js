@@ -40,7 +40,8 @@ function getDatabaseConfig(env = process.env) {
     waitForConnections: true,
     connectionLimit: 4,
     queueLimit: 0,
-    connectTimeout: 3000,
+    // 2s 足够建连；再久说明数据库真的连不上，快速失败交给上层重试，比死等 3s 更不容易把红条抛给首页。
+    connectTimeout: 2000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0
   }

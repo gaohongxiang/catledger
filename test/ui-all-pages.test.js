@@ -66,7 +66,7 @@ test('分期资料与计划响应丢失后修改表单仍恢复原请求，保�
   await page.save()
   const writes = calls.filter(x => x.name === 'loans.create')
   assert.equal(writes.length, 2); assert.deepEqual(writes[1].data, writes[0].data)
-  assert.equal(stored.baselinePrincipalMinor, '900000');assert.equal(stored.installmentSetup.originalPrincipalMinor,'1200000')
+  assert.equal(stored.baselinePrincipalMinor, '1200000');assert.equal(stored.installmentSetup.originalPrincipalMinor,'1200000')
   assert.equal(stored.generatePlan,true);assert.match(target,/loan-detail\/index\?loanId=loan$/)
   assert.equal(page.data.hasPending, false)
   assert.match(page.data.savedMessage, /已保存/)
@@ -87,19 +87,46 @@ test('分期首次日期不推断历史已还；旧试算响应和退出后的�
   assert.equal(page.data.preview,null)
 })
 
-test('新分期编辑固定原本金与历史参数；读取失败不能误建新贷款',async()=>{
+test('新分期编辑可改本金/期数/已还期数并标记结构改动；读取失败不能误建新贷款',async()=>{
   const data={name:'合成',principalYuan:'12000',paidTerms:'3',typeIndex:0,discountIndex:0,discountValue:'',schedule:{terms:'12',methodIndex:0,measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'}}
   const value=require('../miniprogram/packages/loans/pages/loan-form/model').previewInput(data)
   const loan={...value,installmentSetup:{...value.installmentSetup,historicalPaidTerms:3},loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
   const {page}=runtime('packages/loans/pages/loan-form/index',action=>Promise.resolve(action==='catalog.get'?{uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]}:{loan}))
   page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-linked'});await page.load()
   assert.equal(page.data.loan.loanId,'loan');assert.equal(page.data.sourceReady,true)
+  // 编辑已有计划：已还期数、总期数、本金均可改，且改动被识别为「结构改动」以触发重算预览。
   page.input({currentTarget:{dataset:{field:'paidTerms'}},detail:{value:'12'}})
   page.scheduleInput({currentTarget:{dataset:{field:'terms'}},detail:{value:'36'}})
-  assert.equal(page.data.paidTerms,'3');assert.equal(page.data.schedule.terms,'12')
+  assert.equal(page.data.paidTerms,'12');assert.equal(page.data.schedule.terms,'36')
+  assert.equal(page.structureDirty(),true)
   const failed=runtime('packages/loans/pages/loan-form/index',()=>Promise.reject(new Error('合成读取失败')))
   failed.page.onLoad({loanId:'loan'});await failed.page.load();await failed.page.save()
   assert.equal(failed.calls.some(c=>c.name==='loans.create'||c.name==='loans.previewPlan'),false)
+})
+
+test('编辑分期改已还期数：先核对重算预览，再提交 loans.rebuildPlan（含名称与 setup）',async()=>{
+  const value=require('../miniprogram/packages/loans/pages/loan-form/model').previewInput({name:'合成',principalYuan:'12000',paidTerms:'3',typeIndex:0,discountIndex:0,discountValue:'',schedule:{terms:'12',methodIndex:0,measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'}})
+  const loan={...value,installmentSetup:{...value.installmentSetup,historicalPaidTerms:3},loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
+  const previewSummary={remainingPrincipalMinor:'600000',totalPaymentMinor:'0',totalInterestMinor:'0',totalFeeMinor:'0'}
+  const {page,calls}=runtime('packages/loans/pages/loan-form/index',(action)=>{
+    if(action==='catalog.get')return Promise.resolve({uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]})
+    if(action==='loans.get')return Promise.resolve({loan})
+    if(action==='loans.previewPlan')return Promise.resolve({periods:[{periodNumber:6,dueDate:'2026-06-30',principalMinor:'80000',interestMinor:'0',feeMinor:'0',paid:false}],summary:previewSummary})
+    if(action==='loans.rebuildPlan')return Promise.resolve({loanId:'loan',loanVersion:2,generatedPeriods:7})
+    return Promise.resolve({})
+  })
+  page.onLoad({loanId:'loan'});await page.load()
+  page.input({currentTarget:{dataset:{field:'paidTerms'}},detail:{value:'5'}})
+  assert.equal(page.structureDirty(),true)
+  await page.save() // 第一次：触发核对预览，不写
+  assert.equal(calls.some(c=>c.name==='loans.previewPlan'),true)
+  assert.equal(calls.some(c=>c.name==='loans.rebuildPlan'),false)
+  await page.save() // 第二次：提交重建
+  const rebuild=calls.find(c=>c.name==='loans.rebuildPlan')
+  assert.ok(rebuild)
+  assert.equal(rebuild.data.name,'合成')
+  assert.equal(rebuild.data.installmentSetup.historicalPaidTerms,5)
+  assert.equal(rebuild.data.version,1)
 })
 
 test('贷款分页只保留当前页和五个返回游标，退出后迟到响应不回填', async () => {

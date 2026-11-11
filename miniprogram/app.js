@@ -27,7 +27,8 @@ App({
     themeId: '',
     categories: [],
     openStatisticsCompletion: false,
-    editingTransaction: null
+    editingTransaction: null,
+    accountsDirty: false
   },
 
   onLaunch() {

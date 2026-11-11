@@ -72,14 +72,36 @@
   max-width: 100%;
   margin-top: var(--layout-space-1);
   color: var(--theme-ink, #29231e);
-  font-size: var(--font-display, 56rpx);
-  font-weight: 500;
+  font-size: 46rpx;
+  font-weight: 600;
   line-height: 1.22;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.ad-card-top { display: flex; align-self: stretch; align-items: baseline; justify-content: space-between; gap: var(--layout-space-3); }
+.ad-balance-row { display: flex; flex-direction: column; align-self: stretch; }
+.ad-balance-label-row { display: flex; align-items: center; gap: 14rpx; position: relative; }
+.ad-info-btn { display: flex; align-items: center; justify-content: center; width: 22rpx; height: 22rpx; border-radius: 50%; border: 1rpx solid var(--theme-text-muted, #b8b0a7); color: var(--theme-text-muted, #b8b0a7); opacity: .9; }
+.ad-info-btn.is-on { border-color: var(--theme-accent-strong, #a34d20); color: var(--theme-accent-strong, #a34d20); }
+.ad-info-i { font-size: 13rpx; line-height: 1; font-weight: 600; font-style: normal; transform: translateY(-1rpx); }
+
+.ad-hint-mask { position: fixed; inset: 0; z-index: 50; background: transparent; }
+.ad-debt-tip { position: absolute; top: calc(100% + 14rpx); left: 0; z-index: 60; width: 520rpx; max-width: 80vw; display: flex; flex-direction: column; gap: 8rpx; padding: 18rpx 22rpx; border-radius: 14rpx; background: var(--theme-surface, #fffdf9); color: var(--theme-ink, #29231e); font-size: 24rpx; line-height: 1.55; border: 1rpx solid var(--theme-line, #eae4dc); box-shadow: 0 14rpx 36rpx rgba(0,0,0,.45); }
+.ad-debt-tip-title { color: var(--theme-ink, #29231e); font-size: 24rpx; line-height: 1.5; }
+.ad-debt-tip-note { color: var(--theme-text-muted, #746a60); font-size: 22rpx; line-height: 1.5; }
+.ad-debt-tip::before { content: ''; position: absolute; top: -10rpx; left: 18rpx; width: 0; height: 0; border-left: 10rpx solid transparent; border-right: 10rpx solid transparent; border-bottom: 10rpx solid var(--theme-surface, #fffdf9); }
+.ad-debt-hint-pop { margin-top: 10rpx; padding: 14rpx 18rpx; border-radius: 16rpx; background: var(--theme-surface-muted, #efe9e1); color: var(--theme-ink, #29231e); font-size: 22rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.ad-balance-label { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+/* 有总利息时：左右两列，各自标签+数值纵向成组，整组在行内上下居中；两列数值底部对齐。 */
+.ad-balance-row.has-side { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--layout-space-4); }
+.ad-balance-col { display: flex; flex-direction: column; min-width: 0; }
+.ad-balance-col-main { flex: 1; }
+.ad-balance-col-side { flex: 0 1 auto; align-items: flex-end; text-align: right; max-width: 50%; }
+.ad-balance-col-side .ad-balance-label { font-size: 22rpx; }
+.ad-balance-side-value { margin-top: var(--layout-space-1); color: var(--sem-expense, #b54738); font-size: 30rpx; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; }
+.ad-balance-fee { color: var(--theme-text-muted, #746a60); font-weight: 400; font-size: 22rpx; }
+.ad-balance-side-value { display: none; }
+.ad-balance-row.has-side .ad-balance-side-value { display: block; }
 .ad-card-link { display: flex; flex: 0 0 auto; align-items: center; gap: 4rpx; min-height: 56rpx; color: var(--theme-accent-strong, #a34d20); font-size: var(--font-caption, 24rpx); }
 .ad-card-link:active { opacity: .72; }
 
@@ -106,6 +128,28 @@
   box-shadow: var(--theme-shadow-soft);
 }
 
+/* 恢复使用与彻底删除并排：删除为次级危险按钮，避免误触。 */
+.ad-danger-row { display: flex; gap: 16rpx; margin-top: 8rpx; }
+.ad-danger-row-btn { flex: 1; }
+.ad-danger-row + .account-loans-note { margin-top: 20rpx; }
+.ad-record-block { margin-top: 20rpx; padding: 18rpx; border-radius: var(--theme-radius-small, 12rpx); background: var(--theme-danger-soft, #f6e4d4); }
+.ad-record-block-text { display: block; margin-bottom: 16rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.6; }
+.ad-record-empty { padding: 24rpx 0; text-align: center; color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
+.ad-record-head { display: flex; align-items: center; justify-content: space-between; padding: 6rpx 4rpx 10rpx; color: var(--theme-ink); font-size: var(--font-caption, 24rpx); }
+.ad-record-head switch { transform: scale(.8); }
+.ad-record-list { max-height: 560rpx; }
+.ad-record-row { display: flex; align-items: center; gap: 16rpx; padding: 18rpx 8rpx; border-top: 1rpx solid var(--theme-divider, #efe7da); }
+.ad-record-row-hover { background: rgba(0,0,0,.04); }
+.ad-record-row-locked { opacity: .5; }
+.ad-record-check { width: 36rpx; height: 36rpx; flex: none; border-radius: 8rpx; border: 2rpx solid var(--theme-text-subtle, #8B7F6C); box-sizing: border-box; }
+.ad-record-check-on { background: var(--theme-accent, #be5b24); border-color: var(--theme-accent, #be5b24); }
+.ad-record-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ad-record-title { color: var(--theme-ink); font-size: var(--font-body, 28rpx); }
+.ad-record-note { color: var(--theme-text-muted); font-size: var(--font-caption, 22rpx); margin-top: 2rpx; }
+.ad-record-amount { color: var(--theme-ink); font-size: var(--font-body, 28rpx); }
+.ad-record-delete { margin-top: 18rpx; }
+.ad-danger-action { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f6e4d4); }
+
 .correction-callout {
   margin-top: var(--layout-space-4);
   padding: 16rpx 18rpx;
@@ -120,6 +164,15 @@
 .account-loans { margin-top: var(--layout-space-4); padding: 12rpx 24rpx; background: var(--theme-surface, #fffdf9); border-radius: var(--theme-radius-large, 24rpx); box-shadow: var(--theme-shadow-soft); }
 .account-loans-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); }
 .account-loans-title { font-size: var(--font-section); font-weight: 500; }
+.account-loans-title-group { display: flex; align-items: baseline; gap: var(--layout-space-3); flex-wrap: wrap; }
+.account-loans-subhead { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-3); margin-top: 8rpx; }
+.account-loans-heading-actions { display: flex; align-items: center; gap: var(--layout-space-2); flex: none; }
+.ad-loan-sort { display: flex; align-items: center; gap: 2rpx; padding: 4rpx; border-radius: 999rpx; background: var(--theme-surface-muted, #efe9e1); }
+.ad-loan-sort-opt { padding: 8rpx 18rpx; border-radius: 999rpx; color: var(--theme-text-muted, #746a60); font-size: 22rpx; line-height: 1.2; white-space: nowrap; }
+.ad-loan-sort-opt.is-on { background: var(--theme-surface, #fffdf9); color: var(--theme-ink, #29231e); font-weight: 600; box-shadow: var(--theme-shadow-soft); }
+.ad-loan-sort-opt:active { opacity: .7; }
+.account-loans-count { color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
+.account-statement-month { color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); font-weight: 400; }
 .account-loans-heading .ad-loans-add {
   display: flex;
   flex: none;
@@ -150,6 +203,7 @@
 .account-loan-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .account-loan-amount { text-align: right; overflow-wrap: anywhere; max-width: 45%; }
 .account-loans-error { padding: 20rpx 0; color: var(--theme-danger); font-size: var(--font-caption); }
+.account-loans-done-heading { margin-top: var(--layout-space-4); padding: 8rpx 0; color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
 
 /* 账单里的分期（未建计划）：与分期计划区分开，引导新建/归入。 */
 .account-sources-count { color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
@@ -161,8 +215,12 @@
 .account-source-actions .account-source-btn::after { border: 0 !important; }
 .account-source-actions .account-source-btn:active { opacity: .7; }
 .account-source-actions .account-source-btn[disabled] { opacity: .4; }
-.account-statement-sources { margin-top: 20rpx; padding-top: 16rpx; border-top: 1rpx solid var(--theme-line); }
-.account-sources-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.account-statement-sources { margin-top: 20rpx; padding: 22rpx 22rpx 6rpx; border-radius: 22rpx; background: var(--theme-soft, rgba(255,255,255,.04)); }
+.account-sources-title-wrap { display: inline-flex; align-items: center; min-width: 0; }
+.account-sources-dot { width: 12rpx; height: 12rpx; margin-right: 12rpx; flex: 0 0 12rpx; border-radius: 50%; background: var(--theme-accent-strong, #B45309); }
+.account-sources-badge { flex: 0 0 auto; margin-left: 14rpx; padding: 4rpx 16rpx; border-radius: 999rpx; background: var(--theme-warning-soft, rgba(180,83,9,.16)); color: var(--theme-accent-strong, #B45309); font-size: var(--font-caption, 22rpx); font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.account-sources-hint { display: block; margin-top: 8rpx; color: var(--theme-text-muted); font-size: var(--font-caption, 22rpx); line-height: 1.5; }
+.account-sources-subhead { display: flex; align-items: center; gap: 16rpx; }
 .account-statement-subtitle { font-size: var(--font-body, 28rpx); font-weight: 500; color: var(--theme-ink); }
 .sources-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
 .sources-sheet { width: 100%; box-sizing: border-box; max-height: 70vh; overflow-y: auto; padding: 28rpx 24rpx calc(28rpx + env(safe-area-inset-bottom)); background: var(--theme-surface); color: var(--theme-ink); box-shadow: 0 -8rpx 32rpx rgba(0,0,0,.35); border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0; }

@@ -18,7 +18,7 @@ test('还款计划参数、试算与生成：迁移约束、幂等、对账衔�
       openingDisplayBalanceMinor: amount, occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
     const debt = await account('other_liability', '2000000', '合成负债')
     const schedule = { scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate', quoteType: 'annual', ratePpm: '100000',
-      feePerTermMinor: '100', feeUpfrontMinor: '500', firstPaymentDate: '2026-10-01' }
+      feePerTermMinor: '100', feeUpfrontMinor: '500', firstPaymentDate: '2026-10-01', principalRounding: 'cent' }
     const base = { name: '合成分期', kind: 'installment', accountId: debt, baselinePrincipalMinor: '1000000', baselineDate: '2026-09-01' }
     let loanId
 

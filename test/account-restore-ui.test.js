@@ -158,3 +158,96 @@ test('继续核实期间离开页面，未知回执不再触发后台补发恢�
   assert.ok(Array.from(h.storage.values()).some(value => value && value.action === 'accounts.restore'))
   assert.equal(h.toasts.length, 0)
 })
+
+test('彻底删除无流水账户成功后退回列表；有记录时提示并可跳转到该账户流水去删除', async () => {
+  const h = runtime()
+  h.accounts = [account({ bookBalanceMinor: '0', displayBalanceMinor: '0' })]
+  let blocked = true
+  h.respond = action => {
+    if (action === 'accounts.remove') {
+      if (blocked) return { ok: false, error: { code: 'ACCOUNT_HAS_RECORDS', message: '该账户已有流水或关联记录，不能删除；请改用停用（归档）' } }
+      h.accounts = []
+      return { ok: true, data: account({ archived: true }) }
+    }
+    return undefined
+  }
+  const page = await detail(h)
+  // 第一次：确认删除 -> 被流水挡住，显示引导、不跳转、不误报通用错误
+  const first = page.removeAccount()
+  h.modals[0].success({ confirm: true })
+  await first
+  assert.equal(page.data.removeBlockedByRecords, true)
+  assert.equal(h.calls.filter(c => c.action === 'accounts.remove').length, 1)
+  assert.equal(h.navigation.includes('back'), false)
+  assert.equal(page.data.errorMessage, '')
+  // 内联展示该账户流水（不跳转）；模板里有勾选与删除按钮
+  assert.equal(h.navigation.some(url => String(url).indexOf('/pages/account-transactions') >= 0), false)
+  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  assert.match(template, /bindtap="removeAccount"[^>]*>彻底删除<\/button>/)
+  assert.match(template, /bindtap="deleteRemoveRecords"/)
+  // 第二次：用户清完流水回来再删 -> 成功退回列表
+  blocked = false
+  page.setData({ removeBlockedByRecords: false })
+  const second = page.removeAccount()
+  h.modals[h.modals.length - 1].success({ confirm: true })
+  await second
+  assert.equal(h.navigation.includes('back'), true)
+})
+
+test('被流水挡住时内联列出流水，删除后自动重试彻底删除账户', async () => {
+  const h = runtime()
+  h.accounts = [account({ bookBalanceMinor: '0', displayBalanceMinor: '0' })]
+  let blocked = true
+  h.respond = (action, data) => {
+    if (action === 'transactions.list') {
+      // 按月查询：只有 2026-01 有这笔期初调整，其余月份为空，避免重复计入。
+      const txs = data.month === '2026-01' ? [{ transactionId: 't1', version: 1, type: 'balance_adjustment', amountMinor: '10834', occurredLocalAt: '2026-01-01T00:00:00', origin: 'manual', note: '期初' }] : []
+      return { ok: true, data: { source: 'manual', transactions: txs, nextCursor: null, summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' } } }
+    }
+    if (action === 'transactions.deleteMany') return { ok: true, data: { deletedCount: 1 } }
+    if (action === 'accounts.remove') {
+      if (blocked) return { ok: false, error: { code: 'ACCOUNT_HAS_RECORDS', message: '有流水' } }
+      h.accounts = []
+      return { ok: true, data: account({ archived: true }) }
+    }
+    return undefined
+  }
+  const page = await detail(h)
+  const first = page.removeAccount()
+  h.modals[0].success({ confirm: true })
+  await first
+  await tick(); await tick(); await tick()
+  assert.equal(page.data.removeBlockedByRecords, true)
+  // 自动拉取了该账户流水
+  assert.equal(page.data.removeRecords.length, 1)
+  // 余额调整类不可选（selectable=false）
+  assert.equal(page.data.removeRecords[0].selectable, false)
+  // 模板含内联删除入口
+  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  assert.match(template, /bindtap="deleteRemoveRecords"/)
+})
+
+test('彻底删除成功后标记账户列表刷新，返回列表按最新数据强制重读', async () => {
+  const h = runtime()
+  h.accounts = [account({ bookBalanceMinor: '0', displayBalanceMinor: '0' })]
+  h.respond = action => {
+    if (action === 'accounts.remove') { h.accounts = []; return { ok: true, data: account({ archived: true }) } }
+    return undefined
+  }
+  const page = await detail(h)
+  const task = page.removeAccount()
+  h.modals[0].success({ confirm: true })
+  await task
+  // 成功：退回列表 + 标记 accountsDirty
+  assert.equal(h.navigation.includes('back'), true)
+  assert.equal(h.app.globalData.accountsDirty, true)
+  // 列表页 onShow：见到 dirty 标记则强制重读，并清标记
+  const list = h.page('accounts')
+  const forced = []
+  const original = list.loadAccounts
+  list.loadAccounts = opts => { forced.push(!!(opts && opts.force)); return Promise.resolve() }
+  list.onShow()
+  assert.deepEqual(forced, [true])
+  assert.equal(h.app.globalData.accountsDirty, false)
+  list.loadAccounts = original
+})

@@ -220,6 +220,7 @@ test('账户页以净资产和异常余额为主，行内图标直达改名与�
   assert.match(template, /净资产/)
   assert.match(template, /资产合计/)
   assert.match(template, /待还负债/)
+  assert.match(template, /总利息/)
   assert.match(template, /账户总览/)
   assert.match(template, /assetCorrectionCount/)
   assert.match(template, /item\.amountTone/)
@@ -271,7 +272,9 @@ test('账户详情独立页：余额大卡、流水入口、负债贷款区与�
   assert.match(markup, /ad-balance-value money-number {{account\.amountTone}}/)
   assert.doesNotMatch(markup, /ad-balance-state/)
   assert.match(markup, /{{account\.balanceLabel}}/)
-  assert.match(markup, /<view class="ad-card">[\s\S]*?class="ad-card-link" bindtap="openAccountTransactions"/)
+  // 余额大卡：欠款与「分期总利息」左右并排（两行网格对齐），不再单独放流水入口链接。
+  assert.match(markup, /class="ad-card">[\s\S]*?class="ad-balance-row[\s\S]*?ad-balance-side-value/)
+  assert.doesNotMatch(markup, /class="ad-card-link" bindtap="openAccountTransactions"/)
   assert.doesNotMatch(markup, /class="ad-list"/)
   assert.match(markup, /wx:if="{{account\.nature === 'liability'}}" class="account-loans"/)
   assert.match(markup, /bindtap="createAccountLoan"[^>]*aria-label="为当前账户新增贷款"/)

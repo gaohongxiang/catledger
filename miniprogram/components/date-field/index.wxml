@@ -1,0 +1,52 @@
+<view class="df-trigger" bindtap="show" aria-role="button" aria-disabled="{{disabled}}">
+  <slot></slot>
+</view>
+
+<view wx:if="{{open}}" class="df-layer" catchtouchmove="stop">
+  <view class="df-scrim" catchtap="close"></view>
+  <view class="df-sheet" catchtap="stop">
+    <view class="df-head">
+      <text class="df-cancel" bindtap="close">取消</text>
+      <text class="df-title">{{title || (granularity === 'month' ? '选择月份' : granularity === 'datetime' ? '选择时间' : '选择日期')}}</text>
+      <text class="df-ok" bindtap="confirm">确定</text>
+    </view>
+
+    <!-- 年月栏：点即切换快选 -->
+    <view class="df-ym">
+      <text class="df-ym-seg" data-mode="years" bindtap="switchMode">{{viewYear}}年<text class="df-tri">▾</text></text>
+      <text wx:if="{{granularity !== 'month' || mode === 'days'}}" class="df-ym-seg" data-mode="months" bindtap="switchMode">{{viewMonth}}月<text class="df-tri">▾</text></text>
+    </view>
+
+    <!-- 年快选 -->
+    <scroll-view wx:if="{{mode === 'years'}}" scroll-y class="df-quickgrid-wrap">
+      <view class="df-quickgrid">
+        <text wx:for="{{yearList}}" wx:key="*this" class="df-qcell {{item === viewYear ? 'on' : ''}}" data-year="{{item}}" bindtap="pickYear">{{item}}</text>
+      </view>
+    </scroll-view>
+
+    <!-- 月快选 -->
+    <view wx:elif="{{mode === 'months'}}" class="df-quickgrid df-monthgrid">
+      <text wx:for="{{monthList}}" wx:key="*this" class="df-qcell {{item === viewMonth ? 'on' : ''}}" data-month="{{item}}" bindtap="{{granularity === 'month' ? 'pickMonthOnly' : 'pickMonth'}}">{{item}}月</text>
+    </view>
+
+    <!-- 日历 -->
+    <block wx:else>
+      <view class="df-week"><text wx:for="{{weekdays}}" wx:key="*this">{{item}}</text></view>
+      <view class="df-days">
+        <text wx:for="{{cells}}" wx:key="date" class="df-day {{item.inMonth ? '' : 'dim'}} {{item.date === selectedDate ? 'sel' : ''}} {{item.date === todayStr ? 'today' : ''}}" data-date="{{item.date}}" bindtap="pickDay">{{item.day}}</text>
+      </view>
+      <view class="df-nav">
+        <text class="df-navbtn" bindtap="prevMonth">‹ 上月</text>
+        <text class="df-navbtn" bindtap="nextMonth">下月 ›</text>
+      </view>
+    </block>
+
+    <!-- 时间选择（datetime） -->
+    <view wx:if="{{granularity === 'datetime'}}" class="df-time">
+      <text class="df-time-label">时间</text>
+      <picker class="df-time-picker" mode="selector" range="{{hours}}" value="{{hour}}" bindchange="pickHour"><text class="df-time-val">{{hour}}</text></picker>
+      <text class="df-time-sep">:</text>
+      <picker class="df-time-picker" mode="selector" range="{{minutes}}" value="{{minute}}" bindchange="pickMinute"><text class="df-time-val">{{minute}}</text></picker>
+    </view>
+  </view>
+</view>

@@ -4,8 +4,8 @@ const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 const profilePresentation = require('../../utils/profile-presentation')
 const observer = require('../../services/read-observer')
-const { addMinor } = require('../../utils/minor-arithmetic')
 const composition = require('./net-worth-composition')
+const netWorthPresent = require('../../utils/net-worth-present')
 const draftSessions = require('../../services/import-draft-session')
 const tabRouter = require('../../shell/router')
 
@@ -88,6 +88,7 @@ function createHomePage(dependencies) {
       expenseText: '—',
       assetsText: '—',
       liabilitiesText: '—',
+      liabilitiesInterestText: '',
       assetShares: emptyShares(),
       liabilityShares: emptyShares(),
       installmentPlanPromptText: '',
@@ -133,7 +134,11 @@ function createHomePage(dependencies) {
         displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile)
       })
       if (app.globalData.cloudAvailable && loggedIn) {
-        this.loadDashboard()
+        // 冷启动首次进入强制读取一次，避免永久缓存（dashboard.get ttl=Infinity）挡住后端口径变更；
+        // 之后切回首页仍走缓存，不每次强拉。
+        const forceFirst = !this._firstDashboardShown
+        this._firstDashboardShown = true
+        this.loadDashboard(forceFirst ? { force: true } : undefined)
         this.loadAlerts()
         return
       }
@@ -150,6 +155,7 @@ function createHomePage(dependencies) {
         expenseText: '—',
         assetsText: '—',
         liabilitiesText: '—',
+        liabilitiesInterestText: '',
         assetShares: emptyShares(),
         liabilityShares: emptyShares(),
         asOfText: '',
@@ -229,7 +235,7 @@ function createHomePage(dependencies) {
       const month = time.currentMonth()
       const query = dashboardQuery(month)
       const snapshot = api.displaySnapshot('dashboard.get', query)
-      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'assetShares', 'liabilityShares', 'installmentPlanPromptText', 'asOfText', 'alertImportText', 'alertDueText', 'alertImportParts', 'alertDueParts', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+      const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'liabilitiesInterestText', 'assetShares', 'liabilityShares', 'installmentPlanPromptText', 'asOfText', 'alertImportText', 'alertDueText', 'alertImportParts', 'alertDueParts', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
       if (this._dashboardLoad || !app.hasLoginApproval()) {
         return this._dashboardLoad || Promise.resolve()
       }
@@ -244,34 +250,36 @@ function createHomePage(dependencies) {
       const applyDashboard = function (dashboard, state) {
           if (!isCurrent()) return
           const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
-          let assetsMinor = '0', liabilitiesMinor = '0'
-          ;(Array.isArray(dashboard.accounts) ? dashboard.accounts : []).forEach(function (account) {
-            if (account.nature === 'liability') {
-              // 负债按欠款（账单本期应还 + 未来分期剩余本息）汇总，不再用账面净额。
-              liabilitiesMinor = addMinor(liabilitiesMinor, account.debtMinor == null ? '0' : account.debtMinor)
-            } else {
-              assetsMinor = addMinor(assetsMinor, account.bookBalanceMinor || '0')
-            }
-          })
+          // 资产/负债/净资产合计一律取后端 net-worth 真源（只算未归档），前端不再自己累加，保证与账户总览同口径。
           const planPromptCount = (Array.isArray(dashboard.accounts) ? dashboard.accounts : []).filter(function (account) {
             const debtMinor = account.debtMinor == null ? '0' : String(account.debtMinor)
             return account.nature === 'liability' && !account.archived && account.needsInstallmentPlan && debtMinor !== '0'
           }).length
           // 本月收支不再上首屏：导入滞后一个月，本月结构性为 0，摆在净资产旁边会读成「这个月没花钱」。
-          const shares = composition.composition(dashboard.accounts)
+          // 构成条的总额必须与净值卡「资产／负债」一致，因此只取未归档账户（与后端 net-worth 口径相同）。
+          const shares = composition.composition((Array.isArray(dashboard.accounts) ? dashboard.accounts : []).filter(function (account) { return !account.archived }))
+          // 合计走共享展示层 presentTotals（后端 accountTotals 唯一真源）；dashboard.totals 为主、平铺字段兜底。
+          const totals = netWorthPresent.presentTotals(dashboard.totals || dashboard)
           self.setData({
-            netWorthText: money.formatMinor(dashboard.netWorthMinor),
+            netWorthText: totals.netWorthText,
             incomeText: money.formatMinor(dashboard.summary.incomeMinor),
             expenseText: money.formatMinor(dashboard.summary.expenseMinor),
-            assetsText: money.formatMinor(assetsMinor),
-            liabilitiesText: liabilitiesMinor === '0' ? '—' : money.formatMinor(liabilitiesMinor),
+            assetsText: totals.assetsText,
+            // 首页约定：负债为 0 显示「—」（账户页显示 ¥0.00），只影响展示，不改数据。
+            liabilitiesText: totals.liabilitiesMinor === '0' ? '—' : totals.liabilitiesText,
+            liabilitiesInterestText: totals.liabilitiesInterestText,
             assetShares: shares.assets,
             liabilityShares: shares.liabilities,
             installmentPlanPromptText: planPromptCount > 0 ? planPromptCount + ' 个账户需要新建分期计划' : '',
             asOfText: asOfLabel(dashboard.recentTransactions),
             hasDashboard: true,
             dashboardFresh: Boolean(state && state.complete),
-            dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',
+            // 费用同步失败时不再用红条拦住首页：账本照常显示，只把状态降级为「当前结果待核实」，
+            // 让用户知道余额可能还差一笔费用补记，而不是整页读取失败。
+            dashboardStatus: !state ? '显示上次结果，正在检查费用并更新'
+              : state.complete ? ''
+              : state.unverified ? '费用暂未同步，当前余额待核实'
+              : '费用同步未完成，当前结果还不是最新余额',
             errorMessage: '',
             trendReady: Array.isArray(dashboard.cashFlowTrend),
             trendSparse: cashFlowTrend.filter(function (row) {
@@ -285,9 +293,14 @@ function createHomePage(dependencies) {
                 expenseHeight: row.expenseHeightPermille === 0 ? 0 : Math.max(5, Math.round(row.expenseHeightPermille * 0.1))
               })
             }),
-            accounts: dashboard.accounts.filter(function (account) {
-              return !account.archived
-            }).slice(0, 3).map(function (account) {
+            // 账户余额：资产与负债各展示若干条（资产在前、负债在后），避免只取前 3 条时负债被永久截掉。
+            // 负债行显示「待还 / 已还清」，金额取欠款 debtMinor；资产行显示余额。
+            accounts: (function () {
+              const active = dashboard.accounts.filter(function (account) { return !account.archived })
+              const assets = active.filter(function (account) { return account.nature !== 'liability' }).slice(0, 2)
+              const liabilities = active.filter(function (account) { return account.nature === 'liability' }).slice(0, 2)
+              return assets.concat(liabilities)
+            })().map(function (account) {
               const liability = account.nature === 'liability'
               const debtMinor = account.debtMinor == null ? '0' : String(account.debtMinor)
               const hasDebt = debtMinor !== '0' && debtMinor.charAt(0) !== '-'
@@ -314,7 +327,17 @@ function createHomePage(dependencies) {
       }
       const chargeSync = require('../../services/loan-charge-sync')
       this._dashboardLoad = (async () => {
-        let sync = await chargeSync.beforePage(this,isCurrent,{force})
+        let sync
+        try {
+          sync = await chargeSync.beforePage(this,isCurrent,{force})
+        } catch (syncError) {
+          // 费用同步是一次后台补记，连不上数据库不该把整个首页拖成红色错误条。
+          // 这里吞掉失败，并显式清掉 beforePage 可能已经写在 data 上的红色文案，
+          // 当作「本次未核对」继续读账本：账面金额照常显示，只是标记为待核实。
+          if (!isCurrent()) return
+          this.setData({ chargeSyncMessage: '', chargeSyncComplete: false })
+          sync = { complete: false, unverified: true, message: '' }
+        }
         for (let round=0;round<2;round++) {
           if (!isCurrent()) return
           const dashboard = await this.fetchDashboard(month,{force:force&&round===0})
@@ -323,8 +346,15 @@ function createHomePage(dependencies) {
           if (!sync.complete || verified) { applyDashboard(dashboard,sync); return }
           // 正式读取发现外部新版本或跨日，只重新核对一次；连续变化保留画面并明确待更新。
           applyDashboard(dashboard)
-          if (round===0) sync = await chargeSync.beforePage(this,isCurrent,{force:true})
-          else this.setData({dashboardFresh:false,chargeSyncComplete:false,dashboardStatus:'账本仍在更新，当前结果待核实',chargeSyncMessage:'费用核对后账本再次变化，请重试'})
+          if (round===0) {
+            try {
+              sync = await chargeSync.beforePage(this,isCurrent,{force:true})
+            } catch (recheckError) {
+              if (!isCurrent()) return
+              this.setData({ chargeSyncMessage: '', chargeSyncComplete: false })
+              sync = { complete: false, unverified: true, message: '' }
+            }
+          } else this.setData({dashboardFresh:false,chargeSyncComplete:false,dashboardStatus:'账本仍在更新，当前结果待核实',chargeSyncMessage:'费用核对后账本再次变化，请重试'})
         }
       })()
         .catch(function () {
@@ -375,7 +405,7 @@ function createHomePage(dependencies) {
         this.promptWechatLogin(this.openLoans.bind(this))
         return
       }
-      wx.navigateTo({ url: '/packages/loans/pages/loans/index' })
+      wx.navigateTo({ url: '/packages/loans/pages/due-this-month/index' })
     },
 
     openStatistics: function () {

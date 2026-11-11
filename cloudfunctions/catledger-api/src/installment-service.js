@@ -30,6 +30,57 @@ async function populateTracking(c,uid,loans) {
   const summaries=new Map(tracked.map(loan=>{const value=grouped.get(loan.loanId);return [loan.loanId,buildView(loan,value.periods,value.items,undefined,value.prepaid).summary]}))
   return loans.map(loan=>({...loan,installmentSummary:summaries.get(loan.loanId)||null}))
 }
+// 账户欠款里的「各计划未还期次本息」——与贷款详情/逐期表同一口径（buildView 的未还汇总）。
+// 按负债账户聚合：每个生效分期计划分别算「未还期次(本金+利息+费用)」，再加总到账户。
+// 不使用独立的 SQL 边界判断，避免账户页与详情页两套算法打架（见定稿第七节）。
+// 拉取用户所有「生效分期计划」并逐笔算出 buildView 的 summary；返回 (loanId -> {accountId, summary})。
+// 账户欠款合计与账户总利息合计复用这一份口径，避免两处各写一套 SQL 边界得出不同数字。
+async function loadLivePlanSummaries(c,uid) {
+  const [rows]=await c.execute(`SELECT l.loan_id AS loanId,l.account_id AS accountId,l.name,l.institution,l.kind,
+      l.baseline_principal_minor AS baselinePrincipalMinor,l.baseline_date AS baselineDate,l.start_date AS startDate,l.end_date AS endDate,
+      l.repayment_method AS repaymentMethod,l.schedule_method AS scheduleMethod,l.schedule_terms AS scheduleTerms,
+      l.measurement_kind AS measurementKind,l.quote_type AS quoteType,l.rate_ppm AS ratePpm,l.repayment_minor AS repaymentMinor,
+      l.fee_per_term_minor AS feePerTermMinor,l.fee_upfront_minor AS feeUpfrontMinor,l.first_payment_date AS firstPaymentDate,
+      l.principal_rounding AS principalRounding,
+      l.installment_setup_json AS installmentSetup,l.progress_json AS progress,l.version
+    FROM catledger_loans l JOIN catledger_accounts a ON a.uid=l.uid AND a.account_id=l.account_id
+    WHERE l.uid=? AND l.kind='installment' AND l.archived_at IS NULL AND l.deleted_at IS NULL
+      AND l.schedule_terms IS NOT NULL AND l.schedule_method IS NOT NULL
+      AND (l.installment_setup_json IS NOT NULL OR (l.baseline_principal_minor IS NOT NULL AND l.baseline_principal_minor<>0))`,[uid])
+  if(!rows.length)return []
+  const ids=rows.map(r=>r.loanId),marks=ids.map(()=>'?').join(',')
+  const [periods]=await c.execute(PERIOD_SQL+` WHERE p.uid=? AND p.loan_id IN (${marks}) GROUP BY p.uid,p.period_id`,[uid,...ids])
+  const [items]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.loan_id IN (${marks}) AND i.active=1`,[uid,...ids])
+  const prepaid=await require('./installment-prepaid').prepaidFees(c,uid,ids)
+  const grouped=new Map(ids.map(id=>[id,{periods:[],items:[],prepaid:[]}]))
+  for(const row of periods)grouped.get(row.loanId).periods.push(publicPeriod(row))
+  for(const row of items)grouped.get(row.loanId).items.push(publicItem(row))
+  for(const row of prepaid)grouped.get(row.loanId).prepaid.push(row)
+  return rows.map(loan=>{
+    const value=grouped.get(loan.loanId)
+    return {accountId:loan.accountId, summary:buildView(loan,value.periods,value.items,undefined,value.prepaid).summary}
+  })
+}
+async function unpaidDebtByAccount(c,uid) {
+  const plans=await loadLivePlanSummaries(c,uid)
+  const totals=new Map()
+  for(const {accountId,s} of plans.map(p=>({accountId:p.accountId,s:p.summary}))){
+    const unpaid=BigInt(s.unpaidPrincipalMinor)+BigInt(s.unpaidInterestMinor)+BigInt(s.unpaidFeeMinor)
+    if(unpaid>0n)totals.set(accountId,(totals.get(accountId)||0n)+unpaid)
+  }
+  return new Map([...totals].map(([accountId,minor])=>[accountId,minor.toString()]))
+}
+// 各负债账户「所有生效分期计划的全期总利息」合计——含已还期次，口径等同贷款页"总利息"
+// （buildView 的 summary.totalInterestMinor，按未取消期次求和）。只统计未归档/未删除的计划。
+async function totalInterestByAccount(c,uid) {
+  const plans=await loadLivePlanSummaries(c,uid)
+  const totals=new Map()
+  for(const {accountId,summary} of plans){
+    const interest=BigInt(summary.totalInterestMinor||'0')
+    if(interest>0n)totals.set(accountId,(totals.get(accountId)||0n)+interest)
+  }
+  return new Map([...totals].map(([accountId,minor])=>[accountId,minor.toString()]))
+}
 function size(data) { const n=data.pageSize==null?20:data.pageSize;if(!Number.isInteger(n)||n<1||n>40)throw ledgerError('VALIDATION_ERROR');return n }
 function createInstallmentService({getPool,selectLoan}) {
   const read=(context,operation)=>executeLedgerRead({getPool,...context,consistentSnapshot:true,operation})
@@ -147,7 +198,6 @@ function createInstallmentService({getPool,selectLoan}) {
         return {loanId:row.loanId,name:row.name,scheduleTerms:Number(row.scheduleTerms),
           startMonth:String(row.startDate||row.baselineDate||'').slice(0,7)||null,
           originalPrincipalMinor:setup&&setup.originalPrincipalMinor!=null?String(setup.originalPrincipalMinor):null,
-          remainingPrincipalMinor:row.baselinePrincipalMinor==null?null:String(row.baselinePrincipalMinor),
           matched:plan.matches(fingerprint,row)}
       }),nextCursor:null}
     })
@@ -226,4 +276,4 @@ function createInstallmentService({getPool,selectLoan}) {
   }
   return {installments,installment,planCandidates,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,reconcileInstallmentSources,archiveInstallment,removeInstallmentItem}
 }
-module.exports={createInstallmentService,loadView,populateTracking}
+module.exports={createInstallmentService,loadView,populateTracking,unpaidDebtByAccount,totalInterestByAccount}

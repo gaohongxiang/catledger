@@ -32,7 +32,15 @@ DDL 隐式提交，中断后核对已完成结构并按原守卫重跑，不假�
 
 ## 0039 负债账户账单欠款快照
 
-[0039_liability_statement_debt.sql](0039_liability_statement_debt.sql)为 `catledger_accounts` 增加四个可空列：`statement_due_minor`（最近一期账单本期应还款总额）、`statement_minimum_minor`（本期最低还款额）、`statement_due_date`（到期还款日）、`statement_cycle`（账单周期，如 `20260714-20260813`）。新增 CHECK `chk_catledger_account_statement`：四个字段仅 `nature='liability'` 允许非空，金额不超 BIGINT 上限，周期不超 40 字；既有 `chk_catledger_account_billing` 与数据保留。迁移只加可空列与约束，不生成交易、不改动已有余额与账务数据；信息表守卫支持原 SQL 重跑。完整私有导出清单同步包含四列。负债账户的「欠款」由读取侧派生：本期应还 + 未来未到期次分期剩余本息（已还分摊扣减），账单已含还款日前的分期应还，故未来期次按 `due_date` 晚于到期还款日判定，避免本期重复计入。反例见[负债欠款测试](../test/liability-debt-db.test.js)、[账单解析测试](../test/bank-statement-summary.test.js)。本轮未执行线上迁移或部署，授权与验收状态只在[实施规划](../docs/招财猫记账本实施规划.md)维护。
+[0039_liability_statement_debt.sql](0039_liability_statement_debt.sql)为 `catledger_accounts` 增加四个可空列：`statement_due_minor`（最近一期账单本期应还款总额）、`statement_minimum_minor`（本期最低还款额）、`statement_due_date`（到期还款日）、`statement_cycle`（账单周期，如 `20260714-20260813`）。新增 CHECK `chk_catledger_account_statement`：四个字段仅 `nature='liability'` 允许非空，金额不超 BIGINT 上限，周期不超 40 字；既有 `chk_catledger_account_billing` 与数据保留。迁移只加可空列与约束，不生成交易、不改动已有余额与账务数据；信息表守卫支持原 SQL 重跑。完整私有导出清单同步包含四列。负债账户的「欠款」由读取侧派生：本期应还 + 各分期计划「未还期次本息费」合计（按账单锚点+已还进度动态算，与贷款详情/逐期表同源，不再单独按 `due_date` 边界另算一套）。反例见[负债欠款测试](../test/liability-debt-db.test.js)、[账单解析测试](../test/bank-statement-summary.test.js)。本轮未执行线上迁移或部署，授权与验收状态只在[实施规划](../docs/招财猫记账本实施规划.md)维护。
+
+## 0040 放宽贷款基准日约束
+
+[0040_relax_loan_baseline_date.sql](0040_relax_loan_baseline_date.sql) 放宽 0013 的 `ck_catledger_loans_baseline`：新负债模型按逐期未还本金计算剩余本金，不再需要「本金基准日」，故允许有基准本金而无基准日；仍禁止「有基准日却无基准本金」（无意义）。可重入：先删旧约束（若存在）再按新定义加回。不生成交易、不改动已有数据与账务。对应创建路径：分期计划可不传 `baselineDate` 即可创建。**剩余本金改为动态算：`baseline_principal_minor` 仅作为原始借款本金/本金时间线起点（还款不能超本金、一次性费用上限、老数据原本金、跨账单计划指纹仍用它），不再作为「剩余本金」的展示来源；展示与账户欠款的剩余本金一律取逐期未还期次本金（`buildView` 的 `unpaidPrincipalMinor`）。**
+
+## 0041 分期本金取整口径
+
+[0041_loan_principal_rounding.sql](0041_loan_principal_rounding.sql) 为 `catledger_loans` 增加可空列 `principal_rounding`（`cent`=到分，历史默认；`yuan`=整元平摊、尾差进末期，跟银行账单一致），并重建 `ck_catledger_loans_schedule` CHECK，在 0018 原定义上追加 `principal_rounding` 取值范围校验。老计划该列为 NULL，读取层按 `cent` 解释，行为不变；迁移不生成交易、不改动已有期次与账务数据。信息表守卫 + 先删后建约束支持原 SQL 重跑。应用账号对 `catledger_loans` 为表级 DML，新列不扩权。口径见[主逻辑 5.1.1](../docs/招财猫记账本入账逻辑说明.md#loans)。本轮未执行线上迁移或部署，授权与验收状态只在[实施规划](../docs/招财猫记账本实施规划.md)维护。
 
 ## 运行账号最小权限
 迁移账号与云函数运行账号必须分离。`catledger_app` 仍按实际 SQL 授予最小权限，不授予库级管理员权限。除直接写入的表外，下列能力也必须显式纳入运行权限契约：

@@ -20,19 +20,39 @@ const DUE_THIS_MONTH_SQL = `
     ) x
    WHERE x.outstanding > 0`
 
+// 本月待还明细：每期一条，含贷款名、账户名、期号、到期日与扣除已还后的未还金额。
+const DUE_DETAIL_SQL = `
+  SELECT t.loan_id AS loanId, l.name AS loanName, a.name AS accountName, t.period_number AS periodNumber, t.due_date AS dueDate,
+         (t.principal_minor + t.interest_minor + t.fee_minor
+           - COALESCE((SELECT SUM(pa.principal_minor + pa.interest_minor + pa.fee_minor)
+                         FROM catledger_loan_period_allocations pa
+                         JOIN catledger_loan_payments p2 ON p2.uid = pa.uid AND p2.payment_id = pa.payment_id AND p2.status = 'active'
+                        WHERE pa.uid = t.uid AND pa.period_id = t.period_id AND pa.active = 1), 0)) AS outstanding
+    FROM catledger_loan_periods t
+    JOIN catledger_loans l ON l.uid = t.uid AND l.loan_id = t.loan_id
+    LEFT JOIN catledger_accounts a ON a.uid = l.uid AND a.account_id = l.account_id
+   WHERE t.uid = ? AND t.cancelled = 0 AND l.archived_at IS NULL AND l.deleted_at IS NULL
+     AND t.due_date >= ? AND t.due_date < ?
+   HAVING outstanding > 0
+   ORDER BY t.due_date, t.period_id`
+
 function createHomeAlertsService({ getPool }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
   return {
     // 只读聚合，供首页提醒行使用；月份由客户端按设备本地时区给出，与 dashboard 同一口径。
+    // 同时返回 items 明细（每期一条：贷款名、期号、到期日、未还金额、loanId），供「本月待还」明细页使用。
     dueThisMonth(context) {
       const month = (context.data || {}).month
       const range = parseMonth(month)
       return read(context, async (connection, uid) => {
         const [[row]] = await connection.execute(DUE_THIS_MONTH_SQL, [uid, range.startDate, range.endDate])
+        const [detailRows] = await connection.execute(DUE_DETAIL_SQL, [uid, range.startDate, range.endDate])
         return {
           month,
           periodCount: Number(row && row.periodCount) || 0,
-          dueMinor: String((row && row.dueMinor) == null ? '0' : row.dueMinor)
+          dueMinor: String((row && row.dueMinor) == null ? '0' : row.dueMinor),
+          items: detailRows.map(r => ({ loanId: r.loanId, loanName: r.loanName, accountName: r.accountName,
+            periodNumber: Number(r.periodNumber), dueDate: r.dueDate, outstandingMinor: String(r.outstanding == null ? '0' : r.outstanding) }))
         }
       })
     }

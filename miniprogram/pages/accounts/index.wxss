@@ -26,8 +26,9 @@
 }
 .wealth-caption { margin-top: 10rpx; color: var(--theme-text-subtle, #958b82); font-size: var(--font-caption, 24rpx); }
 .wealth-breakdown { margin-top: 26rpx; padding-top: var(--layout-space-4); border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
+/* 三格同级：资产合计 / 待还负债 / 总利息，等宽并列，格与格之间一条竖分隔线。 */
 .wealth-breakdown > view { min-width: 0; flex: 1; }
-.wealth-breakdown > view:last-child { padding-left: var(--layout-space-5); border-left: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
+.wealth-breakdown > view + view { padding-left: var(--layout-space-5); border-left: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
 .wealth-breakdown text { display: block; color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 .wealth-breakdown .money-number {
   margin-top: 7rpx;
@@ -38,6 +39,9 @@
   overflow-wrap: anywhere;
 }
 .wealth-breakdown .liability-balance { color: var(--sem-expense, #b54738); }
+/* 资产合计用收入语义绿、总利息用支出语义红（待还负债本就是红，三者一眼区分方向）。 */
+.wealth-breakdown .asset-balance { color: var(--sem-income, #477153); }
+.wealth-breakdown .interest-balance { color: var(--sem-expense, #b54738); }
 .account-group { margin-top: 28rpx; }
 .liability-group { margin-top: 36rpx; }
 .group-heading {

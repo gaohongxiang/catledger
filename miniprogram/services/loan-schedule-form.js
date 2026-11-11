@@ -14,12 +14,31 @@ const QUOTE_OPTIONS = [
   { value: 'daily', label: '日利率' },
   { value: 'installment', label: '每期费率' }
 ]
+const QUOTE_DEFAULT_INDEX = QUOTE_OPTIONS.findIndex(option => option.value === 'monthly')
 const MEASUREMENT_OPTIONS = [{ value: 'rate', label: '按利率' }, { value: 'repayment', label: '按还款额' }]
+// 本金取整：到元默认（跟银行账单整元平摊一致），到分为历史口径。
+const ROUNDING_OPTIONS = [{ value: 'yuan', label: '到元' }, { value: 'cent', label: '到分' }]
 const METHOD_LABELS = Object.fromEntries(METHOD_OPTIONS.map(option => [option.value, option.label]))
 const MAX_TERMS = 600
 
 function blank() {
-  return { terms: '', methodIndex: 0, measurementIndex: 0, quoteIndex: 0, ratePercent: '', repaymentYuan: '', feePerTermYuan: '', feeUpfrontYuan: '', firstPaymentDate: '' }
+  return { terms: '', methodIndex: 0, measurementIndex: 0, quoteIndex: QUOTE_DEFAULT_INDEX, roundingIndex: 0, ratePercent: '', repaymentYuan: '', feePerTermYuan: '', feeUpfrontYuan: '', firstPaymentDate: '', interestStartDate: '', firstPeriodDays: '' }
+}
+
+// —— 首期天数 ↔ 起息日 互算（纯函数，按 UTC 零点避免时区误差）——
+function isYmd(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value == null ? '' : value)) }
+function ymdToUtc(value) { const p = String(value).split('-'); return Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])) }
+function daysBetween(a, b) { return Math.round((ymdToUtc(b) - ymdToUtc(a)) / 86400000) }
+function shiftDays(value, days) {
+  const utc = ymdToUtc(value) + Number(days || 0) * 86400000
+  const d = new Date(utc)
+  const pad = n => String(n).padStart(2, '0')
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate())
+}
+// 由起息日 + 首还日算首期天数（起息日晚于首还日 → 返回负值，交调用方校验）。
+function firstPeriodDaysOf(interestStartDate, firstPaymentDate) {
+  if (!isYmd(interestStartDate) || !isYmd(firstPaymentDate)) return null
+  return daysBetween(interestStartDate, firstPaymentDate)
 }
 
 function percentToPpm(text) {
@@ -47,17 +66,20 @@ function fromLoan(loan) {
   state.terms = loan.scheduleTerms == null ? '' : String(loan.scheduleTerms)
   state.methodIndex = indexOf(METHOD_OPTIONS, loan.scheduleMethod)
   state.measurementIndex = loan.measurementKind === 'repayment' ? 1 : 0
-  state.quoteIndex = indexOf(QUOTE_OPTIONS, loan.quoteType || 'annual')
+  state.quoteIndex = indexOf(QUOTE_OPTIONS, loan.quoteType || QUOTE_OPTIONS[QUOTE_DEFAULT_INDEX].value)
   state.ratePercent = loan.measurementKind === 'rate' && loan.ratePpm != null ? ppmToPercent(loan.ratePpm) : ''
   state.repaymentYuan = loan.measurementKind === 'repayment' && loan.repaymentMinor != null ? money.minorToYuan(loan.repaymentMinor) : ''
   state.feePerTermYuan = loan.feePerTermMinor == null ? '' : money.minorToYuan(loan.feePerTermMinor)
   state.feeUpfrontYuan = loan.feeUpfrontMinor == null ? '' : money.minorToYuan(loan.feeUpfrontMinor)
+  state.roundingIndex = indexOf(ROUNDING_OPTIONS, loan.principalRounding || 'yuan')
   state.firstPaymentDate = loan.firstPaymentDate || ''
+  state.interestStartDate = loan.interestStartDate || (loan.installmentSetup && loan.installmentSetup.interestStartDate) || ''
+  state.firstPeriodDays = state.interestStartDate && isYmd(state.firstPaymentDate) ? String(firstPeriodDaysOf(state.interestStartDate, state.firstPaymentDate)) : ''
   return state
 }
 
 function touched(state) {
-  return ['terms', 'ratePercent', 'repaymentYuan', 'feePerTermYuan', 'feeUpfrontYuan', 'firstPaymentDate']
+  return ['terms', 'ratePercent', 'repaymentYuan', 'feePerTermYuan', 'feeUpfrontYuan', 'firstPaymentDate', 'interestStartDate']
     .some(field => String(state[field] == null ? '' : state[field]).trim() !== '')
 }
 
@@ -78,6 +100,7 @@ function payload(state, principalYuan) {
   const method = METHOD_OPTIONS[form.methodIndex] ? METHOD_OPTIONS[form.methodIndex].value : 'flat'
   const measurement = form.measurementIndex === 1 ? 'repayment' : 'rate'
   const quote = QUOTE_OPTIONS[form.quoteIndex] ? QUOTE_OPTIONS[form.quoteIndex].value : 'annual'
+  const rounding = ROUNDING_OPTIONS[form.roundingIndex] ? ROUNDING_OPTIONS[form.roundingIndex].value : 'yuan'
   const termsText = String(form.terms).trim()
   if (!/^\d+$/.test(termsText) || Number(termsText) < 1 || Number(termsText) > MAX_TERMS) throw new Error('分期期数应为 1 到 ' + MAX_TERMS + ' 的整数')
   const terms = Number(termsText)
@@ -94,7 +117,7 @@ function payload(state, principalYuan) {
   if (measurement === 'rate') {
     ratePpm = percentToPpm(form.ratePercent)
   } else {
-    if (!form.firstPaymentDate) throw new Error('按还款额测算必须选择首次还款日')
+    if (!form.firstPaymentDate) throw new Error('请选择首期还款日')
     const label = repaymentLabel(method)
     const repaymentText = String(form.repaymentYuan == null ? '' : form.repaymentYuan).trim()
     if (repaymentText === '') throw new Error('请填写' + label)
@@ -103,35 +126,91 @@ function payload(state, principalYuan) {
       if (principalMinor == null || principalMinor === '0') throw new Error('按' + label + '测算前请先填写已确认本金')
       const principal = Number(principalMinor)
       const payment = Number(repaymentMinor)
+      const perTerm = rounding === 'yuan' ? Math.floor(principal / terms / 100) * 100 : principal / terms
       if (method === 'equal_payment' && payment * terms + Math.round(Math.max(0.05, terms * 0.01) * 100) < principal) {
         throw new Error('总还款不能低于已确认本金')
       }
-      if ((method === 'flat' || method === 'equal_principal') && payment + 1 < principal / terms) {
+      if ((method === 'flat' || method === 'equal_principal') && payment + 1 < perTerm) {
         throw new Error(method === 'equal_principal' ? '首期应还不能低于每期本金' : '每期应还不能低于每期本金')
       }
     }
   }
-  return {
+  // 起息日仅在「日利率」口径下有意义（按实际天数计息的首期起点）；其它口径不下发该键，保持契约干净。
+  const base = {
     scheduleMethod: method, scheduleTerms: terms, measurementKind: measurement,
     quoteType: measurement === 'rate' ? quote : null, ratePpm, repaymentMinor,
+    principalRounding: rounding,
     feePerTermMinor, feeUpfrontMinor, firstPaymentDate: form.firstPaymentDate || null
   }
+  if (measurement === 'rate' && quote === 'daily') {
+    // 起息日：优先用起息日；只填了首期天数时由首还日反推。二者都基于首还日校验，起息日不得晚于首还日。
+    let start = form.interestStartDate || null
+    if (!start) {
+      const n = Number(String(form.firstPeriodDays).trim())
+      if (Number.isInteger(n) && n > 0 && isYmd(form.firstPaymentDate)) start = shiftDays(form.firstPaymentDate, -n)
+    }
+    if (start) {
+      if (!isYmd(form.firstPaymentDate)) throw new Error('请先选择首期还款日')
+      if (!isYmd(start)) throw new Error('起息日格式不正确')
+      const days = daysBetween(start, form.firstPaymentDate)
+      if (days <= 0) throw new Error('起息日不能晚于或等于首期还款日，请检查起息日或首期天数')
+      base.interestStartDate = start
+    }
+  }
+  return base
+}
+
+// 起息日或首期天数变化时，联动更新另一个字段，保证两者不矛盾。
+// source: 'date'（用户改起息日）或 'days'（用户改首期天数）。
+function syncFirstPeriod(state, source) {
+  const form = Object.assign(blank(), state || {})
+  if (!isYmd(form.firstPaymentDate)) return form
+  if (source === 'days') {
+    const n = Number(String(form.firstPeriodDays).trim())
+    if (Number.isInteger(n) && n >= 0) form.interestStartDate = shiftDays(form.firstPaymentDate, -n)
+  } else {
+    const days = firstPeriodDaysOf(form.interestStartDate, form.firstPaymentDate)
+    form.firstPeriodDays = days == null ? '' : String(days)
+  }
+  return form
 }
 
 // 每期费率口径与等本等息互锁：选每期费率时强制等本等息；每期费率下改选其他方式时回到年利率。
 function selectQuote(state, index) {
   const form = Object.assign(blank(), state || {}, { quoteIndex: Number(index) || 0 })
-  if ((QUOTE_OPTIONS[form.quoteIndex] || QUOTE_OPTIONS[0]).value === 'installment') form.methodIndex = 0
+  const quote = (QUOTE_OPTIONS[form.quoteIndex] || QUOTE_OPTIONS[0]).value
+  if (quote === 'installment') {
+    form.methodIndex = 0
+    // 每期费率只需百分比，清掉可能残留的每期还款额，避免提交互斥组合。
+    form.repaymentYuan = ''
+  }
+  // 本金取整随口径切换默认：日利率按实际天数计息、网贷账单按分结算，默认「到分」（ROUNDING_OPTIONS 索引1）；
+  // 其它口径默认「到元」（索引0，银行整元平摊）。用户切完口径后仍可手动改，切换口径会重设回默认。
+  form.roundingIndex = quote === 'daily' ? 1 : 0
   return form
 }
 
 function selectMethod(state, index) {
   const form = Object.assign(blank(), state || {}, { methodIndex: Number(index) || 0 })
-  if ((QUOTE_OPTIONS[form.quoteIndex] || QUOTE_OPTIONS[0]).value === 'installment' && form.methodIndex !== 0) form.quoteIndex = 0
+  if ((QUOTE_OPTIONS[form.quoteIndex] || QUOTE_OPTIONS[0]).value === 'installment' && form.methodIndex !== 0) form.quoteIndex = QUOTE_DEFAULT_INDEX
+  return form
+}
+
+// 切换测算依据（还款额↔利率）时清空对侧输入，杜绝"既有利率又有还款额"的互斥提交。
+function selectMeasurement(state, index) {
+  const measurementIndex = Number(index) === 1 ? 1 : 0
+  const form = Object.assign(blank(), state || {}, { measurementIndex })
+  if (measurementIndex === 1) form.ratePercent = ''
+  else form.repaymentYuan = ''
+  return form
+}
+
+function selectRounding(state, index) {
+  const form = Object.assign(blank(), state || {}, { roundingIndex: Number(index) || 0 })
   return form
 }
 
 module.exports = {
-  METHOD_OPTIONS, QUOTE_OPTIONS, MEASUREMENT_OPTIONS, METHOD_LABELS, MAX_TERMS,
-  blank, fromLoan, payload, selectQuote, selectMethod, percentToPpm, ppmToPercent, repaymentLabel, touched
+  METHOD_OPTIONS, QUOTE_OPTIONS, MEASUREMENT_OPTIONS, ROUNDING_OPTIONS, METHOD_LABELS, MAX_TERMS, QUOTE_DEFAULT_INDEX,
+  blank, fromLoan, payload, selectQuote, selectMethod, selectMeasurement, selectRounding, percentToPpm, ppmToPercent, repaymentLabel, touched, syncFirstPeriod, firstPeriodDaysOf, daysBetween, shiftDays, isYmd
 }

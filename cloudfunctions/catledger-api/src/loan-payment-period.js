@@ -48,7 +48,7 @@ async function prepare(connection, uid, input, loans, previous) {
       const available = BigInt(fact.principalMinor)-BigInt(used.amount), proposed=BigInt(share.principalMinor)
       historicalPrincipalMinor = String(available<proposed?available:proposed)
       if (available<0n) throw ledgerError('CONFLICT')
-    } else if (progress.simpleRepayment && progress.reviewedPeriods?.[requested.periodNumber] && progress.exceptions?.[requested.periodNumber]==='completed') throw ledgerError('LOAN_HISTORY_REVIEW_REQUIRED')
+    }
     result.push({ share, period, create: !saved, historicalPrincipalMinor })
   }
   return result

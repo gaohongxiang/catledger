@@ -16,6 +16,7 @@ function text(value, { required = false, max = 80 } = {}) {
 function date(value) { return value == null || value === '' ? null : parseLocalDate(value).startDate }
 const SCHEDULE_METHODS = new Set(['flat','equal_payment','equal_principal','interest_only'])
 const QUOTE_TYPES = new Set(['annual','monthly','daily','installment'])
+const PRINCIPAL_ROUNDINGS = new Set(['cent','yuan'])
 function optionalMinor(value) { return value == null || value === '' ? null : parseMinorUnits(value, { allowZero: true }).toString() }
 function scheduleMetadata(data, baselinePrincipalMinor) {
   const scheduleMethod = data.scheduleMethod == null ? null : data.scheduleMethod
@@ -29,9 +30,12 @@ function scheduleMetadata(data, baselinePrincipalMinor) {
   if (scheduleMethod === null) {
     if (quoteType !== null || ratePpm !== null || repaymentMinor !== null) throw ledgerError('VALIDATION_ERROR')
     return { scheduleMethod: null, scheduleTerms: null, measurementKind: null, quoteType: null, ratePpm: null,
-      repaymentMinor: null, feePerTermMinor, feeUpfrontMinor, firstPaymentDate }
+      repaymentMinor: null, feePerTermMinor, feeUpfrontMinor, firstPaymentDate, principalRounding: null }
   }
   if (!SCHEDULE_METHODS.has(scheduleMethod) || !Number.isInteger(scheduleTerms) || scheduleTerms < 1 || scheduleTerms > 600) throw ledgerError('VALIDATION_ERROR')
+  // 新建/更新默认到元（跟银行账单整元平摊一致）；老计划读取时 NULL 仍按 cent 解释，不改历史。
+  const principalRounding = data.principalRounding == null || data.principalRounding === '' ? 'yuan' : data.principalRounding
+  if (!PRINCIPAL_ROUNDINGS.has(principalRounding)) throw ledgerError('VALIDATION_ERROR')
   if (measurementKind === 'rate') {
     if (!QUOTE_TYPES.has(quoteType) || ratePpm === null || repaymentMinor !== null) throw ledgerError('VALIDATION_ERROR')
   } else if (measurementKind === 'repayment') {
@@ -39,17 +43,19 @@ function scheduleMetadata(data, baselinePrincipalMinor) {
   } else throw ledgerError('VALIDATION_ERROR')
   if (quoteType === 'installment' && scheduleMethod !== 'flat') throw ledgerError('VALIDATION_ERROR')
   if (feeUpfrontMinor !== null && baselinePrincipalMinor !== null && BigInt(feeUpfrontMinor) >= BigInt(baselinePrincipalMinor)) throw ledgerError('VALIDATION_ERROR')
-  return { scheduleMethod, scheduleTerms, measurementKind, quoteType, ratePpm, repaymentMinor, feePerTermMinor, feeUpfrontMinor, firstPaymentDate }
+  return { scheduleMethod, scheduleTerms, measurementKind, quoteType, ratePpm, repaymentMinor, feePerTermMinor, feeUpfrontMinor, firstPaymentDate, principalRounding }
 }
 function loanMetadata(data) {
   const allowed = new Set(['loanId','version','name','institution','kind','accountId','baselinePrincipalMinor','baselineDate','startDate','endDate','repaymentMethod',
-    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId','chargeContractId','originKind','repayments','coverage','oneOffCharges','importOrigin','importAccountDraft'])
+    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','principalRounding','installmentSetup','generatePlan','confirmed','sourceItemId','chargeContractId','originKind','repayments','coverage','oneOffCharges','importOrigin','importAccountDraft'])
   if (Object.keys(data).some(key => !allowed.has(key))) throw ledgerError('VALIDATION_ERROR')
   if(data.originKind!==undefined&&!['cash_borrowing','recorded_consumption','new_consumption','historical'].includes(data.originKind))throw ledgerError('VALIDATION_ERROR')
   if (!['borrowing','installment'].includes(data.kind)) throw ledgerError('VALIDATION_ERROR')
   const baselinePrincipalMinor = data.baselinePrincipalMinor == null ? null : parseMinorUnits(data.baselinePrincipalMinor, { allowZero: true }).toString()
   const baselineDate = date(data.baselineDate), startDate = date(data.startDate), endDate = date(data.endDate)
-  if ((baselinePrincipalMinor === null) !== (baselineDate === null) || (startDate && endDate && startDate > endDate)) throw ledgerError('VALIDATION_ERROR')
+  // 基准日是可选的旧字段：新流程剩余本金按逐期未还本金算，不依赖基准日。
+  // 只保留单向约束——填了基准日就必须同时有基准本金；允许有本金而无日期。
+  if ((baselineDate !== null && baselinePrincipalMinor === null) || (startDate && endDate && startDate > endDate)) throw ledgerError('VALIDATION_ERROR')
   const installmentSetup = normalizeSetup(data.installmentSetup,data.scheduleTerms)
   if (data.generatePlan !== undefined && (data.generatePlan !== true || data.confirmed !== true || !installmentSetup || !data.firstPaymentDate || baselinePrincipalMinor === null)) throw ledgerError('VALIDATION_ERROR')
   return { name: text(data.name, { required: true }), institution: text(data.institution), kind: data.kind,
@@ -57,7 +63,11 @@ function loanMetadata(data) {
     installmentSetup,...scheduleMetadata(data, installmentSetup ? installmentSetup.originalPrincipalMinor : baselinePrincipalMinor) }
 }
 function publicLoan(row) {
-  const remainingPrincipalMinor = row.remainingPrincipalMinor == null ? null : String(row.remainingPrincipalMinor)
+  // 剩余本金只有一个口径：有逐期计划时取「未还期次本金合计」（installmentSummary.unpaidPrincipalMinor，
+  // 由 buildView 按账单锚点动态算）；无计划的借款才退回按实际还款推算的本金余额。
+  const remainingPrincipalMinor = row.installmentSummary && row.installmentSummary.unpaidPrincipalMinor != null
+    ? String(row.installmentSummary.unpaidPrincipalMinor)
+    : row.remainingPrincipalMinor == null ? null : String(row.remainingPrincipalMinor)
   return { loanId: row.loanId, name: row.name, institution: row.institution, kind: row.kind,
     accountId: row.accountId, accountName: row.accountName, accountArchived: row.accountArchived != null, archived:row.archivedAt!=null, deleted:row.deletedAt!=null,
     currency: 'CNY', installmentSetup:parseSetup(row.installmentSetup), baselinePrincipalMinor: row.baselinePrincipalMinor == null ? null : String(row.baselinePrincipalMinor),
@@ -67,6 +77,7 @@ function publicLoan(row) {
     ratePpm: row.ratePpm == null ? null : String(row.ratePpm), repaymentMinor: row.repaymentMinor == null ? null : String(row.repaymentMinor),
     feePerTermMinor: row.feePerTermMinor == null ? null : String(row.feePerTermMinor),
     feeUpfrontMinor: row.feeUpfrontMinor == null ? null : String(row.feeUpfrontMinor), firstPaymentDate: row.firstPaymentDate ?? null,
+    principalRounding: row.principalRounding ?? 'yuan',
     ...(row.installmentSummary ? {installmentSummary:row.installmentSummary} : {}),
     remainingPrincipalMinor, status: remainingPrincipalMinor == null ? 'unknown' : remainingPrincipalMinor === '0' ? 'settled' : 'active', version: Number(row.version) }
 }

@@ -97,3 +97,42 @@ test('分期来源自动补偿：同计划名+同期次的利息漏归后由 rec
     assert.ok(afterPrincipal.n>=1)
   } finally {await lab.close()}
 })
+
+// C8 记忆：无合同编号的手动归属，写成「计划名+起始月+总期数」合成绑定；下月同名单期据此自动归属。
+// 组件级验证：手动归入后绑定表出现合成键；再用同计划的另一期无编号来源导入/归入时能命中同一计划。
+test('无编号来源手动归属后写下合成绑定，下月同名单期可自动延续',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async t=>{
+  const lab=await isolatedMysql()
+  try {
+    const apiPool=await lab.role('api',grants.api),importPool=await lab.role('import',grants.importer)
+    const services=localServices({apiPool,importPool,subject:'synthetic-installment-bind-memory'})
+    const api=(action,data)=>call(services.api,action,data),imp=(action,data)=>call(services.import,action,data)
+    const {uid}=await api('bootstrap')
+    const {accountId}=await api('accounts.create',{requestId:randomUUID(),type:'credit',name:'合成信用卡',openingDisplayBalanceMinor:'2400000',occurredLocalAt:'2025-10-01T00:00:00',timezoneOffsetMinutes:-480})
+    // 造两期「无编号」本金来源：第8期、第9期，计划名一致、没有 referenceKey。
+    const mkItem=async(term)=>lab.owner.execute(`INSERT INTO catledger_installment_items
+      (uid,item_id,account_id,loan_id,reference_key,reference_label,plan_label,period_number,total_terms,component,amount_minor,occurred_date,origin,source_event_id,source_identity_id,transaction_id,canonical)
+      VALUES (?,?,?,NULL,NULL,NULL,'合成无编号分期',?,12,'principal','200000','2026-08-31','manual',NULL,NULL,NULL,1)`,[uid,randomUUID(),accountId,term])
+    await mkItem(8);await mkItem(9)
+    const p8=(await api('loans.installmentSources',{accountId})).items.find(r=>r.periodNumber===8)
+    assert.ok(p8&&!p8.referenceKey,'应有第8期无编号本金来源')
+    // 建计划：名称与来源计划名一致、起始月 2026-01（第8期 2026-08 → 首期 2026-01）。
+    const plan={scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',
+      firstPaymentDate:'2026-01-31',kind:'installment',name:'合成无编号分期',baselinePrincipalMinor:'2400000',baselineDate:'2026-01-01',generatePlan:true,confirmed:true,
+      installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',customRecordType:'',discountKind:null,discountValue:null}}
+    const loan=await api('loans.create',{...plan,accountId,sourceItemId:p8.itemId,requestId:randomUUID()})
+    await t.test('手动归属后写下计划级合成绑定（无真实编号也记住）',async()=>{
+      const fp=require('../cloudfunctions/catledger-api/src/installment-plan-fingerprint')
+      const key=fp.planBindingKey('合成无编号分期','2026-01',12)
+      const [[binding]]=await lab.owner.execute('SELECT loan_id FROM catledger_installment_bindings WHERE uid=? AND account_id=? AND reference_key=?',[uid,accountId,key])
+      assert.ok(binding,'应存在计划级合成绑定')
+      assert.equal(binding.loan_id,loan.loanId)
+    })
+    await t.test('同计划另一期无编号来源命中同一合成键（唯一绑定）',async()=>{
+      const fp=require('../cloudfunctions/catledger-api/src/installment-plan-fingerprint')
+      const key=fp.planBindingKey('合成无编号分期','2026-01',12)
+      const [rows]=await lab.owner.execute('SELECT loan_id FROM catledger_installment_bindings WHERE uid=? AND account_id=? AND reference_key=?',[uid,accountId,key])
+      assert.equal(rows.length,1,'合成键应唯一绑定到一笔计划')
+      assert.equal(rows[0].loan_id,loan.loanId)
+    })
+  } finally {await lab.close()}
+})

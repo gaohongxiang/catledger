@@ -1,0 +1,45 @@
+<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步。 -->
+<page-meta
+  background-text-style="{{themeBackgroundTextStyle}}"
+  background-color="{{themePageColor}}"
+  background-color-top="{{themePageColor}}"
+  background-color-bottom="{{themeCanvasBottom}}"
+  root-background-color="{{themePageColor}}"
+  page-style="{{themePageStyle}}"
+>
+  <navigation-bar front-color="{{themeNavFront}}" background-color="{{themeNavBackground}}" />
+</page-meta>
+<view class="page-canvas due-month {{themeClass}}" style="{{themeStyle}}">
+  <page-head class="content-inset" title="本月待还" copy="{{monthText}}到期、尚未还清的期次。" />
+
+  <view wx:if="{{!loading && !errorMessage && periodCount === 0}}" class="due-empty">
+    <text class="due-empty-title">本月没有待还</text>
+    <text class="due-empty-note">当月到期的分期都已结清，或有账单还没导入。</text>
+  </view>
+
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
+  <button wx:if="{{errorMessage}}" class="due-retry" bindtap="load">重新读取</button>
+  <view wx:if="{{loading && !items.length}}" class="due-loading"><text>正在读取本月待还…</text></view>
+
+  <block wx:if="{{!errorMessage && items.length}}">
+    <view class="due-summary">
+      <text class="due-summary-label">本月合计</text>
+      <text class="due-summary-value money-number">{{dueText}}</text>
+      <text class="due-summary-count">共 {{periodCount}} 期</text>
+    </view>
+    <view class="due-list">
+      <view wx:for="{{items}}" wx:key="loanId + '-' + periodNumber" class="due-row" data-id="{{item.loanId}}" bindtap="openLoan" hover-class="due-row-active" aria-role="button" aria-label="查看 {{item.loanName}} 第{{item.periodNumber}}期">
+        <view class="due-row-main">
+          <text class="due-row-name">{{item.loanName}}</text>
+          <text class="due-row-meta">第 {{item.periodNumber}} 期 · {{item.dueDateText}}{{item.accountName ? ' · ' + item.accountName : ''}}</text>
+        </view>
+        <view class="due-row-amount">
+          <text class="due-row-amount-val money-number">{{item.outstandingText}}</text>
+          <chevron-icon size="{{22}}" />
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <login-sheet id="page-login-sheet" />
+</view>

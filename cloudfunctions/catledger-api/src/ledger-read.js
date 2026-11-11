@@ -3,11 +3,15 @@ const { ledgerError } = require('./ledger-errors')
 const { metadata } = require('./read-contract')
 const {
   isRetryableDatabaseError,
+  isRetryableTransportError,
   safeRollback,
   waitBeforeDatabaseRetry
 } = require('./database-errors')
 
 const MAX_READ_ATTEMPTS = 2
+// 传输层抖动（连接被拒 / 重置 / 超时）在首页费用同步这类只读路径上多给一次机会，
+// 把瞬时中断吃掉，避免它冒到界面变成「服务连接短暂中断」。业务读最多三次尝试仍远小于云函数超时。
+const MAX_TRANSPORT_READ_ATTEMPTS = 3
 
 async function executeLedgerRead({
   getPool,
@@ -17,7 +21,7 @@ async function executeLedgerRead({
   read,
   operation
 }) {
-  for (let attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_TRANSPORT_READ_ATTEMPTS; attempt += 1) {
     let connection
     let transactionStarted = false
     try {
@@ -47,7 +51,13 @@ async function executeLedgerRead({
       return result
     } catch (error) {
       if (transactionStarted) await safeRollback(connection)
-      if (isRetryableDatabaseError(error) && attempt + 1 < MAX_READ_ATTEMPTS) {
+      if (isRetryableTransportError(error)) {
+        // 传输层抖动：最多 MAX_TRANSPORT_READ_ATTEMPTS 次；用新连接重试，连不上才是真的连不上。
+        if (attempt + 1 < MAX_TRANSPORT_READ_ATTEMPTS) {
+          await waitBeforeDatabaseRetry(attempt)
+          continue
+        }
+      } else if (isRetryableDatabaseError(error) && attempt + 1 < MAX_READ_ATTEMPTS) {
         await waitBeforeDatabaseRetry(attempt)
         continue
       }

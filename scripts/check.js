@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
 execFileSync(process.execPath,[path.join(root,'scripts/import-local-rules.js')],{stdio:'pipe'})
+execFileSync(process.execPath,[path.join(root,'scripts/sync-cloud-domain.js')],{stdio:'pipe'})
 execFileSync(process.execPath, [path.join(root, 'scripts/check-client-compatibility.js')], { stdio: 'inherit' })
 const files = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
   { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean))].filter((file) => fs.existsSync(path.join(root, file)))
@@ -23,6 +24,19 @@ const routes = [...app.pages, ...packages.flatMap(pack => pack.pages.map(page =>
 assert.equal(new Set(routes).size, routes.length, '小程序存在重复页面路径')
 for (const route of routes) for (const extension of ['js', 'json', 'wxml', 'wxss']) {
   assert.ok(fs.existsSync(path.join(miniRoot, route + '.' + extension)), `页面文件不存在: ${route}.${extension}`)
+}
+// 每条 wxss 的 @import 必须是 `@import '路径';` / `@import "路径";`，路径非空且文件存在。
+// 防止编辑脚本把 @import 删成裸 `@import` 之类的残字——那种 WXSS 编译失败会让整包页面打不开。
+for (const file of files.filter(f => f.startsWith('miniprogram/') && f.endsWith('.wxss'))) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8')
+  for (const match of source.matchAll(/@import\s*([^;]*);/g)) {
+    const body = match[1].trim()
+    assert.match(body, /^(['"])[^'"]+\1$/, `wxss @import 语法不合法: ${file} -> @import ${body};`)
+    const target = body.slice(1, -1)
+    const abs = target.startsWith('/') ? path.join(miniRoot, target) : path.resolve(path.dirname(path.join(root, file)), target)
+    assert.ok(fs.existsSync(abs), `wxss @import 目标不存在: ${file} -> ${target}`)
+  }
+  assert.ok(!/@import\s*$|@import\s*[@/*]/m.test(source.replace(/@import\s*(['"])[^'"]+\1\s*;/g, '')), `wxss 存在裸 @import 残字: ${file}`)
 }
 // 主导航只有一个常驻窗口（shell/index），没有原生 tabBar：wx.switchTab 必定 fail，
 // 表现是"点了没反应"。跳主 Tab 一律走 shell/router.openTab，它负责 navigateBack 后补激活。
@@ -123,20 +137,6 @@ for (const name of ['economic-nature', 'economic-event-builder', 'organizer-plan
   const contents = fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src', `${name}.js`), 'utf8')
   assert.ok(!/\braw(?:Status|TransactionType)\b|['"](?:wechat|alipay)['"]/.test(contents), `${name} 不得重新解释平台 token`)
 }
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/repayment-booking.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-booking.js'), 'utf8'), '实际还款领域契约必须一致')
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/repayment-policy.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-policy.js'), 'utf8'), '还款组成与路径契约必须一致')
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/category-memory.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/category-memory.js'), 'utf8'), '分类记忆契约必须一致')
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/category-likeness.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/category-likeness.js'), 'utf8'), '分类相同商品口径必须一致')
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-items.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-items.js'), 'utf8'), '分期来源与费用防重复规则必须一致')
-assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-plan.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-plan.js'), 'utf8'), '分期计划名规则必须一致')
-for (const name of ['loan-charge-domain', 'loan-charge-store', 'loan-charge-import', 'loan-charge-payments']) assert.equal(
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src', name + '.js'), 'utf8'),
-  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src', name + '.js'), 'utf8'), name + ' 费用关系必须一致')
+// api↔import 共享领域文件的逐字节一致由 scripts/sync-cloud-domain.js 统一校验（单一来源＋生成副本）。
 execFileSync('git', ['diff', '--check'], { cwd: root, stdio: 'inherit' })
 process.stdout.write(`检查通过：${files.length} 个仓库文件，${runtime.length} 个运行时模块；语法、配置、部署边界与依赖图。\n`)

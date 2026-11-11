@@ -31,8 +31,9 @@ function createLoanPeriodService({getPool,selectLoan}) {
         MIN(CASE WHEN principalMinor>paidPrincipalMinor OR interestMinor>paidInterestMinor OR feeMinor>paidFeeMinor THEN dueDate END) AS nextDueDate
         FROM (${base}) confirmed`,[uid,loan.loanId])
       const setup=parseSetup(loan.installmentSetup)
+      // 剩余本金 = 未还期次本金合计（与 buildView 同源），不再取静态基准、也不自造"基准差额"。
       const summary={...totals,paidPeriods:Number(totals.paidPeriods),...(setup?{historicalPaidTerms:setup.historicalPaidTerms,totalTerms:Number(loan.scheduleTerms)}:{}),...Object.fromEntries(FIELDS.map(f=>['unpaid'+capital(f)+'Minor',String(totals['unpaid'+capital(f)+'Minor'])])),
-        remainingPrincipalMinor:loan.remainingPrincipalMinor,principalGapMinor:loan.remainingPrincipalMinor==null?null:String(BigInt(totals.unpaidPrincipalMinor)-BigInt(loan.remainingPrincipalMinor))}
+        remainingPrincipalMinor:String(totals.unpaidPrincipalMinor)}
       const items=rows.slice(0,size).map(publicPeriod),last=items.at(-1)
       return {loanId:loan.loanId,loanName:loan.name,loanVersion:loan.version,summary,items,nextCursor:rows.length>size?encodeCursor(context.subjectHash,{action:'loans.periods',uid,loanId:loan.loanId,version:loan.version,date:last.dueDate,id:last.periodId}):null}
     })

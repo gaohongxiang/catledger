@@ -38,7 +38,7 @@ async function context(c, uid, loan) {
 async function confirm(c, uid, loan, view, input, alignPrincipal = false, coverage = {}) {
   const selected = selections(input, Number(loan.scheduleTerms)), state = await context(c, uid, loan)
   const previous = progressOf(loan)
-  const progress = { ...previous, schema: 2, simpleRepayment: true, historyFacts: { ...previous.historyFacts }, reviewedPeriods: { ...previous.reviewedPeriods }, exceptions: { ...previous.exceptions } }
+  const progress = { ...previous, schema: 2, simpleRepayment: true, historyFacts: { ...previous.historyFacts }, exceptions: { ...previous.exceptions } }
   const setup = require('./loan-installment').parseSetup(loan.installmentSetup)
   const rows=new Map(view.rows.map(row=>[row.periodNumber,row])),original=new Map(view.original.map(row=>[row.periodNumber,row]))
   const paidRows=selected.filter(entry=>entry.paid).map(entry=>rows.get(entry.periodNumber))
@@ -50,9 +50,8 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false, covera
     const row = rows.get(entry.periodNumber)
     if (!row || row.cancelled || row.status === 'partial' || !entry.paid && row.paymentConfirmed) throw ledgerError('LOAN_TRANSACTION_LOCKED')
     const fact = progress.historyFacts[entry.periodNumber]
-    const legacyReviewed = previous.simpleRepayment && previous.reviewedPeriods && previous.reviewedPeriods[entry.periodNumber] && row.completedByProgress && !fact
-    if (legacyReviewed) throw ledgerError('LOAN_HISTORY_REVIEW_REQUIRED')
-    const historicalSetup = !previous.reviewedPeriods?.[entry.periodNumber] && entry.periodNumber <= Number(setup && setup.historicalPaidTerms || 0)
+    // 是否属「历史接入期」只看已还期数（账单锚点），不再依赖 reviewedPeriods。
+    const historicalSetup = entry.periodNumber <= Number(setup && setup.historicalPaidTerms || 0)
     const originalPrincipal = historicalSetup ? original.get(entry.periodNumber).principalMinor : row.principalMinor
     if (!row.paymentConfirmed) {
       if (entry.paid && !fact) {
@@ -93,7 +92,6 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false, covera
       }
     }
     progress.exceptions[entry.periodNumber] = entry.paid ? 'completed' : 'unpaid'
-    progress.reviewedPeriods[entry.periodNumber] = true
   }
   if (principal < 0n) throw ledgerError('LOAN_BASELINE_LOCKED')
   await require('./loan-payment-repository').assertPrincipalTimeline(c,uid,new Map([[loan.loanId,{...loan,baselinePrincipalMinor:principal.toString()}]]))

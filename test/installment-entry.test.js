@@ -42,20 +42,31 @@ test('四种还款方式与三种优惠保持本金守恒，现金优惠不超�
   assert.throws(()=>buildSchedule(schedule({scheduleMethod:'equal_payment',measurementKind:'rate',repaymentMinor:null,quoteType:'annual',ratePpm:'9007199254740991',discountKind:'total',discountValue:'100'})),{publicCode:'VALIDATION_ERROR'})
 })
 
-test('新表单保存已勾选期次并同时记费；无需第二次确认，未还本金保留',()=>{
-  const data={name:'合成分期',accounts:[{accountId:'debt'}],accountIndex:0,principalYuan:'12000',paidTerms:'3',typeIndex:2,discountIndex:0,discountValue:'7',baselineDate:'2026-04-01',
+test('新表单按已还期数建计划：借款金额作本金基点、已还期数决定历史切分、剩余本金动态',()=>{
+  const data={name:'合成分期',accounts:[{accountId:'debt'}],accountIndex:0,principalYuan:'12000',paidTerms:'3',typeIndex:2,discountIndex:0,discountValue:'7',
     schedule:Object.assign(scheduleForm.blank(),{terms:'12',measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'})}
   const input=form.previewInput(data);assert.equal(input.installmentSetup.discountValue,'700000')
-  assert.throws(()=>form.previewInput({...data,paidTerms:''}),/历史已还/)
-  assert.throws(()=>form.previewInput({...data,paidTerms:'13'}),/历史已还/)
-  assert.throws(()=>form.previewInput({...data,schedule:{...data.schedule,firstPaymentDate:''}}),/首次还款/)
+  // 空值按 0 已还，不报错。
+  assert.equal(form.previewInput({...data,paidTerms:''}).installmentSetup.historicalPaidTerms,0)
+  // 越界报错。
+  assert.throws(()=>form.previewInput({...data,paidTerms:'13'}),/已还期数/)
+  assert.throws(()=>form.previewInput({...data,paidTerms:'-1'}),/已还期数/)
+  assert.throws(()=>form.previewInput({...data,paidTerms:'abc'}),/已还期数/)
+  assert.throws(()=>form.previewInput({...data,schedule:{...data.schedule,firstPaymentDate:''}}),/首期还款日/)
   const preview=remainingSchedule(input)
   assert.throws(()=>form.createPayload(data,null),/还款计划/)
-  const repayments=[{periodNumber:1,paid:true},{periodNumber:2,paid:false},{periodNumber:3,paid:true}]
-  const payload=form.createPayload({...data,confirmed:false,repaymentRows:repayments},preview)
-  assert.deepEqual(payload.repayments,repayments)
-  assert.equal(payload.kind,'installment');assert.equal(payload.generatePlan,true);assert.equal(payload.baselinePrincipalMinor,'1000000')
-  assert.equal(payload.installmentSetup.originalPrincipalMinor,'1200000');assert.equal(payload.installmentSetup.historicalPaidTerms,0)
+  const payload=form.createPayload({...data,confirmed:false},preview)
+  // 不再按逐期勾选传 repayments；已还期数写进 setup.historicalPaidTerms。
+  assert.equal(payload.repayments,undefined)
+  assert.equal(payload.kind,'installment');assert.equal(payload.generatePlan,true)
+  // 本金基点 = 借款金额（原本金 12000），不是剩余本金。
+  assert.equal(payload.baselinePrincipalMinor,'1200000')
+  assert.equal(payload.installmentSetup.originalPrincipalMinor,'1200000');assert.equal(payload.installmentSetup.historicalPaidTerms,3)
+  // 剩余本金 = 未还期次本金合计（动态，非静态基点）。
+  assert.equal(preview.summary.remainingPrincipalMinor,'900000')
+  // 现金流借款到账前本金为 0，且已还期数必须为 0。
+  assert.equal(form.createPayload({...data,baselineMode:1,paidTerms:'0',confirmed:false},preview).baselinePrincipalMinor,'0')
+  assert.throws(()=>form.createPayload({...data,baselineMode:1,paidTerms:'2',confirmed:false},preview),/现金借款/)
 })
 
 test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚、隔离和旧资料兼容',{skip:!process.env.CATLEDGER_TEST_DB_HOST},async t=>{
@@ -66,7 +77,7 @@ test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚�
     const api=(name,data)=>call(first.api,name,data),identity=await api('bootstrap');await call(other.api,'bootstrap')
     const debt=(await api('accounts.create',{requestId:randomUUID(),type:'other_liability',name:'合成负债',currency:'CNY',openingDisplayBalanceMinor:'1500000',occurredLocalAt:'2026-01-01T00:00:00',timezoneOffsetMinutes:-480})).accountId
     const original=schedule();delete original.principalMinor
-    const base={...original,name:'合成分期',kind:'installment',accountId:debt,baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',installmentSetup:setup(),generatePlan:true,confirmed:true}
+    const base={...original,name:'合成分期',kind:'installment',accountId:debt,baselinePrincipalMinor:'1200000',baselineDate:'2026-04-01',installmentSetup:setup(),generatePlan:true,confirmed:true}
     const counts=async()=>{const [[r]]=await lab.owner.execute('SELECT (SELECT COUNT(*) FROM catledger_loans WHERE uid=?) loans,(SELECT COUNT(*) FROM catledger_loan_periods WHERE uid=?) periods,(SELECT COUNT(*) FROM catledger_transactions WHERE uid=?) transactions',[identity.uid,identity.uid,identity.uid]);return r}
     let created,view
     await t.test('资料、剩余计划与回执同一次保存，重复及并发提交不增加账目',async()=>{
@@ -78,7 +89,7 @@ test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚�
       const after=await counts();assert.equal(Number(after.loans)-Number(before.loans),1);assert.equal(Number(after.periods)-Number(before.periods),9);assert.equal(after.transactions,before.transactions)
       assert.deepEqual((await api('accounts.list')).accounts,balances.accounts)
       const periods=await api('loans.periods',{loanId:created.loanId,pageSize:40})
-      assert.equal(periods.items[0].periodNumber,4);assert.equal(periods.summary.historicalPaidTerms,3);assert.equal(periods.summary.principalGapMinor,'0')
+      assert.equal(periods.items[0].periodNumber,4);assert.equal(periods.summary.historicalPaidTerms,3);assert.equal(periods.summary.remainingPrincipalMinor,'900000')
       assert.equal(periods.items.every(p=>p.status==='unpaid'),true)
       assert.deepEqual((await api('transactions.commandResult',{requestId:input.requestId,commandAction:'loans.create'})).result,created)
     })
@@ -107,7 +118,7 @@ test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚�
       assert.equal((await api('loans.get',{loanId:created.loanId})).loan.installmentSetup.customRecordType,'装修')
     })
     await t.test('全部历史已还仍保留原始借款与费用，剩余本金零，不生成伪历史付款',async()=>{
-      const before=await counts(),closed=await api('loans.create',{...base,requestId:randomUUID(),baselinePrincipalMinor:'0',feeUpfrontMinor:'10000',installmentSetup:setup({historicalPaidTerms:12})})
+      const before=await counts(),closed=await api('loans.create',{...base,requestId:randomUUID(),feeUpfrontMinor:'10000',installmentSetup:setup({historicalPaidTerms:12})})
       assert.equal(closed.generatedPeriods,0)
       const loan=(await api('loans.get',{loanId:closed.loanId})).loan
       assert.equal(loan.status,'settled');assert.equal(loan.installmentSetup.originalPrincipalMinor,'1200000')
@@ -123,11 +134,31 @@ test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚�
       const before=await counts()
       const result=await api('loans.allocatePeriods',{requestId:randomUUID(),loanId:created.loanId,loanVersion:payment.loans[0].version,paymentId:payment.paymentId,version:1,confirmed:true,items:[{periodId:p.periodId,version:p.version,principalMinor:'100000',interestMinor:'10000',feeMinor:'0'}]})
       const paid=await api('loans.periods',{loanId:created.loanId,pageSize:40})
-      assert.equal(paid.items[0].status,'paid');assert.equal(paid.summary.paidPeriods,1);assert.equal(paid.summary.historicalPaidTerms,3);assert.equal(paid.summary.principalGapMinor,'0')
+      assert.equal(paid.items[0].status,'paid');assert.equal(paid.summary.paidPeriods,1);assert.equal(paid.summary.historicalPaidTerms,3);assert.equal(paid.summary.remainingPrincipalMinor,'800000')
       assert.deepEqual(await counts(),before)
       await api('loans.reverse',{requestId:randomUUID(),paymentId:payment.paymentId,version:result.version,confirmed:true,loans:[{loanId:created.loanId,version:result.loanVersion}]})
       const reversed=await api('loans.periods',{loanId:created.loanId,pageSize:40})
       assert.equal(reversed.items[0].status,'unpaid');assert.equal(reversed.summary.paidPeriods,0);assert.equal(reversed.summary.historicalPaidTerms,3);assert.equal(reversed.summary.remainingPrincipalMinor,'900000')
     })
   }finally{await lab.close()}
+})
+
+test('日利率+起息日：previewInput 只把 interestStartDate 放进 installmentSetup，顶层不留（否则 loans.create 的 loanMetadata 白名单拒绝）',()=>{
+  const { loanMetadata } = require('../cloudfunctions/catledger-api/src/loan-domain')
+  const data={name:'网贷分期',accounts:[{accountId:'debt'}],accountIndex:0,principalYuan:'3000',paidTerms:'6',typeIndex:2,discountIndex:0,discountValue:'',
+    schedule:Object.assign(scheduleForm.blank(),{terms:'6',methodIndex:2,measurementIndex:0,quoteIndex:2,ratePercent:'0.045',firstPaymentDate:'2018-12-18',interestStartDate:'2018-11-30'})}
+  const input=form.previewInput(data)
+  // 顶层不得有 interestStartDate（避免 loanMetadata 白名单拒绝）
+  assert.equal(Object.prototype.hasOwnProperty.call(input,'interestStartDate'),false)
+  // 但 setup 里必须有，供引擎按实际天数算首期
+  assert.equal(input.installmentSetup.interestStartDate,'2018-11-30')
+  // 预览（含已还期数切分）能成功，且传 loanMetadata 不抛错
+  const { fullScheduleWithPaid } = require('../cloudfunctions/catledger-api/src/loan-installment')
+  const full=fullScheduleWithPaid(input)
+  assert.equal(full.summary.totalInterestMinor,'12668') // 全期利息 126.68（含已还）
+  const preview=remainingSchedule(input)
+  // 已还 6/6，剩余 0 期、剩余利息 0（合理）
+  const payload=form.createPayload(data,preview)
+  assert.equal(Object.prototype.hasOwnProperty.call(payload,'interestStartDate'),false)
+  assert.doesNotThrow(()=>loanMetadata({...payload,kind:'installment'}))
 })

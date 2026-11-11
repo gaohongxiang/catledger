@@ -24,7 +24,6 @@
       <button class="plan-link plan-link-compact" bindtap="togglePlanDetails" disabled="{{loading || saving}}" aria-expanded="{{showPlanDetails}}">{{showPlanDetails ? '收起核对信息' : '查看核对信息'}}</button>
       <text wx:if="{{showPlanDetails && summary.totalTerms}}" class="plan-note">接入前已还 {{summary.historicalPaidTerms}} / {{summary.totalTerms}} 期；接入后按实际还款已结清 {{summary.paidPeriods}} 期。</text>
       <view class="plan-row"><text>其中未付本金</text><text class="money-number">{{summary.principalText}}</text></view>
-      <text wx:if="{{showPlanDetails}}" class="plan-note">计划未付本金减已确认剩余本金：{{summary.gapText}}。差额需核对未分配付款或计划，不能据此自动改账。</text>
       <button class="secondary-button plan-action" bindtap="newPeriod" disabled="{{loading || saving || hasPending}}">新增确认期次</button>
     </view>
     <ui-state wx:if="{{!items.length}}" description="当前没有计划。可按机构账单或明确约定逐期录入；计划不会生成借款或付款。" />

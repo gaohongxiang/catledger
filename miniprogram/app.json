@@ -33,7 +33,8 @@
         "pages/loan-detail/index",
         "pages/loan-form/index",
         "pages/loan-payment/index",
-        "pages/loan-plan/index"
+        "pages/loan-plan/index",
+        "pages/due-this-month/index"
       ]
     }
   ],

@@ -38,7 +38,7 @@ const api = {
   catledger_loans: 'SELECT, INSERT, UPDATE',
   catledger_users: 'SELECT, INSERT, UPDATE',
   catledger_user_identities: 'SELECT, INSERT, UPDATE',
-  catledger_accounts: 'SELECT, INSERT, UPDATE',
+  catledger_accounts: 'SELECT, INSERT, UPDATE, DELETE',
   catledger_categories: 'SELECT, INSERT, UPDATE',
   catledger_transactions: 'SELECT, INSERT, UPDATE, DELETE',
   catledger_mutation_receipts: 'SELECT, INSERT, UPDATE',

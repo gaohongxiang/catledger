@@ -9,7 +9,7 @@ function today() {
 function previewInput(loan) {
   const principal = loan.installmentSetup ? loan.installmentSetup.originalPrincipalMinor : loan.baselinePrincipalMinor
   if (!loan.scheduleMethod || !loan.scheduleTerms || !principal || principal === '0' || !loan.firstPaymentDate) return null
-  const fields = ['scheduleMethod', 'scheduleTerms', 'measurementKind', 'quoteType', 'ratePpm', 'repaymentMinor', 'feePerTermMinor', 'feeUpfrontMinor', 'firstPaymentDate']
+  const fields = ['scheduleMethod', 'scheduleTerms', 'measurementKind', 'quoteType', 'ratePpm', 'repaymentMinor', 'feePerTermMinor', 'feeUpfrontMinor', 'firstPaymentDate', 'principalRounding']
   const input = { principalMinor: principal }
   fields.forEach(key => { if (loan[key] != null) input[key] = loan[key] })
   // 仅恢复原方案的历史展示行；不生成期次、不修改已还记录。
@@ -41,6 +41,7 @@ function rowView(row, date) {
 }
 function build(loan, view, preview, date) {
   date = date || today()
+  const costInfo = cost.build(loan, preview)
   const summary = view && view.summary
   const history = loan.installmentSetup ? loan.installmentSetup.historicalPaidTerms : 0
   const paid = (view && view.tracking ? 0 : history) + (summary ? Number(summary.paidPeriods || 0) : 0)
@@ -48,7 +49,10 @@ function build(loan, view, preview, date) {
   const remaining = summary ? ['unpaidPrincipalMinor', 'unpaidInterestMinor', 'unpaidFeeMinor'].reduce((sum, key) => addMinor(sum, summary[key]), '0') : null
   const complete = !!summary && (view.tracking || loan.remainingPrincipalMinor === '0') && remaining === '0'
   const next = summary && summary.nextDueDate
-  const dueRow = next && view.items.find(row => !row.cancelled && row.status !== 'paid' && row.dueDate === next)
+  // 「当期」统一以账单锚点为口径：取最早未还期次（status!=='paid'，由后端按账单锚点判定），
+  // 与账户欠款/首页卡片「本期账单应还 + 未来期次」的已还边界保持一致，不按今天日期跳期。
+  const unpaidRows = view && Array.isArray(view.items) ? view.items.filter(row => !row.cancelled && row.status !== 'paid') : []
+  const dueRow = unpaidRows[0] || null
   const noPlan = !!summary && !next && !complete
   const pending = !summary
   const amountOf = key => dueRow ? cost.amount(dueRow[key]) : '—'
@@ -64,17 +68,25 @@ function build(loan, view, preview, date) {
     progressNote: '',
     timeRange: first ? first + (last ? ' 至 ' + last : ' 起') : '还款日期待补充',
     method: METHOD_LABELS[loan.scheduleMethod] || loan.repaymentMethod || '方式待补充',
-    complete, overdue: view && view.tracking ? Boolean(dueRow && dueRow.stateText === '已逾期') : Boolean(next && next <= date),
-    dueLabel: pending ? '正在读取还款计划' : complete ? '本笔已完成' : noPlan ? '还款计划待补充' : next <= date ? view && view.tracking ? '付款待确认' : '待确认还款' : '近期应还',
-    dueDate: next ? next.replace(/-/g, '.') : '', dueTerm: dueRow ? dueRow.periodNumber : null,
+    pending, settled: !!(summary && summary.settled), complete, overdue: view && view.tracking ? Boolean(dueRow && dueRow.stateText === '已逾期') : Boolean(dueRow && String(dueRow.dueDate || '') < date),
+    dueLabel: pending ? '正在读取还款计划' : complete ? '本笔已完成' : noPlan ? '还款计划待补充' : (dueRow && String(dueRow.dueDate || '') < date) ? (view && view.tracking ? '付款待确认' : '待确认还款') : '近期应还',
+    dueDate: dueRow ? String(dueRow.dueDate || '').replace(/-/g, '.') : '', dueTerm: dueRow ? dueRow.periodNumber : null,
     duePayment: dueRow ? cost.amount(['unpaidPrincipalMinor', 'unpaidInterestMinor', 'unpaidFeeMinor'].reduce((sum, key) => addMinor(sum, dueRow[key]), '0')) : '',
     dueTitle: complete ? '已全部记录' : noPlan ? '待补充计划' : pending ? '—' : '查看待还期次',
     dueNote: complete ? '已记录全部期次' : noPlan ? '补充后查看每期应还' : '在下方列表记录每期还款',
     duePrincipal: amountOf('unpaidPrincipalMinor'), dueCost: dueRow ? cost.amount(addMinor(dueRow.unpaidInterestMinor, dueRow.unpaidFeeMinor)) : '—',
-    remaining: cost.amount(noPlan ? null : remaining), remainingPrincipal: cost.amount(loan.remainingPrincipalMinor),
+    remaining: cost.amount(noPlan || pending ? null : remaining),
+    // 剩余本金与剩余总额同源（summary 的未还本金），未加载/无计划时不展示静态 loan 值，避免半截数字误导。
+    remainingPrincipal: cost.amount(noPlan || pending ? null : summary.unpaidPrincipalMinor),
+    remainingTerms: unpaidRows.length,
+    // 是否有已过还款日、但既无账单也无付款证据的期次（含在"估算剩余"里，未必真欠）。
+    remainingHasUnconfirmed: unpaidRows.some(row => String(row.dueDate || '') < String(date)),
     remainingCost: summary && !noPlan ? cost.amount(addMinor(summary.unpaidInterestMinor, summary.unpaidFeeMinor)) : '—',
     principalGap: summary && summary.principalGapMinor != null && summary.principalGapMinor !== '0' ? '计划本金与账本剩余本金相差 ' + cost.amount(summary.principalGapMinor) + ' 元，需核对计划。' : '',
-    cost: cost.build(loan, preview)
+    // 顶部「利息及费用」= 整笔计划利息 + 费用（含一次性费用），与「借款本金」同一口径；
+    // 无计划时回退 None，模板再用费用合同的已记账金额或「—」。
+    totalCost: costInfo ? costInfo.cost : null,
+    cost: costInfo
   }
 }
 module.exports = { today, previewInput, historicalRows, rowView, build }

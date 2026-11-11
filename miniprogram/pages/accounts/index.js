@@ -43,7 +43,10 @@ Page(themeService.page({
 
 
   onShow: function () {
-    loginGuard.run(this, this.loadAccounts.bind(this))
+    const app = getApp()
+    const dirty = Boolean(app && app.globalData && app.globalData.accountsDirty)
+    if (dirty && app.globalData) app.globalData.accountsDirty = false
+    loginGuard.run(this, () => this.loadAccounts(dirty ? { force: true } : undefined))
   },
 
   onUnload: function () { pageReadSession.end(this) },
@@ -63,7 +66,7 @@ Page(themeService.page({
     this._readLoad = api.callApi('accounts.list', {}, { force: force })
       .then(function (result) {
         if (!isCurrent()) return
-        self.setData(Object.assign({ hasLoaded: true, billingSupported: result.liabilitySettingsVersion === 1 }, buildAccountsView(result.accounts)))
+        self.setData(Object.assign({ hasLoaded: true, billingSupported: result.liabilitySettingsVersion === 1 }, buildAccountsView(result.accounts, result.totals)))
       })
       .catch(function (error) {
         if (!isCurrent()) return

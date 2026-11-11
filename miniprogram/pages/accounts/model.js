@@ -1,4 +1,5 @@
 const money = require('../../utils/money')
+const { presentTotals } = require('../../utils/net-worth-present')
 
 const TYPE_LABELS = Object.freeze({
   cash: '现金',
@@ -18,14 +19,28 @@ const TYPE_ICONS = Object.freeze({
   other_liability: 'account-other.svg'
 })
 
-const { addMinor } = require('../../utils/minor-arithmetic')
-
-function sumMinor(rows, selector) {
-  return (rows || []).reduce(function (total, row) { return addMinor(total, selector(row)) }, '0')
-}
-
 function isNegative(value) {
   return String(value == null ? '0' : value).charAt(0) === '-'
+}
+
+// 账单归属月份：优先用后端算好的 account.statementMonth（YYYY-MM，已含到期日/周期/来源日期兜底）；
+// 旧数据没有该字段时退回本地按到期日/周期推，再没有返回空串（不显示月份）。
+function statementMonthText(account) {
+  const fmt = value => {
+    const m = String(value == null ? '' : value).match(/^(\d{4})-?(\d{2})/)
+    return m ? Number(m[1]) + '年' + Number(m[2]) + '月' : ''
+  }
+  const fromServer = fmt(account && account.statementMonth)
+  if (fromServer) return fromServer
+  const fromDate = value => {
+    const m = String(value == null ? '' : value).match(/^(\d{4})-?(\d{2})-?(\d{2})$/)
+    return m ? Number(m[1]) + '年' + Number(m[2]) + '月' : ''
+  }
+  const due = fromDate(account && account.statementDueDate)
+  if (due) return due
+  const cycle = String(account && account.statementCycle || '')
+  const end = cycle.split('-')[1]
+  return end ? fromDate(end) : ''
 }
 
 // 负债账户按「欠款」展示：总欠款（账单本期应还 + 未来未到期次分期剩余本息）。
@@ -46,6 +61,7 @@ function decorateAccount(account) {
       statementMinimumText: account.statementMinimumMinor == null ? '未设置' : money.formatMinor(account.statementMinimumMinor),
       statementDueDateText: account.statementDueDate == null ? '未设置' : account.statementDueDate,
       statementCycleText: account.statementCycle == null ? '未设置' : account.statementCycle,
+      statementMonthText: statementMonthText(account),
       needsCorrection: false,
       stateText: hasDebt ? '待还' : '已还清',
       stateTone: hasDebt ? 'state-liability' : 'state-positive',
@@ -73,17 +89,14 @@ function decorateAccount(account) {
   })
 }
 
-function buildAccountsView(accounts) {
+function buildAccountsView(accounts, totals) {
   const prepared = (accounts || []).map(decorateAccount)
   const active = prepared.filter(function (account) { return !account.archived })
   const assets = active.filter(function (account) { return account.nature === 'asset' })
   const liabilities = active.filter(function (account) { return account.nature === 'liability' })
-  const assetTotal = sumMinor(active, function (account) {
-    return account.nature === 'asset' && !isNegative(account.bookBalanceMinor) ? account.bookBalanceMinor : '0'
-  })
-  const liabilityTotal = sumMinor(liabilities, function (account) { return account.debtMinor || '0' })
-  // 净资产 = 资产 − 负债欠款；欠款非负，直接相减。
-  const netWorth = addMinor(assetTotal, '-' + (liabilityTotal === '0' ? '0' : liabilityTotal))
+  // 合计一律走共享展示层 presentTotals（后端 accountTotals 的唯一真源），前端不再自己累加，
+  // 也与首页净值卡同一套格式与「其中利息」口径。
+  const sum = presentTotals(totals)
   return {
     assets: assets,
     liabilities: liabilities,
@@ -91,12 +104,13 @@ function buildAccountsView(accounts) {
     assetCorrectionCount: assets.filter(function (account) { return account.needsCorrection }).length,
     installmentPlanPromptCount: liabilities.filter(function (account) { return account.needsInstallmentPlan }).length,
     totals: {
-      netWorthText: money.formatMinor(netWorth),
-      netWorthTone: isNegative(netWorth) ? 'amount-liability' : '',
-      assetsText: money.formatMinor(assetTotal),
-      liabilitiesText: money.formatMinor(liabilityTotal)
+      netWorthText: sum.netWorthText,
+      netWorthTone: sum.netWorthTone,
+      assetsText: sum.assetsText,
+      liabilitiesText: sum.liabilitiesText,
+      liabilitiesInterestText: sum.totalInterestText
     }
   }
 }
 
-module.exports = { addMinor, buildAccountsView, decorateAccount }
+module.exports = { buildAccountsView, decorateAccount }

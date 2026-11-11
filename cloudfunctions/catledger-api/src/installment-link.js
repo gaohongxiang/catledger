@@ -49,6 +49,10 @@ async function sourceGroup(c,uid,loan,source) {
       if(!item.active || items.has(item.itemId))continue
       if(item.loanId && item.loanId!==loan.loanId)throw ledgerError('LOAN_SOURCE_MISMATCH')
       if(item.periodNumber>Number(loan.scheduleTerms) || item.totalTerms && item.totalTerms!==Number(loan.scheduleTerms))throw ledgerError('LOAN_SOURCE_MISMATCH')
+      // 「计划名+期次」兜底只用于把同一笔分期的本金/利息/费用（不同组件）归一组。
+      // 若同期同组件已有一行，说明可能是另一笔同名分期（判不准），不并入，留待用户核对。
+      const slot=item.periodNumber+':'+item.component
+      if([...items.values()].some(existing=>existing.periodNumber===item.periodNumber && existing.component===item.component)) continue
       items.set(item.itemId,item)
       if(items.size>3600)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
       if(item.referenceKey && !references.has(item.referenceKey)){references.add(item.referenceKey);referenceKeys.push(item.referenceKey)}
@@ -64,6 +68,16 @@ async function attachSource(c,uid,loan,itemId) {
   const source=publicItem(selected)
   if (!source.active || source.accountId!==loan.accountId || source.loanId && source.loanId!==loan.loanId) throw ledgerError('LOAN_SOURCE_MISMATCH')
   const group=await sourceGroup(c,uid,loan,source)
+  // 记住用户的手动归属：无真实合同编号时，按「计划名+起始月+总期数」写一条合成绑定，
+  // 下月同名单期能据此自动延续到本计划（见 prepareImport 的合成键查找）。有真实编号仍用编号绑定。
+  const planLabel=String(loan.name||'').trim()
+  const startMonth=String(loan.startDate||loan.baselineDate||'').slice(0,7)
+  if(planLabel&&startMonth&&loan.scheduleTerms){
+    const syntheticKey=require('./installment-plan-fingerprint').planBindingKey(planLabel,startMonth,loan.scheduleTerms)
+    const [[sb]]=await c.execute('SELECT loan_id AS loanId FROM catledger_installment_bindings WHERE uid=? AND account_id=? AND reference_key=?',[uid,loan.accountId,syntheticKey])
+    if(sb&&sb.loanId!==loan.loanId)throw ledgerError('LOAN_SOURCE_MISMATCH')
+    if(!sb)await c.execute('INSERT INTO catledger_installment_bindings (uid,account_id,reference_key,loan_id) VALUES (?,?,?,?)',[uid,loan.accountId,syntheticKey,loan.loanId])
+  }
   for (const referenceKey of group.references) {
     const [[binding]]=await c.execute('SELECT loan_id AS loanId FROM catledger_installment_bindings WHERE uid=? AND account_id=? AND reference_key=?',
       [uid,loan.accountId,referenceKey])

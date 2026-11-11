@@ -1,4 +1,3 @@
-@import "../../../../templates/historical-charge-coverage.wxss";
 @import '../loan-detail/index.wxss';
 .loan-form { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
 .loan-form .ld-cell-label { flex-wrap: wrap; gap: 0 8rpx; }
@@ -10,15 +9,20 @@
 .measurement-label { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-1); width: 200rpx; font-size: var(--font-caption); }
 .measurement-row input { flex: 1; min-width: 0; text-align: right; font-size: var(--font-body); }
 .form-hint { margin-top: 14rpx; }
+.ld-note-line { display: block; }
 .choice-disabled { opacity: .45; }
 .remaining-principal { display: block; margin: 12rpx 0 24rpx; font-size: var(--font-display); color: var(--theme-ink); }
-.plan-row { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-2); padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-caption); }
-.plan-period { flex: 1; min-width: 0; }
+.plan-table-head { display: flex; align-items: center; gap: 8rpx; margin-top: 8rpx; padding: 10rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: 20rpx; color: var(--theme-text-muted); }
+.plan-table-head text { flex: 1 1 0; min-width: 0; text-align: right; }
+.plan-table-head text:first-child { flex: 1.5 1 0; text-align: left; }
+.plan-row { display: flex; align-items: center; gap: 8rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-caption); }
+.plan-period { flex: 1.5 1 0; min-width: 0; }
 .plan-period text { display: block; }
 .plan-period text + text { color: var(--theme-text-muted); font-size: 20rpx; }
-.plan-row .money-number { white-space: nowrap; }
-.plan-row .schedule-choice, .plan-pending { width: 112rpx; text-align: center; font-size: 22rpx; }
-.plan-pending { color: var(--theme-text-muted); }
+.plan-row-paid { opacity: .55; }
+.plan-period .plan-paid-tag { display: inline-block; width: auto; color: var(--theme-accent-strong, #B45309); font-size: 20rpx; }
+.plan-col { flex: 1 1 0; min-width: 0; text-align: right; white-space: nowrap; }
+.plan-interest { color: var(--sem-expense, #a94b40); }
 .confirm-row { display: flex; align-items: flex-start; margin-top: var(--layout-space-5); gap: var(--layout-space-2); font-size: var(--font-caption); line-height: 1.6; }
 .confirm-row checkbox { flex-shrink: 0; }
 .local-note { margin: 24rpx 8rpx 0; }
@@ -29,3 +33,23 @@
 .schedule-check.is-checked { background: var(--theme-accent, #be5b24); border-color: var(--theme-accent, #be5b24); }
 .schedule-check.is-checked::after { content: ''; width: 10rpx; height: 18rpx; margin-top: -4rpx; border: solid #fff; border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
 .schedule-choice.is-paid text { color: var(--theme-text-muted, #958b82); }
+.history-coverage-value { display: flex; align-items: center; justify-content: flex-end; gap: 10rpx; }
+.history-coverage-value > text { flex: 0 0 auto; }
+.history-coverage-entry { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: auto; height: 40rpx; min-height: 40rpx; margin: 0; padding: 0 14rpx; font-size: 20rpx; line-height: 1; color: var(--theme-accent-strong, #B45309); background: var(--theme-warning-soft, rgba(180,83,9,.14)); border: 1rpx solid var(--theme-accent-strong, #B45309); border-radius: 999rpx; }
+.history-coverage-entry::after { border: 0; }
+
+/* 本页动作按钮统一重置原生 button 外观：清描边、透明底，禁用态不被原生冲成灰块（与主题一致）。 */
+.loan-form button.ld-link { background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none; }
+.loan-form button.ld-link::after { border: 0 !important; }
+.loan-form button.ld-link[disabled] { background: transparent !important; color: var(--theme-accent-strong, #B45309) !important; opacity: .45 !important; }
+
+/* 底部操作按钮禁用态也走主题色，避免微信原生 disabled 把按钮冲成默认浅灰（与深色主题不一致）。 */
+.loan-form .ld-action::after,
+.loan-form .ld-retry-top::after { border: 0; }
+.loan-form .ld-action[disabled] { background: var(--theme-accent, #be5b24) !important; color: var(--theme-on-accent, #ffffff) !important; opacity: .55 !important; }
+.loan-form .ld-action:not([disabled]) { background: var(--theme-accent, #be5b24) !important; color: var(--theme-on-accent, #ffffff) !important; }
+.loan-form .ld-retry-top { color: var(--theme-accent-strong, #B45309); }
+
+/* 后端结构化报错的字段高亮：点名的红框，替代"请检查填写内容"的笼统提示。 */
+.loan-form .ld-field-error { border: 1rpx solid var(--theme-danger, #a95132); border-radius: var(--layout-radius-medium, 18rpx); box-shadow: 0 0 0 2rpx var(--theme-danger-soft, rgba(169,81,50,.18)); }
+.loan-form .ld-field-error .ld-cell-input, .loan-form .ld-field-error input { color: var(--theme-danger, #a95132); }

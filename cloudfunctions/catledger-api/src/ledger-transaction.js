@@ -2,11 +2,15 @@ const { ledgerError } = require('./ledger-errors')
 const { digestIdempotencyKey, digestRequest } = require('./request-digest')
 const {
   isRetryableDatabaseError,
+  isRetryableTransportError,
   safeRollback,
   waitBeforeDatabaseRetry
 } = require('./database-errors')
 
 const MAX_ATTEMPTS = 4
+// 传输层抖动（连接被拒/重置/超时）在写路径上额外用满重试次数，且优先于其它可重试错误；
+// 建连在拿到连接之前就失败，事务尚未开始，直接换新连接重试即可，幂等回执保证不会重复入账。
+const MAX_TRANSPORT_ATTEMPTS = 4
 
 async function resolveUid(connection, provider, subjectHash) {
   const [rows] = await connection.execute(
@@ -68,7 +72,7 @@ async function executeIdempotentMutation({
   delete requestData.requestId
   const requestDigest = digestRequest(action, requestData)
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_TRANSPORT_ATTEMPTS; attempt += 1) {
     let connection
     let transactionStarted = false
 
@@ -124,7 +128,12 @@ async function executeIdempotentMutation({
     } catch (error) {
       if (transactionStarted) await safeRollback(connection)
 
-      if (isRetryableDatabaseError(error) && attempt + 1 < MAX_ATTEMPTS) {
+      if (isRetryableTransportError(error)) {
+        if (attempt + 1 < MAX_TRANSPORT_ATTEMPTS) {
+          await waitBeforeDatabaseRetry(attempt)
+          continue
+        }
+      } else if (isRetryableDatabaseError(error) && attempt + 1 < MAX_ATTEMPTS) {
         await waitBeforeDatabaseRetry(attempt)
         continue
       }

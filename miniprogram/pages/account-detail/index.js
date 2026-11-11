@@ -20,7 +20,9 @@ Page(themeService.page({
     accountStatusMessage: '',
     accountStatusRefresh: false,
     pendingAccountAction: '',
-    accountLoans: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0,
+    removeBlockedByRecords: false,
+    removeRecords: [], removeRecordsLoading: false, removeRecordsError: '', removingRecords: false,
+    accountLoans: [], accountLoansActive: [], accountLoansDone: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0, accountLoansTotalInterestText: null, accountLoansTotalFeeText: null, accountLoansTotalCount: 0, accountLoanSort: 'time', debtHintOpen: false,
     accountSources: [], accountSourcesLoading: false, accountSourcesLoaded: false, accountSourcesError: '', accountSourcesMore: false,
     sourceChoosing: null,
     editingName: false,
@@ -47,7 +49,7 @@ Page(themeService.page({
   onHide: function () { pageReadSession.end(this); this._archiveConfirming = false; this.setData({ saving: false }) },
 
   loadAccount: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountStatusMessage', 'accountStatusRefresh', 'pendingAccountAction', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'accountSources', 'accountSourcesLoading', 'accountSourcesLoaded', 'accountSourcesError', 'accountSourcesMore', 'editingName', 'nameDraft', 'nameError', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
+    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountStatusMessage', 'accountStatusRefresh', 'pendingAccountAction', 'accountLoans', 'accountLoansActive', 'accountLoansDone', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'accountLoansTotalInterestText', 'accountLoansTotalFeeText', 'accountLoansTotalCount', 'accountLoanSort', 'debtHintOpen', 'accountSources', 'accountSourcesLoading', 'accountSourcesLoaded', 'accountSourcesError', 'accountSourcesMore', 'editingName', 'nameDraft', 'nameError', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -58,10 +60,12 @@ Page(themeService.page({
       if (isCurrent()) return api.callApi('accounts.list', {}, { force: force || Boolean(completedStatus) })
     }).then(async function (result) {
         if (!isCurrent()) return
-        const account = (result.accounts || []).map(decorateAccount).find(function (item) { return item.accountId === self.data.accountId }) || null
+        const decorated = (result.accounts || []).map(decorateAccount).find(function (item) { return item.accountId === self.data.accountId }) || null
+        // 详情页把负债欠款称作「总欠款」（口径=最近账单本期应还+各分期未到期剩余本息）。
+        const account = decorated && decorated.nature === 'liability' ? Object.assign({}, decorated, { balanceLabel: '总欠款' }) : decorated
         if (self.data.accountStatusRefresh) self.setData({ accountStatusRefresh: false, accountStatusMessage: '' })
-        self.setData(Object.assign({ account: account, billingSupported: result.liabilitySettingsVersion === 1, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
-          { accountLoans: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0 }))
+        self.setData(Object.assign({ account: account, removeBlockedByRecords: false, billingSupported: result.liabilitySettingsVersion === 1, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
+          { accountLoans: [], accountLoansActive: [], accountLoansDone: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0, accountLoansTotalInterestText: null, accountLoansTotalFeeText: null, accountLoansTotalCount: 0, accountLoanSort: 'time', debtHintOpen: false }))
         if (account) await Promise.all([self.loadAccountLoans(), self.loadAccountSources()])
         return true
       })
@@ -85,7 +89,7 @@ Page(themeService.page({
 
   pendingAccountStatus: function () {
     const packet = pendingWrites.pending()
-    return packet && packet.target === 'api' && ['accounts.archive', 'accounts.restore'].includes(packet.action) &&
+    return packet && packet.target === 'api' && ['accounts.archive', 'accounts.restore', 'accounts.remove'].includes(packet.action) &&
       packet.payload.accountId === this.data.accountId ? packet : null
   },
 
@@ -97,7 +101,7 @@ Page(themeService.page({
     try {
       await pendingWrites.verify()
       if (!isCurrent()) return ''
-      const status = packet.action === 'accounts.restore' ? '已恢复' : '已停用'
+      const status = packet.action === 'accounts.restore' ? '已恢复' : packet.action === 'accounts.remove' ? '已删除' : '已停用'
       this.setData({ pendingAccountAction: '', accountStatusMessage: status })
       return status
     } catch (error) {
@@ -109,10 +113,19 @@ Page(themeService.page({
   changeAccountStatus: async function (action, payload) {
     const account = this.data.account, isCurrent = pageReadSession.capture(this)
     if (!account || this.data.saving || !isCurrent()) return
-    this.setData({ saving: true, errorMessage: '', accountStatusMessage: '' })
+    this.setData({ saving: true, errorMessage: '', accountStatusMessage: '', removeBlockedByRecords: false, removeRecords: [], removeRecordsError: '' })
     try {
       await pendingWrites.send('api', action, payload || { accountId: account.accountId, version: account.version }, { exact: true, canSend: isCurrent })
       if (!isCurrent()) return
+      // 彻底删除后账户已不存在，直接退回列表并提示，不再尝试读取详情。
+      if (action === 'accounts.remove') {
+        this.setData({ pendingAccountAction: '', saving: false })
+        // 标记账户列表需强制刷新，返回后 onShow 立即按最新数据重读，不显示已删账户。
+        try { getApp().globalData.accountsDirty = true } catch (_) {}
+        wx.showToast({ title: '已删除', icon: 'success' })
+        wx.navigateBack()
+        return
+      }
       const status = action === 'accounts.restore' ? '已恢复' : '已停用'
       this.setData({ pendingAccountAction: '', accountStatusMessage: status, editingName: false, editingBilling: '', formOpen: false })
       if (this._readLoad) await this._readLoad
@@ -122,9 +135,114 @@ Page(themeService.page({
     } catch (error) {
       if (!isCurrent()) return
       const pending = this.pendingAccountStatus()
-      this.setData({ pendingAccountAction: pending ? pending.action : '', errorMessage: error.message || '账户操作失败',
-        accountStatusMessage: pending ? '上次账户操作结果待核实，请继续原操作' : '' })
+      // 有流水/关联记录不能直删：给出「查看并删除流水」的引导，而不是干巴巴报错。
+      const hasRecords = action === 'accounts.remove' && error && error.code === 'ACCOUNT_HAS_RECORDS'
+      this.setData({ pendingAccountAction: pending ? pending.action : '',
+        errorMessage: hasRecords ? '' : (error.message || '账户操作失败'),
+        accountStatusMessage: pending ? '上次账户操作结果待核实，请继续原操作' : '',
+        removeBlockedByRecords: hasRecords })
+      if (hasRecords) this.loadRemoveRecords()
     } finally { if (isCurrent()) this.setData({ saving: false }) }
+  },
+
+  // 删除账户被流水挡住时，直接在本页内联展示该账户流水，可勾选批量删除，不跳走。
+  openAccountTransactions: function () {
+    return this.loadRemoveRecords()
+  },
+
+  loadRemoveRecords: async function () {
+    const account = this.data.account
+    if (!account || this.data.removeRecordsLoading) return
+    const isCurrent = pageReadSession.capture(this)
+    const time = require('../../utils/time')
+    this.setData({ removeRecordsLoading: true, removeRecordsError: '' })
+    try {
+      // transactions.list 必须按月查；从 2020-01 到当前月逐月扫描，小批并发合并该账户全部流水。
+      const current = time.currentMonth()
+      const months = []
+      let m = '2020-01', guard = 0
+      while (m && m <= current && guard < 120) { months.push(m); m = time.shiftMonth(m, 1); guard += 1 }
+      const items = []
+      const fetchMonth = async (month) => {
+        let cursor = null
+        for (let page = 0; page < 20; page++) {
+          const result = await api.callApi('transactions.list', { month, accountId: account.accountId, pageSize: 50, cursor }, { force: true })
+          if (!isCurrent()) return
+          for (const tx of (result.transactions || [])) items.push(this._removeRow(tx))
+          cursor = result.nextCursor
+          if (!cursor) break
+        }
+      }
+      for (let i = 0; i < months.length; i += 6) {
+        await Promise.all(months.slice(i, i + 6).map(fetchMonth))
+        if (!isCurrent()) return
+      }
+      items.sort((a, b) => (a.dateText < b.dateText ? 1 : a.dateText > b.dateText ? -1 : 0))
+      if (isCurrent()) this.setData({ removeRecords: items })
+    } catch (error) {
+      if (isCurrent()) this.setData({ removeRecordsError: error.message || '流水暂未读取，请重试' })
+    } finally { if (isCurrent()) this.setData({ removeRecordsLoading: false }) }
+  },
+
+  _removeRow: function (tx) {
+    const money = require('../../utils/money')
+    const labels = { expense: '支出', income: '收入', transfer: '转账', refund: '退款', balance_adjustment: '余额调整' }
+    // 余额调整（期初/校正）与关联退款/贷款的记录通常不能直接删；先展示，删除时按后端规则反馈。
+    const selectable = ['manual', 'import'].indexOf(tx.origin) >= 0 && ['income', 'expense', 'transfer', 'refund'].indexOf(tx.type) >= 0
+    return {
+      transactionId: tx.transactionId, version: tx.version,
+      typeLabel: labels[tx.type] || tx.type,
+      dateText: String(tx.occurredLocalAt || '').slice(0, 10),
+      amountText: money.formatMinor(tx.amountMinor),
+      noteText: tx.note || '',
+      selectable: selectable, selected: selectable
+    }
+  },
+
+  toggleRemoveRecord: function (event) {
+    const index = Number(event.currentTarget.dataset.index)
+    const row = this.data.removeRecords[index]
+    if (!row || !row.selectable || this.data.removingRecords) return
+    this.setData({ ['removeRecords[' + index + '].selected']: !row.selected })
+  },
+
+  selectAllRemoveRecords: function (event) {
+    const on = event && event.detail ? Boolean(event.detail.value) : true
+    const patch = {}
+    this.data.removeRecords.forEach((row, index) => { if (row.selectable) patch['removeRecords[' + index + '].selected'] = on })
+    this.setData(patch)
+  },
+
+  // 删除所选流水，成功后自动重试彻底删除账户。
+  deleteRemoveRecords: async function () {
+    if (this.data.removingRecords || this.data.saving) return
+    const account = this.data.account
+    const isCurrent = pageReadSession.capture(this)
+    const items = this.data.removeRecords.filter(row => row.selectable && row.selected)
+      .map(row => ({ transactionId: row.transactionId, version: row.version }))
+      .sort((a, b) => a.transactionId.localeCompare(b.transactionId))
+    // 若没有可勾删的真实流水（只剩余额调整，后端会随账户一并清理），直接重试删除账户。
+    const tryRemoveAccount = async () => {
+      this.setData({ removeBlockedByRecords: false })
+      await this.changeAccountStatus('accounts.remove', { accountId: account.accountId, version: account.version })
+    }
+    if (!items.length) return tryRemoveAccount()
+    this.setData({ removingRecords: true, removeRecordsError: '' })
+    try {
+      const choice = await new Promise((resolve, reject) => wx.showModal({
+        title: '删除 ' + items.length + ' 笔流水？', content: '删除后余额与统计会更新，且不可恢复。删除完若账户已无记录，将自动继续彻底删除账户。',
+        confirmText: '删除', confirmColor: themeService.currentTokens().danger, success: resolve, fail: reject }))
+      if (!choice.confirm || !isCurrent()) return
+      await pendingWrites.send('api', 'transactions.deleteMany', { items }, { exact: true })
+      if (!isCurrent()) return
+      wx.showToast({ title: '已删除 ' + items.length + ' 笔', icon: 'success' })
+      // 重新读取剩余流水；若已无可勾删的真实流水，自动重试删除账户（余额调整由后端随账户清理）。
+      await this.loadRemoveRecords()
+      if (!isCurrent()) return
+      if (!this.data.removeRecords.some(row => row.selectable)) await tryRemoveAccount()
+    } catch (error) {
+      if (isCurrent()) this.setData({ removeRecordsError: (error && error.message) || '删除流水失败，请重试' })
+    } finally { if (isCurrent()) this.setData({ removingRecords: false }) }
   },
 
   retryAccountStatus: function () {
@@ -149,6 +267,33 @@ Page(themeService.page({
     this.setData({ errorMessage: error.message || fallback })
   },
 
+  // 排序贷款：time=按首次还款日/开始日倒序；amount=按剩余本金/原始本金倒序。
+  _loanTime(loan) {
+    const d = loan.firstPaymentDate || loan.startDate || loan.baselineDate || (loan.createdAt ? String(loan.createdAt).slice(0, 10) : '')
+    return d ? String(d) : ''
+  },
+  _loanAmountMinor(loan) {
+    // 按金额排序 = 按「借款金额（原本金）」倒序；已完成分期剩余本金为 0，用原本金才不会全部并列。
+    // 兜底顺序：原本金 > 基准本金 > 剩余本金。
+    const v = (loan.installmentSetup && loan.installmentSetup.originalPrincipalMinor != null) ? loan.installmentSetup.originalPrincipalMinor
+      : (loan.baselinePrincipalMinor != null ? loan.baselinePrincipalMinor
+        : (loan.installmentSummary && loan.installmentSummary.unpaidPrincipalMinor != null ? loan.installmentSummary.unpaidPrincipalMinor : loan.remainingPrincipalMinor))
+    try { return v == null ? -1n : BigInt(v) } catch (e) { return -1n }
+  },
+  _splitLoans(loans, mode) {
+    const done = loan => loan.statusText === '已完成' || loan.statusText === '已结清' || loan.status === 'settled'
+    const cmp = mode === 'amount'
+      ? (a, b) => { const x = this._loanAmountMinor(a), y = this._loanAmountMinor(b); return x === y ? 0 : (x > y ? -1 : 1) }
+      : (a, b) => { const x = this._loanTime(a), y = this._loanTime(b); return x === y ? 0 : (x > y ? -1 : 1) }
+    const sorted = (loans || []).slice().sort(cmp)
+    return { accountLoansActive: sorted.filter(loan => !done(loan)), accountLoansDone: sorted.filter(done) }
+  },
+  setLoanSort(event) {
+    const mode = event.currentTarget.dataset.mode
+    if (mode !== 'time' && mode !== 'amount') return
+    if (mode === this.data.accountLoanSort) return
+    this.setData({ accountLoanSort: mode, ...this._splitLoans(this.data.accountLoans, mode) })
+  },
   loadAccountLoans: function () {
     const account = this.data.account
     const token = this._accountLoansToken = {}
@@ -156,12 +301,33 @@ Page(themeService.page({
     const current = pageReadSession.capture(this), accountId = account.accountId
     this.setData({ accountLoansLoading: true, accountLoansError: '' })
     const valid = () => current() && this._accountLoansToken === token && this.data.account && this.data.account.accountId === accountId
-    return api.callApi('loans.list', { accountId, pageSize: 3, cursor: null }).then(result => {
-      if (!valid()) return
+    // 不截断：按游标翻完该账户全部贷款再一次性展示（页面很小、量有限）；不再保留「查看全部」折叠入口。
+    const items = []
+    const fetchAll = (cursor) => api.callApi('loans.list', { accountId, pageSize: 40, cursor }, { force: true }).then(result => {
+      if (!valid()) return null
       if (!Array.isArray(result.items) || result.items.some(loan => loan.accountId !== accountId)) throw new Error('贷款所属账户不一致，请重试')
-      this.setData({ accountLoans: result.items.map(presentLoan), accountLoansLoaded: true,
-        accountLoansMore: Boolean(result.nextCursor), accountPendingCount: Number(result.pendingRepaymentCount || 0) })
-    }).catch(error => { if (valid()) this.setData({ accountLoansError: error.message || '贷款暂未读取，请重试' }) })
+      for (const item of result.items) items.push(item)
+      if (result.nextCursor && items.length < 500) return fetchAll(result.nextCursor)
+      const loans = items.map(presentLoan)
+      const done = loan => loan.statusText === '已完成' || loan.statusText === '已结清' || loan.status === 'settled'
+      // 所有分期合计的总利息/总费用（全期口径，取自每笔 installmentSummary.totalInterestMinor/totalFeeMinor）。
+      let interestTotal = 0n, feeTotal = 0n, counted = 0
+      for (const loan of loans) {
+        const s = loan.installmentSummary
+        if (s && s.totalInterestMinor != null) {
+          interestTotal += BigInt(s.totalInterestMinor); feeTotal += BigInt(s.totalFeeMinor || '0'); counted += 1
+        }
+      }
+      const money = require('../../utils/money')
+      const totalInterestText = counted ? money.formatMinor(interestTotal.toString()) : null
+      const totalFeeText = counted ? money.formatMinor(feeTotal.toString()) : null
+      this.setData({ accountLoans: loans, ...this._splitLoans(loans, this.data.accountLoanSort), accountLoansLoaded: true,
+        accountLoansMore: false, accountPendingCount: Number(result.pendingRepaymentCount || 0),
+        accountLoansTotalInterestText: totalInterestText, accountLoansTotalFeeText: totalFeeText, accountLoansTotalCount: counted })
+      return null
+    })
+    return fetchAll(null)
+      .catch(error => { if (valid()) this.setData({ accountLoansError: error.message || '贷款暂未读取，请重试' }) })
       .finally(() => { if (valid()) this.setData({ accountLoansLoading: false }) })
   },
 
@@ -173,7 +339,7 @@ Page(themeService.page({
     this.setData({ accountSourcesLoading: true, accountSourcesError: '' })
     const valid = () => current() && this.data.account && this.data.account.accountId === accountId
     const items = [], seen = new Set()
-    const fetchPage = (cursor) => api.callApi('loans.installmentSources', { accountId, pageSize: 40, cursor }).then(result => {
+    const fetchPage = (cursor) => api.callApi('loans.installmentSources', { accountId, pageSize: 40, cursor }, { force: true }).then(result => {
       if (!valid()) return
       for (const item of result.items || []) { if (!seen.has(item.itemId)) { seen.add(item.itemId); items.push(item) } }
       if (result.nextCursor && items.length < 300) return fetchPage(result.nextCursor)
@@ -335,6 +501,8 @@ Page(themeService.page({
   },
 
   stopBubble: function () {},
+  toggleDebtHint: function () { this.setData({ debtHintOpen: !this.data.debtHintOpen }) },
+  closeDebtHint: function () { this.setData({ debtHintOpen: false }) },
   bindBalance: function (event) { this.setData({ balanceYuan: event.detail.value }) },
 
   saveCorrection: function () {
@@ -425,6 +593,29 @@ Page(themeService.page({
         resolve(self.changeAccountStatus('accounts.archive', { accountId: account.accountId, version: account.version }))
       },
       fail: function () { if (self._archiveConfirming === confirmation) self._archiveConfirming = false; resolve() }
+    }))
+  },
+
+  // 彻底删除：仅允许"没有任何流水或关联记录"的账户。有记录时后端返回 ACCOUNT_HAS_RECORDS，页面提示改用停用。
+  removeAccount: function () {
+    const account = this.data.account
+    const self = this
+    const isCurrent = pageReadSession.capture(this)
+    if (!account || !account.archived || this.data.saving || this._removeConfirming || !isCurrent()) return
+    if (this.data.accountStatusRefresh) return this.loadAccount({ force: true })
+    if (this.pendingAccountStatus()) return this.retryAccountStatus()
+    const confirmation = this._removeConfirming = {}
+    return new Promise(resolve => wx.showModal({
+      title: '彻底删除“' + account.name + '”？',
+      content: '仅当该账户没有任何流水或关联记录时才能删除，删除后无法恢复。若已有流水，请改用停用（归档）以保留历史账目。',
+      confirmText: '删除',
+      confirmColor: themeService.currentTokens().danger,
+      success: function (result) {
+        if (self._removeConfirming === confirmation) self._removeConfirming = false
+        if (!result.confirm || !isCurrent()) { resolve(); return }
+        resolve(self.changeAccountStatus('accounts.remove', { accountId: account.accountId, version: account.version }))
+      },
+      fail: function () { if (self._removeConfirming === confirmation) self._removeConfirming = false; resolve() }
     }))
   }
 }))

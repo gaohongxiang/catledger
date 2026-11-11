@@ -31,3 +31,8 @@ project.private.config.json
 /log/
 /package/
 /storage/
+
+# 本地预览/架构图工具产物
+.archify/
+.tmp-ui-preview.png
+date-picker-preview.png

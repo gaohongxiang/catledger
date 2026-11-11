@@ -41,6 +41,7 @@ function unwrapResponse(response, fallbackMessage) {
         : fallbackMessage
     )
     error.code = result && result.error ? result.error.code : 'INTERNAL_ERROR'
+    if (result && result.error && Array.isArray(result.error.fields) && result.error.fields.length) error.fields = result.error.fields
     throw error
   }
   return result.data

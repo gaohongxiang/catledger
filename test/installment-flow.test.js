@@ -2,14 +2,15 @@ const test = require('node:test'), assert = require('node:assert/strict')
 const {buildView,updateProgress}=require('../cloudfunctions/catledger-api/src/installment-view')
 const {installmentEvidence}=require('../cloudfunctions/catledger-import/src/profiles/bank-installment')
 const loan={kind:'installment',scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',feePerTermMinor:null,feeUpfrontMinor:null,firstPaymentDate:'2025-10-31',remainingPrincipalMinor:'2400000',installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',discountKind:null,discountValue:null}}
-test('L09 账单锚点：第12期出现即前11期已还，第12期本身仍需证据',()=>{
+test('L09 账单锚点：第12期出现即第1~12期已还，待核对从第13期起（本期含锚点）',()=>{
  const items=[{periodNumber:12,component:'principal',active:true}]
  const before=buildView(loan,[],items,'2026-09-23')
- assert.equal(before.summary.paidPeriods,11);assert.equal(before.rows[11].billed,true);assert.equal(before.rows[11].complete,false)
- assert.equal(before.rows[10].complete,true);assert.equal(before.summary.completedThrough,11)
+ // 账单出现第12期 → 1~12 期视为已还，账单分期到此结束（共12期）。
+ assert.equal(before.summary.paidPeriods,12);assert.equal(before.rows[11].billed,true);assert.equal(before.rows[11].complete,true)
+ assert.equal(before.rows[10].complete,true);assert.equal(before.summary.completedThrough,12)
  const progress=updateProgress(loan,{periodNumber:10,status:'completed'}),after=buildView({...loan,progress},[],items,'2026-09-23')
- assert.equal(after.rows[9].complete,true);assert.equal(after.rows[10].complete,true);assert.equal(after.rows[11].complete,false)
- assert.equal(after.summary.remainingPrincipalMinor,'2400000');assert.equal(after.summary.estimatedPrincipalMinor,'200000')
+ assert.equal(after.rows[9].complete,true);assert.equal(after.rows[10].complete,true);assert.equal(after.rows[11].complete,true)
+ assert.equal(after.summary.remainingPrincipalMinor,'0');assert.equal(after.summary.estimatedPrincipalMinor,'0')
 })
 test('L09 批量范围需明确确认；保留未还/部分及范围外的单期确认，实付12不扩散',()=>{
  let progress=updateProgress(loan,{periodNumber:9,status:'unpaid'});progress=updateProgress({...loan,progress},{periodNumber:12,status:'completed'})
@@ -29,8 +30,9 @@ test('L14 模糊旧through保留待核对；明确单期、历史确认和异常
  const confirmed=updateProgress({...loan,progress},{completedThrough:10,confirmedBatch:true});assert.equal(confirmed.legacyNeedsReview,false);assert.deepEqual(confirmed.legacy,legacy)
 })
 test('费用差异与取消状态不改变还款事实',()=>{
- const view=buildView(loan,[{periodNumber:11,cancelled:true}],[{periodNumber:10,component:'interest',amountMinor:'3000',active:true}],'2026-09-23')
- assert.deepEqual(view.rows[9].differences,['interest']);assert.equal(view.rows[9].complete,false);assert.equal(view.rows[9].interestMinor,'3909')
+ // 账单锚点在第 6 期；第 9 期金额差异（非锚点期）不应被锚点自动判已还，仍待核对并标出差异。
+ const view=buildView(loan,[{periodNumber:11,cancelled:true}],[{periodNumber:6,component:'principal',active:true},{periodNumber:9,component:'interest',amountMinor:'3000',active:true}],'2026-09-23')
+ assert.deepEqual(view.rows[8].differences,['interest']);assert.equal(view.rows[8].complete,false);assert.equal(view.rows[8].interestMinor,'3909')
  assert.equal(view.rows[10].stateText,'已取消');assert.equal(view.rows[10].unpaidInterestMinor,'0')
 })
 test('本期真实清偿优先于旧人工标记；部分付款不伪装全额，撤销后原标记仍可追溯',()=>{
@@ -54,15 +56,30 @@ test('L01 真实放款和扣款不误套分期应还本金例外',()=>{
 })
 
 test('历史选择保留已保存及明确未还/部分期，不反复询问',()=>{
- const base={...loan,scheduleTerms:36,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36},progress:{schema:2,through:36,exceptions:{'3':'unpaid','9':'partial'},reviewedPeriods:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,true])),simpleRepayment:true}}
- const result=buildView(base,[],[]);assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:16},(_,i)=>i+21));assert.equal(result.rows[2].complete,false);assert.equal(result.rows[8].complete,false)
+ const base={...loan,scheduleTerms:36,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36},progress:{schema:2,through:36,exceptions:{'3':'unpaid','9':'partial'},simpleRepayment:true}}
+ // 新口径：已还期数=36 即全期已还，不再强制弹出逐期复核；明确未还/部分仍按例外保持未还。
+ const result=buildView(base,[],[]);assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),[]);assert.equal(result.rows[2].complete,false);assert.equal(result.rows[8].complete,false)
 })
 test('历史36期和最长600期不在第20期截断，真实付款/部分付款/取消仍受保护',()=>{
  for(const terms of [36,600]){
   const historical={...loan,scheduleTerms:terms,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:terms}}
+  // 新口径：历史接入的已还期视为既成事实，不再强制逐期复核。
   const result=buildView(historical,[],[])
-  assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:terms},(_,i)=>i+1))
+  assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),[])
+  assert.equal(result.rows.every(row=>row.complete),true)
   const protectedView=buildView(historical,[{periodNumber:21,status:'paid'},{periodNumber:22,status:'partial'},{periodNumber:23,cancelled:true}],[])
-  assert.deepEqual(protectedView.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:terms},(_,i)=>i+1).filter(n=>![21,22,23].includes(n)))
+  assert.deepEqual(protectedView.summary.repaymentPrompts.map(r=>r.periodNumber),[])
+  assert.equal(protectedView.rows[21].status,'partial');assert.equal(protectedView.rows[22].cancelled,true)
  }
+})
+
+test('手动标记已结清：未还期次全部视为已还、剩余本金归 0、summary.settled=true', () => {
+  const base = { kind: 'installment', scheduleMethod: 'flat', scheduleTerms: 3, measurementKind: 'repayment', repaymentMinor: '607039', firstPaymentDate: '2025-05-13', baselinePrincipalMinor: '0', installmentSetup: { schema: 1, originalPrincipalMinor: '1780000', historicalPaidTerms: 0, recordType: 'credit_card', discountKind: null, discountValue: null } }
+  const before = buildView(base, [], [], '2026-11-01')
+  assert.equal(before.summary.settled, false)
+  assert.equal(before.summary.unpaidPrincipalMinor, '1780000')
+  const settled = buildView({ ...base, progress: { schema: 2, settled: true, exceptions: {} } }, [], [], '2026-11-01')
+  assert.equal(settled.summary.settled, true)
+  assert.equal(settled.summary.unpaidPrincipalMinor, '0')
+  assert.ok(settled.rows.every(r => r.status === 'paid'))
 })

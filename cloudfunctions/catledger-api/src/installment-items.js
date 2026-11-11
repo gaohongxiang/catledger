@@ -61,6 +61,15 @@ async function fingerprintLoan(c,uid,event) {
     require('./installment-plan-fingerprint').matches(fingerprint,{...row,scheduleTerms:row.terms}))
   return matched.length===1 ? matched[0] : null
 }
+// 无合同编号时，用户上次手动归属写下的合成绑定键：按「计划名+起始月+总期数」查回。唯一命中才采用。
+async function syntheticLoan(c,uid,accountId,planLabel,startMonth,totalTerms) {
+  if (!planLabel || !startMonth) return null
+  const key=require('./installment-plan-fingerprint').planBindingKey(planLabel,startMonth,totalTerms)
+  const [rows]=await c.execute(`SELECT l.loan_id AS loanId,l.account_id AS accountId,l.schedule_terms AS terms,l.archived_at AS archivedAt,l.deleted_at AS deletedAt
+    FROM catledger_installment_bindings b JOIN catledger_loans l ON l.uid=b.uid AND l.loan_id=b.loan_id
+    WHERE b.uid=? AND b.account_id=? AND b.reference_key=? AND l.archived_at IS NULL AND l.deleted_at IS NULL`,[uid,accountId,key])
+  return rows.length===1 ? rows[0] : null
+}
 async function canonicalItem(c,uid,loanId,periodNumber,component) {
   if (!loanId) return null
   const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.period_number=? AND i.component=? AND i.canonical=1 AND i.active=1',
@@ -101,7 +110,12 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   const [[account]]=await c.execute('SELECT type FROM catledger_accounts WHERE uid=? AND account_id=?',[uid,event.ledgerAccountId])
   if (!account || account.type!=='credit') fail('LOAN_SOURCE_MISMATCH')
   const identityId=identityIds.length===1?identityIds[0]:null
-  const loan=await boundLoan(c,uid,event.ledgerAccountId,evidence.referenceKey)||await fingerprintLoan(c,uid,event)
+  // 归属优先级：真实合同编号绑定 → （无编号时）用户上次手动归属的合成绑定 → 计划指纹唯一命中。
+  // 都判不准则不自动归属，留待核对让用户点选（绝不按金额/名字猜）。
+  const fingerprintMod=require('./installment-plan-fingerprint')
+  const syntheticLoanRow=evidence.referenceKey?null:await syntheticLoan(c,uid,event.ledgerAccountId,
+    planLabelOf(event,evidence),fingerprintMod.startMonthFromPeriod(event.localDate,evidence.periodNumber),evidence.totalTerms)
+  const loan=await boundLoan(c,uid,event.ledgerAccountId,evidence.referenceKey)||syntheticLoanRow||await fingerprintLoan(c,uid,event)
   if (loan && (evidence.periodNumber>Number(loan.terms) || evidence.totalTerms && evidence.totalTerms!==Number(loan.terms))) fail('LOAN_SOURCE_MISMATCH')
   let previous=null
   if (identityId) {

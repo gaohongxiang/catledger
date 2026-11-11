@@ -22,7 +22,6 @@ const businessInitialData = require('./initial-data')
 Page(theme.page({
   ...detailReader,
   ...installmentActions,
-  ...require('../../services/historical-charge-coverage').methods,
   ...require('./delete-plan'),
   ...require('./retained-charge'),
   ...require('./charge-actions').methods,
@@ -34,7 +33,7 @@ Page(theme.page({
   onUnload() { pageReadSession.end(this); if (this._repaymentAlert && typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload(); this._repaymentAlert = false },
   load() {
     if(this._retainedChargeId)return this.loadRetainedCharge()
-    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(Object.keys(require('./upfront-fee').initial),Object.keys(require('../../services/historical-charge-coverage').initial),['deletedPlan','deletingPreview','deleteBlockers','chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','repaymentSelectedCount','repaymentDirtyCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','costOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_historyCoverageToken','_historyRecommendToken','_historyCoverageAccount','_deletePreview','_upfrontRead','_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext','_repaymentInitial','_repaymentAlert'])
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(Object.keys(require('./upfront-fee').initial),[ 'deletedPlan','deletingPreview','deleteBlockers','chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEvidenceOpen','periodDraft','periodDraftTotal','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','repaymentSelectedCount','repaymentDirtyCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','costOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_deletePreview','_upfrontRead','_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext','_repaymentInitial','_repaymentAlert'])
     if(this.data.deletedPlan)return this.refreshDeletedList()
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
@@ -84,6 +83,7 @@ Page(theme.page({
             }
           }
           catch (error) { if (current()) this.setData({ errorMessage: error.message || '上次操作仍待核实', hasPending: Boolean(pending.pending()) }) }
+          if (current()) this.setData({ hasPending: Boolean(pending.pending()) })
         }
         if (current() && this.data.loan)await Promise.all([this.loadDetail(),this.loadCharges()])
       })
@@ -91,8 +91,21 @@ Page(theme.page({
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
-  recordPayment(event) {
-    if (this.data.loading || this.data.saving || !this._loanId) return
+  // 兜底：服务端确认原操作从未生效、但本机仍残留"待核实"的僵尸请求时，一键清除并重读，
+  // 避免永久卡住费用同步与后续写入。仅清除"查无回执(notApplied)"的包，不会误删真正在途的写。
+  async discardStuckRequest(){
+    if(this.data.saving)return
+    this.setData({saving:true})
+    try{
+      let committed=false
+      try{ committed=Boolean(await pending.verify()) }catch(_) { committed=false }
+      if(!committed) pending.discard()
+      this.setData({hasPending:Boolean(pending.pending()),errorMessage:''})
+      this._forceLoanRead=true;this._detailReady=false
+      await this.load()
+    }finally{if(this.mounted!==false)this.setData({saving:false})}
+  },
+  recordPayment(event) {    if (this.data.loading || this.data.saving || !this._loanId) return
     if (!this.contextFresh()) { this.setData({ errorMessage: '请先重新读取与核实最新资料' }); return }
     const source = this.data.sourceContext
     if (this._sourceTransactionId && (!source || source.state !== 'candidate' || source.targetAccount.inactive || !this.data.loan || this.data.loan.accountId !== source.targetAccount.accountId)) { this.setData({ errorMessage: '原还款状态已改变，请返回重新核对' }); return }
@@ -103,7 +116,6 @@ Page(theme.page({
     const options=event&&event.currentTarget&&event.currentTarget.dataset||{},period=Number(options.term)
     wx.navigateTo({ url: '/packages/loans/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') + (Number.isInteger(period)&&period>0?'&periodNumber='+period:options.kind==='drawdown'?'&kind=drawdown':'') })
   },
-  openPlan() { if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({ url: '/packages/loans/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
   openPayment(event) {
     if (!pageReadSession.isCurrent(this) || !this.data.periodOpen || this.data.periodLoading || this.data.saving) return
     const id = event.currentTarget.dataset.id

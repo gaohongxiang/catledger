@@ -36,7 +36,7 @@ for (const method of ['flat', 'equal_payment', 'equal_principal', 'interest_only
 }
 
 test('flat annual quote uses fixed principal cost with final residue', () => {
-  const result = buildSchedule(rateInput('flat'))
+  const result = buildSchedule(rateInput('flat', { principalRounding: 'cent' }))
   assert.equal(result.summary.totalInterestMinor, 100000)
   assert.equal(result.summary.totalFeeMinor, 0)
   assert.equal(result.periods[0].principalMinor, 83333)
@@ -82,7 +82,7 @@ for (const [method, value] of repaymentCases) {
 }
 
 test('flat repayment basis derives fixed total cost and rate', () => {
-  const result = buildSchedule(repaymentInput('flat', 90000))
+  const result = buildSchedule(repaymentInput('flat', 90000, { principalRounding: 'cent' }))
   assert.equal(result.summary.totalInterestMinor, 80000)
   assert.equal(result.summary.derivedRatePpm, 80000)
   assert.equal(result.periods[0].paymentMinor, 90000)
@@ -141,8 +141,8 @@ test('600-term boundary builds and 601 is rejected', () => {
   assert.equal(MAX_TERMS, 600)
   const result = buildSchedule(rateInput('equal_payment', { scheduleTerms: 600 }))
   assertSchedule(result, 600, 1000000, 'rate 600 terms')
-  assert.throws(() => buildSchedule(rateInput('flat', { scheduleTerms: 601 })), { publicCode: 'VALIDATION_ERROR' })
-  assert.throws(() => buildSchedule(rateInput('flat', { scheduleTerms: 0 })), { publicCode: 'VALIDATION_ERROR' })
+  assert.throws(() => buildSchedule(rateInput('flat', { scheduleTerms: 601 })), { publicCode: 'SCHEDULE_TERMS_INVALID' })
+  assert.throws(() => buildSchedule(rateInput('flat', { scheduleTerms: 0 })), { publicCode: 'SCHEDULE_TERMS_INVALID' })
 })
 
 test('parameter pairing and semantic violations are rejected', () => {
@@ -152,11 +152,8 @@ test('parameter pairing and semantic violations are rejected', () => {
     rateInput('flat', { measurementKind: 'unknown' }),
     rateInput('flat', { quoteType: null }),
     rateInput('flat', { ratePpm: null }),
-    rateInput('flat', { repaymentMinor: '90000' }),
     rateInput('flat', { quoteType: 'quarterly' }),
     rateInput('equal_payment', { quoteType: 'installment' }),
-    repaymentInput('flat', 90000, { quoteType: 'annual' }),
-    repaymentInput('flat', 90000, { ratePpm: '100000' }),
     rateInput('flat', { principalMinor: '0' }),
     rateInput('flat', { principalMinor: null }),
     rateInput('flat', { principalMinor: 1000000 }),
@@ -167,7 +164,7 @@ test('parameter pairing and semantic violations are rejected', () => {
     repaymentInput('flat', 80000),
     repaymentInput('equal_principal', 80000)
   ]
-  for (const input of invalid) assert.throws(() => buildSchedule(input), { publicCode: 'VALIDATION_ERROR' }, JSON.stringify(input))
+  for (const input of invalid) assert.throws(() => buildSchedule(input), (e) => /^SCHEDULE_/.test(e && e.publicCode), JSON.stringify(input))
   const interestFree=buildSchedule(repaymentInput('interest_only',0))
   assert.equal(interestFree.periods.slice(0,-1).every(row=>row.paymentMinor===0),true)
   assert.equal(interestFree.periods.at(-1).paymentMinor,1000000)
@@ -179,4 +176,173 @@ test('periodicRate converts ppm quotes and infers repayment rates', () => {
   assert.ok(Math.abs(periodicRate(parseScheduleParams(rateInput('flat'))) - 0.1 / 12) < 1e-12)
   assert.ok(Math.abs(periodicRate(parseScheduleParams(rateInput('flat', { quoteType: 'daily', ratePpm: '100' }))) - 0.003) < 1e-12)
   assert.ok(Math.abs(periodicRate(parseScheduleParams(repaymentInput('interest_only', 8333))) - 0.008333) < 1e-6)
+})
+
+// 方案A：本金整元平摊（到元）——默认到分不受影响，到元让逐期本金跟银行账单一致。
+test('整元平摊：26000/18 得 1444×17 + 1452，本金合计守恒，利息不受影响', () => {
+  const cent = buildSchedule({ principalMinor: '2600000', scheduleMethod: 'flat', scheduleTerms: 18,
+    measurementKind: 'rate', quoteType: 'installment', ratePpm: '9000', principalRounding: 'cent' })
+  // 显式到分：1444.44 分位，末期吃尾差
+  assert.equal(cent.periods[0].principalMinor, 144444)
+  assert.equal(cent.periods.at(-1).principalMinor, 144452)
+  assertSchedule(cent, 18, 2600000, 'cent flat')
+
+  const yuan = buildSchedule({ principalMinor: '2600000', scheduleMethod: 'flat', scheduleTerms: 18,
+    measurementKind: 'rate', quoteType: 'installment', ratePpm: '9000' })
+  // 默认到元：前 17 期整 1444，末期 1452
+  for (let i = 0; i < 17; i += 1) assert.equal(yuan.periods[i].principalMinor, 144400, `yuan period ${i + 1}`)
+  assert.equal(yuan.periods.at(-1).principalMinor, 145200)
+  assertSchedule(yuan, 18, 2600000, 'yuan flat')
+  // 利息按原始本金固定：每期 234（26000×0.9%），与取整口径无关
+  assert.ok(yuan.periods.every(row => row.interestMinor === 23400))
+  assert.equal(yuan.summary.totalInterestMinor, 421200)
+})
+
+test('整元平摊等额本金：本金仍整元，利息按剩余本金递减不变', () => {
+  const cent = buildSchedule(rateInput('equal_principal', { principalMinor: '2600000', scheduleTerms: 18, ratePpm: '9000', quoteType: 'monthly', principalRounding: 'cent' }))
+  const yuan = buildSchedule(rateInput('equal_principal', { principalMinor: '2600000', scheduleTerms: 18, ratePpm: '9000', quoteType: 'monthly', principalRounding: 'yuan' }))
+  assert.equal(yuan.periods[0].principalMinor, 144400)
+  assert.equal(yuan.periods.at(-1).principalMinor, 145200)
+  assertSchedule(yuan, 18, 2600000, 'yuan equal_principal')
+  // 首期利息与到分一致（首期剩余=全额本金，按 0.9%/月）
+  assert.equal(yuan.periods[0].interestMinor, cent.periods[0].interestMinor)
+})
+
+test('整元平摊在已还期次之后仍守恒：historicalPaidTerms 只切片，不改金额', () => {
+  const { remainingSchedule } = require('../cloudfunctions/catledger-api/src/loan-installment')
+  const out = remainingSchedule({ principalMinor: '2600000', scheduleMethod: 'flat', scheduleTerms: 18,
+    measurementKind: 'rate', quoteType: 'installment', ratePpm: '9000', principalRounding: 'yuan',
+    installmentSetup: { schema: 1, originalPrincipalMinor: '2600000', historicalPaidTerms: 6, recordType: '', customRecordType: '', discountKind: null, discountValue: null } })
+  // 已还前 6 期，剩第 7~18 期共 12 期；前 11 期整 1444，末期仍是 1452（切片不改末期金额）
+  assert.equal(out.periods.length, 12)
+  for (let i = 0; i < 11; i += 1) assert.equal(out.periods[i].principalMinor, 144400)
+  assert.equal(out.periods.at(-1).principalMinor, 145200)
+  assert.equal(out.periods.reduce((sum, row) => sum + row.principalMinor, 0), 2600000 - 6 * 144400)
+})
+
+// 块1：参数校验出结构化错误码 + fields，供前端点名高亮（不再笼统"请检查填写内容"）。
+test('结构化校验错误码带字段：冲突/缺项/过低各有明确 code', () => {
+  const { parseScheduleParams } = require('../cloudfunctions/catledger-api/src/loan-schedule/schedule-params')
+  const base = { principalMinor: '1962890', scheduleMethod: 'flat', scheduleTerms: 6, measurementKind: 'rate',
+    quoteType: 'monthly', ratePpm: '7576', principalRounding: 'yuan' }
+  // rate 口径残留还款额 → 以利率为准，自动忽略还款额（不再报冲突）
+  {
+    const p = parseScheduleParams({ ...base, repaymentMinor: '342018' })
+    assert.equal(p.measurement.ratePpm, 7576)
+    assert.equal(p.measurement.repaymentMinor, null)
+  }
+  // repayment 口径残留利率/口径 → 以还款额为准，忽略利率与口径
+  {
+    const p = parseScheduleParams({ principalMinor: '1962890', scheduleMethod: 'flat', scheduleTerms: 6,
+      measurementKind: 'repayment', repaymentMinor: '342018', ratePpm: '7576', principalRounding: 'yuan' })
+    assert.equal(p.measurement.repaymentMinor, 342018)
+    assert.equal(p.measurement.ratePpm, null)
+    assert.equal(p.measurement.quoteType, null)
+  }
+  // 利率口径缺 quoteType
+  assert.throws(() => parseScheduleParams({ ...base, quoteType: null }),
+    e => e.publicCode === 'SCHEDULE_QUOTE_REQUIRED' && e.fields.includes('quoteType'))
+  // 每期应还低于每期本金
+  assert.throws(() => parseScheduleParams({ principalMinor: '1000000', scheduleMethod: 'flat', scheduleTerms: 12,
+    measurementKind: 'repayment', repaymentMinor: '100', principalRounding: 'yuan' }),
+    e => e.publicCode === 'SCHEDULE_PAYMENT_TOO_LOW' && e.fields.includes('repaymentMinor'))
+  // 每期费率只配等本等息
+  assert.throws(() => parseScheduleParams({ ...base, scheduleMethod: 'equal_payment', quoteType: 'installment' }),
+    e => e.publicCode === 'SCHEDULE_INSTALLMENT_NEEDS_FLAT')
+  // 一次性费用≥本金
+  assert.throws(() => parseScheduleParams({ ...base, feeUpfrontMinor: '1962890' }),
+    e => e.publicCode === 'SCHEDULE_UPFRONT_FEE_TOO_HIGH' && e.fields.includes('feeUpfrontMinor'))
+  // 默认到元：不传 principalRounding 时按 yuan
+  const p = parseScheduleParams({ principalMinor: '1962890', scheduleMethod: 'flat', scheduleTerms: 6,
+    measurementKind: 'rate', quoteType: 'monthly', ratePpm: '7576' })
+  assert.equal(p.principalRounding, 'yuan')
+  // 显式 cent 仍可
+  assert.equal(parseScheduleParams({ ...base, principalRounding: 'cent' }).principalRounding, 'cent')
+})
+
+test('handler 把结构化错误码翻成人话并透传 fields', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../cloudfunctions/catledger-api/src/handler.js'), 'utf8')
+  assert.match(src, /SCHEDULE_FIELD_CONFLICT: '.*不一致/)
+  assert.match(src, /SCHEDULE_PAYMENT_TOO_LOW: '每期应还不能低于每期本金'/)
+  assert.match(src, /failure\(code, error\.fields\)/)
+})
+
+// 日利率按「实际天数」计息：以真实借据为基准（3000元 / 6期 / 日利率0.045% / 起息2018-11-30 / 首还2018-12-18）。
+// 每期利息 = 期初剩余本金 × 0.045% × 实际天数；首期 11/30→12/18 = 18 天。
+test('日利率 + 等额本金：按实际天数计息，逐期利息与借据一致', () => {
+  const result = buildSchedule({
+    principalMinor: '300000', scheduleMethod: 'equal_principal', scheduleTerms: 6,
+    measurementKind: 'rate', quoteType: 'daily', ratePpm: '450',
+    principalRounding: 'yuan', firstPaymentDate: '2018-12-18', interestStartDate: '2018-11-30',
+    feePerTermMinor: '0', feeUpfrontMinor: '0'
+  })
+  const interest = result.periods.map(row => row.interestMinor)
+  const payment = result.periods.map(row => row.paymentMinor)
+  // 借据每期「含利息」：24.30 / 34.88 / 27.90 / 18.90 / 13.95 / 6.75（分）
+  assert.deepEqual(interest, [2430, 3488, 2790, 1890, 1395, 675])
+  // 每期本金固定 500，月供 = 500 + 利息
+  assert.deepEqual(result.periods.map(row => row.principalMinor), [50000, 50000, 50000, 50000, 50000, 50000])
+  assert.deepEqual(payment, [52430, 53488, 52790, 51890, 51395, 50675])
+  // 利息合计 126.68
+  assert.equal(interest.reduce((a, b) => a + b, 0), 12668)
+})
+
+test('日利率未填起息日时，默认首期还款日前一个月起算（首期天数按月序列口径）', () => {
+  const withDate = buildSchedule({
+    principalMinor: '300000', scheduleMethod: 'equal_principal', scheduleTerms: 6,
+    measurementKind: 'rate', quoteType: 'daily', ratePpm: '450',
+    principalRounding: 'yuan', firstPaymentDate: '2018-12-18', interestStartDate: '2018-11-30'
+  })
+  const noDate = buildSchedule({
+    principalMinor: '300000', scheduleMethod: 'equal_principal', scheduleTerms: 6,
+    measurementKind: 'rate', quoteType: 'daily', ratePpm: '450',
+    principalRounding: 'yuan', firstPaymentDate: '2018-12-18'
+  })
+  // 不填起息日时首期从「首还日往前一个月」(2018-11-18) 起，天数不同 → 首期利息不同，但仍能出完整计划。
+  assert.equal(noDate.periods.length, 6)
+  assert.notEqual(noDate.periods[0].interestMinor, withDate.periods[0].interestMinor)
+})
+
+test('年利率 / 月利率口径不受实际天数改动影响（仍按月简化）', () => {
+  const annual = buildSchedule(rateInput('equal_principal'))
+  // 年利率口径：月利率 = 10% / 12，首期利息 = round(1000000 × 0.10/12) = 8333
+  assert.equal(annual.periods[0].interestMinor, 8333)
+})
+
+// 回归：到分本金必须「向下取整」，尾差进末期，才能与网贷流水逐分一致。
+// 7000元 / 9期 / 日利率0.045% / 起息2018-06-25（前7天免息后）/ 首还2018-07-18。
+test('日利率+到分：本金向下取整，逐期应还与利息与真实流水 9/9 一致', () => {
+  const result = buildSchedule({
+    principalMinor: '700000', scheduleMethod: 'equal_principal', scheduleTerms: 9,
+    measurementKind: 'rate', quoteType: 'daily', ratePpm: '450',
+    principalRounding: 'cent', firstPaymentDate: '2018-07-18', interestStartDate: '2018-06-25',
+    feePerTermMinor: '0', feeUpfrontMinor: '0'
+  })
+  // 真实流水：应还 / 利息（分）
+  const pay = [85022, 86457, 85372, 84077, 83202, 81977, 81032, 79947, 78764]
+  const interest = [7245, 8680, 7595, 6300, 5425, 4200, 3255, 2170, 980]
+  // 每期本金：前 8 期 77777（777.77），末期吃尾差 77784（777.84）
+  const principal = [77777, 77777, 77777, 77777, 77777, 77777, 77777, 77777, 77784]
+  assert.deepEqual(result.periods.map(r => r.paymentMinor), pay)
+  assert.deepEqual(result.periods.map(r => r.interestMinor), interest)
+  assert.deepEqual(result.periods.map(r => r.principalMinor), principal)
+})
+
+test('到分本金用向下取整而非四舍五入（7000/9=777.777… → 777.77，不是 777.78）', () => {
+  const result = buildSchedule({
+    principalMinor: '700000', scheduleMethod: 'equal_principal', scheduleTerms: 9,
+    measurementKind: 'rate', quoteType: 'annual', ratePpm: '120000', principalRounding: 'cent',
+    firstPaymentDate: '2018-07-18'
+  })
+  assert.equal(result.periods[0].principalMinor, 77777) // 777.77，向下取整
+  assert.equal(result.periods.at(-1).principalMinor, 77784) // 尾差进末期
+})
+
+test('后端参数校验：起息日不得晚于或等于首期还款日（否则拒绝，不静默算 0）', () => {
+  const { parseScheduleParams } = require('../cloudfunctions/catledger-api/src/loan-schedule/schedule-params')
+  const base = { principalMinor: '500000', scheduleMethod: 'equal_principal', scheduleTerms: 6, measurementKind: 'rate',
+    quoteType: 'daily', ratePpm: '450', firstPaymentDate: '2018-11-18' }
+  assert.doesNotThrow(() => parseScheduleParams({ ...base, interestStartDate: '2018-10-21' }))
+  assert.throws(() => parseScheduleParams({ ...base, interestStartDate: '2026-10-18' }), { publicCode: 'SCHEDULE_DATE_INVALID' })
+  assert.throws(() => parseScheduleParams({ ...base, interestStartDate: '2018-11-18' }), { publicCode: 'SCHEDULE_DATE_INVALID' })
 })

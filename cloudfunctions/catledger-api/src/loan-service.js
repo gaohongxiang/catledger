@@ -11,11 +11,12 @@ const { decodeCursor, encodeCursor } = require('./cursor')
 const { parseSetup,storedScheduleInput,remainingSchedule } = require('./loan-installment')
 const { insertSchedulePeriods } = require('./loan-schedule-service')
 const LOAN_SELECT = `SELECT l.loan_id AS loanId, l.account_id AS accountId, l.name, l.institution, l.kind,
-  l.baseline_principal_minor AS baselinePrincipalMinor, l.baseline_principal_minor AS remainingPrincipalMinor,
+  l.baseline_principal_minor AS baselinePrincipalMinor,
   l.baseline_date AS baselineDate, l.start_date AS startDate, l.end_date AS endDate,
   l.repayment_method AS repaymentMethod, l.schedule_method AS scheduleMethod, l.schedule_terms AS scheduleTerms,
   l.measurement_kind AS measurementKind, l.quote_type AS quoteType, l.rate_ppm AS ratePpm, l.repayment_minor AS repaymentMinor,
   l.fee_per_term_minor AS feePerTermMinor, l.fee_upfront_minor AS feeUpfrontMinor, l.first_payment_date AS firstPaymentDate,
+  l.principal_rounding AS principalRounding,
   l.installment_setup_json AS installmentSetup,l.progress_json AS progress,l.archived_at AS archivedAt,l.deleted_at AS deletedAt,l.version, l.created_at AS createdAt,
   a.name AS accountName, a.archived_at AS accountArchived FROM catledger_loans l
   JOIN catledger_accounts a ON a.uid=l.uid AND a.account_id=l.account_id`
@@ -66,15 +67,20 @@ function createLoanService({ getPool, now = Date.now }) {
       const selections = data.repayments === undefined ? null : data.repayments.length === 0 ? [] : require('./installment-repayment').selections(data.repayments,Number(value.scheduleTerms))
       if((data.coverage!==undefined||data.oneOffCharges!==undefined)&&(!selections||!selections.some(row=>row.paid)))throw ledgerError('VALIDATION_ERROR')
       if(selections && (!plan || !value.installmentSetup || value.installmentSetup.historicalPaidTerms!==0))throw ledgerError('VALIDATION_ERROR')
-      const expectedPrincipal = selections ? plan.periods.filter(p=>!selections.some(s=>s.periodNumber===p.periodNumber&&s.paid)).reduce((n,p)=>n+BigInt(p.principalMinor),0n).toString() : plan&&plan.summary.remainingPrincipalMinor
-      if (plan && value.baselinePrincipalMinor !== expectedPrincipal && !(data.originKind==='cash_borrowing' && value.baselinePrincipalMinor==='0' && (!selections||!selections.some(s=>s.paid)))) throw ledgerError('VALIDATION_ERROR')
+      // baseline_principal_minor 只承载「原始借款本金」（本金时间线起点），不再当剩余本金。
+      // 剩余本金由逐期未还本金动态算（buildView）。这里只确认它与所填分期原本金一致，
+      // 避免客户端把「剩余」误传成本金基点；新现金借款到账前本金为 0。
+      const originalPrincipal = value.installmentSetup ? value.installmentSetup.originalPrincipalMinor : null
+      const cashBorrowing = data.originKind==='cash_borrowing'
+      if (cashBorrowing && value.baselinePrincipalMinor !== '0') throw ledgerError('VALIDATION_ERROR')
+      if (!cashBorrowing && originalPrincipal != null && value.baselinePrincipalMinor !== originalPrincipal) throw ledgerError('VALIDATION_ERROR')
       await connection.execute(`INSERT INTO catledger_loans
         (uid,loan_id,account_id,name,institution,kind,baseline_principal_minor,baseline_date,start_date,end_date,repayment_method,
-        schedule_method,schedule_terms,measurement_kind,quote_type,rate_ppm,repayment_minor,fee_per_term_minor,fee_upfront_minor,first_payment_date,installment_setup_json)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [uid,loanId,value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,
+        schedule_method,schedule_terms,measurement_kind,quote_type,rate_ppm,repayment_minor,fee_per_term_minor,fee_upfront_minor,first_payment_date,principal_rounding,installment_setup_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [uid,loanId,value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,
         value.baselineDate,value.startDate,value.endDate,value.repaymentMethod,
         value.scheduleMethod,value.scheduleTerms,value.measurementKind,value.quoteType,value.ratePpm,value.repaymentMinor,
-        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,value.installmentSetup ? JSON.stringify(value.installmentSetup) : null])
+        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,value.principalRounding ?? null,value.installmentSetup ? JSON.stringify(value.installmentSetup) : null])
       if (plan) await insertSchedulePeriods(connection,uid,loanId,plan.periods)
       if (data.sourceItemId) await require('./installment-link').attachSource(connection,uid,{...value,loanId},data.sourceItemId)
       if(data.chargeContractId)await require('./installment-repayment').context(connection,uid,{...value,loanId,chargeContractId:data.chargeContractId})
@@ -94,12 +100,12 @@ function createLoanService({ getPool, now = Date.now }) {
       const chargeContract = await require('./loan-charge-store').contract(connection, uid, current.loanId)
       const previousSetup = parseSetup(current.installmentSetup)
       const value = loanMetadata({ ...data,...(data.installmentSetup === undefined && previousSetup ? { installmentSetup:previousSetup } : {}) })
-      if(chargeContract && ['accountId','kind','baselinePrincipalMinor','baselineDate','scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate'].some(key=>String(value[key])!==String(current[key])))throw ledgerError('LOAN_BASELINE_LOCKED')
+      if(chargeContract && ['accountId','kind','baselinePrincipalMinor','baselineDate','scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','principalRounding'].some(key=>String(value[key])!==String(current[key])))throw ledgerError('LOAN_BASELINE_LOCKED')
       if (data.generatePlan !== undefined || data.sourceItemId !== undefined || data.chargeContractId !== undefined || data.repayments !== undefined || data.coverage !== undefined || data.oneOffCharges !== undefined || data.importOrigin !== undefined || data.importAccountDraft !== undefined) throw ledgerError('VALIDATION_ERROR')
       if (previousSetup) {
         const core = setup => setup && [setup.originalPrincipalMinor,setup.historicalPaidTerms,setup.discountKind,setup.discountValue]
         const changed = JSON.stringify(core(previousSetup)) !== JSON.stringify(core(value.installmentSetup)) ||
-          ['scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate']
+          ['scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','principalRounding']
             .some(key => String(value[key]) !== String(current[key])) || value.baselinePrincipalMinor !== String(current.baselinePrincipalMinor) || value.baselineDate !== current.baselineDate
         if (changed) {
           const [[planned]] = await connection.execute('SELECT period_id FROM catledger_loan_periods WHERE uid=? AND loan_id=? LIMIT 1',[uid,current.loanId])
@@ -115,10 +121,10 @@ function createLoanService({ getPool, now = Date.now }) {
       await validateLiability(connection, uid, value.accountId)
       const [result] = await connection.execute(`UPDATE catledger_loans SET account_id=?,name=?,institution=?,kind=?,baseline_principal_minor=?,
         baseline_date=?,start_date=?,end_date=?,repayment_method=?,schedule_method=?,schedule_terms=?,measurement_kind=?,quote_type=?,rate_ppm=?,
-        repayment_minor=?,fee_per_term_minor=?,fee_upfront_minor=?,first_payment_date=?,installment_setup_json=?,version=version+1 WHERE uid=? AND loan_id=? AND version=?`,
+        repayment_minor=?,fee_per_term_minor=?,fee_upfront_minor=?,first_payment_date=?,principal_rounding=?,installment_setup_json=?,version=version+1 WHERE uid=? AND loan_id=? AND version=?`,
       [value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,value.baselineDate,value.startDate,value.endDate,
         value.repaymentMethod,value.scheduleMethod,value.scheduleTerms,value.measurementKind,value.quoteType,value.ratePpm,value.repaymentMinor,
-        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,value.installmentSetup ? JSON.stringify(value.installmentSetup) : null,uid,current.loanId,data.version])
+        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,value.principalRounding ?? null,value.installmentSetup ? JSON.stringify(value.installmentSetup) : null,uid,current.loanId,data.version])
       if (result.affectedRows !== 1) throw ledgerError('CONFLICT')
       return { loanId: current.loanId, version: data.version + 1 }
     })

@@ -21,7 +21,10 @@
     <view class="mix-track">
       <view wx:for="{{liabilities.bar}}" wx:key="accountId" class="mix-seg {{item.tone}}" style="flex: {{item.permille}};"></view>
     </view>
-    <text class="mix-total money-number {{liabilities.empty ? 'mix-total-empty' : ''}}">{{liabilitiesText}}</text>
+    <view class="mix-total-col">
+      <text class="mix-total money-number {{liabilities.empty ? 'mix-total-empty' : ''}}">{{liabilitiesText}}</text>
+      <text wx:if="{{liabilitiesInterestText}}" class="mix-interest">其中利息 {{liabilitiesInterestText}}</text>
+    </view>
     <scroll-view class="mix-legend-scroll" scroll-x="{{true}}" show-scrollbar="{{false}}">
       <view class="mix-legend">
         <view wx:for="{{liabilities.items}}" wx:key="accountId" class="mix-legend-item">

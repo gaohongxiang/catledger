@@ -6,7 +6,7 @@ function period(row){return Object.assign({},row,{statusText:{unpaid:'未支付'
   totalText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,row[f+'Minor']),'0')),
   unpaidText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,row['unpaid'+cap(f)+'Minor']),'0'))})}
 function summary(row){return Object.assign({},row,{unpaidText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,row['unpaid'+cap(f)+'Minor']),'0')),
-  principalText:money.formatMinor(row.unpaidPrincipalMinor),gapText:row.principalGapMinor==null?'本金基准待补充':money.formatMinor(row.principalGapMinor)})}
+  principalText:money.formatMinor(row.unpaidPrincipalMinor)})}
 function draft(row){return Object.assign({},row,{principalYuan:money.minorToYuan(row.principalMinor),interestYuan:money.minorToYuan(row.interestMinor),feeYuan:money.minorToYuan(row.feeMinor)})}
 function blank(){return {periodNumber:'',dueDate:'',principalYuan:'',interestYuan:'',feeYuan:'',cancelled:false}}
 function periodPayload(data){const form=data.form;return {loanId:data.loanId,loanVersion:data.loanVersion,
@@ -26,7 +26,9 @@ function canGenerate(loan){
  return loan.measurementKind==='repayment'&&loan.repaymentMinor!=null
 }
 function previewView(result,limit=24){
- const rows=result.periods.map(p=>({periodNumber:p.periodNumber,dueDate:p.dueDate,
+ const rows=result.periods.map(p=>({periodNumber:p.periodNumber,dueDate:p.dueDate,paid:p.paid===true,
+  principalText:money.formatMinor(p.principalMinor),
+  interestText:money.formatMinor(addMinor(p.interestMinor,p.feeMinor)),
   totalText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,p[f+'Minor']),'0'))}))
  return {periodCount:result.periods.length,rows:rows.slice(0,limit),truncated:result.periods.length>limit,
   summaryText:'合计应还 '+money.formatMinor(result.summary.totalPaymentMinor)+'（利息 '+money.formatMinor(result.summary.totalInterestMinor)+'、费用 '+money.formatMinor(result.summary.totalFeeMinor)+'）'}

@@ -19,12 +19,16 @@ const ERROR_MESSAGES = Object.freeze({
   LOAN_SOURCE_TOO_LARGE: '来源组超过单次处理范围，请保留原账目核对',
   LOAN_PRINCIPAL_EXCEEDED: '该操作会使某个历史时点的本金不足，请核对构成与后续还款',
   LOAN_PRINCIPAL_UNCONFIRMED: '请先补充本金基准及日期',
+  LOAN_PLAN_HAS_PAYMENTS: '该分期已有实际还款分摊，不能直接重算期次；请改用逐期「调整期次金额与日期」',
+  LOAN_PLAN_HAS_ITEMS: '该分期已关联账单来源或费用项，不能直接重算期次；请先解除关联',
   LOAN_BASELINE_LOCKED: '已有实际借还记录，请先在贷款管理处理关联后再修改本金基准或账户',
   LOAN_DELETE_BLOCKED: '计划存在共享付款、外部依赖或待核对归属，请重新查看删除影响并从原业务处理',
   LOAN_HISTORY_REVIEW_REQUIRED: '旧历史确认缺少当时本金依据，已保留原状态；请核对原确认记录后再更正，不能按当前计划撤回',
   LOAN_TRANSACTION_LOCKED: '这组交易已关联贷款，请前往贷款管理整组处理',
   OPERATION_UNCONFIRMED: '上次操作结果仍待核实，请恢复原请求',
   ACCOUNT_INACTIVE: '账户已停用',
+  ACCOUNT_HAS_RECORDS: '该账户还有收支流水，不能直接删除；请先删除该账户流水',
+  ACCOUNT_HAS_LOANS: '该账户已关联贷款、分期或导入归属，不能删除；请改用停用（归档）',
   ACCOUNT_NAME_CONFLICT: '已有同名活动账户，请先在该账户详情修改名称，再恢复此账户',
   AUTH_REQUIRED: '未取得可信微信身份',
   CONFLICT: '数据已发生变化，请刷新后重试',
@@ -41,6 +45,24 @@ const ERROR_MESSAGES = Object.freeze({
   SERVICE_TEMPORARY_UNAVAILABLE: '服务连接短暂中断，请重试',
   UNSUPPORTED_CURRENCY: '当前只支持人民币账户',
   VALIDATION_ERROR: '请检查填写内容',
+  // 分期参数：精确到字段的人话提示（前端据此高亮对应输入框）。
+  SCHEDULE_PRINCIPAL_REQUIRED: '请先填写借款本金',
+  SCHEDULE_METHOD_INVALID: '请选择还款方式',
+  SCHEDULE_TERMS_INVALID: '总期数应为 1 到 600 的整数',
+  SCHEDULE_MEASUREMENT_INVALID: '请选择测算依据（利率或还款额）',
+  SCHEDULE_FIELD_CONFLICT: '测算依据与填写内容不一致：选了利率就不要填每期还款额，反之亦然，请统一',
+  SCHEDULE_QUOTE_REQUIRED: '请选择利率口径（年利率/月利率/日利率/每期费率）',
+  SCHEDULE_RATE_REQUIRED: '请填写利率，且不能为负',
+  SCHEDULE_PAYMENT_REQUIRED: '请填写每期应还金额',
+  SCHEDULE_INSTALLMENT_NEEDS_FLAT: '「每期费率」口径只适用于等本等息，请切换还款方式或改选利率口径',
+  SCHEDULE_AMOUNT_REQUIRED: '请填写金额',
+  SCHEDULE_AMOUNT_INVALID: '金额格式不正确，请填写非负数字',
+  SCHEDULE_UPFRONT_FEE_TOO_HIGH: '一次性费用应小于借款本金',
+  SCHEDULE_DATE_INVALID: '首期还款日不是有效日期',
+  SCHEDULE_DISCOUNT_INVALID: '优惠设置不正确（折扣应在 0~10 折之间，或金额大于 0）',
+  SCHEDULE_ROUNDING_INVALID: '本金取整方式不正确',
+  SCHEDULE_PAYMENT_TOO_LOW: '每期应还不能低于每期本金',
+  SCHEDULE_PAYMENT_TOO_LOW_TOTAL: '总还款不能低于借款本金',
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
 const PUBLIC_ERROR_CODES = new Set([
@@ -55,6 +77,8 @@ const PUBLIC_ERROR_CODES = new Set([
   'LOAN_SOURCE_MISMATCH',
   'LOAN_PLAN_OVERALLOCATED',
   'LOAN_PLAN_EXISTS',
+  'LOAN_PLAN_HAS_PAYMENTS',
+  'LOAN_PLAN_HAS_ITEMS',
   'LOAN_SOURCE_TOO_LARGE',
   'LOAN_PRINCIPAL_EXCEEDED',
   'LOAN_PRINCIPAL_UNCONFIRMED',
@@ -64,6 +88,8 @@ const PUBLIC_ERROR_CODES = new Set([
   'LOAN_TRANSACTION_LOCKED',
   'OPERATION_UNCONFIRMED',
   'ACCOUNT_INACTIVE',
+  'ACCOUNT_HAS_RECORDS',
+  'ACCOUNT_HAS_LOANS',
   'ACCOUNT_NAME_CONFLICT',
   'CONFLICT',
   'IDEMPOTENCY_CONFLICT',
@@ -76,7 +102,8 @@ const PUBLIC_ERROR_CODES = new Set([
   'SERVICE_NOT_CONFIGURED',
   'SERVICE_TEMPORARY_UNAVAILABLE',
   'UNSUPPORTED_CURRENCY',
-  'VALIDATION_ERROR'
+  'VALIDATION_ERROR',
+  ...require('./loan-schedule/schedule-params').SCHEDULE_ERROR_CODES
 ])
 
 function inspectClientData(event, action) {
@@ -114,14 +141,13 @@ function hashWechatSubject(openid) {
     .digest('hex')
 }
 
-function failure(code) {
-  return {
-    ok: false,
-    error: {
-      code,
-      message: ERROR_MESSAGES[code] || ERROR_MESSAGES.INTERNAL_ERROR
-    }
+function failure(code, fields) {
+  const error = {
+    code,
+    message: ERROR_MESSAGES[code] || ERROR_MESSAGES.INTERNAL_ERROR
   }
+  if (Array.isArray(fields) && fields.length) error.fields = fields.slice(0, 8)
+  return { ok: false, error }
 }
 
 function traceIdFromContext(context) {
@@ -229,7 +255,7 @@ function createHandler({ getWxContext, repository, services = {}, logger = conso
         databaseCode: databaseErrorCode(error) || undefined,
         elapsedMs: Math.max(0, now() - startedAt)
       })
-      return failure(code)
+      return failure(code, error.fields)
     }
   }
 }

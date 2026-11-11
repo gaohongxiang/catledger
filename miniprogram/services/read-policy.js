@@ -33,7 +33,7 @@ function mutationTags(action) {
   if (/^loans\.(delete|confirmInstallments|setInstallmentProgress|linkInstallmentSource|reconcileInstallmentSources|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (/^loans\.(recordUpfrontFee|configureCharges|pauseCharges|syncCharges|changeCharge|endCharges)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'profile.update') return ['profile']
-  if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']
+  if (/^loans\.(savePeriod|allocatePeriods|generatePlan|rebuildPlan)$/.test(action)) return ['loans']
   if (/^loans\.(record|correct|reverse|bookRepayment|assignRepayment|releaseRepayment)$/.test(action)) return ['loans', 'accounts', 'transactions']
   if (action === 'loans.create') return ['loans', 'transactions', 'accounts', 'accountDirectory']
   if (action === 'loans.update') return ['loans', 'transactions', 'accounts']

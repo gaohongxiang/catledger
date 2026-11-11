@@ -32,4 +32,13 @@ function scheduleAnchor({ firstPaymentDate, baselineDate, startDate, createdDate
   return addMonths(base, 1)
 }
 
-module.exports = { today, isDate, addMonths, scheduleAnchor }
+// 两个 YYYY-MM-DD 日期之间的整天数（to − from）。按 UTC 零点算，避免夏令时/时区导致 ±1 天。
+function differenceInDays(fromDate, toDate) {
+  const parseUtc = (value) => {
+    const parts = String(value).split('-')
+    return Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+  }
+  return Math.round((parseUtc(toDate) - parseUtc(fromDate)) / 86400000)
+}
+
+module.exports = { today, isDate, addMonths, scheduleAnchor, differenceInDays }

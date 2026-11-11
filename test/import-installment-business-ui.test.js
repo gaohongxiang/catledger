@@ -1,4 +1,5 @@
 const test = require('node:test')
+const INSTALLMENT_QUOTE_INDEX = require('../miniprogram/services/loan-schedule-form').QUOTE_OPTIONS.findIndex(o => o.value === 'installment')
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const editor = require('./helpers/editor-workbench')
@@ -132,9 +133,9 @@ test('新建计划不把账单日期当起始月或首期还款日，必须明�
 })
 
 test('创建计划采用现有还款参数口径，额外创建字段不进入导入决定，已建计划恢复后不重建', () => {
-  const item = row(), draft = draftForCreate(item, { planQuoteIndex: 3 }), view = derive(item, draft)
+  const item = row(), draft = draftForCreate(item, { planQuoteIndex: INSTALLMENT_QUOTE_INDEX }), view = derive(item, draft)
   assert.deepEqual(view.planRequest.schedule, { scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate', quoteType: 'installment',
-    ratePpm: '6500', repaymentMinor: null, feePerTermMinor: null, feeUpfrontMinor: null, firstPaymentDate: '2026-04-10' })
+    ratePpm: '6500', repaymentMinor: null, feePerTermMinor: null, feeUpfrontMinor: null, firstPaymentDate: '2026-04-10', principalRounding: 'yuan' })
   const created = model.change(item, draft, 'planLoanId', 'synthetic-new-plan')
   const decision = derive(item, created).payload
   assert.deepEqual(Object.keys(decision.fields.installmentPlan).sort(), ['accountId', 'action', 'loanId', 'planLabel', 'principalMinor', 'startMonth', 'totalTerms'].sort())
@@ -188,7 +189,7 @@ test('真实 Page 新建计划先校验，利率口径互锁，并将用户填�
   fillCreate(page)
   page.selectEditorPlanSchedule(editor.input('planMethodIndex', 1))
   assert.equal(editor.draft(page).planMethodIndex, 1)
-  page.selectEditorPlanSchedule(editor.input('planQuoteIndex', 3))
+  page.selectEditorPlanSchedule(editor.input('planQuoteIndex', INSTALLMENT_QUOTE_INDEX))
   assert.equal(editor.draft(page).planMethodIndex, 0)
   acceptReview(h)
   await page.saveReviewEdit()
@@ -309,7 +310,7 @@ for (const receiptKnown of [false, true]) test('创建结果未知后重开完�
   editor.select(page, 'reviewCounterparty', ACCOUNTS[1])
   editor.edit(page, 'note', '合成恢复备注')
   fillCreate(page, { planRatePercent: '1.25', planStartMonth: '2026-02', planFirstPaymentDate: '2026-03-09' })
-  page.selectEditorPlanSchedule(editor.input('planQuoteIndex', 3))
+  page.selectEditorPlanSchedule(editor.input('planQuoteIndex', INSTALLMENT_QUOTE_INDEX))
   await page.saveReviewEdit()
   const original = creates[0]
   assert.equal(page.data.reviewEditSheet.planCreatePending, true)
@@ -326,7 +327,7 @@ for (const receiptKnown of [false, true]) test('创建结果未知后重开完�
   assert.equal(restored.planRatePercent, '1.25')
   assert.equal(restored.planStartMonth, '2026-02')
   assert.equal(restored.planFirstPaymentDate, '2026-03-09')
-  assert.equal(restored.planQuoteIndex, 3)
+  assert.equal(restored.planQuoteIndex, INSTALLMENT_QUOTE_INDEX)
   assert.equal(restored.counterpartyLedgerAccountId, ACCOUNTS[1].accountId)
   assert.equal(restored.note, '合成恢复备注')
   editor.edit(page, 'planRatePercent', '8')

@@ -7,6 +7,7 @@ const { executeLedgerRead } = require('./ledger-read')
 const { executeIdempotentMutation } = require('./ledger-transaction')
 const { parseLocalDateTime } = require('./local-time')
 const { minorUnitsToString, parseMinorUnits } = require('./money')
+const { accountTotals } = require('./net-worth')
 
 const ACCOUNT_TYPES = Object.freeze({
   cash: 'asset',
@@ -19,10 +20,11 @@ const ACCOUNT_TYPES = Object.freeze({
 const MAX_BATCH_ACCOUNTS = 20
 
 function parseVersion(value) {
-  if (!Number.isSafeInteger(value) || value < 1) {
+  const version = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value
+  if (!Number.isSafeInteger(version) || version < 1) {
     throw ledgerError('VALIDATION_ERROR')
   }
-  return value
+  return version
 }
 
 function validateAccountType(value) {
@@ -39,6 +41,23 @@ function validateCurrency(value = 'CNY') {
   return value
 }
 
+// 账单归属月（YYYY-MM）：优先到期还款日，其次账单周期结束日，最后退回该账户分期来源最晚发生日。
+// 用于前端「本期账单 · 2026年X月」的标题，避免"本期"被误当最新一期；都取不到返回 null（不显示月份）。
+function accountStatementMonth(row, extra) {
+  const ymd = value => {
+    const m = String(value == null ? '' : value).match(/^(\d{4})-?(\d{2})-?(\d{2})/)
+    return m ? m[1] + '-' + m[2] : null
+  }
+  const due = ymd(row.statementDueDate)
+  if (due) return due
+  const cycle = row.statementCycle ? String(row.statementCycle) : ''
+  const cycleEnd = cycle.split('-')[1]
+  const fromCycle = ymd(cycleEnd)
+  if (fromCycle) return fromCycle
+  const fromSource = ymd(extra && extra.latestSourceDate)
+  return fromSource || null
+}
+
 function accountToPublic(row, extra) {
   const bookBalance = BigInt(minorUnitsToString(row.bookBalance == null ? '0' : row.bookBalance))
   const isLiabilityDue = row.nature === 'liability' && bookBalance < 0n
@@ -48,6 +67,8 @@ function accountToPublic(row, extra) {
   // 负债账户的「欠款」：总欠款 = 最近一期账单本期应还 + 未来未到期次分期剩余本息（读取侧聚合）。
   // 仅在传入 extra.debtMinor 时给出（列表读写路径），单账户即时返回时由调用方按需补齐。
   const debt = row.nature === 'liability' && extra && extra.debtMinor != null ? BigInt(extra.debtMinor) : null
+  // 该账户所有分期计划的全期总利息（含已还）。仅负债账户、且传入了 totalInterestMinor 时给出。
+  const totalInterest = row.nature === 'liability' && extra && extra.totalInterestMinor != null ? BigInt(extra.totalInterestMinor) : null
 
   return {
     accountId: row.accountId,
@@ -62,6 +83,7 @@ function accountToPublic(row, extra) {
     statementMinimumMinor: row.statementMinimumMinor == null ? null : minorUnitsToString(row.statementMinimumMinor),
     statementDueDate: row.statementDueDate == null ? null : String(row.statementDueDate).slice(0, 10),
     statementCycle: row.statementCycle == null ? null : row.statementCycle,
+    statementMonth: accountStatementMonth(row, extra),
     version: Number(row.version),
     archived: row.archivedAt != null,
     bookBalanceMinor: bookBalance.toString(),
@@ -69,45 +91,34 @@ function accountToPublic(row, extra) {
     balanceDirection,
     debtMinor: debt == null ? null : debt.toString(),
     debtDirection: debt == null ? null : (debt > 0n ? 'debt' : 'paid'),
+    installmentTotalInterestMinor: totalInterest == null ? null : totalInterest.toString(),
     hasStatementData: Boolean(extra && extra.hasStatementData),
     hasInstallmentPlan: Boolean(extra && extra.hasInstallmentPlan),
     needsInstallmentPlan: Boolean(extra && extra.needsInstallmentPlan)
   }
 }
 
-// 未来未到期次的分期剩余本息合计（按负债账户聚合）。
-// 判据：期次 due_date 晚于该账户最近一期账单的到期还款日（账单已含还款日前的分期应还）；
-// 无到期还款日时退化为晚于今天。本期账单应还额已含本期分期应还，故只加未来期次，天然防重复。
-// 已还分摊按有效还款扣减（a.active=1 且 payment.status='active'），与首页「本月待还」同一口径。
-const FUTURE_PERIOD_OUTSTANDING_SQL = `
-  SELECT x.account_id AS accountId, COALESCE(SUM(x.outstanding), 0) AS futureMinor
-    FROM (
-      SELECT l.account_id AS account_id, t.uid, t.loan_id, t.principal_minor + t.interest_minor + t.fee_minor
-             - COALESCE((SELECT SUM(a.principal_minor + a.interest_minor + a.fee_minor)
-                           FROM catledger_loan_period_allocations a
-                           JOIN catledger_loan_payments p
-                             ON p.uid = a.uid AND p.payment_id = a.payment_id AND p.status = 'active'
-                          WHERE a.uid = t.uid AND a.period_id = t.period_id AND a.active = 1), 0) AS outstanding
-        FROM catledger_loan_periods t
-        JOIN catledger_loans l ON l.uid = t.uid AND l.loan_id = t.loan_id
-       WHERE t.uid = ? AND t.cancelled = 0 AND l.archived_at IS NULL AND l.deleted_at IS NULL
-         AND (
-           CASE WHEN EXISTS (SELECT 1 FROM catledger_installment_items i
-                              WHERE i.uid = l.uid AND i.loan_id = l.loan_id AND i.active = 1)
-             -- 账单锚点：该分期计划导入的账单里出现的最早期次；未来 = 比它更晚的期次（账单已含锚点及之前）。
-             THEN t.period_number > (SELECT MIN(i.period_number) FROM catledger_installment_items i
-                                      WHERE i.uid = l.uid AND i.loan_id = l.loan_id AND i.active = 1)
-             -- 无账单来源时退回：期次到期日晚于该卡账单到期还款日（无则今天）。
-             ELSE t.due_date > COALESCE((SELECT a2.statement_due_date FROM catledger_accounts a2
-                                          WHERE a2.uid = l.uid AND a2.account_id = l.account_id), CURRENT_DATE)
-           END)
-    ) x
-   WHERE x.outstanding > 0
-   GROUP BY x.account_id`
+// 各负债账户「各分期计划未还期次本息费」合计。
+// 与贷款详情/逐期表同一口径：复用 buildView 的未还汇总（按账单锚点+进度动态算），
+// 不再维护一套独立的 SQL 边界判断，避免账户页与详情页两个数字打架（定稿第七节）。
+async function futureInstallmentDebtByAccount(connection, uid) {
+  return require('./installment-service').unpaidDebtByAccount(connection, uid)
+}
 
-async function futureInstallmentDebtByAccount(connection, uid) {  const [rows] = await connection.execute(FUTURE_PERIOD_OUTSTANDING_SQL, [uid])
+// 每个负债账户的「分期来源最晚发生日」（accountId -> 'YYYY-MM-DD'）。
+// 仅在账户没有到期还款日/账单周期时，用于兜底推算「本期账单」的归属月。
+async function latestSourceDateByAccount(connection, uid) {
+  const [rows] = await connection.execute(
+    `SELECT i.account_id AS accountId, MAX(i.occurred_date) AS latestDate
+       FROM catledger_installment_items i
+       JOIN catledger_accounts a ON a.uid = i.uid AND a.account_id = i.account_id
+      WHERE i.uid = ? AND i.active = 1 AND i.occurred_date IS NOT NULL
+        AND a.nature = 'liability' AND a.archived_at IS NULL
+      GROUP BY i.account_id`,
+    [uid]
+  )
   const map = new Map()
-  for (const row of rows) map.set(row.accountId, String(row.futureMinor == null ? '0' : row.futureMinor))
+  for (const row of rows) map.set(row.accountId, row.latestDate == null ? null : String(row.latestDate).slice(0, 10))
   return map
 }
 
@@ -141,10 +152,11 @@ async function accountsWithInstallmentPlan(connection, uid) {
 }
 async function accountToPublicWithDebt(connection, uid, row) {
   if (row.nature !== 'liability') return accountToPublic(row)
-  const [futureDebt, missingPlan, hasPlan] = await Promise.all([
+  const [futureDebt, missingPlan, hasPlan, latestSource] = await Promise.all([
     futureInstallmentDebtByAccount(connection, uid),
     accountsMissingInstallmentPlan(connection, uid),
-    accountsWithInstallmentPlan(connection, uid)
+    accountsWithInstallmentPlan(connection, uid),
+    latestSourceDateByAccount(connection, uid)
   ])
   const statementDue = row.statementDueMinor == null ? 0n : BigInt(minorUnitsToString(row.statementDueMinor))
   const future = BigInt(futureDebt.get(row.accountId) || '0')
@@ -152,7 +164,8 @@ async function accountToPublicWithDebt(connection, uid, row) {
     debtMinor: (statementDue + future).toString(),
     hasStatementData: row.statementDueMinor != null,
     hasInstallmentPlan: hasPlan.has(row.accountId),
-    needsInstallmentPlan: missingPlan.has(row.accountId)
+    needsInstallmentPlan: missingPlan.has(row.accountId),
+    latestSourceDate: latestSource.get(row.accountId) || null
   })
 }
 
@@ -207,15 +220,19 @@ async function listAccountsForUser(connection, uid) {
   const futureDebt = await futureInstallmentDebtByAccount(connection, uid)
   const missingPlan = await accountsMissingInstallmentPlan(connection, uid)
   const hasPlan = await accountsWithInstallmentPlan(connection, uid)
+  const latestSource = await latestSourceDateByAccount(connection, uid)
+  const totalInterest = await require('./installment-service').totalInterestByAccount(connection, uid)
   return rows.map((row) => {
     if (row.nature !== 'liability') return accountToPublic(row)
     const statementDue = row.statementDueMinor == null ? 0n : BigInt(minorUnitsToString(row.statementDueMinor))
     const future = BigInt(futureDebt.get(row.accountId) || '0')
     return accountToPublic(row, {
       debtMinor: (statementDue + future).toString(),
+      totalInterestMinor: totalInterest.get(row.accountId) || '0',
       hasStatementData: row.statementDueMinor != null,
       hasInstallmentPlan: hasPlan.has(row.accountId),
-      needsInstallmentPlan: missingPlan.has(row.accountId)
+      needsInstallmentPlan: missingPlan.has(row.accountId),
+      latestSourceDate: latestSource.get(row.accountId) || null
     })
   })
 }
@@ -268,6 +285,105 @@ async function queryBookBalance(connection, uid, accountId) {
     [uid, accountId, uid, accountId]
   )
   return BigInt(minorUnitsToString(row.bookBalance))
+}
+
+// ── 账户彻底删除的依赖模型 ────────────────────────────────────────────────
+// 删除一个账户 = 一个事务内按「依赖链」把属于它的数据清干净。分三类：
+//
+// 1. 硬阻塞（HARD_ACCOUNT_BLOCKERS）：账户被贷款/分期/还款/费用合同/导入映射等真实业务引用。
+//    这些数据离开账户无法自洽，必须保留——存在即只允许归档，绝不级联删除。
+// 2. 可级联清理的流水（PURGEABLE_TRANSACTION）：余额调整（期初/校正，无真实收支）或已软删除的记录。
+//    它们属于账户自身，账户消亡后无意义，连同其「溯源链接」（economic_event / import 链接）一并删除。
+// 3. 真实流水（正常收支/转账/退款）：阻止删除（用户应先自行删流水），不静默吞掉。
+//
+// 表名与迁移里的 ON DELETE RESTRICT 外键一一对应；新增引用账户/流水的表须同步补到这里。
+const HARD_ACCOUNT_BLOCKERS = Object.freeze([
+  ['catledger_import_account_mappings', 'account_id'],
+  ['catledger_loans', 'account_id'],
+  ['catledger_loan_payments', 'asset_account_id'],
+  ['catledger_loan_repayment_details', 'liability_account_id'],
+  ['catledger_installment_bindings', 'account_id'],
+  ['catledger_installment_items', 'account_id'],
+  ['catledger_loan_charge_contracts', 'account_id']
+])
+
+// 引用「可级联清理流水」的溯源链接表（表, 引用交易的列）。删除账户时先删这些链接再删流水。
+// 注意：catledger_import_transaction_links / catledger_import_decisions 已在迁移 0012 中删除，勿再引用。
+const PURGEABLE_TRANSACTION_LINKS = Object.freeze([
+  ['catledger_economic_event_transactions', 'transaction_id']
+])
+
+// 引用「可级联清理流水」的硬依赖表（贷款还款/被替换/分期/费用）：出现即说明该流水其实牵涉真实贷款，
+// 不能当余额调整一删了之，整体阻止删除。
+const PURGEABLE_TRANSACTION_BLOCKERS = Object.freeze([
+  ['catledger_loan_payment_transactions', 'transaction_id'],
+  ['catledger_loan_replaced_transactions', 'transaction_id'],
+  ['catledger_installment_items', 'transaction_id'],
+  ['catledger_loan_charges', 'transaction_id'],
+  ['catledger_loan_charges', 'balance_adjustment_id']
+])
+
+const CHUNK = 200
+function placeholders(count) { return new Array(count).fill('?').join(', ') }
+async function countWhereIn(connection, uid, table, column, ids) {
+  let total = 0
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = ids.slice(i, i + CHUNK)
+    const [[row]] = await connection.execute(
+      `SELECT COUNT(*) AS n FROM ${table} WHERE uid = ? AND ${column} IN (${placeholders(part.length)})`,
+      [uid, ...part]
+    )
+    total += Number(row.n)
+  }
+  return total
+}
+
+// 返回该账户可级联清理的流水 ID（余额调整或已软删除）。真实收支不在其中。
+async function purgeableTransactionIds(connection, uid, accountId) {
+  const [rows] = await connection.execute(
+    `SELECT transaction_id AS id FROM catledger_transactions
+      WHERE uid = ? AND (source_account_id = ? OR destination_account_id = ?)
+        AND (type = 'balance_adjustment' OR deleted_at IS NOT NULL)`,
+    [uid, accountId, accountId]
+  )
+  return rows.map(row => row.id)
+}
+
+// 该账户是否存在「真实流水」（非余额调整、未软删除）。存在则不能彻底删除。
+async function countRealTransactions(connection, uid, accountId) {
+  const [[row]] = await connection.execute(
+    `SELECT COUNT(*) AS n FROM catledger_transactions
+      WHERE uid = ? AND (source_account_id = ? OR destination_account_id = ?)
+        AND type <> 'balance_adjustment' AND deleted_at IS NULL`,
+    [uid, accountId, accountId]
+  )
+  return Number(row.n)
+}
+
+// 账户级硬阻塞：任一表有行即返回该表名（用于结构化失败原因）；无则 null。
+async function firstAccountBlocker(connection, uid, accountId) {
+  for (const [table, column] of HARD_ACCOUNT_BLOCKERS) {
+    try {
+      const [[row]] = await connection.execute(
+        `SELECT COUNT(*) AS n FROM ${table} WHERE uid = ? AND ${column} = ?`,
+        [uid, accountId]
+      )
+      if (Number(row.n) > 0) return table
+    } catch (error) {
+      if (error && (error.code === 'ER_TABLEACCESS_DENIED_ERROR' || error.code === 'ER_NO_SUCH_TABLE')) continue
+      throw error
+    }
+  }
+  return null
+}
+
+// 可级联流水是否被真实贷款/分期/费用引用；有则返回表名否则 null。
+async function firstTransactionBlocker(connection, uid, ids) {
+  if (!ids.length) return null
+  for (const [table, column] of PURGEABLE_TRANSACTION_BLOCKERS) {
+    if (await countWhereIn(connection, uid, table, column, ids) > 0) return table
+  }
+  return null
 }
 
 async function insertBalanceAdjustment(connection, {
@@ -369,7 +485,11 @@ function createAccountService({ getPool }) {
       provider,
       subjectHash,
       read,
-      operation: async (connection, uid) => ({ accounts: await listAccountsForUser(connection, uid), liabilitySettingsVersion: 1 })
+      operation: async (connection, uid) => {
+        const accounts = await listAccountsForUser(connection, uid)
+        // 净资产汇总走唯一真源（只算未归档），与 dashboard.get 同口径。
+        return { accounts, liabilitySettingsVersion: 1, totals: accountTotals(accounts) }
+      }
     })
   }
 
@@ -548,6 +668,80 @@ function createAccountService({ getPool }) {
     })
   }
 
+  // 彻底删除账户：仅当该账户没有任何流水或关联记录时允许。
+  // 有流水/分期/贷款/导入映射等依赖的账户只能归档（archived），不能删——否则会断账或留下孤儿记录。
+  // 数据库侧所有外键均为 ON DELETE RESTRICT，是最后一道防线；这里先做可读的检查给出明确错误码。
+  // 彻底删除账户：一个事务内按依赖链清理属于账户自身的数据。
+  // 结构：
+  //   1) 若有真实收支/转账/退款流水 → 阻止（用户需自行先删流水）。错误码 ACCOUNT_HAS_RECORDS，前端给内联删除入口。
+  //   2) 若可级联流水被贷款/分期/费用引用 → 阻止（ACCOUNT_HAS_RECORDS），这些账户只能归档。
+  //   3) 若账户被贷款/分期/还款/费用合同/导入映射引用 → 阻止（ACCOUNT_HAS_LOANS），只能归档。
+  //   4) 否则：删溯源链接（economic_event / import）→ 删余额调整与已软删除流水 → 删账户，全部在同一事务。
+  async function remove(context) {
+    return executeIdempotentMutation({
+      getPool,
+      currentReads: true,
+      ...context,
+      action: 'accounts.remove',
+      operation: async (connection, uid, data) => {
+        const current = await lockAccount(connection, uid, data.accountId)
+        const version = parseVersion(data.version)
+        if (Number(current.version) !== version) throw ledgerError('CONFLICT')
+        const accountId = current.accountId
+
+        // 1) 真实流水存在 → 不可删，交由前端内联删除。
+        if (await countRealTransactions(connection, uid, accountId) > 0) throw ledgerError('ACCOUNT_HAS_RECORDS')
+        // 2) 账户级硬阻塞（贷款/分期/还款等）→ 只能归档。
+        const accountBlocker = await firstAccountBlocker(connection, uid, accountId)
+        if (accountBlocker) throw ledgerError('ACCOUNT_HAS_LOANS')
+        // 3) 可级联流水若被真实贷款/费用引用 → 只能归档。
+        const purgeIds = await purgeableTransactionIds(connection, uid, accountId)
+        const txBlocker = await firstTransactionBlocker(connection, uid, purgeIds)
+        if (txBlocker) throw ledgerError('ACCOUNT_HAS_LOANS')
+
+        try {
+          if (purgeIds.length) {
+            // 3a) 先断溯源链接（这些链接只指向本条流水，账户消亡后其追溯也随之中止）。
+            for (const [table, column] of PURGEABLE_TRANSACTION_LINKS) {
+              for (let i = 0; i < purgeIds.length; i += CHUNK) {
+                const part = purgeIds.slice(i, i + CHUNK)
+                try {
+                  await connection.execute(
+                    `DELETE FROM ${table} WHERE uid = ? AND ${column} IN (${placeholders(part.length)})`,
+                    [uid, ...part]
+                  )
+                } catch (error) {
+                  if (error && (error.code === 'ER_NO_SUCH_TABLE' || error.code === 'ER_TABLEACCESS_DENIED_ERROR')) continue
+                  throw error
+                }
+              }
+            }
+            // 3b) 删可级联流水（余额调整 / 已软删除）。
+            for (let i = 0; i < purgeIds.length; i += CHUNK) {
+              const part = purgeIds.slice(i, i + CHUNK)
+              await connection.execute(
+                `DELETE FROM catledger_transactions WHERE uid = ? AND transaction_id IN (${placeholders(part.length)})`,
+                [uid, ...part]
+              )
+            }
+          }
+          // 3c) 删账户本身。
+          await connection.execute(
+            `DELETE FROM catledger_accounts WHERE uid = ? AND account_id = ? AND version = ?`,
+            [uid, accountId, version]
+          )
+        } catch (error) {
+          // 并发下若检查后新插入了依赖行，外键 RESTRICT 会拦住；按"仍有记录"处理，事务整体回滚。
+          if (error && (error.code === 'ER_ROW_IS_REFERENCED_2' || error.code === 'ER_ROW_IS_REFERENCED')) {
+            throw ledgerError('ACCOUNT_HAS_RECORDS')
+          }
+          throw error
+        }
+        return accountToPublic(current)
+      }
+    })
+  }
+
   async function correctBalance(context) {
     return executeIdempotentMutation({
       getPool,
@@ -588,6 +782,7 @@ function createAccountService({ getPool }) {
     create,
     createBatch,
     list,
+    remove,
     restore,
     update
   }

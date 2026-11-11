@@ -4,11 +4,13 @@ const assert = require('node:assert/strict')
 const { buildAccountsView } = require('../miniprogram/pages/accounts/model')
 
 test('资产账户区分待校正，负债账户按欠款显示待还/已还清，不再有溢缴余额', function () {
-  const view = buildAccountsView([
+  const { netWorthTotals } = require('../cloudfunctions/catledger-api/src/net-worth')
+  const accounts = [
     { accountId: 'cash', name: '微信零钱', type: 'wallet', nature: 'asset', balanceDirection: 'asset', bookBalanceMinor: '-100', displayBalanceMinor: '-100', archived: false },
     { accountId: 'paid', name: '江苏银行信用购', type: 'credit', nature: 'liability', bookBalanceMinor: '500', displayBalanceMinor: '500', debtMinor: '0', debtDirection: 'paid', hasStatementData: true, archived: false },
     { accountId: 'card', name: '光大银行信用卡', type: 'credit', nature: 'liability', bookBalanceMinor: '-700', displayBalanceMinor: '700', debtMinor: '700', debtDirection: 'debt', archived: false }
-  ])
+  ]
+  const view = buildAccountsView(accounts, netWorthTotals(accounts))
 
   assert.equal(view.assetCorrectionCount, 1)
   assert.equal(view.assets[0].stateText, '待校正')
@@ -22,11 +24,11 @@ test('资产账户区分待校正，负债账户按欠款显示待还/已还清�
   assert.equal(view.liabilities[1].amountTone, 'amount-liability')
   assert.equal(view.liabilities[1].balanceLabel, '欠款')
   assert.equal(view.liabilities[1].balanceText, '¥7.00')
-  // 负债合计用欠款：0 + 700
-  assert.equal(view.totals.assetsText, '¥0.00')
+  // 合计取后端真源：资产含负余额（-100），负债用欠款（700）
+  assert.equal(view.totals.assetsText, '-¥1.00')
   assert.equal(view.totals.liabilitiesText, '¥7.00')
-  // 净资产 = 资产(0，因负数校正不计) − 负债欠款(700)
-  assert.equal(view.totals.netWorthText, '-¥7.00')
+  // 净资产 = 资产(-100) − 负债欠款(700)
+  assert.equal(view.totals.netWorthText, '-¥8.00')
   assert.equal(view.totals.netWorthTone, 'amount-liability')
 })
 

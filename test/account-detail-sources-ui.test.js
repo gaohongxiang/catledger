@@ -19,7 +19,7 @@ async function detail(h) {
   return page
 }
 
-test('账户详情页展示账单里的分期（聚合一笔一条），并能新建/归入', async () => {
+test('账户详情页展示账单里的分期（按期次各一条，全部展示），并能新建/归入', async () => {
   const h = runtime()
   h.accounts = [liability()]
   h.respond = (action, data) => {
@@ -28,13 +28,13 @@ test('账户详情页展示账单里的分期（聚合一笔一条），并能�
     return undefined
   }
   const page = await detail(h)
-  // 同一笔分期的本金/利息/多期聚合成一条
-  assert.equal(page.data.accountSources.length, 1)
-  const agg = page.data.accountSources[0]
-  assert.equal(agg.name, '电销现分')
-  assert.match(agg.periodText, /第 9 \/ 12 期/)
-  assert.match(agg.amountText, /本金/)
-  assert.equal(agg.sourceItemId, 'i9p')
+  // 按期次各一条：第 8 期(本金+利息一行)、第 9 期各一条，全部展示不遗漏。
+  assert.equal(page.data.accountSources.length, 2)
+  const p8 = page.data.accountSources.find(g => g.latestPeriod === 8), p9 = page.data.accountSources.find(g => g.latestPeriod === 9)
+  assert.match(p8.periodText, /第 8 \/ 12 期/)
+  assert.match(p8.amountText, /本金.*利息/)
+  assert.equal(p8.sourceItemId, 'i8p')
+  assert.equal(p9.sourceItemId, 'i9p')
 
   // 新建分期 → 跳 loan-form?sourceItemId
   page.createLoanFromSource({ currentTarget: { dataset: { id: 'i9p' } } })

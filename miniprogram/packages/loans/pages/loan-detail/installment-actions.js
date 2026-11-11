@@ -10,23 +10,24 @@ module.exports = {
   async openInstallment(event) {
     if (!session.isCurrent(this) || !this.data.detail || this.data.saving || !this.data.detail.tracking && !(this.data.loan && this.data.loan.scheduleTerms)) return
     const term = Number(event.currentTarget.dataset.term), current = session.capture(this), token = this._periodToken = {}
-    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
+    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
     try {
       const result = await api.callApi('loans.installment', { loanId: this._loanId, periodNumber: term }, { force: true })
       if (!current() || token !== this._periodToken) return
       this._selectedInstallment = result
       const account = this.data.accounts.find(a => a.accountId === this.data.loan.accountId)
-      this.setData({ selectedPeriod: Object.assign({}, result.period, model.rowView(result.period, model.today())),
-        periodCanBook: !!(account && account.type === 'credit' && ['interest','fee'].some(key=>result.period[key+'Minor']!=='0' && !(result.period.recordedComponents||[]).includes(key))),
+      const p0 = result.period
+      const draft0 = { dueDate: p0.dueDate, principal: money.minorToYuan(p0.principalMinor), interest: money.minorToYuan(p0.interestMinor), fee: money.minorToYuan(p0.feeMinor), cancelled: !!p0.cancelled }
+      this.setData({ selectedPeriod: Object.assign({}, p0, model.rowView(p0, model.today())),
+        periodDraft: draft0, periodDraftTotal: this._draftTotal(draft0),
+        periodCanBook: !!(account && account.type === 'credit' && ['interest','fee'].some(key=>p0[key+'Minor']!=='0' && !(p0.recordedComponents||[]).includes(key))),
         periodSources: result.sources.map(item => Object.assign({}, item, { label: LABELS[item.component], amount: money.formatMinor(item.amountMinor) })),
         periodLegacy: result.legacyPayments.map(payment => ({ ...payment, totalText: money.formatMinor(payment.totalMinor), occurredText: String(payment.occurredLocalAt || '').slice(0, 10) })), periodMoreSources: result.moreSources })
       await this.loadPeriodCharges(term,token)
-      if(current()&&token===this._periodToken&&!result.period.paymentConfirmed)await this.prepareHistoricalCoverage([result.period],this.data.loan.accountId,this.data.loan.feeUpfrontMinor)
     } catch (error) { if (current() && token === this._periodToken) this.setData({ periodError: error.message || '这期记录暂未读取' }) }
     finally { if (current() && token === this._periodToken) this.setData({ periodLoading: false }) }
   },
-  closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.closeHistoricalCoverage();this.setData({ periodOpen: false });this.prepareRepaymentCoverage() } },
-  recordPeriodPayment(){if(this.data.selectedPeriod&&!this.data.periodLoading)return this.recordPayment({currentTarget:{dataset:{term:this.data.selectedPeriod.term}}})},
+  closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.setData({ periodOpen: false }) } },
   async installmentWrite(action, data) {
     if (this.data.saving || this.data.loading || !session.isCurrent(this)) return
     const current = session.capture(this)
@@ -34,7 +35,6 @@ module.exports = {
     try {
       const outcome = await pending.send('api', action, data, { exact: true })
       if (!current()) return
-      this.resetHistoricalCoverage()
       this.setData({ periodOpen: false, progressOpen: false, hasPending: false, savedMessage: '' })
       wx.showToast({ title: outcome.action === 'loans.archiveInstallment' && outcome.result.archived ? '已删除' : '已更新', icon: 'success', duration: 1500 })
       if (outcome.action === 'loans.archiveInstallment' && outcome.result.archived) { wx.navigateBack(); return }
@@ -45,20 +45,12 @@ module.exports = {
       if (current()) this.setData({ periodError: error.message, errorMessage: error.message, hasPending: !!pending.pending() })
     } finally { if (current()) this.setData({ saving: false }) }
   },
-  setPeriodStatus(event) {
-    const selected = this._selectedInstallment, status = event.currentTarget.dataset.status
-    if (!selected || this.data.periodLoading || selected.archived || !['completed','unpaid'].includes(status)) return
-    try{return this.installmentWrite('loans.confirmInstallments', { loanId: this._loanId, version: selected.loanVersion,
-      repayments: [{ periodNumber: selected.period.periodNumber, paid: status === 'completed' }],...this.historicalCoveragePayload(status==='completed'?[selected.period.periodNumber]:[]) })}
-    catch(error){this.setData({periodError:error.message})}
-  },
   selectRepayments(event) {
     if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.detailLoading) return
     const selected = new Set(event.detail.value), visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     this.setData({ repaymentRows: this.data.repaymentRows.map(r=>visible.has(r.periodNumber)?{...r,paid:selected.has(String(r.periodNumber))}:r) })
     this.setData(this.repaymentSelection())
     this.syncRepaymentAlert()
-    this.prepareRepaymentCoverage()
   },
   // 自定义勾选（跟随主题）：点某期翻转其“已还”勾选，等价于原 checkbox-group 的单选切换。
   toggleRepayment(event) {
@@ -69,18 +61,14 @@ module.exports = {
     this.setData({ repaymentRows: this.data.repaymentRows.map(r=>r.periodNumber===term?{...r,paid:!r.paid}:r) })
     this.setData(this.repaymentSelection())
     this.syncRepaymentAlert()
-    this.prepareRepaymentCoverage()
   },
   async saveRepayments() {
     if (!this._detailView || !this.data.repaymentRows.length || this.data.loan.archived || this.data.detailLoading) return
     const visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     const repayments = this.data.repaymentRows.filter(r=>visible.has(r.periodNumber)).map(({periodNumber,paid})=>({periodNumber,paid}))
     if (!repayments.length) return
-    let coverage
-    try{coverage=this.historicalCoveragePayload(repayments.filter(row=>row.paid).map(row=>row.periodNumber))}
-    catch(error){this.setData({errorMessage:error.message});return}
     const saved = await this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
-      repayments,...coverage })
+      repayments })
     if (saved) this.syncRepaymentAlert()
     return saved
   },
@@ -95,14 +83,19 @@ module.exports = {
     if (session.isCurrent(this)) return this.installmentWrite('loans.removeInstallmentItem', { loanId: this._loanId, version: selected.loanVersion, itemId: source.itemId, itemVersion: source.version })
   },
   togglePeriodEvidence(){this.setData({periodEvidenceOpen:!this.data.periodEvidenceOpen})},
-  editInstallmentPeriod() {
-    const row = this._selectedInstallment && this._selectedInstallment.period
-    if (!row || this.data.saving) return
-    this.setData({ periodEditing: true, periodDraft: { dueDate: row.dueDate, principal: money.minorToYuan(row.principalMinor), interest: money.minorToYuan(row.interestMinor), fee: money.minorToYuan(row.feeMinor), cancelled: !!row.cancelled } })
-  },
   periodDraftInput(event) {
     const key = event.currentTarget.dataset.field
-    if (['dueDate','principal','interest','fee','cancelled'].includes(key)) this.setData({ ['periodDraft.' + key]: event.detail.value })
+    if (!['dueDate','principal','interest','fee','cancelled'].includes(key)) return
+    const draft = Object.assign({}, this.data.periodDraft, { [key]: event.detail.value })
+    this.setData({ periodDraft: draft, periodDraftTotal: this._draftTotal(draft) })
+  },
+  _draftTotal(draft) {
+    try {
+      const sum = BigInt(money.yuanToMinor(draft.principal, { allowZero: true }))
+        + BigInt(money.yuanToMinor(draft.interest, { allowZero: true }))
+        + BigInt(money.yuanToMinor(draft.fee, { allowZero: true }))
+      return money.formatMinor(sum.toString())
+    } catch (e) { return '—' }
   },
   saveInstallmentPeriod() {
     const selected = this._selectedInstallment, draft = this.data.periodDraft

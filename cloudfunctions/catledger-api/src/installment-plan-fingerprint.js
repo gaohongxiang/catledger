@@ -46,6 +46,16 @@ function bindingKey(planLabel, startMonth, principalMinor) {
   return sha256('plan:' + text(planLabel) + ':' + text(startMonth) + ':' + String(principalMinor))
 }
 
+// 账单期次行拿不到本金，只能按「计划名 + 起始月 + 总期数」合成一个计划级绑定键。
+// 用户手动把某笔无编号来源归到计划后，用它记住选择；下月同名单期能据此自动延续归属。
+// 同名同起始月同期数但本金不同的两笔会得到同一个键——这正是"判不准"的边界，
+// 调用方只应在唯一命中时采用，冲突时留待核对，不猜。
+function planBindingKey(planLabel, startMonth, totalTerms) {
+  const terms = Number(totalTerms)
+  // 退化为 bindingKey 的形态，便于与既有 reference_key 列共存；总期数非法的丢弃末段。
+  return sha256('plan:' + text(planLabel) + ':' + text(startMonth) + ':' + (Number.isInteger(terms) && terms > 0 ? 't' + terms : ''))
+}
+
 function fingerprint({ accountId, planLabel, totalTerms, principalMinor, startMonth }) {
   const terms = Number(totalTerms)
   return Object.freeze({
@@ -146,6 +156,7 @@ module.exports = {
   planLabelFromItem,
   startMonthFromPeriod,
   bindingKey,
+  planBindingKey,
   bucketKey,
   fromDisbursement,
   fromInstallment,

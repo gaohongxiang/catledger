@@ -31,7 +31,17 @@ function createChargeSync(options) {
         if(options.ready)await options.ready()
         if(!active())return {complete:false,message:'费用同步未完成，返回后可继续',batches,createdCount}
         let packet=options.pending.pending()
-        if(packet&&(packet.target!=='api'||packet.action!=='loans.syncCharges'))return {complete:false,message:'费用同步未完成：请先核实上次账务操作',batches}
+        if(packet&&(packet.target!=='api'||packet.action!=='loans.syncCharges')){
+          // 对任何非 syncCharges 的在途请求做"安全核实"：verify 现在区分「服务端查无回执=原操作从未生效」→ 自动丢弃僵尸包，
+          // 以及「确实已生效」→ 处理完释放；只有真正"结果仍未知"的才继续阻塞。这样旧僵尸包不再永久卡住费用同步。
+          try{ await options.pending.verify() }
+          catch(verifyError){
+            // 真正在途且服务端读不到（网络/暂时）时才阻塞；OPERATION_UNCONFIRMED 以外不吞。
+            if(!verifyError||verifyError.code!=='OPERATION_UNCONFIRMED')throw verifyError
+          }
+          packet=options.pending.pending()
+          if(packet&&(packet.target!=='api'||packet.action!=='loans.syncCharges'))return {complete:false,message:'费用同步未完成：请先核实上次账务操作',batches}
+        }
         const saved=completed.get(key),token=options.token&&options.token(),at=now()
         if(!settings.force&&!packet&&saved&&token!==null&&token===saved.token&&at>=saved.startedAt&&at<saved.expiresAt) {
           observer.record('chargeCheck',{action:'loans.dueCharges',source:'memory',hit:true,ms:0})
@@ -70,7 +80,14 @@ function createChargeSync(options) {
         if(!active())return {complete:false,message:'费用同步未完成，返回后可继续',batches,createdCount}
         const due=await check()
         return {complete:due.count===0,message:due.count===0?'':'费用同步未完成，已保存本次批次，可继续补齐',cutoff:due.cutoff,dataRevision:due.dataRevision,verification,batches,createdCount}
-      }catch(error){return {complete:false,message:'费用同步未完成：'+(error.message||'请重试'),batches,createdCount}}
+      }catch(error){
+        // 只有「服务端明确报服务暂不可用」（连不上数据库被后端翻译成 SERVICE_TEMPORARY_UNAVAILABLE，或
+        // 同类 INTERNAL_ERROR）才静音成「当前余额待核实」：这是环境性问题，不该在首页弹红色错误条。
+        // 其它失败（中途断网/超时 CLOUD_TEMPORARY_UNAVAILABLE、未知失败 CLOUD_CALL_FAILED 等）都保留
+        // 「费用同步未完成」提示——它们可能已经补了一部分欠费，必须让用户知道还没补完，不能悄悄吞掉。
+        const unavailable=Boolean(error&&(error.code==='SERVICE_TEMPORARY_UNAVAILABLE'||error.code==='INTERNAL_ERROR'))
+        return {complete:false,unverified:unavailable,message:'费用同步未完成：'+(error.message||'请重试'),batches,createdCount}
+      }
     })()
     const flight={work,key,callers}
     flights.set(scope,flight)
@@ -87,7 +104,9 @@ const current=createChargeSync({
 async function beforePage(page,isCurrent,settings={}) {
   const result=await current.run({...settings,active:isCurrent})
   if(!isCurrent())throw Object.assign(new Error('页面已离开'),{code:'READ_CANCELLED'})
-  page.setData({chargeSyncMessage:result.message,chargeSyncComplete:result.complete})
+  // 传输层暂时失败不亮红色错误条：清掉文案，只把 complete 标 false，由首页降级成「待核实」。
+  if(result&&result.unverified) page.setData({chargeSyncMessage:'',chargeSyncComplete:false})
+  else page.setData({chargeSyncMessage:result.message,chargeSyncComplete:result.complete})
   return result
 }
 module.exports={createChargeSync,run:current.run,isVerified:current.isVerified,beforePage,MAX_REUSE_MS}

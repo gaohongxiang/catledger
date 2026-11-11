@@ -53,6 +53,40 @@ test('费用失败仍可展示已知账本但明确未完成，下一次重试�
   assert.equal(page.data.dashboardFresh, true)
 })
 
+test('费用同步抛错（连不上数据库）不阻塞首页，账本照常展示且明确待核实', async () => {
+  const h = runtime(), page = h.page('index'); page.onLoad()
+  // 服务端连不上数据库时，callFunction 返回结构化错误 SERVICE_TEMPORARY_UNAVAILABLE（后端翻译的真实码）。
+  h.respond = action => action === 'loans.dueCharges'
+    ? { ok: false, error: { code: 'SERVICE_TEMPORARY_UNAVAILABLE', message: '服务连接短暂中断，请重试' } }
+    : undefined
+  await page.loadDashboard()
+  assert.equal(page.data.hasDashboard, true)
+  assert.equal(page.data.dashboardFresh, false)
+  // 不再是触发错误条的 chargeSyncMessage，而是温和的首页状态「当前余额待核实」。
+  assert.equal(page.data.chargeSyncMessage, '')
+  assert.match(page.data.dashboardStatus, /待核实/)
+  assert.equal(page.data.errorMessage, '')
+  // 账本本身仍被读取并展示。
+  assert.equal(h.calls.some(call => call.action === 'dashboard.get'), true)
+  assert.notEqual(page.data.netWorthText, '—')
+  // 恢复后正常核对成功。
+  h.respond = undefined
+  await page.loadDashboard({ force: true })
+  assert.equal(page.data.dashboardFresh, true)
+  assert.equal(page.data.dashboardStatus, '')
+})
+
+test('费用同步中途断网（CLOUD_TEMPORARY_UNAVAILABLE）仍保留未完成提示，不静音', async () => {
+  const h = runtime(), page = h.page('index'); page.onLoad()
+  // 请求发出后网络中断：云调用抛 transport 错误，被归为 CLOUD_TEMPORARY_UNAVAILABLE。
+  // 这种情况可能已补了一部分欠费，首页必须保留“未完成”提醒，不能静音成“待核实”。
+  h.intercept = action => { if (action === 'loans.dueCharges') throw Object.assign(new Error('网络暂时不稳定，请稍后重试'), { code: 'CLOUD_TEMPORARY_UNAVAILABLE' }) }
+  await page.loadDashboard()
+  assert.equal(page.data.hasDashboard, true)
+  assert.match(page.data.chargeSyncMessage, /未完成/)
+  assert.equal(page.data.dashboardFresh, false)
+})
+
 test('首页、明细和统计连续进入共用已完成检查，显式首页刷新仍重新检查', async () => {
   const h = runtime()
   h.respond = action => action === 'loans.dueCharges' ? due() : undefined

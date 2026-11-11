@@ -63,8 +63,15 @@ function read(action, data, options, internal) {
   return cache.guard(() => cache.waitForValidation().then(() => cache.read(key, READ_POLICIES[action], () => load(action, data, options, internal), options))).then(result => {
     observer.record('fresh', { action, source: hit ? 'memory' : 'network', ms: Date.now() - startedAt })
     if (action === 'dashboard.get' && Array.isArray(result.accounts)) {
+      // 把 dashboard 结果投影成 accounts.list 的可复用缓存：契约字段整体搬运，不再逐字段手抄（曾经漏掉 totals 导致账户页显示 0）。
+      // totals 形状两接口已统一为后端 accountTotals 的同一对象，这里直接带过去。
       cache.seedFrom(key, cache.stableKey('accounts.list'), READ_POLICIES['accounts.list'], view => ({
-        accounts: view.accounts, liabilitySettingsVersion: view.liabilitySettingsVersion,
+        accounts: view.accounts,
+        liabilitySettingsVersion: view.liabilitySettingsVersion,
+        totals: view.totals || {
+          assetsMinor: view.assetsMinor, liabilitiesMinor: view.liabilitiesMinor,
+          netWorthMinor: view.netWorthMinor, liabilitiesInterestMinor: view.liabilitiesInterestMinor
+        },
         uid: view.uid, readVersion: view.readVersion, dataRevision: view.dataRevision, unchanged: false
       }))
     }

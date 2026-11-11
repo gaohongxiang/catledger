@@ -92,6 +92,14 @@ function periodPayment(term, id) {
 function promptedPeriod(periodNumber) {
  return {periodNumber,dueDate:'2026-07-31',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status:'missing'}
 }
+// 新口径下「历史已还期」不再强制弹复核；要覆盖分页/批量保存能力，用「有账单覆盖、尚未选择」的期次构造 prompts。
+// promptCount 为账单覆盖到的期次数（<=terms），对应真正待确认的前若干期。
+function billedView(base, terms, promptCount = terms) {
+ const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
+ const history={...base,scheduleTerms:terms,installmentSetup:{...base.installmentSetup,historicalPaidTerms:0}}
+ const items=Array.from({length:promptCount},(_,i)=>({periodNumber:i+1,active:true,amountMinor:'52000'}))
+ return {history,view:buildView(history,[],items)}
+}
 test('已记还款只从对应期次查看；返回重读最新本期，失败可见，查看与取消均不写账',async()=>{
  const {h,p}=detail(),base=h.respond
  let version=1,failed=false
@@ -153,9 +161,7 @@ test('第8期账单补漏在列表一次保存；取消勾选第7期后不重置
  assert.equal(h.calls.some(c=>['loans.configureCharges','loans.setInstallmentProgress'].includes(c.action)),false)
 })
 test('36期历史选择跨页完整展示，第21期可修改，一次保存；继续看未来期次不改草稿',async()=>{
- const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
- const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:60,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36}}
- const view=buildView(history)
+ const {h,p}=detail(),base=h.respond,{history,view}=billedView(loan,60,36)
  h.respond=(action,data)=>{
   if(action==='loans.get')return ok({loan:history})
   if(action==='loans.installments'){const offset=Number(data.cursor||0),end=offset+data.pageSize;return ok({loanVersion:2,items:view.rows.slice(offset,end),summary:view.summary,nextCursor:end<60?String(end):null})}
@@ -176,8 +182,7 @@ test('36期历史选择跨页完整展示，第21期可修改，一次保存；�
 })
 test('历史跨页读取失败或版本变化时，不允许只提交前20期；重试后36期完整恢复',async()=>{
  for(const failure of ['network','version']){
-  const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
-  const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:36,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36}},view=buildView(history)
+  const {h,p}=detail(),base=h.respond,{history,view}=billedView(loan,36,36)
   let fail=true
   h.respond=(action,data)=>{
    if(action==='loans.get')return ok({loan:history})
@@ -195,8 +200,7 @@ test('历史跨页读取失败或版本变化时，不允许只提交前20期；
  }
 })
 test('600期历史选择完整加载且全部可修改，不向用户暴露读取分页',async()=>{
- const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
- const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:600,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:600}},view=buildView(history)
+ const {h,p}=detail(),base=h.respond,{history,view}=billedView(loan,600,600)
  h.respond=(action,data)=>{
   if(action==='loans.get')return ok({loan:history})
   if(action==='loans.installments'){const offset=Number(data.cursor||0),end=offset+data.pageSize;return ok({loanVersion:2,items:view.rows.slice(offset,end),summary:view.summary,nextCursor:end<600?String(end):null})}
@@ -228,13 +232,13 @@ test('记费设置内选择暂停/结清/利率变化仍先确认，取消和已
  assert.equal(h.calls.some(c=>c.action==='loans.pauseCharges'),false)
  const writes=h.calls.filter(c=>c.action==='loans.endCharges');assert.equal(writes.length,1);assert.equal(writes[0].data.reason,'rate_changed');assert.equal(writes[0].data.confirmed,true)
 })
-test('编辑贷款内打开期次计划保留未保存资料，待核实写入时不可跳转',async()=>{
+test('编辑贷款内改单期走详情页逐期弹层，不再跳独立计划页；未保存资料保留',async()=>{
  const {h,p}=detail();await p.load();await p.edit()
  assert.match(h.navigation.at(-1),/loan-form\/index\?loanId=synthetic-loan$/)
  const form=h.page('loan-form');form.onLoad({loanId:loan.loanId});await form.load();form.setData({name:'尚未保存的名称'})
- form.openPlan();assert.match(h.navigation.at(-1),/loan-plan\/index\?loanId=synthetic-loan$/)
+ // loan-form 不再有 openPlan 入口（改单期统一在详情页逐期弹层里）。
+ assert.equal(typeof form.openPlan, 'undefined')
  await form.load();assert.equal(form.data.name,'尚未保存的名称')
- const before=h.navigation.length;form.setData({hasPending:true});form.openPlan();assert.equal(h.navigation.length,before)
  assert.equal(h.calls.some(c=>['loans.update','loans.replacePlan','loans.create'].includes(c.action)),false)
 })
 test('A4 真实详情页无文件授权：明确来源、从四月继续、覆盖与计费日；取消预览不写',async()=>{
@@ -306,33 +310,18 @@ test('本期费用/费用更正预览迟到，不跨期回填也不恢复旧选�
  assert.equal(p.data.chargeImpact,null);assert.equal(p.data.chargeEdit.operation,'refund')
 })
 
-test('从第二期记还款带入未付金额和上次银行卡；保存一次提交本息费，失败保留草稿',async()=>{
- const {h,p}=detail(),base=h.respond
- h.accounts.push({accountId:'bank',type:'bank',name:'合成银行卡',archived:false})
- h.respond=(action,data)=>{
-  if(action==='loans.installment')return ok({repaymentAccountId:'bank',loanVersion:2,period:{periodId:'saved-period',version:7,periodNumber:2,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',paidPrincipalMinor:'10000',paidInterestMinor:'500',paidFeeMinor:'0'},sources:[],legacyPayments:[]})
-  if(action==='loans.chargePlan'&&data.periodNumber===2)return ok({items:[{chargeId:'charge-2',chargeKey:'period:2:interest',periodNumber:2,component:'interest',state:'recorded',categoryId:h.categories[0].id,amountMinor:'2000',outstandingMinor:'1500'}],issues:[],nextCursor:null,contract:{originKind:'recorded_consumption'}})
-  if(action==='loans.record')return {ok:false,error:{code:'VALIDATION_ERROR',message:'合成拒绝，保留草稿'}}
-  return base(action,data)
+test('遗留的「彻底删除账户」在途包被放弃后不再永久卡住费用同步',async()=>{
+ const h=runtime(),state=ledger(h,0)
+ // 模拟一个旧的 accounts.remove 冻包（之前被 ACCOUNT_HAS_RECORDS 拒绝但未清理）
+ const pending=h.load('services/pending-ledger-write')
+ const scope=h.app.globalData.uid
+ h.storage.set('catledger_pending_ledger_v1:'+scope,{schema:1,target:'api',action:'accounts.remove',payload:{accountId:'gone',version:1,requestId:'11111111-1111-4111-8111-111111111111'}})
+ h.respond=async(action,data)=>{
+   if(action==='transactions.commandResult')return {ok:false,error:{code:'OPERATION_UNCONFIRMED'}}
+   return state_h(action,data)
  }
- await p.load();await p.openInstallment({currentTarget:{dataset:{term:2}}});p.recordPeriodPayment()
- assert.match(h.navigation.at(-1),/loan-payment\/index\?loanId=synthetic-loan&periodNumber=2$/)
- const payment=h.page('loan-payment');payment.onLoad({loanId:loan.loanId,periodNumber:'2'});await payment.load()
- assert.equal(payment.data.totalYuan,'415.00');assert.equal(payment.data.allocations[0].principalYuan,'400.00');assert.equal(payment.data.allocations[0].interestYuan,'15.00')
- assert.equal(payment.data.simplePeriod,true);assert.equal(payment.data.accounts[payment.data.accountIndex].accountId,'bank')
- assert.equal(payment.data.allocations[0].chargeChoices,undefined)
- payment.chooseKind({detail:{value:1}});assert.equal(payment.data.kindIndex,0)
- assert.equal(h.calls.some(c=>c.action==='loans.record'),false)
- payment.editAllocation({currentTarget:{dataset:{index:0,field:'principalYuan'}},detail:{value:'300.00'}})
- payment.input({currentTarget:{dataset:{field:'totalYuan'}},detail:{value:'315.00'}});await payment.load()
- assert.equal(payment.data.allocations[0].principalYuan,'300.00');assert.equal(payment.data.totalYuan,'315.00')
- assert.equal(payment.data.confirmed,false);await payment.save()
- const command=h.calls.find(c=>c.action==='loans.record');assert.ok(command)
- assert.deepEqual({...command.data.allocations[0].period},{periodNumber:2,version:7});assert.equal(command.data.simplePeriod,true);assert.equal(command.data.allocations[0].interestTreatment,'accrued');assert.equal(command.data.allocations[0].chargeAllocations.length,0)
- assert.match(payment.data.errorMessage,/保留草稿/);assert.equal(payment.data.allocations[0].principalYuan,'300.00')
- h.respond=(action,data)=>action==='loans.record'?ok({paymentId:'saved-payment',version:1,loans:[{loanId:loan.loanId,version:3}]}):base(action,data)
- const before=h.calls.filter(c=>c.action==='loans.record').length
- await payment.save();assert.equal(h.calls.filter(c=>c.action==='loans.record').length,before+1)
- assert.equal(h.navigation.at(-1),'back');assert.equal(h.toasts.at(-1),'已记本期还款')
- assert.equal(h.calls.some(c=>c.action==='loans.payment'),false)
+ function state_h(){ return {ok:true,data:{count:0,cutoff:'2026-09-26'}} }
+ const sync=h.load('services/loan-charge-sync'),result=await sync.run()
+ assert.equal(result.complete,true)
+ assert.equal(pending.pending(),null)
 })

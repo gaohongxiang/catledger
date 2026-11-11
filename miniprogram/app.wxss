@@ -159,7 +159,9 @@ button::after { border: 0; }
 .empty-ledger-copy { margin-top: 10rpx; font-size: var(--font-caption, 24rpx); line-height: 1.6; }
 
 /* 主题色表达状态，正文保持可读；小字号不再承担关键操作与业务解释。 */
-.primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #70685f); background: var(--theme-surface-muted, #f4eee3); opacity: .65; }
+/* 禁用/加载态：保留主/次色本身，仅淡化——不再换成突兀的灰色饼，避免和琥珀主题脱节。 */
+.primary-button[disabled] { color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); opacity: .5; }
+.secondary-button[disabled] { color: var(--theme-secondary, #70685f); background: var(--theme-secondary-soft, #f4eee3); opacity: .5; }
 
 /* 列表行错峰入场与校验抖动；reduced-motion 由下方全局媒体查询统一收敛。 */
 @keyframes row-fade-up { from { opacity: 0; transform: translateY(14rpx); } to { opacity: 1; transform: none; } }
@@ -266,7 +268,7 @@ button::after { border: 0; }
 }
 input, textarea { font-family: inherit; font-weight: 400; }
 input:focus, textarea:focus { border-color: var(--theme-accent); }
-button[disabled] { opacity: .65; }
+button[disabled]:not(.primary-button):not(.secondary-button) { opacity: .65; }
 button[disabled].danger-button { color: var(--theme-text-muted); background: var(--theme-surface-muted); }
 
 /* 次级页登录空状态，与首页共享浅色胶囊的视觉比例。 */

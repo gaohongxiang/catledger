@@ -19,7 +19,7 @@
   <skeleton-rows wx:if="{{loading && !hasLoaded}}" rows="{{3}}" />
   <view class="wealth-summary">
     <view class="wealth-primary content-inset"><text class="wealth-label">净资产</text><text class="wealth-value money-number {{totals.netWorthTone}}">{{hasLoaded ? totals.netWorthText : '—'}}</text><text class="wealth-caption">全部活动账户的账面合计</text></view>
-    <view class="wealth-breakdown content-inset"><view><text>资产合计</text><text class="money-number">{{hasLoaded ? totals.assetsText : '—'}}</text></view><view><text>待还负债</text><text class="money-number liability-balance">{{hasLoaded ? totals.liabilitiesText : '—'}}</text></view></view>
+    <view class="wealth-breakdown content-inset"><view><text>资产合计</text><text class="money-number asset-balance">{{hasLoaded ? totals.assetsText : '—'}}</text></view><view><text>待还负债</text><text class="money-number liability-balance">{{hasLoaded ? totals.liabilitiesText : '—'}}</text></view><view><text>总利息</text><text class="money-number interest-balance">{{hasLoaded ? totals.liabilitiesInterestText : '—'}}</text></view></view>
   </view>
 
   <view wx:if="{{assets.length > 0}}" class="account-group">

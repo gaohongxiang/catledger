@@ -3,8 +3,13 @@ const api = require('./catledger-api')
 const importApi = require('./catledger-import')
 const config = require('../config/cloudbase')
 const clone = value => JSON.parse(JSON.stringify(value))
-const rejected = new Set(['LOCAL_RECHECK_REQUIRED','LOCAL_REVIEW_REQUIRED','LOCAL_REVIEW_CAPACITY','UNSUPPORTED_ACTION','LOAN_DELETE_BLOCKED','LOAN_CHARGE_COVERAGE','LOAN_CHARGE_PAUSED','LOAN_CHARGE_DIFFERENCE','LOAN_COVERAGE_REQUIRED','LOAN_PERIOD_REQUIRED','VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'ACCOUNT_NAME_CONFLICT', 'INSUFFICIENT_CASH_BALANCE',
-  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'TRANSACTION_GROUP_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_HISTORY_REVIEW_REQUIRED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED', 'LOAN_SOURCE_MISMATCH', 'LOAN_SOURCE_TOO_LARGE', 'LOAN_PLAN_OVERALLOCATED', 'LOAN_PLAN_EXISTS'])
+const rejected = new Set(['LOCAL_RECHECK_REQUIRED','LOCAL_REVIEW_REQUIRED','LOCAL_REVIEW_CAPACITY','UNSUPPORTED_ACTION','LOAN_DELETE_BLOCKED','LOAN_CHARGE_COVERAGE','LOAN_CHARGE_PAUSED','LOAN_CHARGE_DIFFERENCE','LOAN_COVERAGE_REQUIRED','LOAN_PERIOD_REQUIRED','VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'ACCOUNT_HAS_RECORDS', 'ACCOUNT_NAME_CONFLICT', 'INSUFFICIENT_CASH_BALANCE',
+  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'TRANSACTION_GROUP_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_HISTORY_REVIEW_REQUIRED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED', 'LOAN_SOURCE_MISMATCH', 'LOAN_SOURCE_TOO_LARGE', 'LOAN_PLAN_OVERALLOCATED', 'LOAN_PLAN_EXISTS', 'LOAN_PLAN_HAS_PAYMENTS', 'LOAN_PLAN_HAS_ITEMS',
+  // 分期参数的结构化校验错误码（被明确拒绝=写入未发生，必须清包，否则会卡成僵尸请求阻塞后续写/费用同步）。
+  'SCHEDULE_PRINCIPAL_REQUIRED', 'SCHEDULE_METHOD_INVALID', 'SCHEDULE_TERMS_INVALID', 'SCHEDULE_MEASUREMENT_INVALID',
+  'SCHEDULE_FIELD_CONFLICT', 'SCHEDULE_QUOTE_REQUIRED', 'SCHEDULE_RATE_REQUIRED', 'SCHEDULE_PAYMENT_REQUIRED',
+  'SCHEDULE_INSTALLMENT_NEEDS_FLAT', 'SCHEDULE_AMOUNT_REQUIRED', 'SCHEDULE_AMOUNT_INVALID', 'SCHEDULE_UPFRONT_FEE_TOO_HIGH',
+  'SCHEDULE_DATE_INVALID', 'SCHEDULE_DISCOUNT_INVALID', 'SCHEDULE_ROUNDING_INVALID', 'SCHEDULE_PAYMENT_TOO_LOW', 'SCHEDULE_PAYMENT_TOO_LOW_TOTAL'])
 function createPendingWrite(options) {
   const key = () => {
     const scope = options.scope()
@@ -40,12 +45,28 @@ function createPendingWrite(options) {
   async function verifyPacket(storageKey, packet) {
     const value = await options.call(packet.target, packet.target === 'import' ? 'imports.commandResult' : 'transactions.commandResult',
       { requestId: packet.payload.requestId, commandAction: packet.action })
+    // 服务端权威回答"查无此回执"=该请求从未成功落库（幂等回执只在成功后写），确认原操作未生效：
+    // 安全丢弃这份僵尸包，返回"未生效"，不再永久阻塞后续写入/费用同步。
+    if (value && value.found === false) {
+      clear(storageKey, packet)
+      return { action: packet.action, result: null, recovered: false, notApplied: true }
+    }
     if (!value || value.action !== packet.action) throw Object.assign(new Error('上次操作结果仍待核实'), { code: 'OPERATION_UNCONFIRMED' })
     return confirmed(storageKey, packet, packet.target === 'import' ? value : value.result, true)
   }
   return {
     pending,
-    async verify() { const storageKey = key(), packet = pending(); return packet ? verifyPacket(storageKey, packet) : null },
+    async verify() {
+      const storageKey = key(), packet = pending()
+      if (!packet) return null
+      const outcome = await verifyPacket(storageKey, packet)
+      // 僵尸包（服务端查无回执=原操作从未生效）已丢弃 → 返回 null，调用方据此当作"没有待恢复操作"，正常继续。
+      if (outcome && outcome.notApplied) return null
+      return outcome
+    },
+    // 丢弃一份已确认不会生效的在途请求（例如删除账户被 ACCOUNT_HAS_RECORDS 明确拒绝却未清理的旧包）。
+    // 仅供确定原操作未落地时显式调用，绝不用于"结果未知"的请求。
+    discard() { const storageKey = key(), packet = pending(); if (packet) clear(storageKey, packet); return packet },
     async send(target, action, data, settings) {
       const storageKey = key()
       const canSend = () => {
@@ -57,20 +78,28 @@ function createPendingWrite(options) {
       if (packet && settings && settings.exact) {
         const content = value => { const copy = clone(value); delete copy.requestId; return JSON.stringify(copy) }
         if (packet.target !== target || packet.action !== action || content(packet.payload) !== content(data)) {
-          try { await verifyPacket(storageKey, packet) }
+          let verified
+          try { verified = await verifyPacket(storageKey, packet) }
           catch (error) {
             if (error.code !== 'OPERATION_UNCONFIRMED') throw error
             throw Object.assign(new Error('另一次操作还未完成，请先返回原页面继续处理'), { code: 'PENDING_OPERATION_EXISTS' })
           }
           if (key() !== storageKey) throw Object.assign(new Error('登录状态已变化，请重新打开页面'), { code: 'LOGIN_REQUIRED' })
+          // 原请求已核实（成功或僵尸包被丢弃）→ 让位给本次新请求，继续提交当前选择。
           packet = null
         }
       }
       if (packet) {
-        try { return await verifyPacket(storageKey, packet) }
+        let verified
+        try { verified = await verifyPacket(storageKey, packet) }
         catch (error) { if (error.code !== 'OPERATION_UNCONFIRMED') throw error }
-        // 用户再次提交仅重试冻结的原操作；新表单不能替换它。
-      } else {
+        // 核实成功（原操作已生效）→ 直接返回。
+        if (verified && verified.recovered) return verified
+        // found:false 的僵尸包已被 verifyPacket 丢弃（原操作从未生效）→ 本次按新请求重新提交。
+        if (verified && verified.notApplied) packet = null
+        // 其余：verify 抛 OPERATION_UNCONFIRMED（服务端暂时读不到）→ 保留 packet 重发原冻结请求。
+      }
+      if (!packet) {
         canSend()
         packet = { schema: 1, target, action, payload: Object.assign({}, clone(data), { requestId: options.requestId() }) }
         persist(storageKey, packet)
@@ -99,4 +128,4 @@ const current = createPendingWrite({
     }
   }
 })
-module.exports = { createPendingWrite, pending: current.pending, verify: current.verify, send: current.send }
+module.exports = { createPendingWrite, pending: current.pending, verify: current.verify, send: current.send, discard: current.discard }

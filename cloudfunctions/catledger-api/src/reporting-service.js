@@ -206,6 +206,13 @@ async function queryMonthlyCashFlowTrend(connection, uid, month) {
   }))
 }
 
+// 净资产口径见 net-worth.js（唯一真源）：只算未归档账户，资产取 bookBalance、负债取 debtMinor。
+// dashboard 直接把三份合计一起返回，前端两页不再各自累加。
+const { accountTotals, netWorthTotals } = require('./net-worth')
+function netWorthOf(accounts) {
+  return BigInt(netWorthTotals(accounts).netWorthMinor)
+}
+
 function createReportingService({ getPool }) {
   async function dashboard(context) {
     const summaryScope = context.data && context.data.summaryScope != null ? context.data.summaryScope : 'month'
@@ -229,14 +236,16 @@ function createReportingService({ getPool }) {
         const summary = summaryScope === 'all'
           ? await queryMonthlySummary(connection, uid, null)
           : summaryFromTrend(cashFlowTrend, month)
-        const netWorth = accounts.reduce(
-          (total, account) => total + BigInt(account.bookBalanceMinor),
-          0n
-        )
+        const totals = accountTotals(accounts)
         return {
           month,
           summaryScope,
-          netWorthMinor: netWorth.toString(),
+          totals,
+          // 兼容旧消费者：平铺三项仍返回，但一律由 totals 派生，不再单独计算。
+          netWorthMinor: totals.netWorthMinor,
+          assetsMinor: totals.assetsMinor,
+          liabilitiesMinor: totals.liabilitiesMinor,
+          liabilitiesInterestMinor: totals.liabilitiesInterestMinor,
           summary,
           cashFlowTrend,
           accounts,
@@ -285,6 +294,6 @@ function createReportingService({ getPool }) {
   return { dashboard, statistics }
 }
 
-module.exports = { createReportingService, monthSequence, summaryFromTrend }
+module.exports = { createReportingService, monthSequence, summaryFromTrend, netWorthOf }
 
 module.exports.rollupCategories = rollupCategories

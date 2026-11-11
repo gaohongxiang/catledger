@@ -50,7 +50,7 @@
         </view>
         <view class="record-stat">
           <text class="record-stat-label">利息及费用</text>
-          <text class="record-stat-amount money-number detail-cost-ink">{{chargeSummary.recorded !== null && chargeSummary.hasContract ? chargeSummary.recorded : '—'}}</text>
+          <text class="record-stat-amount money-number detail-cost-ink">{{detail.totalCost !== null ? '¥' + detail.totalCost : (chargeSummary.recorded !== null && chargeSummary.hasContract ? chargeSummary.recorded : '—')}}</text>
         </view>
       </view>
       <view wx:if="{{detail.terms}}" class="record-progress-line">
@@ -58,19 +58,16 @@
       </view>
       <block wx:if="{{!detail.complete}}">
       <view class="due-card {{detail.overdue ? 'due-card-overdue' : ''}}">
-        <view class="due-card-head">
-          <view class="due-title-row"><view class="due-dot"></view><text>{{detail.dueLabel}}</text><text class="due-date">{{detail.dueDate}}</text></view>
-          <text wx:if="{{detail.dueTerm}}" class="due-term">第 {{detail.dueTerm}} 期</text>
-        </view>
         <view class="due-card-body">
           <view class="due-amount-block">
+            <text class="due-col-label"><view class="due-dot"></view><text>{{detail.dueLabel}}</text><text wx:if="{{detail.dueTerm}}" class="due-term">第 {{detail.dueTerm}} 期</text><text class="due-date">{{detail.dueDate}}</text></text>
             <text wx:if="{{detail.duePayment}}" class="due-amount money-number">{{detail.duePayment}}<text class="amount-unit"> 元</text></text>
             <text wx:else class="due-complete-title">{{detail.dueTitle}}</text>
             <text wx:if="{{detail.duePayment}}" class="due-breakdown">本金 {{detail.duePrincipal}} · 利息/费 <text class="detail-cost-ink">{{detail.dueCost}}</text></text>
             <text wx:else class="due-breakdown">{{detail.dueNote}}</text>
           </view>
           <view class="due-remaining-block">
-            <text class="due-remaining-label">预计后续应还</text>
+            <text class="due-col-label">预计后续应还</text>
             <view class="due-remaining-amount"><text class="money-number">{{detail.remaining}}</text><text>元</text></view>
             <text class="due-remaining-split">本金 {{detail.remainingPrincipal}} · 利息/费 <text class="detail-cost-ink">{{detail.remainingCost}}</text></text>
           </view>
@@ -166,20 +163,20 @@
           <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="" placeholder-class="ld-placeholder" focus="{{fieldError === 'principal'}}" /><text class="ld-cell-unit">元</text></view>
           <text wx:if="{{fieldError === 'principal'}}" class="field-error-inline">{{errorMessage}}</text>
         </label>
-        <picker class="ld-cell" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input">
+        <date-field class="ld-cell" value="{{baselineDate}}" data-field="baselineDate" bindchange="input" granularity="date">
           <view class="ld-cell-label"><text>本金基准（日初）</text><text>有本金必填</text></view>
           <view class="ld-cell-value"><text class="{{baselineDate ? '' : 'ld-placeholder'}}">{{baselineDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view>
-        </picker>
+        </date-field>
       </view>
       <view class="ld-grid">
-        <picker class="ld-cell" mode="date" value="{{startDate}}" data-field="startDate" bindchange="input">
+        <date-field class="ld-cell" value="{{startDate}}" data-field="startDate" bindchange="input" granularity="date">
           <view class="ld-cell-label"><text>开始日期</text><text wx:if="{{startDate}}" catchtap="clearDate" data-field="startDate">清除</text><text wx:else>选填</text></view>
           <view class="ld-cell-value"><text class="{{startDate ? '' : 'ld-placeholder'}}">{{startDate || '未填写'}}</text><chevron-icon size="{{22}}" /></view>
-        </picker>
-        <picker class="ld-cell" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input">
+        </date-field>
+        <date-field class="ld-cell" value="{{endDate}}" data-field="endDate" bindchange="input" granularity="date">
           <view class="ld-cell-label"><text>结束日期</text><text wx:if="{{endDate}}" catchtap="clearDate" data-field="endDate">清除</text><text wx:else>选填</text></view>
           <view class="ld-cell-value"><text class="{{endDate ? '' : 'ld-placeholder'}}">{{endDate || '未填写'}}</text><chevron-icon size="{{22}}" /></view>
-        </picker>
+        </date-field>
       </view>
       <label class="ld-cell ld-cell-full">
         <view class="ld-cell-label"><text>还款方式</text><text>选填，以已确认约定为准</text></view>
@@ -198,10 +195,10 @@
           <view class="ld-cell-label"><text>分期期数</text><text>1–600</text></view>
           <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="number" value="{{schedule.terms}}" data-field="terms" bindinput="scheduleInput" maxlength="3" placeholder="期数" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">期</text></view>
         </label>
-        <picker class="ld-cell" mode="date" value="{{schedule.firstPaymentDate}}" data-field="firstPaymentDate" bindchange="scheduleInput">
+        <date-field class="ld-cell" value="{{schedule.firstPaymentDate}}" data-field="firstPaymentDate" bindchange="scheduleInput" granularity="date">
           <view class="ld-cell-label"><text>首次还款日</text><text>按还款额测算时必选</text></view>
           <view class="ld-cell-value"><text class="{{schedule.firstPaymentDate ? '' : 'ld-placeholder'}}">{{schedule.firstPaymentDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view>
-        </picker>
+        </date-field>
       </view>
       <view class="ld-block">
         <view class="ld-block-label"><text>还款方式</text></view>

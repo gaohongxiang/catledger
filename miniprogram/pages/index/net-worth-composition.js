@@ -41,7 +41,7 @@ function side(accounts, isLiability) {
     if ((account.nature === 'liability') !== isLiability) return
     // 负债按「欠款」口径（debtMinor），与净值卡负债合计一致；资产仍按账面余额。
     // 0 元账户不进构成条：它既不占据宽度，也不该被算成「其他」里的一个。
-    // 归档账户保留——总资产／总负债一直按它们求和，条不能和总额对不上。
+    // 调用方只传入未归档账户（与后端 net-worth 口径一致），构成条总额才和净值卡对得上。
     const minor = isLiability
       ? absMinor(account.debtMinor == null ? '0' : account.debtMinor)
       : absMinor(account.bookBalanceMinor)

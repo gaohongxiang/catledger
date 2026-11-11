@@ -156,3 +156,60 @@ test('旧响应迟到不能再次交接已核实的结果，或覆盖后续操�
   assert.deepEqual(handed, before)
   assert.equal(handed.length, 2)
 })
+
+test('彻底删除被流水挡住（ACCOUNT_HAS_RECORDS）视为明确拒绝，清理未决请求不残留卡住费用同步', async () => {
+  const h = harness()
+  const client = createPendingWrite({ ...h.options, async call(target, action, data) {
+    if (action.endsWith('.commandResult')) throw Object.assign(new Error('未确认'), { code: 'OPERATION_UNCONFIRMED' })
+    throw Object.assign(new Error('该账户已有流水或关联记录，不能删除'), { code: 'ACCOUNT_HAS_RECORDS' })
+  } })
+  await assert.rejects(client.send('api', 'accounts.remove', { accountId: 'a1', version: 2 }), { code: 'ACCOUNT_HAS_RECORDS' })
+  // 明确拒绝 => 原请求被清理，不会卡住后续任意写入/费用同步
+  assert.equal(client.pending(), null)
+})
+
+// 根治僵尸包：服务端权威返回 found:false（幂等回执表无此记录=从未成功落库）→ 安全丢弃，不再永久阻塞。
+test('commandResult 返回 found:false 时安全丢弃僵尸包，verify 返回 null 不阻塞', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'loans.rebuildPlan', { loanId: 'x', version: 1 }))
+  assert.ok(h.client.pending())
+  // 服务端明确：查无此回执（原操作从未生效）
+  h.options.call = async (target, action, data) => {
+    h.calls.push({ target, action, data: clone(data) })
+    if (action.endsWith('.commandResult')) return { action: 'loans.rebuildPlan', receiptId: 'digest', found: false, result: null }
+    throw new Error('unexpected')
+  }
+  const outcome = await h.client.verify()
+  assert.equal(outcome, null, '僵尸包被丢弃后 verify 返回 null')
+  assert.equal(h.client.pending(), null, '本机不再残留僵尸请求')
+})
+
+test('exact 发送遇到 found:false 的僵尸包：丢弃后按本次新请求提交，不误报"另一次操作未完成"', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'loans.rebuildPlan', { loanId: 'x', version: 1 }))
+  // 换一个动作且新内容 + found:false 僵尸包 → 应丢弃旧包并直接提交本次
+  h.options.call = async (target, action, data) => {
+    h.calls.push({ target, action, data: clone(data) })
+    if (action.endsWith('.commandResult')) return { action: 'loans.rebuildPlan', receiptId: 'digest', found: false, result: null }
+    return { saved: true }
+  }
+  const result = await h.client.send('api', 'loans.update', { loanId: 'x', version: 2 }, { exact: true })
+  assert.equal(result.result.saved, true)
+  assert.deepEqual(h.calls.map(c => c.action), ['loans.rebuildPlan', 'transactions.commandResult', 'loans.update'])
+  assert.equal(h.client.pending(), null)
+})
+
+test('found:true 但动作不符仍按未确认处理（不误丢真正在途的包）', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'transactions.create', { amountMinor: '100' }))
+  h.options.call = async (target, action) => ({ action: 'transactions.deleteMany', receiptId: 'd', found: true, result: { saved: true } })
+  await assert.rejects(h.client.verify(), { code: 'OPERATION_UNCONFIRMED' })
+  assert.ok(h.client.pending(), '动作不符不能当僵尸包误删')
+})
+
+test('SCHEDULE_* 结构化拒绝码会清包，不卡成僵尸', async () => {
+  const h = harness()
+  h.options.call = async (target, action) => { throw Object.assign(new Error('冲突'), { code: 'SCHEDULE_FIELD_CONFLICT' }) }
+  await assert.rejects(h.client.send('api', 'loans.rebuildPlan', { loanId: 'x' }), { code: 'SCHEDULE_FIELD_CONFLICT' })
+  assert.equal(h.client.pending(), null, '被明确拒绝的写入不应留包')
+})

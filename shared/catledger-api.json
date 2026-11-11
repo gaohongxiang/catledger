@@ -2,207 +2,1272 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "catledger-api current development contract",
   "requestEnvelope": {
-    "required": ["action"],
+    "required": [
+      "action"
+    ],
     "shape": {
       "action": "one of actions",
       "data": "action-specific object",
       "knownRevision": "optional canonical unsigned BIGINT decimal string; cache reads only, outside business data"
     }
   },
-  "loanMetadata": {"currency":"CNY","kind":["borrowing","installment"],"unknownPrincipal":null,"knownZeroPrincipal":"0","baseline":"confirmed principal at the start of baselineDate; never the entire account balance","owner":"trusted server identity, uid-scoped loan/account FK","status":["unknown","active","settled"],"schedule":"optional structured plan params; scheduleMethod/scheduleTerms/measurementKind all-or-none; kind=rate needs quoteType+ratePpm, kind=repayment needs repaymentMinor and forbids quote fields; installment quote requires flat method; rate is integer ppm (12.5% = 125000), amounts integer minor units, daily quote uses 360-day year; feeUpfrontMinor < installmentSetup.originalPrincipalMinor for new installments, otherwise < baselinePrincipalMinor when both set; changing params never recalculates an existing plan","writeRecovery":"transactions.commandResult + original persisted requestId","installmentSetup":{"schema":1,"originalPrincipalMinor":"positive integer minor string, distinct from current baseline","historicalPaidTerms":"confirmed consecutive paid terms before enrollment, integer 0..scheduleTerms; never inferred from dates","recordType":["","credit_card","bank_loan","online_loan","other"],"customRecordType":"trimmed string <=12 code points, only for other","discountKind":[null,"interest_rate","per_period","total"],"discountValue":"null with null kind; positive minor string for cash discounts or ppm ratio <=1000000 for interest discount (7折=700000)"},"installmentRules":"New page always kind=installment, requires firstPaymentDate, previews remaining schedule and confirms baseline/date. Historical rows never create payments; remaining principal equals sum of later planned principal. Interest discount recomputes using reduced rate; cash discounts reduce fees then interest, never principal. Total discount is allocated across the full original schedule with bounded integer rounding before slicing history. Upfront fees are metadata only, excluded from remaining-plan totals. Legacy nullable setup remains readable."},
-  "readResponse": {"version": 1, "metadata": ["readVersion", "uid", "dataRevision", "unchanged"], "unchanged": "knownRevision equals snapshot revision; no business payload; requires matching full local snapshot", "consistency": "single-connection REPEATABLE READ read-only transaction"},
+  "loanMetadata": {
+    "currency": "CNY",
+    "kind": [
+      "borrowing",
+      "installment"
+    ],
+    "unknownPrincipal": null,
+    "knownZeroPrincipal": "0",
+    "baseline": "confirmed principal at the start of baselineDate; never the entire account balance",
+    "owner": "trusted server identity, uid-scoped loan/account FK",
+    "status": [
+      "unknown",
+      "active",
+      "settled"
+    ],
+    "schedule": "optional structured plan params; scheduleMethod/scheduleTerms/measurementKind all-or-none; kind=rate needs quoteType+ratePpm, kind=repayment needs repaymentMinor and forbids quote fields; installment quote requires flat method; rate is integer ppm (12.5% = 125000), amounts integer minor units, daily quote uses 360-day year; principalRounding=cent|yuan selects whole-cent vs whole-yuan principal split with the tail dumped into the final period (yuan matches bank statements), default cent preserves legacy plans; feeUpfrontMinor < installmentSetup.originalPrincipalMinor for new installments, otherwise < baselinePrincipalMinor when both set; changing params never recalculates an existing plan",
+    "writeRecovery": "transactions.commandResult + original persisted requestId",
+    "installmentSetup": {
+      "schema": 1,
+      "originalPrincipalMinor": "positive integer minor string, distinct from current baseline",
+      "historicalPaidTerms": "confirmed consecutive paid terms before enrollment, integer 0..scheduleTerms; never inferred from dates",
+      "recordType": [
+        "",
+        "credit_card",
+        "bank_loan",
+        "online_loan",
+        "other"
+      ],
+      "customRecordType": "trimmed string <=12 code points, only for other",
+      "discountKind": [
+        null,
+        "interest_rate",
+        "per_period",
+        "total"
+      ],
+      "discountValue": "null with null kind; positive minor string for cash discounts or ppm ratio <=1000000 for interest discount (7折=700000)"
+    },
+    "installmentRules": "New page always kind=installment, requires firstPaymentDate, previews remaining schedule and confirms baseline/date. Historical rows never create payments; remaining principal equals sum of later planned principal. Interest discount recomputes using reduced rate; cash discounts reduce fees then interest, never principal. Total discount is allocated across the full original schedule with bounded integer rounding before slicing history. Upfront fees are metadata only, excluded from remaining-plan totals. Legacy nullable setup remains readable."
+  },
+  "readResponse": {
+    "version": 1,
+    "metadata": [
+      "readVersion",
+      "uid",
+      "dataRevision",
+      "unchanged"
+    ],
+    "unchanged": "knownRevision equals snapshot revision; no business payload; requires matching full local snapshot",
+    "consistency": "single-connection REPEATABLE READ read-only transaction"
+  },
   "actions": {
-    "loans.deleteImpact": {"kind":"read","data":["loanId","version","reviewedCreations? [{transactionId,version,createdByThisPlan:true}]"],"returns":"{loanId,version,canDelete,counts,blockers,accountChanges,previewToken,revoke,retain}","rules":["只读完整范围预览。按原始创建归属、当前使用、有效银行来源判断；共享付款、独立退款、无法证明归属或不完整关系阻止整组删除。"]},
-    "loans.delete": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","confirmed","previewToken","reviewedCreations? (same explicit legacy confirmations as preview)"],"returns":"{loanId,version,deleted,counts}","rules":["原用户锁和同一回执事务内重新核对预览，撤销计划独占新增且未经有效来源认领的账及配套余额校正；保留原有账、已核实账及更正后的当前账。解除付款、期次、来源占用并暂停自动记费；失败全部回滚。","新请求不可恢复或写入已删除计划。原请求只回放原结果。重建用新ID，明确认领原费用合同；仅释放plan_removed_at，用户抑制/取消不复活。完整保留付款组可通过loans.source重新关联，不重复记钱。旧loans.archiveInstallment仍仅归档。已归档旧逐期费用可经用户逐笔明确确认后携带reviewedCreations；仅限原归属NULL、有原逐期审计且没有来源/改绑/独立创建证据的费用，确认随删除事务写入创建归属和审计，失败一起回滚，不扩大撤销范围或绕过外部依赖。"]},
-    "loans.retainedCharge": {"kind":"read","data":["chargeId"],"returns":"{charge,contractId,accountId,cutoff}","rules":["只读取已删除计划留下的有效费用；支持原费用维护入口和明确合同重建，不恢复旧计划。"]},
-    "loans.retainedCharges": {"kind":"read","data":["accountId?","pageSize?","cursor?"],"returns":"{items:[{chargeId,component,chargeDate,amountMinor,accountName,loanName}],total,nextCursor}","rules":["只列出当前用户已删除计划保留的有效费用；pageSize 1..40，签名游标绑定用户和账户；沿用 retainedCharge 详情和明确合同重建。"]},
-    "loans.chargeImpact": {"kind":"read","data":["loanId? (required unless detached)","chargeId","operation","amountMinor?","eventId?","detached? (retained fee only)"],"returns":"{chargeId,loanVersion,chargeVersion,oldAmountMinor,amountMinor,deltaMinor,chargeDate,dependencies,canChange,previewToken}"},
-    "loans.changeCharge": {"kind":"idempotent-mutation","data":["requestId","loanId? (required unless detached)","chargeId","detached? (retained fee only)","operation","amountMinor?","eventId?","confirmed","previewToken","destinationAccountId? (refund)","occurredLocalAt? (refund)","timezoneOffsetMinutes? (refund)"],"returns":"{loanId,version,chargeId,refundId,deltaMinor,eventId,updateVersion}","rules":["Signed preview binds uid, loan/contract/charge/transaction versions, event and dependencies. Adjust net amount, suppress/explicit restore, pause/cancel future or explicitly recognize distinct additional bank fee. No client-only accrued evidence. Paid/refunded/source dependencies block partial maintenance. Audit preserves history.","One-off coverage children also block ordinary adjustment/deletion. Explicit actual refund creates a linked refund with cumulative/date/account guards; future cancellation never creates one. Suppressed charges require explicit restore."]},
-    "loans.endCharges": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","reason","confirmed"],"returns":"{loanId,version}","rules":["Pause authorization; cancel unoccurred future charges for settled/waiver/contract_cancelled, pause for rate_changed. Never create a refund, payment or principal change."]},
-    "loans.dueCharges": {"kind":"read","data":["loanId?","contractId?","confirmed?"],"returns":"{cutoff,count,amountMinor,batchLimit,recheckAfterMs}","rules":["Pure read; server Asia/Shanghai cutoff, active authorization and liability/category, inclusive start/end. once mode requires explicit contract and confirmation.","Same scope/identity and emergency stop checks as sync; no client-supplied cutoff.","recheckAfterMs is at most 30000 and ends by the next server Asia/Shanghai business day. Only completed checks may be reused, bounded by request start, scope, observed revision and existing read-cache mutation generations; failures or unfinished sync never qualify."]},
-    "loans.dueThisMonth": {"kind":"read","data":["month"],"returns":"{month,periodCount,dueMinor}","rules":["只读首页提醒聚合。month=YYYY-MM 由客户端按本地时区给出，服务端换算当月到期区间；只算未取消、贷款未归档删除的期次。已还部分按有效还款分摊扣除，结清的期次既不进笔数也不进金额；非法月份直接拒绝，不静默取错区间。"]},
-    "loans.syncCharges": {"kind":"idempotent-mutation","data":["requestId","loanId?","contractId?","confirmed?","limit?"],"returns":"{cutoff,created,createdCount,amountMinor,hasMore}","rules":["At most 40 due charges under original user lock and one atomic receipt. Server cutoff only; original billing dates; origin=loan_plan and unverified basis. No asset, principal or payment mutation. Pagination retries select remaining charge identities; committed prior batches remain committed. Active account/category/loan required.","Explicit contract scope never includes other auto contracts. Scope ids must belong to trusted user. CATLEDGER_LOAN_SYNC_DISABLED=1 blocks new synchronization; original successful receipts remain replayable."]},
-    "loans.recordUpfrontFee": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","confirmed","mode (new|existing)","accountId?","categoryId?","amountMinor?","occurredLocalAt?","timezoneOffsetMinutes?","transactionId?","transactionVersion?","covers? (period numbers)"],"returns":"{loanId,version,chargeId,transactionId}; explicit occurred upfront fee only, no history prerequisite. Reuse stable upfront:fee identity and existing protected contracts. New expense uses actual asset or loan account/date; existing mode preserves exact expense/account/time/amount. No balance adjustment or loan principal change. Optional period-fee coverage must equal the actual amount and only cover unrecorded fees; direct asset payment is already settled and its covered periods cannot pay it again. Atomic fee/coverage/audit/version/receipt; no automatic authorization."},
-    "loans.chargePlan": {"kind":"read","data":["loanId","configuration?","pageSize?","cursor?","periodNumber? (0 for non-periodic, 1..600 for one period)"],"returns":"{loanId,loanVersion,contract,items,preview,totalCharges,oneOffCount,previewCount,previewAmountMinor,duePreviewCount,duePreviewMinor,nextCursor,candidates,moreCandidates,issues,moreIssues,priorContracts,cutoff,recordedMinor,unverifiedMinor}","rules":["Pure read; page size 1..40, cursor binds uid/loan/revision/period/configuration digest. Preview classifies existing, covered, outside, future and due; server cutoff. Saved period components precede generated plan. Preview is not authorization; exact transaction coverage revalidated on write.","Items expose balanceAdjustmentId (protected paired historical balance preservation; outstanding zero), amountMinor, refundMinor, netAmountMinor, settledMinor, outstandingMinor (floor zero), state and basis. Summary recorded/unverified are net recorded amounts. Unknown attribution stays a candidate."]},
-    "loans.configureCharges": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","confirmed","originKind","mode (auto|once|paused)","fromDate","throughDate","firstChargeDate","historyChoice (continue|catch_up)","fixedConfirmed","dateConfirmed","coverageConfirmed","interestCategoryId?","feeCategoryId?","baselineCoveredThrough?","referenceLabel?","contractId?","coverage?","oneOffCharges?","periodCharges?","upfrontChargeDate? (required for nonzero upfront fee)"],"returns":"{loanId,version,contractId,contractVersion,planVersion}","rules":["Trusted uid and original user lock. Stable (uid,contract_id,charge_key) independent of amount/request/version. Authorization does not write transactions. Historical coverage claims an exact expense on the liability account; one-off actual costs cover enumerated schedule items. Existing recorded/suppressed history cannot be overwritten or resurrected by a revision. Archived no-reference contracts must be explicitly claimed."]},
-    "loans.pauseCharges": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version"],"returns":"{loanId,version}","rules":["Revoke future synchronization, preserve financial records and append authorization audit. Archive also pauses authorization; restore never resumes it."]},
-    "loans.installments": {"kind":"read","data":["loanId","pageSize?","cursor?","detailSnapshot?"],"returns":"{loanId,loanVersion,archived,summary,items,nextCursor,snapshot?}","rules":["Trusted uid, consistent snapshot; full original schedule overlaid with saved period revisions. Page size 1..40, signed cursor binds user/loan/version/dataRevision. detailSnapshot=true cannot combine with cursor; it returns one consistent schema1 fixed-column snapshot of all 1..600 periods plus original cost rows. The client checks loanVersion, complete row count and numbering before accepting selections; incomplete snapshots cannot be saved. Ordinary pagination remains compatible.","completedThrough is the contiguous completed prefix from explicit manual confirmation and actual paid periods; imported source terms never prove payment. Manual/actual counts and estimated/real principal remain separate. summary.repaymentPrompts contains up to 600 unreviewed periods before the latest bill, or historical paid periods awaiting the combined save. It never marks periods paid by itself. Schema2 retains ambiguous legacy through for review. Explicit unpaid/partial and legacy partial remain exceptions. Missing bills alone never mean overdue. Differences preserve original bank amounts."]},
-    "loans.installment": {"kind":"read","data":["loanId","periodNumber"],"returns":"{loanId,loanVersion,archived,period,sources,moreSources,legacyPayments,repaymentAccountId}","rules":["Trusted uid and one valid period. Includes active/inactive sources (latest 40, moreSources flag) and up to 20 existing payment links; no write."]},
-    "loans.installmentSources": {"kind":"read","data":["accountId?","itemId?","pageSize?","cursor?"],"returns":"{items,nextCursor}","rules":["Only active unassigned items in trusted user scope; optional account/item filters bound to signed cursor. Page size 1..40; invalidated events or deleted/changed expense sources do not count."]},
-    "loans.planCandidates": {"kind":"read","data":["accountId","totalTerms?","planLabel?","principalMinor?","startMonth?"],"returns":"{items,nextCursor}","rules":["Read-only review-page candidates: non-archived installment loans on the same account, newest first, at most 50. matched requires a known account, name, total terms and first-payment month, plus equal principal when supplied. Unknown facts remain blank and cannot auto-select a candidate; missing terms still allow manual selection. Never merge by similar amounts. No transaction, plan or binding is created by reading."]},
-    "loans.confirmInstallments": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","repayments[{periodNumber,paid}]","coverage? [{chargeKey,transactionId,transactionVersion}]","oneOffCharges? [{key,component,amountMinor,chargeDate,transactionId,transactionVersion,covers}]"],"returns":"{loanId,version}","rules":["One save atomically records selected historical paid periods, missing costs in original months and paired balance preservation on the same liability account. Reuse exact source/charge identities; do not manufacture bank repayments. No automatic write from default checkboxes or reads.","Preserve unselected and explicitly unpaid/partial periods. Persist historical principalMinor and period/loan version in progress.historyFacts and immutable audit. Undo the original amount, never the revised plan. Validate all active principal history. Persist fee historical_settled_minor separately from balance preservation; matched actual evidence records historical replacement amounts without double settlement. Unknown legacy confirmation amounts remain unchanged and require review. Actual paid/partial and sourced/refunded/settled costs remain protected. Explicit selection stops legacy auto mode. Version, trusted uid, unique fee keys, all-or-nothing transaction and receipt apply.","Explicit coverage selects exact existing expense IDs and transactionVersion, preserving original account, date, amount and creation provenance; it creates neither expense nor balance adjustment. Recheck user, transaction version, amount, refunds, source/payment/fee occupancy under the user lock. One original expense cannot represent multiple independent fees; oneOffCharges enumerates exact same-component coverage whose sum equals the original amount. Only selected paid periods are eligible. Similarity is recommendation only, and no actual payment or automatic authorization is inferred."]},
-    "loans.setInstallmentProgress": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","completedThrough?","periodNumber?","status?","bookCosts?","confirmedBatch? (required with completedThrough)"],"returns":"{loanId,version}","rules":["Progress schema2: one period completed only changes that exception; completedThrough requires confirmedBatch=true and preserves unpaid/partial and outside-range exceptions. Source maximum period never proves payment; legacy ambiguous through is retained for review; explicit historical confirmation and actual payments stay separate.","Progress creates no principal/cash transaction. Legacy bookCosts remains only for unconfigured installments with existing guards; a configured charge contract must use authorized charge commands. All changes, versions and original receipt remain atomic."]},
-    "loans.linkInstallmentSource": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","itemId"],"returns":"{loanId,version,linked}","rules":["Same user/account and compatible term count; selected active source and its exact installment reference / same-transaction source group attach under one user lock; an existing assignment to another active installment rejects. Ambiguous identities/amounts reject atomically. Amount/date similarity never establishes identity.","A first imported fee can reuse a matching manual fee. Different active bank identities for the same cost component must be resolved, never silently combined. Duplicate import expense is soft-replaced with preserved evidence; refund/loan-payment dependencies block replacement."]},
-    "loans.reconcileInstallmentSources": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version"],"returns":"{loanId,version,linked}","rules":["Auto-heals an existing installment plan by attaching still-unlinked active sources on the same account whose (plan_label + period_number) exactly matches a source already linked to this plan — the historical case where a plan was created from principal only and later interest/fee rows of the same plan+period were left unassigned. Attribution only: never reposts costs, never creates transactions or balance adjustments, never steals sources bound to another plan.","Idempotent under the user lock: no matching orphans returns linked=0 and does not advance the loan version; linking one or more advances version by one and issues a frozen receipt. Ambiguous or mismatched sources are rejected atomically, never silently merged."]},
-    "loans.archiveInstallment": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","archived"],"returns":"{loanId,version,archived}","rules":["Archive only an installment management record: detach its source items and release reference bindings atomically with archiving/version/receipt under the trusted user lock. Keep all source identities and financial transactions; valid sources become unassigned and can rebuild or relink without reposting costs. Restore only reopens the management record, never steals sources already reassigned. Expected version and frozen receipt required."]},
-    "loans.removeInstallmentItem": {"kind":"idempotent-versioned-mutation","data":["requestId","loanId","version","itemId","itemVersion"],"returns":"{loanId,version}","rules":["Only a same-user manual cost item with expected loan/item versions. Imported evidence/refund dependencies block removal. Soft-delete its expense and deactivate item atomically; preserve audit and independent progress."]},
-    "reads.validate": {"kind": "read", "data": [], "returns": "{readVersion:1,uid,dataRevision,unchanged:false}", "rules": ["trusted identity and active status, same read-only snapshot", "no aggregate queries; coalesced once per foreground"]},
-    "loans.bookRepayment": {"kind":"idempotent-mutation","data":["requestId","totalMinor","occurredLocalAt","timezoneOffsetMinutes","repayment","note?"],"returns":"{paymentId,version,pending,transactionCount,loans}","rules":["repayment: confirmed=true, mode=defer|associate, assetAccountId, liabilityAccountId (other_liability), explicit principalMinor/interestMinor/feeMinor, expense|accrued treatment and expense category IDs; exact total. associate additionally requires loanId/loanVersion. Financial transactions, confirmed details and optional loan share commit atomically.","associate may include repayment.chargeAllocations to prove recorded fees; deferred unknown attribution cannot use an unsupported accrued claim."]},
-    "loans.assignRepayment": {"kind":"idempotent-versioned-mutation","data":["requestId","paymentId","version","loanId","loanVersion","confirmed"],"returns":"{paymentId,version,pending:false,loans}","rules":["Only active confirmed repayments with no allocations. Confirm stored composition and matching account/baseline; update loan/payment versions without adding transactions."]},
-    "loans.releaseRepayment": {"kind":"idempotent-versioned-mutation","data":["requestId","paymentId","version","confirmed"],"returns":"{paymentId,version,released:true}","rules":["Release only pending confirmed repayments, preserving all financial transactions. Never silently detach an allocated payment."]},
-    "loans.transaction": {"kind":"read","data":["transactionId"],"returns":["state (none|candidate|allocatable|linked|replaced)","transaction","targetAccount?","payment?","allocations (whole-payment shares; first 3 actual periods, periodCount, unallocated components)","evidence (bounded raw hints, never confirmed financial facts)"],"rules":["Trusted uid; consistent read-only snapshot; active linked/replaced relations take priority for every account type. Only explicitly confirmed active repayments without loan allocations return candidate with payment and repayment details. An active unoccupied single asset-to-credit transfer returns allocatable after source validation; no allocation is inferred. Other ordinary transfers return none. No inferred installment, amount or period; revoked relations are not reported active."]},
-    "loans.unassigned": {"kind":"read","data":["month?","accountId? (liability; credit accepted with empty results)","pageSize? (1..40)","cursor?"],"returns":["month","accountId","items","nextCursor"],"rules":["Only confirmed active repayments without loan allocations; whole financial group appears once; returns total and repaymentTotalMinor; cursor binds uid/month/account. Credit bill repayments stay outside this pending-confirmed list; their transaction details offer explicit installment allocation."]},
-    "transactions.deleteMany": {"kind": "idempotent-mutation", "data": ["requestId", "items[{transactionId,version}]"], "returns": ["deleted", "deletedCount", "transactionIds"], "rules": ["Nonempty unique current-user manual/import ordinary transactions without a 100-item cap; validate the complete selected set, then physically delete in one user-locked transaction with bounded SQL chunks. All-or-nothing; versions, complete single-source payment/repayment allocation sets, active and historical loan/fee references, final cash balance and refunds outside selection validated; archived accounts allowed; selected refunds are deleted before originals. Remove exclusive event links and review transaction candidates, preserve shared evidence/files and historical posting facts. Detach only unprotected soft-deleted refund references, keeping those historical rows. Minimal receipt contains only deletion results, never a recovery copy; replay cannot delete later additions or reimports."]},
-    "dataExports.start": {"kind":"mutation","data":["requestId"],"returns":["exportId","format","schemaVersion","startedAt","expiresAt","tables","maxRows","maxBytes"],"rules":["One private job per authenticated user; one hour expiry; start/replay does not change business revision."]},
-    "dataExports.page": {"kind":"read","data":["exportId","cursor?"],"returns":["text","bytes","rows","totalRows","nextCursor","completeToken"],"rules":["Signed keyset/UTF-8 fragment cursor; 50 completed rows and 65536 UTF-8 text bytes maximum; unchanged business revision required."]},
-    "dataExports.finish": {"kind":"command","data":["exportId","completeToken"],"returns":["exportId","complete","rows","format","startedAt"],"rules":["Only signed terminal token; active user lock checks revision; immutable completed result can be replayed."]},
-    "loans.periods": {"kind":"read","data":["loanId","pageSize?","cursor?","periodIds?"],"returns":"{loanId,loanName,loanVersion,summary,items,nextCursor}; page 1..40; optional at most 40 selected IDs, same loan only; signed cursor includes loan version. Summary includes unpaid principal/interest/fee, next due date, remaining principal and explicit gap; never mark paid by date; paidPeriods counts fully paid active plan rows from actual allocations; installment setup adds historicalPaidTerms and totalTerms, displayed separately from actual paid periods."},
-    "loans.savePeriod": {"kind":"idempotent-mutation","data":["requestId","loanId","loanVersion","periodId?","version?","periodNumber","dueDate","principalMinor","interestMinor","feeMinor","cancelled?","historicalRevision?"],"returns":"{loanId,loanVersion,periodId,version}; period number 1..9999 unique per loan, explicit nonnegative components with positive total. Revision preserves original plan; cannot reduce below paid components or cancel paid period; no Transaction writes; installment periodNumber must be within scheduleTerms; historical rows require explicit historicalRevision=true. No cash or progress writes. Changed future charge components pause the affected planned fees; explicit reauthorization adopts saved period amounts without overwriting recorded history."},
-    "loans.allocatePeriods":{"kind":"idempotent-versioned-mutation","data":["requestId","loanId","loanVersion","paymentId","version","items","confirmed"],"returns":"{paymentId,version,loanId,loanVersion,allocatedPeriods}; replace this active repayment's allocations for one loan, 0..40 unique versioned periods with explicit principal/interest/fee. Preserve old rows; each component bounded by payment share and period remainder; unallocated remainder remains explicit"},
-    "loans.planAllocation":{"kind":"read","data":["loanId","paymentId"],"returns":"{loanVersion,payment,share,items,unallocated}; max 40 active period allocations for current loan; actual allocated+unallocated components equal repayment share"},
-    "loans.periodHistory":{"kind":"read","data":["periodId","kind","pageSize?","cursor?"],"returns":"{periodId,kind,items,nextCursor}; kind=plan|payment; page 1..40, user/period/kind signed cursor; preserve plan revisions and replaced/reversed actual allocation facts"},
-    "loans.previewPlan": {"kind":"read","data":["loanId? (read stored params and original principal when setup exists, else principal baseline)","principalMinor? (required without loanId)","scheduleMethod","scheduleTerms","measurementKind","quoteType?","ratePpm?","repaymentMinor?","feePerTermMinor?","feeUpfrontMinor?","firstPaymentDate?","installmentSetup?","discountKind? (without installmentSetup)","discountValue? (without installmentSetup)"],"returns":"{periods:[{periodNumber,dueDate,principalMinor,interestMinor,feeMinor}],summary:{totalPaymentMinor,totalInterestMinor,totalFeeMinor,derivedRatePpm?,remainingPrincipalMinor?,historicalPaidTerms?,totalTerms?,upfrontFeeMinor?}}; new setup slices original N historical terms, preserves original period numbers, omits zero-payment tasks; optional remaining/history fields only with setup.","rules":["Read-only trusted user snapshot; supplied setup original principal is authoritative over principalMinor. Legacy date fallback and upfront-inclusive totals remain; new setup requires explicit first date when saved and remaining totals exclude upfront fee. Zero payment months are not persisted. No auto-paid-by-date behavior."]},
-    "loans.generatePlan": {"kind":"idempotent-mutation","data":["requestId","loanId","version","confirmed"],"returns":"{loanId,loanVersion,generatedPeriods}","rules":["Stored params and original principal (new setup) or positive baseline (legacy) required; existing periods including cancelled reject LOAN_PLAN_EXISTS. Zero remaining periods rejects validation. Under one user lock/transaction insert only unpaid historical suffix, preserving original numbers and version-1 revisions, and advance loan version. No Transaction/payment/balance writes; later maintenance through savePeriod/allocatePeriods. Replay frozen receipt."]},
-    "loans.list": {"kind": "read", "data": ["accountId? (filter before paging; bound to cursor)", "pageSize?", "cursor?"], "returns": "{items: Loan[], pendingRepaymentCount: number, nextCursor: string|null}; pageSize 1..40; signed user-scoped cursor; pendingRepaymentCount uses the same optional accountId filter; archived records excluded; installmentSummary holds progress-derived remaining amounts without changing ledger principal"},
-    "loans.get": {"kind": "read", "data": ["loanId"], "returns": "{loan: Loan}"},
-    "loans.create": {"kind":"mutation","data":["requestId","repayments? [{periodNumber,paid}]","name","institution?","kind","accountId","baselinePrincipalMinor","baselineDate","startDate?","endDate?","repaymentMethod?","scheduleMethod?","scheduleTerms?","measurementKind?","quoteType?","ratePpm?","repaymentMinor?","feePerTermMinor?","feeUpfrontMinor?","firstPaymentDate?","installmentSetup?","sourceItemId? (create only, atomic attachment)","importOrigin? {updateId,eventId} (review-only installment creation; server validated)","importAccountDraft? {snapshotId,name,type:credit,currency:CNY,creationKey?} (requires importOrigin and sealed current local snapshot; accountId must be the stable draft ID; creationKey is validated against the original account issue members, legacy keyless requests retain their existing identity)","chargeContractId? (explicit archived contract reuse, create only)","generatePlan? (true required with installmentSetup)","confirmed? (true required when generatePlan)","originKind? (cash_borrowing)","coverage? [{chargeKey,transactionId,transactionVersion}]","oneOffCharges? [{key,component,amountMinor,chargeDate,transactionId,transactionVersion,covers}]"],"returns":"{loanId,version,generatedPeriods?,importOrigin?,importAccount?}; importAccountDraft creates or reuses the same draft-ID credit account atomically with the plan, with zero balance and no transactions; later import reuses matching attributes and rejects changed/archived accounts. The explicitly created account remains when the draft is abandoned. importOrigin records a validated review source in the mutation receipt so abandonment only retires unchanged unused plans created by that draft; client planIds alone are never creation proof. new installmentSetup requires kind=installment and confirmed atomic metadata + remaining periods/revisions + receipt; supplied baseline must equal computed remaining principal. Legacy metadata-only requests stay supported. Metadata/plan creation never creates principal or future-fee transactions. Optional sourceItemId attaches pending bank items in the same transaction; source conflicts roll back the entire creation. With repayments, create the full plan with zero legacy historical prefix, compute baseline from the explicit paid selections, and atomically reuse/book original-month historical fees with paired balance preservation. Empty selections create no fees. cash_borrowing with explicit origin permits zero initial baseline and records actual drawdown separately.","rules":["Explicit coverage selects exact existing expense IDs and transactionVersion, preserving original account, date, amount and creation provenance; it creates neither expense nor balance adjustment. Recheck user, transaction version, amount, refunds, source/payment/fee occupancy under the user lock. One original expense cannot represent multiple independent fees; oneOffCharges enumerates exact same-component coverage whose sum equals the original amount. Only selected paid periods are eligible. Similarity is recommendation only, and no actual payment or automatic authorization is inferred."]},
-    "loans.update": {"kind":"versioned-mutation","data":["requestId","loanId","version","name","institution?","kind","accountId","baselinePrincipalMinor","baselineDate","startDate?","endDate?","repaymentMethod?","scheduleMethod?","scheduleTerms?","measurementKind?","quoteType?","ratePpm?","repaymentMinor?","feePerTermMinor?","feeUpfrontMinor?","firstPaymentDate?","installmentSetup?"],"returns":"{loanId,version}; omitted installmentSetup preserves stored setup. Existing new-style periods lock original principal, history, discounts, schedule fields and baseline. Name/classification may change. Never regenerates plans; generatePlan is rejected here."},
-    "loans.record": {"kind":"idempotent-mutation","data":["requestId","simplePeriod?","mode","kind","assetAccountId","totalMinor","occurredLocalAt","timezoneOffsetMinutes","confirmed","allocations","source?","replacePayment?","unallocatedMinor?"],"returns":"{paymentId,version,transactionCount,loans:[{loanId,version}],previousPaymentId?}; mode=new|associate|correctExisting; max 20 unique versioned loan allocations with explicit principalMinor/interestMinor/feeMinor and expense/accrued treatment; exact sum; associate only links an exact existing composition; correctExisting atomically replaces the whole source and preserves roots for reversal; replacePayment explicitly identifies a duplicate manual payment and its current loan versions; chargeAllocations[{chargeId?,transactionId?,component,amountMinor}] required as exact cost evidence for configured charge contracts. accrued clears recorded/baseline remaining capacity; expense first records a selected planned charge. Existing credit bill association may carry unallocatedMinor; all shares plus unallocated equal actual total; never duplicate a source. Optional allocations[].period={periodNumber,version} binds that confirmed repayment to one period in the same transaction and receipt; version 0 requires a derived, unsaved period. Reject cancelled/stale/overallocated periods and cost evidence from another period. Inline binding applies to a new payment group, including association with existing transactions; existing group correction may retain a versioned inline period, deducting its previous capacity atomically; historical replacement requires its period basis. No extra financial write occurs just to bind a period. simplePeriod=true only accepts new repayment with one loan and one period: reuse exact fee keys or book missing fees on the liability account, automatically bind accrued cost allocations, then save one real asset payment and period allocation in the same transaction. Only explicit association to the confirmed period may replace historical principal/fee coverage; new payments cannot reinterpret history as payable; protect partial/paid/stale/cancelled periods and all existing dependencies."},
-    "loans.source": {"kind":"read","data":["transactionIds"],"returns":"{source:{transactionIds,fingerprint,event},transactions,evidence,retainedCharges}; select 1..60 current-user transactions; expands one imported event to all active members; signed complete transaction/event/update versions; no amount/date automatic match; retained whole payment expands by deletion snapshot and exact transaction versions, including protected expense components for association without new money"},
-    "loans.correct": {"kind":"idempotent-versioned-mutation","data":["requestId","paymentId","version","loans","kind","assetAccountId","totalMinor","occurredLocalAt","timezoneOffsetMinutes","confirmed","allocations"],"returns":"{paymentId,version,previousPaymentId,transactionCount,loans}; preserve previous reversed payment; check old/new loan versions, final cash and principal atomically; imported source total/account/time fixed; associate corrections keep origin mode and original transactions, replacing only the payment allocations; preserve unallocatedMinor and historical principal/fee replacement"},
-    "loans.reverse": {"kind": "idempotent-versioned-mutation", "data": ["requestId", "paymentId", "version", "loans", "confirmed"], "returns": "{paymentId,version,reversed,loans}; current versions for every allocated loan; reverse whole group or reject without partial changes"},
-    "loans.payment": {"kind":"read","data":["paymentId"],"returns":"{payment,repayment?,allocations,transactions,chargeAllocations,unallocatedMinor}; pending confirmed payments have empty allocations; max 20 loans / 60 transactions, current loan versions plus frozen confirmedLoanVersion; a single active period per allocation returns period={periodNumber,version}"},
-    "loans.payments": {"kind": "read", "data": ["loanId", "pageSize?", "cursor?"], "returns": "{items,nextCursor}; pageSize 1..40, signed user/loan scope, includes reversal history"},
-    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction, loan, accounts.archive or accounts.restore write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
+    "loans.deleteImpact": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "version",
+        "reviewedCreations? [{transactionId,version,createdByThisPlan:true}]"
+      ],
+      "returns": "{loanId,version,canDelete,counts,blockers,accountChanges,previewToken,revoke,retain}",
+      "rules": [
+        "只读完整范围预览。按原始创建归属、当前使用、有效银行来源判断；共享付款、独立退款、无法证明归属或不完整关系阻止整组删除。"
+      ]
+    },
+    "loans.delete": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "confirmed",
+        "previewToken",
+        "reviewedCreations? (same explicit legacy confirmations as preview)"
+      ],
+      "returns": "{loanId,version,deleted,counts}",
+      "rules": [
+        "原用户锁和同一回执事务内重新核对预览，撤销计划独占新增且未经有效来源认领的账及配套余额校正；保留原有账、已核实账及更正后的当前账。解除付款、期次、来源占用并暂停自动记费；失败全部回滚。",
+        "新请求不可恢复或写入已删除计划。原请求只回放原结果。重建用新ID，明确认领原费用合同；仅释放plan_removed_at，用户抑制/取消不复活。完整保留付款组可通过loans.source重新关联，不重复记钱。旧loans.archiveInstallment仍仅归档。已归档旧逐期费用可经用户逐笔明确确认后携带reviewedCreations；仅限原归属NULL、有原逐期审计且没有来源/改绑/独立创建证据的费用，确认随删除事务写入创建归属和审计，失败一起回滚，不扩大撤销范围或绕过外部依赖。"
+      ]
+    },
+    "loans.retainedCharge": {
+      "kind": "read",
+      "data": [
+        "chargeId"
+      ],
+      "returns": "{charge,contractId,accountId,cutoff}",
+      "rules": [
+        "只读取已删除计划留下的有效费用；支持原费用维护入口和明确合同重建，不恢复旧计划。"
+      ]
+    },
+    "loans.retainedCharges": {
+      "kind": "read",
+      "data": [
+        "accountId?",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": "{items:[{chargeId,component,chargeDate,amountMinor,accountName,loanName}],total,nextCursor}",
+      "rules": [
+        "只列出当前用户已删除计划保留的有效费用；pageSize 1..40，签名游标绑定用户和账户；沿用 retainedCharge 详情和明确合同重建。"
+      ]
+    },
+    "loans.chargeImpact": {
+      "kind": "read",
+      "data": [
+        "loanId? (required unless detached)",
+        "chargeId",
+        "operation",
+        "amountMinor?",
+        "eventId?",
+        "detached? (retained fee only)"
+      ],
+      "returns": "{chargeId,loanVersion,chargeVersion,oldAmountMinor,amountMinor,deltaMinor,chargeDate,dependencies,canChange,previewToken}"
+    },
+    "loans.changeCharge": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "loanId? (required unless detached)",
+        "chargeId",
+        "detached? (retained fee only)",
+        "operation",
+        "amountMinor?",
+        "eventId?",
+        "confirmed",
+        "previewToken",
+        "destinationAccountId? (refund)",
+        "occurredLocalAt? (refund)",
+        "timezoneOffsetMinutes? (refund)"
+      ],
+      "returns": "{loanId,version,chargeId,refundId,deltaMinor,eventId,updateVersion}",
+      "rules": [
+        "Signed preview binds uid, loan/contract/charge/transaction versions, event and dependencies. Adjust net amount, suppress/explicit restore, pause/cancel future or explicitly recognize distinct additional bank fee. No client-only accrued evidence. Paid/refunded/source dependencies block partial maintenance. Audit preserves history.",
+        "One-off coverage children also block ordinary adjustment/deletion. Explicit actual refund creates a linked refund with cumulative/date/account guards; future cancellation never creates one. Suppressed charges require explicit restore."
+      ]
+    },
+    "loans.endCharges": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "reason",
+        "confirmed"
+      ],
+      "returns": "{loanId,version}",
+      "rules": [
+        "Pause authorization; cancel unoccurred future charges for settled/waiver/contract_cancelled, pause for rate_changed. Never create a refund, payment or principal change."
+      ]
+    },
+    "loans.dueCharges": {
+      "kind": "read",
+      "data": [
+        "loanId?",
+        "contractId?",
+        "confirmed?"
+      ],
+      "returns": "{cutoff,count,amountMinor,batchLimit,recheckAfterMs}",
+      "rules": [
+        "Pure read; server Asia/Shanghai cutoff, active authorization and liability/category, inclusive start/end. once mode requires explicit contract and confirmation.",
+        "Same scope/identity and emergency stop checks as sync; no client-supplied cutoff.",
+        "recheckAfterMs is at most 30000 and ends by the next server Asia/Shanghai business day. Only completed checks may be reused, bounded by request start, scope, observed revision and existing read-cache mutation generations; failures or unfinished sync never qualify."
+      ]
+    },
+    "loans.dueThisMonth": {
+      "kind": "read",
+      "data": [
+        "month"
+      ],
+      "returns": "{month,periodCount,dueMinor,items:[{loanId,loanName,accountName,periodNumber,dueDate,outstandingMinor}]}",
+      "rules": [
+        "只读首页提醒聚合与本月待还明细。month=YYYY-MM 由客户端按本地时区给出，服务端换算当月到期区间；只算未取消、贷款未归档删除的期次。已还部分按有效还款分摊扣除，结清的期次既不进笔数也不进金额；非法月份直接拒绝，不静默取错区间。"
+      ]
+    },
+    "loans.syncCharges": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "loanId?",
+        "contractId?",
+        "confirmed?",
+        "limit?"
+      ],
+      "returns": "{cutoff,created,createdCount,amountMinor,hasMore}",
+      "rules": [
+        "At most 40 due charges under original user lock and one atomic receipt. Server cutoff only; original billing dates; origin=loan_plan and unverified basis. No asset, principal or payment mutation. Pagination retries select remaining charge identities; committed prior batches remain committed. Active account/category/loan required.",
+        "Explicit contract scope never includes other auto contracts. Scope ids must belong to trusted user. CATLEDGER_LOAN_SYNC_DISABLED=1 blocks new synchronization; original successful receipts remain replayable."
+      ]
+    },
+    "loans.recordUpfrontFee": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "confirmed",
+        "mode (new|existing)",
+        "accountId?",
+        "categoryId?",
+        "amountMinor?",
+        "occurredLocalAt?",
+        "timezoneOffsetMinutes?",
+        "transactionId?",
+        "transactionVersion?",
+        "covers? (period numbers)"
+      ],
+      "returns": "{loanId,version,chargeId,transactionId}; explicit occurred upfront fee only, no history prerequisite. Reuse stable upfront:fee identity and existing protected contracts. New expense uses actual asset or loan account/date; existing mode preserves exact expense/account/time/amount. No balance adjustment or loan principal change. Optional period-fee coverage must equal the actual amount and only cover unrecorded fees; direct asset payment is already settled and its covered periods cannot pay it again. Atomic fee/coverage/audit/version/receipt; no automatic authorization."
+    },
+    "loans.chargePlan": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "configuration?",
+        "pageSize?",
+        "cursor?",
+        "periodNumber? (0 for non-periodic, 1..600 for one period)"
+      ],
+      "returns": "{loanId,loanVersion,contract,items,preview,totalCharges,oneOffCount,previewCount,previewAmountMinor,duePreviewCount,duePreviewMinor,nextCursor,candidates,moreCandidates,issues,moreIssues,priorContracts,cutoff,recordedMinor,unverifiedMinor}",
+      "rules": [
+        "Pure read; page size 1..40, cursor binds uid/loan/revision/period/configuration digest. Preview classifies existing, covered, outside, future and due; server cutoff. Saved period components precede generated plan. Preview is not authorization; exact transaction coverage revalidated on write.",
+        "Items expose balanceAdjustmentId (protected paired historical balance preservation; outstanding zero), amountMinor, refundMinor, netAmountMinor, settledMinor, outstandingMinor (floor zero), state and basis. Summary recorded/unverified are net recorded amounts. Unknown attribution stays a candidate."
+      ]
+    },
+    "loans.configureCharges": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "confirmed",
+        "originKind",
+        "mode (auto|once|paused)",
+        "fromDate",
+        "throughDate",
+        "firstChargeDate",
+        "historyChoice (continue|catch_up)",
+        "fixedConfirmed",
+        "dateConfirmed",
+        "coverageConfirmed",
+        "interestCategoryId?",
+        "feeCategoryId?",
+        "baselineCoveredThrough?",
+        "referenceLabel?",
+        "contractId?",
+        "coverage?",
+        "oneOffCharges?",
+        "periodCharges?",
+        "upfrontChargeDate? (required for nonzero upfront fee)"
+      ],
+      "returns": "{loanId,version,contractId,contractVersion,planVersion}",
+      "rules": [
+        "Trusted uid and original user lock. Stable (uid,contract_id,charge_key) independent of amount/request/version. Authorization does not write transactions. Historical coverage claims an exact expense on the liability account; one-off actual costs cover enumerated schedule items. Existing recorded/suppressed history cannot be overwritten or resurrected by a revision. Archived no-reference contracts must be explicitly claimed."
+      ]
+    },
+    "loans.pauseCharges": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version"
+      ],
+      "returns": "{loanId,version}",
+      "rules": [
+        "Revoke future synchronization, preserve financial records and append authorization audit. Archive also pauses authorization; restore never resumes it."
+      ]
+    },
+    "loans.installments": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "pageSize?",
+        "cursor?",
+        "detailSnapshot?"
+      ],
+      "returns": "{loanId,loanVersion,archived,summary,items,nextCursor,snapshot?}",
+      "rules": [
+        "Trusted uid, consistent snapshot; full original schedule overlaid with saved period revisions. Page size 1..40, signed cursor binds user/loan/version/dataRevision. detailSnapshot=true cannot combine with cursor; it returns one consistent schema1 fixed-column snapshot of all 1..600 periods plus original cost rows. The client checks loanVersion, complete row count and numbering before accepting selections; incomplete snapshots cannot be saved. Ordinary pagination remains compatible.",
+        "completedThrough is the contiguous completed prefix from explicit manual confirmation and actual paid periods; imported source terms never prove payment. Manual/actual counts and estimated/real principal remain separate. summary.repaymentPrompts contains up to 600 unreviewed periods before the latest bill, or historical paid periods awaiting the combined save. It never marks periods paid by itself. Schema2 retains ambiguous legacy through for review. Explicit unpaid/partial and legacy partial remain exceptions. Missing bills alone never mean overdue. Differences preserve original bank amounts."
+      ]
+    },
+    "loans.installment": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "periodNumber"
+      ],
+      "returns": "{loanId,loanVersion,archived,period,sources,moreSources,legacyPayments,repaymentAccountId}",
+      "rules": [
+        "Trusted uid and one valid period. Includes active/inactive sources (latest 40, moreSources flag) and up to 20 existing payment links; no write."
+      ]
+    },
+    "loans.installmentSources": {
+      "kind": "read",
+      "data": [
+        "accountId?",
+        "itemId?",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": "{items,nextCursor}",
+      "rules": [
+        "Only active unassigned items in trusted user scope; optional account/item filters bound to signed cursor. Page size 1..40; invalidated events or deleted/changed expense sources do not count."
+      ]
+    },
+    "loans.planCandidates": {
+      "kind": "read",
+      "data": [
+        "accountId",
+        "totalTerms?",
+        "planLabel?",
+        "principalMinor?",
+        "startMonth?"
+      ],
+      "returns": "{items,nextCursor}",
+      "rules": [
+        "Read-only review-page candidates: non-archived installment loans on the same account, newest first, at most 50. matched requires a known account, name, total terms and first-payment month, plus equal principal when supplied. Unknown facts remain blank and cannot auto-select a candidate; missing terms still allow manual selection. Never merge by similar amounts. No transaction, plan or binding is created by reading."
+      ]
+    },
+    "loans.confirmInstallments": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "repayments[{periodNumber,paid}]",
+        "coverage? [{chargeKey,transactionId,transactionVersion}]",
+        "oneOffCharges? [{key,component,amountMinor,chargeDate,transactionId,transactionVersion,covers}]"
+      ],
+      "returns": "{loanId,version}",
+      "rules": [
+        "One save atomically records selected historical paid periods, missing costs in original months and paired balance preservation on the same liability account. Reuse exact source/charge identities; do not manufacture bank repayments. No automatic write from default checkboxes or reads.",
+        "Preserve unselected and explicitly unpaid/partial periods. Persist historical principalMinor and period/loan version in progress.historyFacts and immutable audit. Undo the original amount, never the revised plan. Validate all active principal history. Persist fee historical_settled_minor separately from balance preservation; matched actual evidence records historical replacement amounts without double settlement. Unknown legacy confirmation amounts remain unchanged and require review. Actual paid/partial and sourced/refunded/settled costs remain protected. Explicit selection stops legacy auto mode. Version, trusted uid, unique fee keys, all-or-nothing transaction and receipt apply.",
+        "Explicit coverage selects exact existing expense IDs and transactionVersion, preserving original account, date, amount and creation provenance; it creates neither expense nor balance adjustment. Recheck user, transaction version, amount, refunds, source/payment/fee occupancy under the user lock. One original expense cannot represent multiple independent fees; oneOffCharges enumerates exact same-component coverage whose sum equals the original amount. Only selected paid periods are eligible. Similarity is recommendation only, and no actual payment or automatic authorization is inferred."
+      ]
+    },
+    "loans.setInstallmentProgress": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "completedThrough?",
+        "periodNumber?",
+        "status?",
+        "bookCosts?",
+        "confirmedBatch? (required with completedThrough)"
+      ],
+      "returns": "{loanId,version}",
+      "rules": [
+        "Progress schema2: one period completed only changes that exception; completedThrough requires confirmedBatch=true and preserves unpaid/partial and outside-range exceptions. Source maximum period never proves payment; legacy ambiguous through is retained for review; explicit historical confirmation and actual payments stay separate.",
+        "Progress creates no principal/cash transaction. Legacy bookCosts remains only for unconfigured installments with existing guards; a configured charge contract must use authorized charge commands. All changes, versions and original receipt remain atomic."
+      ]
+    },
+    "loans.linkInstallmentSource": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "itemId"
+      ],
+      "returns": "{loanId,version,linked}",
+      "rules": [
+        "Same user/account and compatible term count; selected active source and its exact installment reference / same-transaction source group attach under one user lock; an existing assignment to another active installment rejects. Ambiguous identities/amounts reject atomically. Amount/date similarity never establishes identity.",
+        "A first imported fee can reuse a matching manual fee. Different active bank identities for the same cost component must be resolved, never silently combined. Duplicate import expense is soft-replaced with preserved evidence; refund/loan-payment dependencies block replacement."
+      ]
+    },
+    "loans.reconcileInstallmentSources": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version"
+      ],
+      "returns": "{loanId,version,linked}",
+      "rules": [
+        "Auto-heals an existing installment plan by attaching still-unlinked active sources on the same account whose (plan_label + period_number) exactly matches a source already linked to this plan — the historical case where a plan was created from principal only and later interest/fee rows of the same plan+period were left unassigned. Attribution only: never reposts costs, never creates transactions or balance adjustments, never steals sources bound to another plan.",
+        "Idempotent under the user lock: no matching orphans returns linked=0 and does not advance the loan version; linking one or more advances version by one and issues a frozen receipt. Ambiguous or mismatched sources are rejected atomically, never silently merged."
+      ]
+    },
+    "loans.archiveInstallment": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "archived"
+      ],
+      "returns": "{loanId,version,archived}",
+      "rules": [
+        "Archive only an installment management record: detach its source items and release reference bindings atomically with archiving/version/receipt under the trusted user lock. Keep all source identities and financial transactions; valid sources become unassigned and can rebuild or relink without reposting costs. Restore only reopens the management record, never steals sources already reassigned. Expected version and frozen receipt required."
+      ]
+    },
+    "loans.removeInstallmentItem": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "itemId",
+        "itemVersion"
+      ],
+      "returns": "{loanId,version}",
+      "rules": [
+        "Only a same-user manual cost item with expected loan/item versions. Imported evidence/refund dependencies block removal. Soft-delete its expense and deactivate item atomically; preserve audit and independent progress."
+      ]
+    },
+    "reads.validate": {
+      "kind": "read",
+      "data": [],
+      "returns": "{readVersion:1,uid,dataRevision,unchanged:false}",
+      "rules": [
+        "trusted identity and active status, same read-only snapshot",
+        "no aggregate queries; coalesced once per foreground"
+      ]
+    },
+    "loans.bookRepayment": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "totalMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "repayment",
+        "note?"
+      ],
+      "returns": "{paymentId,version,pending,transactionCount,loans}",
+      "rules": [
+        "repayment: confirmed=true, mode=defer|associate, assetAccountId, liabilityAccountId (other_liability), explicit principalMinor/interestMinor/feeMinor, expense|accrued treatment and expense category IDs; exact total. associate additionally requires loanId/loanVersion. Financial transactions, confirmed details and optional loan share commit atomically.",
+        "associate may include repayment.chargeAllocations to prove recorded fees; deferred unknown attribution cannot use an unsupported accrued claim."
+      ]
+    },
+    "loans.assignRepayment": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "paymentId",
+        "version",
+        "loanId",
+        "loanVersion",
+        "confirmed"
+      ],
+      "returns": "{paymentId,version,pending:false,loans}",
+      "rules": [
+        "Only active confirmed repayments with no allocations. Confirm stored composition and matching account/baseline; update loan/payment versions without adding transactions."
+      ]
+    },
+    "loans.releaseRepayment": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "paymentId",
+        "version",
+        "confirmed"
+      ],
+      "returns": "{paymentId,version,released:true}",
+      "rules": [
+        "Release only pending confirmed repayments, preserving all financial transactions. Never silently detach an allocated payment."
+      ]
+    },
+    "loans.transaction": {
+      "kind": "read",
+      "data": [
+        "transactionId"
+      ],
+      "returns": [
+        "state (none|candidate|allocatable|linked|replaced)",
+        "transaction",
+        "targetAccount?",
+        "payment?",
+        "allocations (whole-payment shares; first 3 actual periods, periodCount, unallocated components)",
+        "evidence (bounded raw hints, never confirmed financial facts)"
+      ],
+      "rules": [
+        "Trusted uid; consistent read-only snapshot; active linked/replaced relations take priority for every account type. Only explicitly confirmed active repayments without loan allocations return candidate with payment and repayment details. An active unoccupied single asset-to-credit transfer returns allocatable after source validation; no allocation is inferred. Other ordinary transfers return none. No inferred installment, amount or period; revoked relations are not reported active."
+      ]
+    },
+    "loans.unassigned": {
+      "kind": "read",
+      "data": [
+        "month?",
+        "accountId? (liability; credit accepted with empty results)",
+        "pageSize? (1..40)",
+        "cursor?"
+      ],
+      "returns": [
+        "month",
+        "accountId",
+        "items",
+        "nextCursor"
+      ],
+      "rules": [
+        "Only confirmed active repayments without loan allocations; whole financial group appears once; returns total and repaymentTotalMinor; cursor binds uid/month/account. Credit bill repayments stay outside this pending-confirmed list; their transaction details offer explicit installment allocation."
+      ]
+    },
+    "transactions.deleteMany": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "items[{transactionId,version}]"
+      ],
+      "returns": [
+        "deleted",
+        "deletedCount",
+        "transactionIds"
+      ],
+      "rules": [
+        "Nonempty unique current-user manual/import ordinary transactions without a 100-item cap; validate the complete selected set, then physically delete in one user-locked transaction with bounded SQL chunks. All-or-nothing; versions, complete single-source payment/repayment allocation sets, active and historical loan/fee references, final cash balance and refunds outside selection validated; archived accounts allowed; selected refunds are deleted before originals. Remove exclusive event links and review transaction candidates, preserve shared evidence/files and historical posting facts. Detach only unprotected soft-deleted refund references, keeping those historical rows. Minimal receipt contains only deletion results, never a recovery copy; replay cannot delete later additions or reimports."
+      ]
+    },
+    "dataExports.start": {
+      "kind": "mutation",
+      "data": [
+        "requestId"
+      ],
+      "returns": [
+        "exportId",
+        "format",
+        "schemaVersion",
+        "startedAt",
+        "expiresAt",
+        "tables",
+        "maxRows",
+        "maxBytes"
+      ],
+      "rules": [
+        "One private job per authenticated user; one hour expiry; start/replay does not change business revision."
+      ]
+    },
+    "dataExports.page": {
+      "kind": "read",
+      "data": [
+        "exportId",
+        "cursor?"
+      ],
+      "returns": [
+        "text",
+        "bytes",
+        "rows",
+        "totalRows",
+        "nextCursor",
+        "completeToken"
+      ],
+      "rules": [
+        "Signed keyset/UTF-8 fragment cursor; 50 completed rows and 65536 UTF-8 text bytes maximum; unchanged business revision required."
+      ]
+    },
+    "dataExports.finish": {
+      "kind": "command",
+      "data": [
+        "exportId",
+        "completeToken"
+      ],
+      "returns": [
+        "exportId",
+        "complete",
+        "rows",
+        "format",
+        "startedAt"
+      ],
+      "rules": [
+        "Only signed terminal token; active user lock checks revision; immutable completed result can be replayed."
+      ]
+    },
+    "loans.periods": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "pageSize?",
+        "cursor?",
+        "periodIds?"
+      ],
+      "returns": "{loanId,loanName,loanVersion,summary,items,nextCursor}; page 1..40; optional at most 40 selected IDs, same loan only; signed cursor includes loan version. Summary includes unpaid principal/interest/fee, next due date, remaining principal and explicit gap; never mark paid by date; paidPeriods counts fully paid active plan rows from actual allocations; installment setup adds historicalPaidTerms and totalTerms, displayed separately from actual paid periods."
+    },
+    "loans.savePeriod": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "loanVersion",
+        "periodId?",
+        "version?",
+        "periodNumber",
+        "dueDate",
+        "principalMinor",
+        "interestMinor",
+        "feeMinor",
+        "cancelled?",
+        "historicalRevision?"
+      ],
+      "returns": "{loanId,loanVersion,periodId,version}; period number 1..9999 unique per loan, explicit nonnegative components with positive total. Revision preserves original plan; cannot reduce below paid components or cancel paid period; no Transaction writes; installment periodNumber must be within scheduleTerms; historical rows require explicit historicalRevision=true. No cash or progress writes. Changed future charge components pause the affected planned fees; explicit reauthorization adopts saved period amounts without overwriting recorded history."
+    },
+    "loans.allocatePeriods": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "loanVersion",
+        "paymentId",
+        "version",
+        "items",
+        "confirmed"
+      ],
+      "returns": "{paymentId,version,loanId,loanVersion,allocatedPeriods}; replace this active repayment's allocations for one loan, 0..40 unique versioned periods with explicit principal/interest/fee. Preserve old rows; each component bounded by payment share and period remainder; unallocated remainder remains explicit"
+    },
+    "loans.planAllocation": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "paymentId"
+      ],
+      "returns": "{loanVersion,payment,share,items,unallocated}; max 40 active period allocations for current loan; actual allocated+unallocated components equal repayment share"
+    },
+    "loans.periodHistory": {
+      "kind": "read",
+      "data": [
+        "periodId",
+        "kind",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": "{periodId,kind,items,nextCursor}; kind=plan|payment; page 1..40, user/period/kind signed cursor; preserve plan revisions and replaced/reversed actual allocation facts"
+    },
+    "loans.previewPlan": {
+      "kind": "read",
+      "data": [
+        "loanId? (read stored params and original principal when setup exists, else principal baseline)",
+        "principalMinor? (required without loanId)",
+        "scheduleMethod",
+        "scheduleTerms",
+        "measurementKind",
+        "quoteType?",
+        "ratePpm?",
+        "repaymentMinor?",
+        "feePerTermMinor?",
+        "feeUpfrontMinor?",
+        "firstPaymentDate?",
+        "principalRounding?",
+        "installmentSetup?",
+        "discountKind? (without installmentSetup)",
+        "discountValue? (without installmentSetup)"
+      ],
+      "returns": "{periods:[{periodNumber,dueDate,principalMinor,interestMinor,feeMinor}],summary:{totalPaymentMinor,totalInterestMinor,totalFeeMinor,derivedRatePpm?,remainingPrincipalMinor?,historicalPaidTerms?,totalTerms?,upfrontFeeMinor?}}; new setup slices original N historical terms, preserves original period numbers, omits zero-payment tasks; optional remaining/history fields only with setup.",
+      "rules": [
+        "Read-only trusted user snapshot; supplied setup original principal is authoritative over principalMinor. Legacy date fallback and upfront-inclusive totals remain; new setup requires explicit first date when saved and remaining totals exclude upfront fee. Zero payment months are not persisted. No auto-paid-by-date behavior."
+      ]
+    },
+    "loans.generatePlan": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "confirmed"
+      ],
+      "returns": "{loanId,loanVersion,generatedPeriods}",
+      "rules": [
+        "Stored params and original principal (new setup) or positive baseline (legacy) required; existing periods including cancelled reject LOAN_PLAN_EXISTS. Zero remaining periods rejects validation. Under one user lock/transaction insert only unpaid historical suffix, preserving original numbers and version-1 revisions, and advance loan version. No Transaction/payment/balance writes; later maintenance through savePeriod/allocatePeriods. Replay frozen receipt."
+      ]
+    },
+    "loans.rebuildPlan": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "name?",
+        "institution?",
+        "scheduleMethod?",
+        "scheduleTerms?",
+        "measurementKind?",
+        "quoteType?",
+        "ratePpm?",
+        "repaymentMinor?",
+        "feePerTermMinor?",
+        "feeUpfrontMinor?",
+        "firstPaymentDate?",
+        "principalRounding?",
+        "installmentSetup?",
+        "confirmed"
+      ],
+      "returns": "{loanId,loanVersion,generatedPeriods}",
+      "rules": [
+        "Edit the install-plan backbone (original principal/terms/paid-through/method/rate) of an existing installment and regenerate its periods atomically. Rejected when the loan already has active payment allocations (LOAN_PLAN_HAS_PAYMENTS) or active installment items (LOAN_PLAN_HAS_ITEMS) — those are real money/history and must not be wiped; use savePeriod/adjust entry or unlink first. Provided fields override; omitted fields keep current. Recompute leaves only the unpaid suffix (same as generatePlan). Deletes old periods/revisions without payment or item dependencies, inserts new periods, updates loan backbone and advances version in one transaction. No Transaction/payment/balance writes. Replay frozen receipt."
+      ]
+    },
+    "loans.list": {
+      "kind": "read",
+      "data": [
+        "accountId? (filter before paging; bound to cursor)",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": "{items: Loan[], pendingRepaymentCount: number, nextCursor: string|null}; pageSize 1..40; signed user-scoped cursor; pendingRepaymentCount uses the same optional accountId filter; archived records excluded; installmentSummary holds progress-derived remaining amounts without changing ledger principal"
+    },
+    "loans.get": {
+      "kind": "read",
+      "data": [
+        "loanId"
+      ],
+      "returns": "{loan: Loan}"
+    },
+    "loans.create": {
+      "kind": "mutation",
+      "data": [
+        "requestId",
+        "repayments? [{periodNumber,paid}]",
+        "name",
+        "institution?",
+        "kind",
+        "accountId",
+        "baselinePrincipalMinor",
+        "baselineDate",
+        "startDate?",
+        "endDate?",
+        "repaymentMethod?",
+        "scheduleMethod?",
+        "scheduleTerms?",
+        "measurementKind?",
+        "quoteType?",
+        "ratePpm?",
+        "repaymentMinor?",
+        "feePerTermMinor?",
+        "feeUpfrontMinor?",
+        "firstPaymentDate?",
+        "principalRounding?",
+        "installmentSetup?",
+        "sourceItemId? (create only, atomic attachment)",
+        "importOrigin? {updateId,eventId} (review-only installment creation; server validated)",
+        "importAccountDraft? {snapshotId,name,type:credit,currency:CNY,creationKey?} (requires importOrigin and sealed current local snapshot; accountId must be the stable draft ID; creationKey is validated against the original account issue members, legacy keyless requests retain their existing identity)",
+        "chargeContractId? (explicit archived contract reuse, create only)",
+        "generatePlan? (true required with installmentSetup)",
+        "confirmed? (true required when generatePlan)",
+        "originKind? (cash_borrowing)",
+        "coverage? [{chargeKey,transactionId,transactionVersion}]",
+        "oneOffCharges? [{key,component,amountMinor,chargeDate,transactionId,transactionVersion,covers}]"
+      ],
+      "returns": "{loanId,version,generatedPeriods?,importOrigin?,importAccount?}; importAccountDraft creates or reuses the same draft-ID credit account atomically with the plan, with zero balance and no transactions; later import reuses matching attributes and rejects changed/archived accounts. The explicitly created account remains when the draft is abandoned. importOrigin records a validated review source in the mutation receipt so abandonment only retires unchanged unused plans created by that draft; client planIds alone are never creation proof. new installmentSetup requires kind=installment and confirmed atomic metadata + remaining periods/revisions + receipt; supplied baseline must equal computed remaining principal. Legacy metadata-only requests stay supported. Metadata/plan creation never creates principal or future-fee transactions. Optional sourceItemId attaches pending bank items in the same transaction; source conflicts roll back the entire creation. With repayments, create the full plan with zero legacy historical prefix, compute baseline from the explicit paid selections, and atomically reuse/book original-month historical fees with paired balance preservation. Empty selections create no fees. cash_borrowing with explicit origin permits zero initial baseline and records actual drawdown separately.",
+      "rules": [
+        "Explicit coverage selects exact existing expense IDs and transactionVersion, preserving original account, date, amount and creation provenance; it creates neither expense nor balance adjustment. Recheck user, transaction version, amount, refunds, source/payment/fee occupancy under the user lock. One original expense cannot represent multiple independent fees; oneOffCharges enumerates exact same-component coverage whose sum equals the original amount. Only selected paid periods are eligible. Similarity is recommendation only, and no actual payment or automatic authorization is inferred."
+      ]
+    },
+    "loans.update": {
+      "kind": "versioned-mutation",
+      "data": [
+        "requestId",
+        "loanId",
+        "version",
+        "name",
+        "institution?",
+        "kind",
+        "accountId",
+        "baselinePrincipalMinor",
+        "baselineDate",
+        "startDate?",
+        "endDate?",
+        "repaymentMethod?",
+        "scheduleMethod?",
+        "scheduleTerms?",
+        "measurementKind?",
+        "quoteType?",
+        "ratePpm?",
+        "repaymentMinor?",
+        "feePerTermMinor?",
+        "feeUpfrontMinor?",
+        "firstPaymentDate?",
+        "principalRounding?",
+        "installmentSetup?"
+      ],
+      "returns": "{loanId,version}; omitted installmentSetup preserves stored setup. Existing new-style periods lock original principal, history, discounts, schedule fields and baseline. Name/classification may change. Never regenerates plans; generatePlan is rejected here."
+    },
+    "loans.record": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "simplePeriod?",
+        "mode",
+        "kind",
+        "assetAccountId",
+        "totalMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "confirmed",
+        "allocations",
+        "source?",
+        "replacePayment?",
+        "unallocatedMinor?"
+      ],
+      "returns": "{paymentId,version,transactionCount,loans:[{loanId,version}],previousPaymentId?}; mode=new|associate|correctExisting; max 20 unique versioned loan allocations with explicit principalMinor/interestMinor/feeMinor and expense/accrued treatment; exact sum; associate only links an exact existing composition; correctExisting atomically replaces the whole source and preserves roots for reversal; replacePayment explicitly identifies a duplicate manual payment and its current loan versions; chargeAllocations[{chargeId?,transactionId?,component,amountMinor}] required as exact cost evidence for configured charge contracts. accrued clears recorded/baseline remaining capacity; expense first records a selected planned charge. Existing credit bill association may carry unallocatedMinor; all shares plus unallocated equal actual total; never duplicate a source. Optional allocations[].period={periodNumber,version} binds that confirmed repayment to one period in the same transaction and receipt; version 0 requires a derived, unsaved period. Reject cancelled/stale/overallocated periods and cost evidence from another period. Inline binding applies to a new payment group, including association with existing transactions; existing group correction may retain a versioned inline period, deducting its previous capacity atomically; historical replacement requires its period basis. No extra financial write occurs just to bind a period. simplePeriod=true only accepts new repayment with one loan and one period: reuse exact fee keys or book missing fees on the liability account, automatically bind accrued cost allocations, then save one real asset payment and period allocation in the same transaction. Only explicit association to the confirmed period may replace historical principal/fee coverage; new payments cannot reinterpret history as payable; protect partial/paid/stale/cancelled periods and all existing dependencies."
+    },
+    "loans.source": {
+      "kind": "read",
+      "data": [
+        "transactionIds"
+      ],
+      "returns": "{source:{transactionIds,fingerprint,event},transactions,evidence,retainedCharges}; select 1..60 current-user transactions; expands one imported event to all active members; signed complete transaction/event/update versions; no amount/date automatic match; retained whole payment expands by deletion snapshot and exact transaction versions, including protected expense components for association without new money"
+    },
+    "loans.correct": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "paymentId",
+        "version",
+        "loans",
+        "kind",
+        "assetAccountId",
+        "totalMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "confirmed",
+        "allocations"
+      ],
+      "returns": "{paymentId,version,previousPaymentId,transactionCount,loans}; preserve previous reversed payment; check old/new loan versions, final cash and principal atomically; imported source total/account/time fixed; associate corrections keep origin mode and original transactions, replacing only the payment allocations; preserve unallocatedMinor and historical principal/fee replacement"
+    },
+    "loans.reverse": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "paymentId",
+        "version",
+        "loans",
+        "confirmed"
+      ],
+      "returns": "{paymentId,version,reversed,loans}; current versions for every allocated loan; reverse whole group or reject without partial changes"
+    },
+    "loans.payment": {
+      "kind": "read",
+      "data": [
+        "paymentId"
+      ],
+      "returns": "{payment,repayment?,allocations,transactions,chargeAllocations,unallocatedMinor}; pending confirmed payments have empty allocations; max 20 loans / 60 transactions, current loan versions plus frozen confirmedLoanVersion; a single active period per allocation returns period={periodNumber,version}"
+    },
+    "loans.payments": {
+      "kind": "read",
+      "data": [
+        "loanId",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": "{items,nextCursor}; pageSize 1..40, signed user/loan scope, includes reversal history"
+    },
+    "transactions.commandResult": {
+      "kind": "read",
+      "data": [
+        "requestId",
+        "commandAction"
+      ],
+      "returns": [
+        "action",
+        "receiptId",
+        "result"
+      ],
+      "scope": "current user frozen transaction, loan, accounts.archive or accounts.restore write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED"
+    },
     "catalog.get": {
       "kind": "read",
       "data": [],
-      "returns": ["uid", "accounts", "categories"],
-      "accounts": ["accountId", "type", "nature", "name", "currency", "version", "archived"],
-      "categories": ["id", "kind", "systemKey", "parentId (nullable)", "name", "sortOrder", "version"],
+      "returns": [
+        "uid",
+        "accounts",
+        "categories"
+      ],
+      "accounts": [
+        "accountId",
+        "type",
+        "nature",
+        "name",
+        "currency",
+        "version",
+        "archived"
+      ],
+      "categories": [
+        "id",
+        "kind",
+        "systemKey",
+        "parentId (nullable)",
+        "name",
+        "sortOrder",
+        "version"
+      ],
       "consistency": "single read-only snapshot; active categories; no balances or initialization writes"
     },
     "bootstrap": {
       "kind": "read-idempotent",
       "data": [],
-      "returns": ["initialized", "uid", "isNewUser", "nickname", "categories"],
-      "rules": ["nickname is the saved account display name or an empty string before the first selection; uid and ownership remain unchanged", "Current WeChat identity and active status are always checked. initialization_version >= 1 uses a consistent read-only snapshot for identity, revision and complete active categories without locks or writes. Missing/outdated initialization enters the existing atomic locked path and marks the completed version; the marker alone does not increment dataRevision."]
+      "returns": [
+        "initialized",
+        "uid",
+        "isNewUser",
+        "nickname",
+        "categories"
+      ],
+      "rules": [
+        "nickname is the saved account display name or an empty string before the first selection; uid and ownership remain unchanged",
+        "Current WeChat identity and active status are always checked. initialization_version >= 1 uses a consistent read-only snapshot for identity, revision and complete active categories without locks or writes. Missing/outdated initialization enters the existing atomic locked path and marks the completed version; the marker alone does not increment dataRevision."
+      ]
     },
-    "profile.get": {"kind": "read", "data": [], "returns": ["nickname"], "rules": ["Current trusted WeChat identity only; an empty string means no saved nickname"]},
-    "profile.update": {"kind": "idempotent-mutation", "data": ["requestId", "nickname", "previousNickname"], "returns": ["nickname"], "rules": ["Trim and save 1..6 Unicode characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"]},
+    "profile.get": {
+      "kind": "read",
+      "data": [],
+      "returns": [
+        "nickname"
+      ],
+      "rules": [
+        "Current trusted WeChat identity only; an empty string means no saved nickname"
+      ]
+    },
+    "profile.update": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "nickname",
+        "previousNickname"
+      ],
+      "returns": [
+        "nickname"
+      ],
+      "rules": [
+        "Trim and save 1..6 Unicode characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"
+      ]
+    },
     "dashboard.get": {
       "kind": "read",
-      "data": ["month", "summaryScope? (month|all; defaults to month)"],
-      "returns": ["month", "summaryScope", "netWorthMinor", "summary", "cashFlowTrend", "accounts", "recentTransactions"],
-      "rules": ["summaryScope=all aggregates every non-deleted formal transaction for the trusted user, independently of the trend month. Linked refunds reduce expense; transfers, principal and balance adjustments are not income or expense. Net worth remains current account book balances. The home card requests all; legacy requests and statistics retain monthly summaries."]
+      "data": [
+        "month",
+        "summaryScope? (month|all; defaults to month)"
+      ],
+      "returns": [
+        "month",
+        "summaryScope",
+        "netWorthMinor",
+        "summary",
+        "cashFlowTrend",
+        "accounts",
+        "recentTransactions"
+      ],
+      "rules": [
+        "summaryScope=all aggregates every non-deleted formal transaction for the trusted user, independently of the trend month. Linked refunds reduce expense; transfers, principal and balance adjustments are not income or expense. Net worth remains current account book balances. The home card requests all; legacy requests and statistics retain monthly summaries."
+      ]
     },
     "statistics.get": {
       "kind": "read",
-      "data": ["month", "trendEndMonth? (YYYY-MM; defaults to month)"],
-      "returns": ["month", "trendEndMonth", "summary", "daily", "cashFlowTrend", "metrics", "uncategorized", "expenseCategories", "incomeCategories"]
+      "data": [
+        "month",
+        "trendEndMonth? (YYYY-MM; defaults to month)"
+      ],
+      "returns": [
+        "month",
+        "trendEndMonth",
+        "summary",
+        "daily",
+        "cashFlowTrend",
+        "metrics",
+        "uncategorized",
+        "expenseCategories",
+        "incomeCategories"
+      ]
     },
     "accounts.list": {
       "kind": "read",
       "data": [],
-      "returns": ["accounts (each with nullable statementDay, repaymentDay, creditLimitMinor)", "liabilitySettingsVersion=1"]
+      "returns": [
+        "accounts (each with nullable statementDay, repaymentDay, creditLimitMinor)",
+        "totals={assetsMinor,liabilitiesMinor,netWorthMinor}（仅未归档账户）",
+        "liabilitySettingsVersion=1"
+      ]
     },
     "accounts.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "type", "name", "currency", "openingDisplayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes", "statementDay?", "repaymentDay?", "creditLimitMinor?"],
+      "data": [
+        "requestId",
+        "type",
+        "name",
+        "currency",
+        "openingDisplayBalanceMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "statementDay?",
+        "repaymentDay?",
+        "creditLimitMinor?"
+      ],
       "returns": "account"
     },
     "accounts.createBatch": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "accounts"],
-      "returns": ["accounts"]
+      "data": [
+        "requestId",
+        "accounts"
+      ],
+      "returns": [
+        "accounts"
+      ]
     },
     "accounts.update": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "accountId", "version", "name?", "statementDay?", "repaymentDay?", "creditLimitMinor?"],
+      "data": [
+        "requestId",
+        "accountId",
+        "version",
+        "name?",
+        "statementDay?",
+        "repaymentDay?",
+        "creditLimitMinor?"
+      ],
       "returns": "account"
     },
     "accounts.archive": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "accountId", "version"],
+      "data": [
+        "requestId",
+        "accountId",
+        "version"
+      ],
       "returns": "account"
     },
     "accounts.restore": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "accountId", "version"],
+      "data": [
+        "requestId",
+        "accountId",
+        "version"
+      ],
       "returns": "account",
-      "rules": ["恢复原账户ID；仅修改停用状态及版本，不写账、不改变贷款本金、费用或自动记费授权。已活动且版本匹配时不重复递增账户版本；原请求只回放回执。活动账户重名返回ACCOUNT_NAME_CONFLICT，过期版本返回CONFLICT。"]
+      "rules": [
+        "恢复原账户ID；仅修改停用状态及版本，不写账、不改变贷款本金、费用或自动记费授权。已活动且版本匹配时不重复递增账户版本；原请求只回放回执。活动账户重名返回ACCOUNT_NAME_CONFLICT，过期版本返回CONFLICT。"
+      ]
+    },
+    "accounts.remove": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "accountId",
+        "version"
+      ],
+      "returns": "account",
+      "rules": [
+        "彻底删除账户：一个事务内按依赖链清理。余额调整(期初/校正)与已软删除流水连同其经济事件/导入溯源链接一并删除。仍存在真实收支流水时返回ACCOUNT_HAS_RECORDS(应先删该账户流水)；被贷款/分期/还款/费用合同/导入归属引用时返回ACCOUNT_HAS_LOANS(只能归档)。过期版本返回CONFLICT。外键ON DELETE RESTRICT为最终防线。"
+      ]
     },
     "accounts.correctBalance": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "accountId", "displayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes"],
+      "data": [
+        "requestId",
+        "accountId",
+        "displayBalanceMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes"
+      ],
       "returns": "account"
     },
     "categories.list": {
       "kind": "read",
       "data": [],
-      "returns": ["categories"]
+      "returns": [
+        "categories"
+      ]
     },
     "categories.unclassified": {
       "kind": "read",
-      "data": ["month"],
-      "returns": ["month", "groups", "categories"]
+      "data": [
+        "month"
+      ],
+      "returns": [
+        "month",
+        "groups",
+        "categories"
+      ]
     },
     "categories.assignTransactions": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "categoryId", "items"],
-      "returns": ["updatedCount"]
+      "data": [
+        "requestId",
+        "categoryId",
+        "items"
+      ],
+      "returns": [
+        "updatedCount"
+      ]
     },
     "categories.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "kind", "name", "parentId? (null or an active same-user same-kind root)"],
+      "data": [
+        "requestId",
+        "kind",
+        "name",
+        "parentId? (null or an active same-user same-kind root)"
+      ],
       "returns": "category"
     },
     "categories.update": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "categoryId", "version", "name"],
+      "data": [
+        "requestId",
+        "categoryId",
+        "version",
+        "name"
+      ],
       "returns": "category"
     },
     "categories.archive": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "categoryId", "version"],
+      "data": [
+        "requestId",
+        "categoryId",
+        "version"
+      ],
       "returns": "category"
     },
     "categories.restore": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "categoryId", "version"],
+      "data": [
+        "requestId",
+        "categoryId",
+        "version"
+      ],
       "returns": "category"
     },
     "categories.reorder": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "kind", "items", "parentId? (sibling scope; null means roots)"],
-      "returns": ["categories"]
+      "data": [
+        "requestId",
+        "kind",
+        "items",
+        "parentId? (sibling scope; null means roots)"
+      ],
+      "returns": [
+        "categories"
+      ]
     },
     "transactions.list": {
       "kind": "read",
-      "data": ["month? (required without importUpdateId)", "importUpdateId?", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "source? (manual|import)", "search?", "pageSize?", "cursor?"],
-      "returns": ["importUpdateId (applied filter or null)", "month", "date?", "source (null|manual|import; applied filter)", "summary? (first page only)", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
-      "rules": ["Signed cursor binds uid, normalized filters and dataRevision; changed revision returns READ_SNAPSHOT_CHANGED and requires a new first page", "Pages after the first omit summary and never run the monthly summary query; summary retains the selected period totals regardless of row filters", "source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import", "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals", "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"]
+      "data": [
+        "month? (required without importUpdateId)",
+        "importUpdateId?",
+        "date?",
+        "accountId?",
+        "categoryId?",
+        "uncategorized? (boolean; exclusive with categoryId)",
+        "source? (manual|import)",
+        "search?",
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": [
+        "importUpdateId (applied filter or null)",
+        "month",
+        "date?",
+        "source (null|manual|import; applied filter)",
+        "summary? (first page only)",
+        "transactions (origin; importContext?={updateId,eventId})",
+        "nextCursor"
+      ],
+      "rules": [
+        "Signed cursor binds uid, normalized filters and dataRevision; changed revision returns READ_SNAPSHOT_CHANGED and requires a new first page",
+        "Pages after the first omit summary and never run the monthly summary query; summary retains the selected period totals regardless of row filters",
+        "source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import",
+        "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals",
+        "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"
+      ]
     },
     "transactions.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "originalVersion?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": [
+        "requestId",
+        "type",
+        "sourceAccountId?",
+        "destinationAccountId?",
+        "categoryId?",
+        "originalTransactionId?",
+        "originalVersion?",
+        "amountMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "note?"
+      ],
       "returns": "transaction"
     },
     "transactions.update": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "originalVersion?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": [
+        "requestId",
+        "transactionId",
+        "version",
+        "type",
+        "sourceAccountId?",
+        "destinationAccountId?",
+        "categoryId?",
+        "originalTransactionId?",
+        "originalVersion?",
+        "amountMinor",
+        "occurredLocalAt",
+        "timezoneOffsetMinutes",
+        "note?"
+      ],
       "returns": "transaction"
     },
     "transactions.refundable": {
       "kind": "read",
-      "data": ["pageSize? (1..40, default 20)", "limit? (legacy 1..100)", "cursor?", "month?", "accountId?", "search? (40 characters)", "occurredLocalAt?", "timezoneOffsetMinutes?", "originalTransactionId?", "editingTransactionId?", "amountMinor?", "feeCandidate?", "chargeCandidates? [{month,amountMinor}] (1..1200; requires feeCandidate and accountId)"],
+      "data": [
+        "pageSize? (1..40, default 20)",
+        "limit? (legacy 1..100)",
+        "cursor?",
+        "month?",
+        "accountId?",
+        "search? (40 characters)",
+        "occurredLocalAt?",
+        "timezoneOffsetMinutes?",
+        "originalTransactionId?",
+        "editingTransactionId?",
+        "amountMinor?",
+        "feeCandidate?",
+        "chargeCandidates? [{month,amountMinor}] (1..1200; requires feeCandidate and accountId)"
+      ],
       "returns": "{transactions,nextCursor}; signed cursor binds uid, query and dataRevision. Only active expenses with remaining capacity, no protected loan fee/payment members, and no later than the supplied refund UTC time; editing excludes the current refund from used capacity. Direct original IDs use the same eligibility. Each candidate has version/refundableMinor. Client sends originalVersion on create/update/linkRefund; current original state, version when supplied, date and aggregate capacity are rechecked under the write lock. feeCandidate excludes any refunded expense and active installment source; amountMinor selects exact amount, and chargeCandidates batches same-month/same-amount recommendations. Without month, explicit lookup spans all dates with the same pagination and user scope; recommendation never assigns a fee."
     },
     "transactions.linkRefund": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "originalTransactionId", "originalVersion?"],
+      "data": [
+        "requestId",
+        "transactionId",
+        "version",
+        "originalTransactionId",
+        "originalVersion?"
+      ],
       "returns": "transaction"
     },
     "transactions.setCategory": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "categoryId (nullable)"],
-      "returns": ["transactionId", "version", "categoryId"]
+      "data": [
+        "requestId",
+        "transactionId",
+        "version",
+        "categoryId (nullable)"
+      ],
+      "returns": [
+        "transactionId",
+        "version",
+        "categoryId"
+      ]
     },
     "transactions.delete": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version"],
-      "returns": ["transactionId", "deleted", "version"],
-      "rules": ["永久删除当前可信用户的普通手工或导入交易，版本、完整依赖与最小幂等回执在原事务中核验；返回version为删除结果版本，不代表仍存有交易行", "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户", "现金、完整退款组、同源付款分配组、贷款付款与费用及系统可恢复历史继续保护；来源证据、原文件、账户、分类和历史成功回执保留", "专属事件链接和交易候选清理；仅解除未受保护的旧软删除退款引用，不清旧软删除行。重导走原整理核对；系统更正、替换、撤销仍保留原软删除语义"]
+      "data": [
+        "requestId",
+        "transactionId",
+        "version"
+      ],
+      "returns": [
+        "transactionId",
+        "deleted",
+        "version"
+      ],
+      "rules": [
+        "永久删除当前可信用户的普通手工或导入交易，版本、完整依赖与最小幂等回执在原事务中核验；返回version为删除结果版本，不代表仍存有交易行",
+        "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户",
+        "现金、完整退款组、同源付款分配组、贷款付款与费用及系统可恢复历史继续保护；来源证据、原文件、账户、分类和历史成功回执保留",
+        "专属事件链接和交易候选清理；仅解除未受保护的旧软删除退款引用，不清旧软删除行。重导走原整理核对；系统更正、替换、撤销仍保留原软删除语义"
+      ]
     }
   },
   "categoryHierarchy": {

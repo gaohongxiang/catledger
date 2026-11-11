@@ -2,11 +2,12 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { statements } = require('../scripts/print-permanent-delete-grants')
 
-test('永久删除授权支持 CloudBase 带连字符的库名且只授予三张表', () => {
+test('永久删除/删账户授权支持 CloudBase 带连字符的库名且只授予四张表', () => {
   assert.deepEqual(statements({ database: 'cloud1-synthetic-test', user: 'api_runtime', host: '%' }), [
     "GRANT DELETE ON `cloud1-synthetic-test`.`catledger_transactions` TO 'api_runtime'@'%';",
     "GRANT DELETE ON `cloud1-synthetic-test`.`catledger_economic_event_transactions` TO 'api_runtime'@'%';",
-    "GRANT DELETE ON `cloud1-synthetic-test`.`catledger_review_issue_members` TO 'api_runtime'@'%';"
+    "GRANT DELETE ON `cloud1-synthetic-test`.`catledger_review_issue_members` TO 'api_runtime'@'%';",
+    "GRANT DELETE ON `cloud1-synthetic-test`.`catledger_accounts` TO 'api_runtime'@'%';"
   ])
 })
 
