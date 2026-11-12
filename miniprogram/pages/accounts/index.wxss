@@ -95,6 +95,18 @@
 }
 .account-row:last-child { border-bottom: 0; }
 .account-row-active { background: var(--theme-accent-soft, #f0e2ce); }
+
+/* 拖动排序：拖动中的行浮起并跟随手指，其它行平滑让位。 */
+.account-list-dragging { overflow: visible; }
+.account-row-dragging {
+  z-index: 20;
+  background: var(--theme-surface-raised, #fffaf2);
+  border-radius: var(--theme-radius-large, 24rpx);
+  box-shadow: 0 12rpx 32rpx rgba(0, 0, 0, .18);
+  transition: none;
+}
+.account-drag-handle { flex: 0 0 auto; width: 40rpx; height: 40rpx; opacity: .8; }
+
 .account-type-icon {
   display: flex;
   width: 64rpx;

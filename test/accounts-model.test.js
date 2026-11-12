@@ -70,3 +70,16 @@ test('有分期计划（无账单）时即使欠款为 0 也按已还清显示',
   ])
   assert.equal(view.liabilities[0].stateText, '已还清')
 })
+
+test('账户按后端给出的顺序保序展示（sortOrder 已由后端排序），资产/负债各自保序', function () {
+  // 后端 accounts.list 已按 (nature, sort_order, created_at) 排序返回；前端 filter 不得打乱。
+  const accounts = [
+    { accountId: 'a2', name: '资产二', type: 'cash', nature: 'asset', bookBalanceMinor: '0', displayBalanceMinor: '0', archived: false, sortOrder: 0 },
+    { accountId: 'a1', name: '资产一', type: 'bank', nature: 'asset', bookBalanceMinor: '0', displayBalanceMinor: '0', archived: false, sortOrder: 1 },
+    { accountId: 'l1', name: '负债一', type: 'credit', nature: 'liability', bookBalanceMinor: '-100', displayBalanceMinor: '100', debtMinor: '100', debtDirection: 'debt', archived: false, sortOrder: 0 }
+  ]
+  const view = buildAccountsView(accounts, { assets: '0', liabilities: '100', netWorth: '-100', totalInterest: '0' })
+  assert.deepEqual(view.assets.map(a => a.accountId), ['a2', 'a1'])
+  assert.deepEqual(view.liabilities.map(a => a.accountId), ['l1'])
+  assert.equal(view.assets[0].sortOrder, 0)
+})

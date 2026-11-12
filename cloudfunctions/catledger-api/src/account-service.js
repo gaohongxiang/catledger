@@ -84,6 +84,7 @@ function accountToPublic(row, extra) {
     statementDueDate: row.statementDueDate == null ? null : String(row.statementDueDate).slice(0, 10),
     statementCycle: row.statementCycle == null ? null : row.statementCycle,
     statementMonth: accountStatementMonth(row, extra),
+    sortOrder: Number(row.sortOrder == null ? 0 : row.sortOrder),
     version: Number(row.version),
     archived: row.archivedAt != null,
     bookBalanceMinor: bookBalance.toString(),
@@ -184,6 +185,7 @@ async function listAccountRows(connection, uid) {
             a.statement_due_date AS statementDueDate,
             a.statement_cycle AS statementCycle,
             a.version,
+            a.sort_order AS sortOrder,
             a.archived_at AS archivedAt,
             COALESCE(b.book_balance, 0) AS bookBalance
        FROM catledger_accounts a
@@ -207,7 +209,7 @@ async function listAccountRows(connection, uid) {
           GROUP BY entries.uid, entries.account_id
        ) b ON b.uid = a.uid AND b.account_id = a.account_id
       WHERE a.uid = ?
-      ORDER BY a.archived_at IS NOT NULL, a.nature, a.created_at, a.account_id`,
+      ORDER BY a.archived_at IS NOT NULL, a.nature, a.sort_order, a.created_at, a.account_id`,
     [uid, uid, uid]
   )
   return rows
@@ -600,6 +602,39 @@ function createAccountService({ getPool }) {
     })
   }
 
+  // 手动排序：客户端把同一组（资产或负债）按新顺序给出的 accountId 数组传上来，
+  // 按数组下标写 sort_order（0,1,2…）。只重排这些账户，未在列表中的账户不动。
+  // 幂等：同一顺序重复提交结果一致；不校验 version（排序不是资金/结构变更，无需锁版本）。
+  async function reorder(context) {
+    return executeIdempotentMutation({
+      getPool,
+      currentReads: true,
+      ...context,
+      action: 'accounts.reorder',
+      operation: async (connection, uid, data) => {
+        const ids = Array.isArray(data.accountIds) ? data.accountIds : null
+        if (!ids || !ids.length || ids.some((id) => typeof id !== 'string' || !id)) {
+          throw ledgerError('VALIDATION_ERROR')
+        }
+        if (new Set(ids).size !== ids.length) throw ledgerError('VALIDATION_ERROR')
+        // 校验全部属于当前用户（防止越权改他人账户的排序）。
+        const [owned] = await connection.execute(
+          `SELECT account_id AS accountId FROM catledger_accounts WHERE uid = ? AND account_id IN (${ids.map(() => '?').join(',')})`,
+          [uid, ...ids]
+        )
+        if (owned.length !== ids.length) throw ledgerError('VALIDATION_ERROR')
+        for (let index = 0; index < ids.length; index += 1) {
+          await connection.execute(
+            'UPDATE catledger_accounts SET sort_order = ? WHERE uid = ? AND account_id = ?',
+            [index, uid, ids[index]]
+          )
+        }
+        const accounts = await listAccountsForUser(connection, uid)
+        return { accounts, liabilitySettingsVersion: 1, totals: accountTotals(accounts) }
+      }
+    })
+  }
+
   async function archive(context) {
     return executeIdempotentMutation({
       getPool,
@@ -783,6 +818,7 @@ function createAccountService({ getPool }) {
     createBatch,
     list,
     remove,
+    reorder,
     restore,
     update
   }
