@@ -217,10 +217,26 @@ test('每期费率口径不下发起息日（按约定费率整期收，不参�
   assert.equal(sf.payload(s, '12000').interestStartDate, undefined)
 })
 
-test('按还款额测算不下发起息日（首期额已由用户直接给出）', () => {
+test('按还款额也下发起息日（首期利息仍需按实际天数拆分）', () => {
   const sf = scheduleForm
   const measIdx = sf.MEASUREMENT_OPTIONS.findIndex(o => o.value === 'repayment')
-  const s = Object.assign(base(), { measurementIndex: measIdx, methodIndex: 0, terms: '12',
+  const eqPayIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_payment')
+  const s = Object.assign(base(), { measurementIndex: measIdx, methodIndex: eqPayIdx, terms: '12',
     repaymentYuan: '13599.06', firstPaymentDate: '2024-06-18', interestStartDate: '2024-05-21', principalYuan: '156000' })
-  assert.equal(sf.payload(s, '156000').interestStartDate, undefined)
+  assert.equal(sf.payload(s, '156000').interestStartDate, '2024-05-21')
+})
+
+test('按还款额 + 可选日利率：下发 dailyRatePpm（等额本息精确口径）', () => {
+  const sf = scheduleForm
+  const measIdx = sf.MEASUREMENT_OPTIONS.findIndex(o => o.value === 'repayment')
+  const eqPayIdx = sf.METHOD_OPTIONS.findIndex(o => o.value === 'equal_payment')
+  const s = Object.assign(base(), { measurementIndex: measIdx, methodIndex: eqPayIdx, terms: '6',
+    repaymentYuan: '474.49', optionalDailyRate: '0.045', firstPaymentDate: '2017-10-24',
+    interestStartDate: '2017-09-11', principalYuan: '2700' })
+  const p = sf.payload(s, '2700')
+  assert.equal(p.dailyRatePpm, '450')
+  assert.equal(p.repaymentMinor, '47449')
+  // 不填日利率则不下发 dailyRatePpm
+  const s2 = Object.assign({}, s, { optionalDailyRate: '' })
+  assert.equal(sf.payload(s2, '2700').dailyRatePpm, undefined)
 })

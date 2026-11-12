@@ -5,6 +5,7 @@
     "ui-state": "/components/ui-state/index",
     "page-head": "/components/page-head/index",
     "chevron-icon": "/components/chevron-icon/index",
-    "list-row": "/components/list-row/index"
+    "list-row": "/components/list-row/index",
+    "date-field": "/components/date-field/index"
   }
 }

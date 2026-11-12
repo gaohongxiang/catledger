@@ -17,6 +17,7 @@
 .ld-start-date { display: block; width: 100%; }
 .ld-start-inner { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-2); min-height: 92rpx; white-space: nowrap; }
 .ld-start-label { flex: 0 0 auto; font-size: var(--font-caption); color: var(--theme-text-muted); }
+.ld-start-opt { margin-left: 4rpx; font-size: 20rpx; color: var(--theme-text-subtle, #79716a); }
 .ld-start-value { display: flex; align-items: center; gap: 4rpx; font-size: var(--font-body); }
 .ld-start-days { display: flex; align-items: center; gap: 4rpx; flex: 0 1 auto; min-width: 0; }
 .ld-start-input { width: 120rpx; text-align: right; font-size: var(--font-body); }

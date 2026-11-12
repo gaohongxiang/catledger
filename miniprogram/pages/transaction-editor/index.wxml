@@ -65,7 +65,7 @@
     </category-picker>
 
     <block wx:if="{{typeOptions[typeIndex].value === 'refund'}}">
-      <picker class="form-row content-inset" mode="date" fields="month" value="{{refundMonth}}" data-field="refundMonth" bindchange="refundFilter" disabled="{{saving}}"><text class="form-label">消费月份</text><text class="form-value">{{refundMonth || '全部月份'}}</text></picker>
+      <date-field class="form-row content-inset" granularity="month" value="{{refundMonth}}" data-field="refundMonth" bindchange="refundFilter" disabled="{{saving}}"><text class="form-label">消费月份</text><text class="form-value">{{refundMonth || '全部月份'}}</text></date-field>
       <picker class="form-row content-inset" range="{{refundAccounts}}" range-key="name" value="{{refundAccountIndex}}" data-field="refundAccountIndex" bindchange="refundFilter" disabled="{{saving}}"><text class="form-label">消费账户</text><text class="form-value">{{refundAccounts[refundAccountIndex].name}}</text></picker>
       <view class="form-row content-inset"><text class="form-label">查找原消费</text><input class="form-value" value="{{refundSearch}}" maxlength="40" placeholder="备注、分类或账户关键词" data-field="refundSearch" bindinput="refundFilter" disabled="{{saving}}" /></view>
       <view class="form-row content-inset"><button class="secondary-button" bindtap="searchRefunds" disabled="{{saving || refundablesLoading}}">查询原消费</button><button class="secondary-button" bindtap="clearRefundFilters" disabled="{{saving}}">清除筛选</button></view>
@@ -87,12 +87,12 @@
       <view class="form-row content-inset"><button class="secondary-button" bindtap="addOriginalExpense" disabled="{{saving}}">记一笔原消费</button></view>
     </block>
     <view wx:if="{{mode !== 'link-refund'}}" class="form-row form-row-pair content-inset">
-      <picker class="half-picker" mode="date" value="{{date}}" bindchange="changeDate" disabled="{{saving}}">
+      <date-field class="half-picker" granularity="date" value="{{date}}" bindchange="changeDate" disabled="{{saving}}">
         <view><text class="form-label">日期</text><text class="form-value">{{date}}</text></view>
-      </picker>
-      <picker class="half-picker" mode="time" value="{{clock}}" bindchange="changeClock" disabled="{{saving}}">
+      </date-field>
+      <date-field class="half-picker" granularity="time" value="{{clock}}" bindchange="changeClock" disabled="{{saving}}">
         <view><text class="form-label">时间</text><text class="form-value">{{clock}}</text></view>
-      </picker>
+      </date-field>
     </view>
 
     <button wx:if="{{mode === 'create' && typeOptions[typeIndex].value === 'transfer' && accounts[destinationIndex].type === 'other_liability'}}" class="secondary-button" bindtap="openRepaymentEntry">这是借款还款，确认本息费</button>

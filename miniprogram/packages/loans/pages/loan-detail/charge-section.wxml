@@ -8,7 +8,7 @@
       <picker class="installment-edit-row" range="{{chargeEdit.options}}" range-key="label" value="{{chargeEdit.operationIndex}}" bindchange="chooseChargeOperation"><text>处理方式</text><text>{{chargeEdit.options[chargeEdit.operationIndex].label}}⌄</text></picker>
       <label wx:if="{{chargeEdit.operation === 'adjust' || chargeEdit.operation === 'distinct' || chargeEdit.operation === 'refund'}}" class="installment-edit-row"><text>{{chargeEdit.operation === 'refund' ? '实际退还金额（元）' : '确认金额（元）'}}</text><input type="digit" value="{{chargeEdit.amountYuan}}" data-field="amountYuan" bindinput="chargeEditInput" /></label>
       <block wx:if="{{chargeEdit.operation === 'refund'}}">
-        <picker class="installment-edit-row" mode="date" value="{{chargeEdit.refundDate}}" data-field="refundDate" bindchange="chargeEditInput"><text>实际退款日期</text><text>{{chargeEdit.refundDate}}</text></picker>
+        <date-field class="installment-edit-row" granularity="date" value="{{chargeEdit.refundDate}}" data-field="refundDate" bindchange="chargeEditInput"><text>实际退款日期</text><text>{{chargeEdit.refundDate}}</text></date-field>
         <picker class="installment-edit-row" range="{{chargeRefundAccounts}}" range-key="name" value="{{chargeEdit.refundAccountIndex}}" data-field="refundAccountIndex" bindchange="chargeEditInput"><text>实际收款账户</text><text>{{chargeEdit.refundAccountIndex >= 0 ? chargeRefundAccounts[chargeEdit.refundAccountIndex].name : '请选择'}}</text></picker>
       </block>
       <button wx:if="{{!chargeImpact}}" class="primary-button" bindtap="previewChargeChange" disabled="{{saving}}">查看调整结果</button>

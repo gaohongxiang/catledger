@@ -12,7 +12,7 @@
 <view class="page-canvas loan-link-page {{themeClass}}" style="{{themeStyle}}">
   <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? (context.state === 'none' ? '账目关联' : '关联这笔还款') : '待关联还款'}}" copy="信用卡整单转账可按实际份额明确分配到分期；待关联列表只显示已确认的借款还款。" />
   <block wx:if="{{!transactionId}}">
-    <picker class="ll-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="ll-picker"><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <date-field class="ll-field" granularity="month" value="{{month}}" bindchange="changeMonth"><view class="ll-picker"><text>查询月份</text><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></date-field>
     <button wx:if="{{month}}" class="ll-link" bindtap="clearMonth">查看全部月份</button>
     <picker disabled="{{accountLocked}}" class="ll-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>借款账户</text><view class="ll-picker"><text class="ll-picker-value">{{accounts[accountIndex].name || (accountLocked ? '当前账户' : '全部借款账户')}}</text><chevron-icon size="{{24}}" /></view></picker>
   </block>

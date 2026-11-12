@@ -22,7 +22,7 @@ const METHOD_LABELS = Object.fromEntries(METHOD_OPTIONS.map(option => [option.va
 const MAX_TERMS = 600
 
 function blank() {
-  return { terms: '', methodIndex: 0, measurementIndex: 0, quoteIndex: QUOTE_DEFAULT_INDEX, roundingIndex: 0, ratePercent: '', repaymentYuan: '', feePerTermYuan: '', feeUpfrontYuan: '', firstPaymentDate: '', interestStartDate: '', firstPeriodDays: '' }
+  return { terms: '', methodIndex: 0, measurementIndex: 0, quoteIndex: QUOTE_DEFAULT_INDEX, roundingIndex: 0, ratePercent: '', repaymentYuan: '', optionalDailyRate: '', feePerTermYuan: '', feeUpfrontYuan: '', firstPaymentDate: '', interestStartDate: '', firstPeriodDays: '' }
 }
 
 // —— 首期天数 ↔ 起息日 互算（纯函数，按 UTC 零点避免时区误差）——
@@ -69,17 +69,19 @@ function fromLoan(loan) {
   state.quoteIndex = indexOf(QUOTE_OPTIONS, loan.quoteType || QUOTE_OPTIONS[QUOTE_DEFAULT_INDEX].value)
   state.ratePercent = loan.measurementKind === 'rate' && loan.ratePpm != null ? ppmToPercent(loan.ratePpm) : ''
   state.repaymentYuan = loan.measurementKind === 'repayment' && loan.repaymentMinor != null ? money.minorToYuan(loan.repaymentMinor) : ''
+  const loanSetup = loan.installmentSetup && typeof loan.installmentSetup === 'string' ? JSON.parse(loan.installmentSetup) : loan.installmentSetup
+  state.optionalDailyRate = loanSetup && loanSetup.dailyRatePpm != null ? ppmToPercent(loanSetup.dailyRatePpm) : ''
   state.feePerTermYuan = loan.feePerTermMinor == null ? '' : money.minorToYuan(loan.feePerTermMinor)
   state.feeUpfrontYuan = loan.feeUpfrontMinor == null ? '' : money.minorToYuan(loan.feeUpfrontMinor)
   state.roundingIndex = indexOf(ROUNDING_OPTIONS, loan.principalRounding || 'yuan')
   state.firstPaymentDate = loan.firstPaymentDate || ''
-  state.interestStartDate = loan.interestStartDate || (loan.installmentSetup && loan.installmentSetup.interestStartDate) || ''
+  state.interestStartDate = loan.interestStartDate || (loanSetup && loanSetup.interestStartDate) || ''
   state.firstPeriodDays = state.interestStartDate && isYmd(state.firstPaymentDate) ? String(firstPeriodDaysOf(state.interestStartDate, state.firstPaymentDate)) : ''
   return state
 }
 
 function touched(state) {
-  return ['terms', 'ratePercent', 'repaymentYuan', 'feePerTermYuan', 'feeUpfrontYuan', 'firstPaymentDate', 'interestStartDate']
+  return ['terms', 'ratePercent', 'repaymentYuan', 'optionalDailyRate', 'feePerTermYuan', 'feeUpfrontYuan', 'firstPaymentDate', 'interestStartDate']
     .some(field => String(state[field] == null ? '' : state[field]).trim() !== '')
 }
 
@@ -135,16 +137,24 @@ function payload(state, principalYuan) {
       }
     }
   }
+  // 还款额模式下的可选日利率：填了就让引擎「应还用还款额、利息按日利率×天数」精确复现账单。
+  // 仅对等额本息有意义（其它方式按还款额测算时利息已由应还本息结构决定）。填了则下发 dailyRatePpm。
+  let dailyRatePpm = null
+  if (measurement === 'repayment' && method === 'equal_payment') {
+    const dailyText = String(form.optionalDailyRate == null ? '' : form.optionalDailyRate).trim()
+    if (dailyText !== '') dailyRatePpm = percentToPpm(dailyText)
+  }
   const base = {
     scheduleMethod: method, scheduleTerms: terms, measurementKind: measurement,
     quoteType: measurement === 'rate' ? quote : null, ratePpm, repaymentMinor,
     principalRounding: rounding,
-    feePerTermMinor, feeUpfrontMinor, firstPaymentDate: form.firstPaymentDate || null
+    feePerTermMinor, feeUpfrontMinor, firstPaymentDate: form.firstPaymentDate || null,
+    ...(dailyRatePpm != null ? { dailyRatePpm } : {})
   }
-  // 起息日只在「按利率」测算时才有意义：用于按「起息日→首还日」天数折算首期利息（首期不满整月的常见情形）。
-  // 日利率下等额本金/先息后本更会逐期按实际天数计息。「按还款额」测算时首期额由用户直接给出，无需起息日；
-  // 「每期费率(installment)」按约定费率整期收、也不参与天数折算。二者都不下发该键。
-  const supportsInterestStart = measurement === 'rate' && quote !== 'installment'
+  // 起息日对「按利率」和「按还款额」都有意义：按「起息日→首还日」天数算首期利息（首期不满整月的常见情形）。
+  // 按还款额时每期应还是给定的，但首期利息/本金仍需按实际天数拆分，故也要起息日。
+  // 唯一例外：「每期费率(installment)」按约定费率整期收，不参与天数折算。
+  const supportsInterestStart = !(measurement === 'rate' && quote === 'installment')
   if (supportsInterestStart) {
     // 起息日：优先用起息日；只填了首期天数时由首还日反推。二者都基于首还日校验，起息日不得晚于首还日。
     let start = form.interestStartDate || null

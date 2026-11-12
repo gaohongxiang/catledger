@@ -66,7 +66,7 @@ Component({
       this.setAux(this.data.value)
       const mode = this.data.granularity === 'month' ? 'months' : 'days'
       this.setData({ open: true, mode })
-      this.renderCells()
+      if (this.data.granularity !== 'time') this.renderCells()
     },
     close: function () { this.setData({ open: false }) },
     stop: function () {},
@@ -86,6 +86,7 @@ Component({
     // month 粒度：年+月 两级，选完立即提交
     pickMonthOnly: function (event) { const m = Number(event.currentTarget.dataset.month); this.setData({ viewMonth: m, mode: 'days' }); this.renderCells() },
     confirm: function () {
+      if (this.data.granularity === 'time') { this.emit(this.data.hour + ':' + this.data.minute); this.setData({ open: false }); return }
       if (this.data.granularity === 'month') { this.emit(cal.ym(this.data.viewYear, this.data.viewMonth)); this.setData({ open: false }); return }
       if (this.data.granularity === 'datetime') {
         const date = this.data.selectedDate || this.data.todayStr

@@ -6,6 +6,7 @@
     "page-head": "/components/page-head/index",
     "chevron-icon": "/components/chevron-icon/index",
     "category-picker": "/components/category-picker/index",
-    "skeleton-rows": "/components/skeleton-rows/index"
+    "skeleton-rows": "/components/skeleton-rows/index",
+    "date-field": "/components/date-field/index"
   }
 }

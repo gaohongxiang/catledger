@@ -42,11 +42,15 @@ function previewInput(data) {
   // 起息日随分期配置一并持久化（仅日利率口径下发），供引擎按实际天数算首期利息。
   // 只放进 installmentSetup；不得平铺到顶层——loans.create/update 的 loanMetadata 白名单不含该键，平铺会被判 VALIDATION_ERROR。
   const interestStartDate = schedule.interestStartDate || null
+  // 还款额模式的可选日利率（等额本息精确口径）同样随分期配置持久化，放 installmentSetup，不平铺到顶层。
+  const dailyRatePpm = schedule.dailyRatePpm || null
   const scheduleFields = Object.assign({}, schedule)
   delete scheduleFields.interestStartDate
+  delete scheduleFields.dailyRatePpm
   return Object.assign({},scheduleFields,{ principalMinor,installmentSetup:{ schema:1,originalPrincipalMinor:principalMinor,historicalPaidTerms,
     recordType:type.value,customRecordType:type.value==='other' ? String(data.customRecordType || '').trim() : '',discountKind,discountValue,
-    ...(interestStartDate ? { interestStartDate } : {}) } })
+    ...(interestStartDate ? { interestStartDate } : {}),
+    ...(dailyRatePpm ? { dailyRatePpm } : {}) } })
 }
 function fields(loan) {
   const setup=loan.installmentSetup

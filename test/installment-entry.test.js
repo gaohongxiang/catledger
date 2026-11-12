@@ -162,3 +162,20 @@ test('日利率+起息日：previewInput 只把 interestStartDate 放进 install
   assert.equal(Object.prototype.hasOwnProperty.call(payload,'interestStartDate'),false)
   assert.doesNotThrow(()=>loanMetadata({...payload,kind:'installment'}))
 })
+
+test('还款额+可选日利率：previewInput 只把 dailyRatePpm 放进 installmentSetup，顶层不留，且引擎能精确复现',()=>{
+  const { loanMetadata } = require('../cloudfunctions/catledger-api/src/loan-domain')
+  const data={name:'网贷等额本息',accounts:[{accountId:'debt'}],accountIndex:0,principalYuan:'2700',paidTerms:'0',typeIndex:2,discountIndex:0,discountValue:'',
+    schedule:Object.assign(scheduleForm.blank(),{terms:'6',methodIndex:1,measurementIndex:1,repaymentYuan:'474.49',optionalDailyRate:'0.045',firstPaymentDate:'2017-10-24',interestStartDate:'2017-09-11'})}
+  const input=form.previewInput(data)
+  assert.equal(Object.prototype.hasOwnProperty.call(input,'dailyRatePpm'),false)
+  assert.equal(input.installmentSetup.dailyRatePpm,'450')
+  const { fullScheduleWithPaid } = require('../cloudfunctions/catledger-api/src/loan-installment')
+  const full=fullScheduleWithPaid(input)
+  // 总利息 147.00（账单 146.95，差 5 分四舍五入），首期利息 52.25
+  assert.equal(full.summary.totalInterestMinor,'14700')
+  assert.equal(full.periods[0].interestMinor,5225)
+  const payload=form.createPayload(data,{summary:{remainingPrincipalMinor:'270000'}})
+  assert.equal(Object.prototype.hasOwnProperty.call(payload,'dailyRatePpm'),false)
+  assert.doesNotThrow(()=>loanMetadata({...payload,kind:'installment'}))
+})

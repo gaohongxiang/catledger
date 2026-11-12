@@ -58,7 +58,7 @@
     <text class="plan-section-title">{{form.periodId ? '修改确认期次' : '新增确认期次'}}</text>
     <view class="plan-note-card"><text class="plan-note">明确没有的金额填 0。已付事实保留；各分项不能改得少于已付金额，有付款的期次不能取消。</text></view>
     <label class="plan-field"><text>期号</text><input class="plan-input money-number" type="number" maxlength="4" value="{{form.periodNumber}}" data-field="periodNumber" bindinput="input" disabled="{{saving}}" /></label>
-    <picker class="plan-field" mode="date" value="{{form.dueDate}}" data-field="dueDate" bindchange="input" disabled="{{saving}}"><text>到期日</text><view class="plan-picker"><text class="plan-picker-value">{{form.dueDate || '选择确认的到期日'}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <date-field class="plan-field" granularity="date" value="{{form.dueDate}}" bindchange="input" data-field="dueDate" disabled="{{saving}}"><view class="plan-picker"><text>到期日</text><text class="plan-picker-value">{{form.dueDate || '选择确认的到期日'}}</text><chevron-icon size="{{24}}" /></view></date-field>
     <label class="plan-field"><text>应还本金（元）</text><input class="plan-input money-number" type="digit" maxlength="22" value="{{form.principalYuan}}" data-field="principalYuan" bindinput="input" disabled="{{saving}}" /></label>
     <label class="plan-field"><text>应还利息（元）</text><input class="plan-input money-number" type="digit" maxlength="22" value="{{form.interestYuan}}" data-field="interestYuan" bindinput="input" disabled="{{saving}}" /></label>
     <label class="plan-field"><text>应还费用（元）</text><input class="plan-input money-number" type="digit" maxlength="22" value="{{form.feeYuan}}" data-field="feeYuan" bindinput="input" disabled="{{saving}}" /></label>

@@ -4,7 +4,7 @@ const { buildSchedule } = require('./loan-schedule/schedule-engine')
 const parseSetup = value => value == null ? null : typeof value === 'string' ? JSON.parse(value) : value
 function normalizeSetup(raw, terms) {
   if (raw == null) return null
-  const keys = ['schema','originalPrincipalMinor','historicalPaidTerms','recordType','customRecordType','discountKind','discountValue','interestStartDate']
+  const keys = ['schema','originalPrincipalMinor','historicalPaidTerms','recordType','customRecordType','discountKind','discountValue','interestStartDate','dailyRatePpm']
   if (typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some(key => !keys.includes(key)) || raw.schema !== 1) throw ledgerError('VALIDATION_ERROR')
   const originalPrincipalMinor = parseMinorUnits(raw.originalPrincipalMinor).toString()
   const historicalPaidTerms = raw.historicalPaidTerms
@@ -18,7 +18,13 @@ function normalizeSetup(raw, terms) {
   // 起息日（放款当日）随分期配置一起持久化，仅日利率按实际天数计息时使用；格式与有效日期在此校验。
   const interestStartDate = raw.interestStartDate == null || raw.interestStartDate === '' ? null : String(raw.interestStartDate)
   if (interestStartDate != null && !/^\d{4}-\d{2}-\d{2}$/.test(interestStartDate)) throw ledgerError('VALIDATION_ERROR')
-  return { schema:1,originalPrincipalMinor,historicalPaidTerms,recordType,customRecordType:recordType === 'other' ? customRecordType.trim() : '',discountKind,discountValue,interestStartDate }
+  // 还款额模式的可选日利率（等额本息精确口径）：正整数 ppm，可选。
+  let dailyRatePpm = null
+  if (raw.dailyRatePpm != null && raw.dailyRatePpm !== '') {
+    const parsed = parseMinorUnits(raw.dailyRatePpm)
+    if (parsed > 0n) dailyRatePpm = parsed.toString()
+  }
+  return { schema:1,originalPrincipalMinor,historicalPaidTerms,recordType,customRecordType:recordType === 'other' ? customRecordType.trim() : '',discountKind,discountValue,interestStartDate,dailyRatePpm }
 }
 function storedScheduleInput(loan) {
   const setup = parseSetup(loan.installmentSetup)
@@ -31,11 +37,12 @@ function storedScheduleInput(loan) {
     feeUpfrontMinor:loan.feeUpfrontMinor == null ? null : String(loan.feeUpfrontMinor),firstPaymentDate:loan.firstPaymentDate,
     principalRounding:loan.principalRounding || 'yuan',
     interestStartDate:(setup && setup.interestStartDate)||null,
+    dailyRatePpm:(setup && setup.dailyRatePpm)||null,
     ...(setup ? { installmentSetup:setup } : {}) }
 }
 function remainingSchedule(input, options) {
   const setup = normalizeSetup(input.installmentSetup, input.scheduleTerms)
-  const result = buildSchedule({ ...input, ...(setup ? { installmentSetup:setup } : {}), interestStartDate: input.interestStartDate ?? (setup && setup.interestStartDate) ?? null, ...(setup ? { principalMinor:setup.originalPrincipalMinor,discountKind:setup.discountKind,discountValue:setup.discountValue } : {}) }, options)
+  const result = buildSchedule({ ...input, ...(setup ? { installmentSetup:setup } : {}), interestStartDate: input.interestStartDate ?? (setup && setup.interestStartDate) ?? null, dailyRatePpm: input.dailyRatePpm ?? (setup && setup.dailyRatePpm) ?? null, ...(setup ? { principalMinor:setup.originalPrincipalMinor,discountKind:setup.discountKind,discountValue:setup.discountValue } : {}) }, options)
   if (!setup) return { ...result,periods:result.periods.filter(row=>row.paymentMinor>0) }
   // 零利息先息后本/全额优惠的空付息月份保留原期号，但不制造 0 元应还任务。
   const periods = result.periods.slice(setup.historicalPaidTerms).filter(row=>row.paymentMinor>0)
@@ -48,7 +55,7 @@ function remainingSchedule(input, options) {
 // summary 仍给剩余口径（只统计未还期次），与落库/欠款一致。表单要「全部12期都展示、前8期标已还」。
 function fullScheduleWithPaid(input, options) {
   const setup = normalizeSetup(input.installmentSetup, input.scheduleTerms)
-  const result = buildSchedule({ ...input, ...(setup ? { installmentSetup: setup } : {}), interestStartDate: input.interestStartDate ?? (setup && setup.interestStartDate) ?? null, ...(setup ? { principalMinor: setup.originalPrincipalMinor, discountKind: setup.discountKind, discountValue: setup.discountValue } : {}) }, options)
+  const result = buildSchedule({ ...input, ...(setup ? { installmentSetup: setup } : {}), interestStartDate: input.interestStartDate ?? (setup && setup.interestStartDate) ?? null, dailyRatePpm: input.dailyRatePpm ?? (setup && setup.dailyRatePpm) ?? null, ...(setup ? { principalMinor: setup.originalPrincipalMinor, discountKind: setup.discountKind, discountValue: setup.discountValue } : {}) }, options)
   const paidThrough = setup ? setup.historicalPaidTerms : 0
   const periods = result.periods.filter(row => row.paymentMinor > 0 || (setup && row.periodNumber <= paidThrough))
     .map(row => ({ ...row, paid: setup ? row.periodNumber <= paidThrough : false }))

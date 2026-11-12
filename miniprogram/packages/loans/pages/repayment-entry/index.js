@@ -5,6 +5,7 @@ const session = require('../../../../services/page-read-session')
 const login = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
 const money = require('../../../../utils/money')
+const { splitDateTime } = require('../../../../utils/date-time-field')
 const model = require('./model')
 const tabRouter = require('../../../../shell/router')
 const businessInitialData = { chargeChoices:[],chargeAllocations:[],chargeNext:null,loading:false,saving:false,errorMessage:'',savedMessage:'',mode:'new',payment:null,event:null,assets:[],debts:[],categories:[],
@@ -71,6 +72,8 @@ Page(theme.page({
     finally { if (current()) { this._loading = false; this.setData({ loading:false }) } }
   },
   input(event) { const field = event.currentTarget.dataset.field; if (['totalYuan','principalYuan','interestYuan','feeYuan','date','time','note'].includes(field)) this.setData({ [field]:event.detail.value,confirmed:false }) },
+  // 统一的日期时间控件（datetime）：一次选择写回 date + time 两个字段。
+  inputDateTime(event) { const next = splitDateTime(event.detail, this.data.time); this.setData({ date: next.date, time: next.time, confirmed: false }) },
   select(event) {
     const field = event.currentTarget.dataset.field
     if (!['classification','assetIndex','debtIndex','linkIndex','loanIndex','interestIndex','feeIndex','interestCategoryIndex','feeCategoryIndex'].includes(field)) return

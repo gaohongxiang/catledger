@@ -10,7 +10,7 @@
         <text wx:if="{{selectedPeriod.difference}}" class="installment-note">本期账单与方案金额不同，请核对费用与原账单。</text>
       </block>
       <block wx:else>
-        <picker mode="date" value="{{periodDraft.dueDate}}" data-field="dueDate" bindchange="periodDraftInput"><view class="installment-edit-row installment-edit-date"><text>应还日期</text><text>{{periodDraft.dueDate || '选择日期'}}</text><text class="sheet-action-chevron">›</text></view></picker>
+        <date-field granularity="date" value="{{periodDraft.dueDate}}" data-field="dueDate" bindchange="periodDraftInput"><view class="installment-edit-row installment-edit-date"><text>应还日期</text><text>{{periodDraft.dueDate || '选择日期'}}</text><text class="sheet-action-chevron">›</text></view></date-field>
         <view class="installment-amounts-edit">
           <label class="installment-amount-edit"><text>本金（元）</text><input type="digit" class="money-number" value="{{periodDraft.principal}}" data-field="principal" bindinput="periodDraftInput" /></label>
           <label class="installment-amount-edit"><text>利息（元）</text><input type="digit" class="money-number" value="{{periodDraft.interest}}" data-field="interest" bindinput="periodDraftInput" /></label>

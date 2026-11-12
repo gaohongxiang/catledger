@@ -8,11 +8,11 @@
   <text class="installment-note">选择负债账户表示费用已计入欠款；选择银行等资产账户表示已实际支付，按所选账户记一笔费用。</text>
   <block wx:if="{{upfrontForm.modeIndex === 0}}">
     <label class="installment-edit-row"><text>实际手续费（元）</text><input type="digit" value="{{upfrontForm.amountYuan}}" data-field="amountYuan" bindinput="upfrontInput" disabled="{{saving}}" /></label>
-    <picker mode="date" value="{{upfrontForm.date}}" data-field="date" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>实际收费日期</text><text>{{upfrontForm.date || '请选择'}}</text></view></picker>
+    <date-field granularity="date" value="{{upfrontForm.date}}" data-field="date" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>实际收费日期</text><text>{{upfrontForm.date || '请选择'}}</text></view></date-field>
     <category-picker range="{{chargeCategories}}" value="{{upfrontForm.categoryIndex}}" data-field="categoryIndex" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>费用分类</text><text>{{chargeCategories[upfrontForm.categoryIndex].name || '请选择'}}</text></view></category-picker>
   </block>
   <block wx:else>
-    <picker mode="date" fields="month" value="{{upfrontForm.month}}" data-field="month" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>原费用月份</text><text>{{upfrontForm.month || '请选择'}}</text></view></picker>
+    <date-field granularity="month" value="{{upfrontForm.month}}" data-field="month" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>原费用月份</text><text>{{upfrontForm.month || '请选择'}}</text></view></date-field>
     <button class="ld-link" bindtap="loadUpfrontEvidence" disabled="{{saving || upfrontLoading}}">查询已有支出</button>
     <picker range="{{upfrontExisting}}" range-key="label" value="{{upfrontExistingIndex}}" bindchange="chooseUpfrontEvidence" disabled="{{saving || upfrontLoading}}"><view class="installment-edit-row"><text>原支出</text><text>{{upfrontExisting[upfrontExistingIndex].label || '请选择'}}</text></view></picker>
     <button wx:if="{{upfrontNext}}" class="ld-link" data-next="yes" bindtap="loadUpfrontEvidence" disabled="{{saving || upfrontLoading}}">下一页支出</button>

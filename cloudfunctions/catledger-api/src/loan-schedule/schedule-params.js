@@ -68,8 +68,15 @@ function parseScheduleParams(data, { requirePrincipal = true } = {}) {
   // 本金取整口径：cent（到分）或 yuan（到元，跟银行账单整元平摊、尾差进末期）。新建默认到元。
   const principalRounding = source.principalRounding == null || source.principalRounding === '' ? 'yuan' : source.principalRounding
   if (!PRINCIPAL_ROUNDINGS.has(principalRounding)) throw ledgerError('SCHEDULE_ROUNDING_INVALID', null, ['principalRounding'])
+  // 还款额模式的「可选日利率」：仅等额本息按还款额时有效，用于「应还用还款额、利息按日利率×天数」精确复现账单。
+  // 其它情况忽略。填了但非法则报错。
+  let dailyRatePpm = null
+  if (kind === 'repayment' && source.scheduleMethod === 'equal_payment' && source.dailyRatePpm != null && source.dailyRatePpm !== '') {
+    const parsed = minor(source.dailyRatePpm, { field: 'dailyRatePpm' })
+    if (parsed != null && parsed > 0) dailyRatePpm = parsed
+  }
   const params = { principalMinor, terms: source.scheduleTerms, method: source.scheduleMethod,
-    measurement: { kind, quoteType, ratePpm, repaymentMinor }, feePerTermMinor, feeUpfrontMinor, firstPaymentDate, interestStartDate, discountKind, discountValue, principalRounding }
+    measurement: { kind, quoteType, ratePpm, repaymentMinor }, feePerTermMinor, feeUpfrontMinor, firstPaymentDate, interestStartDate, discountKind, discountValue, principalRounding, dailyRatePpm }
   validateRepaymentMeasurement(params)
   return params
 }

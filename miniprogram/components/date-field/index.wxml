@@ -7,16 +7,24 @@
   <view class="df-sheet" catchtap="stop">
     <view class="df-head">
       <text class="df-cancel" bindtap="close">取消</text>
-      <text class="df-title">{{title || (granularity === 'month' ? '选择月份' : granularity === 'datetime' ? '选择时间' : '选择日期')}}</text>
+      <text class="df-title">{{title || (granularity === 'month' ? '选择月份' : granularity === 'datetime' ? '选择日期和时间' : granularity === 'time' ? '选择时间' : '选择日期')}}</text>
       <text class="df-ok" bindtap="confirm">确定</text>
     </view>
 
+    <!-- 纯时间选择（granularity=time）：只显示时间栏，无日历 -->
+    <view wx:if="{{granularity === 'time'}}" class="df-time df-time-only">
+      <picker class="df-time-picker" mode="selector" range="{{hours}}" value="{{hour}}" bindchange="pickHour"><text class="df-time-val">{{hour}}</text></picker>
+      <text class="df-time-sep">:</text>
+      <picker class="df-time-picker" mode="selector" range="{{minutes}}" value="{{minute}}" bindchange="pickMinute"><text class="df-time-val">{{minute}}</text></picker>
+    </view>
+
     <!-- 年月栏：点即切换快选 -->
-    <view class="df-ym">
+    <view wx:if="{{granularity !== 'time'}}" class="df-ym">
       <text class="df-ym-seg" data-mode="years" bindtap="switchMode">{{viewYear}}年<text class="df-tri">▾</text></text>
       <text wx:if="{{granularity !== 'month' || mode === 'days'}}" class="df-ym-seg" data-mode="months" bindtap="switchMode">{{viewMonth}}月<text class="df-tri">▾</text></text>
     </view>
 
+    <block wx:if="{{granularity !== 'time'}}">
     <!-- 年快选 -->
     <scroll-view wx:if="{{mode === 'years'}}" scroll-y class="df-quickgrid-wrap">
       <view class="df-quickgrid">
@@ -40,6 +48,7 @@
         <text class="df-navbtn" bindtap="nextMonth">下月 ›</text>
       </view>
     </block>
+</block>
 
     <!-- 时间选择（datetime） -->
     <view wx:if="{{granularity === 'datetime'}}" class="df-time">

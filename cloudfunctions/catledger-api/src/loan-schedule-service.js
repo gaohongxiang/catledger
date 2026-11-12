@@ -42,7 +42,9 @@ function createLoanScheduleService({ getPool, selectLoan }) {
         // 新建预览：起息日随 installmentSetup 一并传入（顶层不再平铺，避免 loans.create 的 loanMetadata 拒绝），
         // 这里读出来补到 buildSchedule 的输入，供日利率按实际天数计息。
         const setup = data.installmentSetup == null ? null : (typeof data.installmentSetup === 'string' ? JSON.parse(data.installmentSetup) : data.installmentSetup)
-        input = { ...data, interestStartDate: data.interestStartDate ?? (setup && setup.interestStartDate) ?? null }
+        input = { ...data,
+          interestStartDate: data.interestStartDate ?? (setup && setup.interestStartDate) ?? null,
+          dailyRatePpm: data.dailyRatePpm ?? (setup && setup.dailyRatePpm) ?? null }
       }
       const { periods, summary } = fullScheduleWithPaid(input, options)
       return publicPreview(periods, summary)

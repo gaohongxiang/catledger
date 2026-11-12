@@ -5,11 +5,11 @@
   </view>
   <view wx:if="{{!importFilter}}" class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
-    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
+    <date-field class="date-picker" granularity="date" value="{{pickerDate}}" bindchange="changeDate">
       <view class="date-picker-content">
         <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
       </view>
-    </picker>
+    </date-field>
     <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><chevron-icon size="{{30}}" /></view>
   </view>
 

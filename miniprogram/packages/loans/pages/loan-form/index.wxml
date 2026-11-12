@@ -37,9 +37,20 @@
     <view class="ld-block {{fieldErrors.rounding ? 'ld-field-error' : ''}}"><view class="ld-block-label"><text>本金取整</text><text>到元按整元平摊、尾差进末期，与银行账单一致</text></view><view class="ld-segment"><view wx:for="{{roundings}}" wx:key="value" class="ld-segment-option {{schedule.roundingIndex === index ? 'ld-segment-on' : ''}}" data-index="{{index}}" bindtap="selectRounding">{{item.label}}</view></view></view>
     <view class="ld-block"><view class="ld-block-label"><text>测算依据</text><text>按已有还款额或利率填写</text></view><view class="ld-segment"><view class="ld-segment-option {{schedule.measurementIndex === 1 ? 'ld-segment-on' : ''}}" data-index="1" bindtap="selectMeasurement">还款额</view><view class="ld-segment-option {{schedule.measurementIndex === 0 ? 'ld-segment-on' : ''}}" data-index="0" bindtap="selectMeasurement">利率</view></view></view>
     <view wx:if="{{schedule.measurementIndex === 0}}" class="ld-block {{fieldErrors.quote ? 'ld-field-error' : ''}}"><view class="ld-block-label"><text>利率口径</text><text>按账单给出的利率类型填写</text></view><view class="ld-segment"><view wx:for="{{quotes}}" wx:key="value" class="ld-segment-option {{schedule.quoteIndex === index ? 'ld-segment-on' : ''}} {{item.value === 'installment' && schedule.methodIndex !== 0 ? 'choice-disabled' : ''}}" data-index="{{index}}" bindtap="selectQuote">{{item.label}}</view></view></view>
-    <view class="measurement-row {{(fieldErrors.rate || fieldErrors.repayment) ? 'ld-field-error' : ''}}"><text class="measurement-label">{{schedule.measurementIndex === 0 ? quotes[schedule.quoteIndex].label : (schedule.methodIndex === 3 ? '每期利息 / 费' : schedule.methodIndex === 2 ? '首期应还' : '每期应还')}}</text><input class="money-number" type="digit" data-field="{{schedule.measurementIndex === 0 ? 'ratePercent' : 'repaymentYuan'}}" value="{{schedule.measurementIndex === 0 ? schedule.ratePercent : schedule.repaymentYuan}}" bindinput="scheduleInput" /><text class="ld-cell-unit">{{schedule.measurementIndex === 0 ? '%' : '元'}}</text></view>
+    <!-- 还款额 + 等额本息：每期应还 + 可选日利率 并排一行 -->
+    <view wx:if="{{schedule.measurementIndex === 1 && schedule.methodIndex === 1}}" class="ld-start-row {{(fieldErrors.repayment || fieldErrors.optionalDailyRate) ? 'ld-field-error' : ''}}">
+      <view class="ld-start-half">
+        <view class="ld-start-inner"><text class="ld-start-label">每期应还</text><view class="ld-start-days"><input class="ld-start-input money-number" type="digit" data-field="repaymentYuan" value="{{schedule.repaymentYuan}}" bindinput="scheduleInput" /><text class="ld-cell-unit">元</text></view></view>
+      </view>
+      <view class="ld-start-half">
+        <view class="ld-start-inner"><text class="ld-start-label">日利率<text class="ld-start-opt">可选</text></text><view class="ld-start-days"><input class="ld-start-input money-number" type="digit" data-field="optionalDailyRate" value="{{schedule.optionalDailyRate}}" bindinput="scheduleInput" /><text class="ld-cell-unit">%</text></view></view>
+      </view>
+    </view>
+    <text wx:if="{{schedule.measurementIndex === 1 && schedule.methodIndex === 1}}" class="ld-note form-hint">日利率可选：填了按「剩余本金×日利率×实际天数」算利息，配合起息日精确复现账单；留空则按每期应还反推。</text>
+    <!-- 其它情况：单行输入（还款额/利率） -->
+    <view wx:if="{{!(schedule.measurementIndex === 1 && schedule.methodIndex === 1)}}" class="measurement-row {{(fieldErrors.rate || fieldErrors.repayment) ? 'ld-field-error' : ''}}"><text class="measurement-label">{{schedule.measurementIndex === 0 ? quotes[schedule.quoteIndex].label : (schedule.methodIndex === 3 ? '每期利息 / 费' : schedule.methodIndex === 2 ? '首期应还' : '每期应还')}}</text><input class="money-number" type="digit" data-field="{{schedule.measurementIndex === 0 ? 'ratePercent' : 'repaymentYuan'}}" value="{{schedule.measurementIndex === 0 ? schedule.ratePercent : schedule.repaymentYuan}}" bindinput="scheduleInput" /><text class="ld-cell-unit">{{schedule.measurementIndex === 0 ? '%' : '元'}}</text></view>
     <text wx:if="{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value === 'installment'}}" class="ld-note form-hint">每期费率按最初借款金额计费，对应等本等息。</text>
-    <view wx:if="{{schedule.measurementIndex === 0 && quotes[schedule.quoteIndex].value !== 'installment'}}" class="ld-block">
+    <view wx:if="{{schedule.measurementIndex === 1 || quotes[schedule.quoteIndex].value !== 'installment'}}" class="ld-block">
       <view class="ld-block-label"><text>首期计息</text><text>填其一即可，都留空则首期按整月</text></view>
       <view class="ld-start-row {{fieldErrors.interestStart ? 'ld-field-error' : ''}}">
         <view class="ld-start-half">

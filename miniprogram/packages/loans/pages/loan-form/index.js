@@ -94,7 +94,7 @@ Page(theme.page({
   input(event){const field=event.currentTarget.dataset.field;if(!['name','principalYuan','paidTerms','customRecordType','discountValue'].includes(field))return;
     // 编辑已有计划：名称/类型随时可改；本金、已还期数、优惠等会触发期次重算（保存时走 rebuildPlan 预览确认）。
     this.setData({[field]:event.detail.value});if(!['name','customRecordType'].includes(field))this.invalidate()},
-  scheduleInput(event){const field=event.currentTarget.dataset.field;if(!['terms','ratePercent','repaymentYuan','firstPaymentDate','feeUpfrontYuan','feePerTermYuan'].includes(field))return;let schedule=Object.assign({},this.data.schedule,{[field]:event.detail.value});if(field==='firstPaymentDate'&&schedule.interestStartDate)schedule=scheduleForm.syncFirstPeriod(schedule,'date');this.setData({schedule});this.invalidate()},
+  scheduleInput(event){const field=event.currentTarget.dataset.field;if(!['terms','ratePercent','repaymentYuan','optionalDailyRate','firstPaymentDate','feeUpfrontYuan','feePerTermYuan'].includes(field))return;let schedule=Object.assign({},this.data.schedule,{[field]:event.detail.value});if(field==='firstPaymentDate'&&schedule.interestStartDate)schedule=scheduleForm.syncFirstPeriod(schedule,'date');this.setData({schedule});this.invalidate()},
   // 起息日选择：写入后按首还日反算首期天数，两个字段联动不矛盾。
   scheduleDateInput(event){const next=scheduleForm.syncFirstPeriod(Object.assign({},this.data.schedule,{interestStartDate:event.detail.value,firstPaymentDate:this.data.schedule.firstPaymentDate}),'date');this.setData({schedule:next});this.invalidate()},
   // 首期天数输入：写入后按首还日反推起息日，两个字段联动不矛盾。

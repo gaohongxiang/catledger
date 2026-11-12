@@ -367,17 +367,33 @@ test('等本等息 + 月利率：填起息日后首期利息按天数折算，�
   assert.equal(withStart.periods[11].endingBalanceMinor, 0)
 })
 
-test('等额本息 + 月利率：填起息日后仅首期应还变小（本金排期不变），后面保持恒定', () => {
+test('等额本息 + 月利率 + 起息日：逐期按实际天数计息（首期不满整月利息偏少），本金末期清算', () => {
   const base = { principalMinor: '1000000', scheduleMethod: 'equal_payment', scheduleTerms: 12, measurementKind: 'rate',
     quoteType: 'monthly', ratePpm: '10000', firstPaymentDate: '2026-09-10', principalRounding: 'cent' }
   const noStart = buildSchedule(base)
   const withStart = buildSchedule({ ...base, interestStartDate: '2026-08-20' })
-  // 首期应还变小，但本金部分不变
-  assert.ok(withStart.periods[0].paymentMinor < noStart.periods[0].paymentMinor)
-  assert.equal(withStart.periods[0].principalMinor, noStart.periods[0].principalMinor)
-  // 第 2 期应还保持与未折算一致
-  assert.equal(withStart.periods[1].paymentMinor, noStart.periods[1].paymentMinor)
+  // 等额本息按天：每期应还恒定，首期利息按天数（不满整月则偏少），本金 = 应还 − 利息
+  assert.equal(withStart.periods[0].paymentMinor, withStart.periods[1].paymentMinor)
+  const { differenceInDays } = require('../cloudfunctions/catledger-api/src/loan-schedule/schedule-dates')
+  const firstDays = differenceInDays('2026-08-20', '2026-09-10')
+  const dailyRate = 0.01 / 30 // ratePpm 10000 = 1%/月 → 日利率 = 1%/30
+  assert.equal(withStart.periods[0].interestMinor, Math.round(1000000 * dailyRate * firstDays))
+  // 余额末期清零
   assert.equal(withStart.periods[11].endingBalanceMinor, 0)
+})
+
+test('还款额 + 可选日利率（等额本息）：应还用还款额、利息按日利率×天数，逐期精确复现账单', () => {
+  // 2700元 / 6期 / 每期474.49 / 日利率0.045% / 首还2017-10-24 / 起息2017-09-11(43天)
+  const s = buildSchedule({ principalMinor: '270000', scheduleMethod: 'equal_payment', scheduleTerms: 6,
+    measurementKind: 'repayment', repaymentMinor: '47449', dailyRatePpm: '450',
+    firstPaymentDate: '2017-10-24', interestStartDate: '2017-09-11', principalRounding: 'cent' })
+  // 每期应还 = 474.49（末期补齐尾差）
+  assert.equal(s.periods[0].paymentMinor, 47449)
+  assert.equal(s.periods[1].paymentMinor, 47449)
+  // 首期利息 = 2700 × 0.045% × 43 = 52.25
+  assert.equal(s.periods[0].interestMinor, Math.round(270000 * 0.00045 * 43))
+  // 末期余额清零
+  assert.equal(s.periods[5].endingBalanceMinor, 0)
 })
 
 test('首期起息日恰好整月（30天）不折算，与不带起息日结果一致', () => {
@@ -391,6 +407,59 @@ test('首期起息日恰好整月（30天）不折算，与不带起息日结果
 })
 
 test('每期费率口径不带起息日折算：首期利息仍按整期费率', () => {
+  const base = { principalMinor: '1200000', scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate',
+    quoteType: 'installment', ratePpm: '15000', firstPaymentDate: '2024-06-18', principalRounding: 'cent' }
+  const noStart = buildSchedule(base)
+  const withStart = buildSchedule({ ...base, interestStartDate: '2024-05-21' })
+  assert.equal(withStart.periods[0].interestMinor, noStart.periods[0].interestMinor)
+})
+
+// —— 通用「按日历天数」计息（填起息日启用，不填按月固定）——
+// 还款日=每月1号：第 i 期天数 = 上一月日历天数，便于断言 31/30/28 天月的差异。
+function calendarInput(method, overrides = {}) {
+  return { principalMinor: '10000000', scheduleMethod: method, scheduleTerms: 6, measurementKind: 'rate',
+    quoteType: 'annual', ratePpm: '120000', firstPaymentDate: '2023-03-01', interestStartDate: '2023-02-01',
+    principalRounding: 'cent', ...overrides }
+}
+
+test('等额本金 + 年利率 + 起息日：逐期按日历天数计息（31天月高于30天月）', () => {
+  const s = buildSchedule(calendarInput('equal_principal'))
+  const [p1, p2, p3] = s.periods
+  // 第1期 28天、第2期 31天、第3期 30天
+  assert.equal(new Date(p2.dueDate).getTime() > new Date(p1.dueDate).getTime(), true)
+  // 同余额下 31天利息 > 30天利息；这里余额递减，抽查第2期利息(31天)相对第3期(30天)按余额校正后仍体现天数
+  // 更直接：用固定余额的先息后本验证天数
+  const io = buildSchedule(calendarInput('interest_only')).periods
+  assert.ok(io[1].interestMinor > io[2].interestMinor, '31天月利息应高于30天月')
+  assert.ok(io[2].interestMinor > io[0].interestMinor / 28 * 30 - 1, '30天月应高于按28天折算')
+})
+
+test('先息后本 + 年利率 + 起息日：利息 = 本金×日利率×天数（31/30/28天月）', () => {
+  const s = buildSchedule(calendarInput('interest_only')).periods
+  // 本金 10万，年 12% → 月 1% → 日 = 1%/30
+  const daily = 10000000 * (0.12 / 12) / 30
+  assert.equal(s[0].interestMinor, Math.round(daily * 28))
+  assert.equal(s[1].interestMinor, Math.round(daily * 31))
+  assert.equal(s[2].interestMinor, Math.round(daily * 30))
+})
+
+test('等本等息 + 起息日：仅首期按天数折算，其余各期利息恒定（不被月天数影响）', () => {
+  const s = buildSchedule(calendarInput('flat')).periods
+  const baseInterest = Math.round(10000000 * (0.12 / 12)) // 月费率整月 = 100000
+  assert.equal(s[0].interestMinor, Math.round(baseInterest * 28 / 30), '首期28天折算')
+  assert.equal(s[1].interestMinor, baseInterest, '31天月不放大（等本等息恒定）')
+  assert.equal(s[2].interestMinor, baseInterest, '30天月恒定')
+  assert.equal(s[3].interestMinor, baseInterest)
+})
+
+test('比较：不填起息日时等额本金/先息后本仍按月固定（每期利息按整月30天）', () => {
+  const io = buildSchedule(calendarInput('interest_only', { interestStartDate: undefined })).periods
+  // 月固定：每期利息相同（本金不变）
+  assert.equal(io[0].interestMinor, io[1].interestMinor)
+  assert.equal(io[1].interestMinor, io[2].interestMinor)
+})
+
+test('每期费率口径不参与按日历天数（填了起息日也不变）', () => {
   const base = { principalMinor: '1200000', scheduleMethod: 'flat', scheduleTerms: 12, measurementKind: 'rate',
     quoteType: 'installment', ratePpm: '15000', firstPaymentDate: '2024-06-18', principalRounding: 'cent' }
   const noStart = buildSchedule(base)

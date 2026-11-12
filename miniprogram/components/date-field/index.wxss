@@ -32,6 +32,7 @@
 .df-nav { display: flex; justify-content: space-between; padding: 16rpx 32rpx 8rpx; }
 .df-navbtn { font-size: 26rpx; color: var(--theme-text-muted, #9a9086); padding: 8rpx 16rpx; }
 .df-time { display: flex; align-items: center; gap: 12rpx; padding: 16rpx 32rpx 8rpx; }
+.df-time-only { justify-content: center; padding: 56rpx 32rpx; }
 .df-time-label { font-size: 28rpx; color: var(--theme-text-muted, #9a9086); }
 .df-time-picker { flex: 0 0 auto; background: rgba(255,255,255,.05); border-radius: 12rpx; padding: 12rpx 24rpx; }
 .df-time-val { font-size: 30rpx; font-variant-numeric: tabular-nums; }
