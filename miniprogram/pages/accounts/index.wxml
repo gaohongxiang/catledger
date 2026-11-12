@@ -24,7 +24,7 @@
 
   <view wx:if="{{assets.length > 0}}" class="account-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark asset-mark" aria-hidden="true"></view><text class="group-title serif-title">资产账户</text><text class="group-count money-number">{{assets.length}}</text></view><text wx:if="{{assetCorrectionCount > 0}}" class="group-alert">{{assetCorrectionCount}} 个待校正</text></view>
-    <view class="account-list {{dragGroup === 'asset' ? 'account-list-dragging' : ''}}" catchtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
+    <view class="account-list {{dragGroup === 'asset' ? 'account-list-dragging' : ''}}" bindtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
       <view wx:for="{{assets}}" wx:key="accountId" class="account-row row-enter {{dragGroup === 'asset' && dragId === item.accountId ? 'account-row-dragging' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms; {{dragGroup === 'asset' && dragId === item.accountId ? 'transform: translateY(' + dragOffset + 'px);' : ''}}" data-id="{{item.accountId}}" data-index="{{index}}" data-group="asset" bindtap="openAccountDetail" bindlongpress="onDragStart" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
@@ -37,7 +37,7 @@
 
   <view wx:if="{{hasLoaded}}" class="account-group liability-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text wx:if="{{installmentPlanPromptCount > 0}}" class="group-alert group-alert-inline">{{installmentPlanPromptCount}} 个账户有分期待处理</text></view>
-    <view class="account-list {{dragGroup === 'liability' ? 'account-list-dragging' : ''}}" catchtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
+    <view class="account-list {{dragGroup === 'liability' ? 'account-list-dragging' : ''}}" bindtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
       <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter {{dragGroup === 'liability' && dragId === item.accountId ? 'account-row-dragging' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms; {{dragGroup === 'liability' && dragId === item.accountId ? 'transform: translateY(' + dragOffset + 'px);' : ''}}" data-id="{{item.accountId}}" data-index="{{index}}" data-group="liability" bindtap="openAccountDetail" bindlongpress="onDragStart" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}<text wx:if="{{item.needsInstallmentPlan}}" class="account-row-warn"> · 有分期待处理</text></text></view>
