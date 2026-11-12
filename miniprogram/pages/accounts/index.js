@@ -27,9 +27,11 @@ Page(themeService.page({
     archivedAccounts: [],
     assetCorrectionCount: 0,
     archivedExpanded: false,
-    dragGroup: '',      // '' | 'asset' | 'liability'：当前正在拖动的分组
+    dragging: false,    // 是否正在拖动排序（显示全屏遮罩层，拦截页面滚动）
+    dragGroup: '',      // '' | 'asset' | 'liability'
     dragId: '',
-    dragOffset: 0,      // 拖动行相对原位的 Y 位移（px），用于跟随手指
+    dragItem: {},       // 拖动行的数据，供浮层展示
+    dragFloatTop: 0,    // 浮层 top（px）
     totals: { netWorthText: '¥0.00', assetsText: '¥0.00', liabilitiesText: '¥0.00' },
     formOpen: false,
     formMode: 'create',
@@ -116,9 +118,14 @@ Page(themeService.page({
     const id = event.currentTarget.dataset.id
     const group = event.currentTarget.dataset.group
     if (!id || Number.isNaN(index) || !group) return
+    if (this.data.formOpen) return
     const touch = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0])
-    const startY = touch ? touch.clientY : 0
-    // 行高按 min-height 116rpx 换算成 px（同步，避免异步 query 与松手竞态）。
+    const clientY = touch ? touch.clientY : 0
+    const listKey = group === 'asset' ? 'assets' : 'liabilities'
+    const list = this.data[listKey] || []
+    const item = list.find(function (a) { return a.accountId === id })
+    if (!item) return
+    // 行高按 min-height 116rpx 换算 px（同步，避免异步 query 竞态）。
     let rowHeight = 58
     try {
       const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
@@ -128,11 +135,17 @@ Page(themeService.page({
       group: group,
       id: id,
       fromIndex: index,
-      startY: startY,
+      startY: clientY,
       rowHeight: rowHeight,
       moved: false
     }
-    this.setData({ dragGroup: group, dragId: id, dragOffset: 0 })
+    this.setData({
+      dragging: true,
+      dragGroup: group,
+      dragId: id,
+      dragItem: item,
+      dragFloatTop: clientY - rowHeight / 2
+    })
     if (wx.vibrateShort) wx.vibrateShort({ type: 'light' })
   },
 
@@ -141,10 +154,10 @@ Page(themeService.page({
     if (!drag) return
     const touch = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0])
     if (!touch) return
-    const offset = Math.round(touch.clientY - drag.startY)
+    const offset = touch.clientY - drag.startY
     drag.moved = drag.moved || Math.abs(offset) > 3
-    // 仅让拖动行跟随手指；不实时改数组，松手时一次性重排（避免数组交换与位移补偿的抖动）。
-    this.setData({ dragOffset: offset })
+    drag.lastOffset = offset
+    this.setData({ dragFloatTop: touch.clientY - drag.rowHeight / 2 })
   },
 
   onDragEnd: function () {
@@ -153,13 +166,12 @@ Page(themeService.page({
     this._drag = null
     this._dragEndedAt = Date.now()
     const listKey = drag.group === 'asset' ? 'assets' : 'liabilities'
-    if (!drag.moved) { this.setData({ dragGroup: '', dragId: '', dragOffset: 0 }); return }
-    // 目标位置 = 起始位 + 位移折算的行数（一次重排）
+    if (!drag.moved) { this.setData({ dragging: false, dragGroup: '', dragId: '' }); return }
     const list = this.data[listKey].slice()
-    let target = drag.fromIndex + Math.round(this.data.dragOffset / drag.rowHeight)
+    let target = drag.fromIndex + Math.round((drag.lastOffset || 0) / drag.rowHeight)
     if (target < 0) target = 0
     if (target > list.length - 1) target = list.length - 1
-    this.setData({ dragGroup: '', dragId: '', dragOffset: 0 })
+    this.setData({ dragging: false, dragGroup: '', dragId: '' })
     if (target === drag.fromIndex) return
     const fromPos = list.findIndex(function (a) { return a.accountId === drag.id })
     if (fromPos < 0) return
