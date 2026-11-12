@@ -4,7 +4,7 @@ const session = require('../../../../services/page-read-session')
 const loginGuard = require('../../../../services/login-guard')
 const theme = require('../../../../theme/service')
 const model = require('./model')
-const { splitDateTime } = require('../../../../utils/date-time-field')
+const { splitDateTime } = require('../../utils/date-time-field')
 const businessInitialData = {retainedCharges:[],pageTitle:'登记还款',managementOpen:false,hasUnallocated:false,sourceAccountId:'',simplePeriod:false,amountDetailsOpen:false,periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['使用这笔已有账目，金额不变','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
     modes: ['还没记过，新记一笔','已经记过，选已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, retainedRepayment:null, sourceTiming: null, sourceTransactions: [], sourceRows: [],

@@ -100,10 +100,12 @@
 .account-list-dragging { overflow: visible; }
 .account-row-dragging {
   z-index: 20;
+  animation: none !important;   /* 关键：停掉 row-enter 动画，否则它会覆盖内联 transform 导致拖不动 */
   background: var(--theme-surface-raised, #fffaf2);
   border-radius: var(--theme-radius-large, 24rpx);
   box-shadow: 0 12rpx 32rpx rgba(0, 0, 0, .18);
   transition: none;
+  opacity: 1;
 }
 .account-drag-handle { flex: 0 0 auto; width: 40rpx; height: 40rpx; opacity: .8; }
 

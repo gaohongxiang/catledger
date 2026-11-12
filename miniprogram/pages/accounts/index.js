@@ -112,30 +112,28 @@ Page(themeService.page({
   // 策略：长按记录起始位置与行高；touchmove 按手指 Y 位移算当前落点，实时交换数组让其他行让位；
   // touchend 若顺序变化则提交 accounts.reorder（提交该组新的 accountId 顺序）。
   onDragStart: function (event) {
-    if (event.currentTarget.dataset.kind === undefined && this.data.formOpen) return
     const index = Number(event.currentTarget.dataset.index)
     const id = event.currentTarget.dataset.id
     const group = event.currentTarget.dataset.group
-    if (!id || Number.isNaN(index)) return
+    if (!id || Number.isNaN(index) || !group) return
     const touch = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0])
     const startY = touch ? touch.clientY : 0
-    const self = this
-    wx.createSelectorQuery().in(this).select('.account-row').boundingClientRect(function (rect) {
-      const rowHeight = rect && rect.height ? rect.height : 58
-      self._drag = {
-        group: group,
-        id: id,
-        fromIndex: index,
-        curIndex: index,
-        startY: startY,
-        rowHeight: rowHeight,
-        lastY: startY,
-        moved: false,
-        original: (self.data[group === 'asset' ? 'assets' : 'liabilities'] || []).map(function (a) { return a.accountId })
-      }
-      self.setData({ dragGroup: group, dragId: id, dragOffset: 0 })
-      if (wx.vibrateShort) wx.vibrateShort({ type: 'light' })
-    }).exec()
+    // 行高按 min-height 116rpx 换算成 px（同步，避免异步 query 与松手竞态）。
+    let rowHeight = 58
+    try {
+      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+      if (info && info.windowWidth) rowHeight = 116 / 750 * info.windowWidth
+    } catch (e) { /* 保底 58 */ }
+    this._drag = {
+      group: group,
+      id: id,
+      fromIndex: index,
+      startY: startY,
+      rowHeight: rowHeight,
+      moved: false
+    }
+    this.setData({ dragGroup: group, dragId: id, dragOffset: 0 })
+    if (wx.vibrateShort) wx.vibrateShort({ type: 'light' })
   },
 
   onDragMove: function (event) {
@@ -144,30 +142,9 @@ Page(themeService.page({
     const touch = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0])
     if (!touch) return
     const offset = Math.round(touch.clientY - drag.startY)
-    const listKey = drag.group === 'asset' ? 'assets' : 'liabilities'
-    const list = this.data[listKey].slice()
-    // 目标位置 = 起始位 + 位移折算的行数
-    let target = drag.fromIndex + Math.round(offset / drag.rowHeight)
-    if (target < 0) target = 0
-    if (target > list.length - 1) target = list.length - 1
-    if (target !== drag.curIndex) {
-      const fromPos = list.findIndex(function (a) { return a.accountId === drag.id })
-      if (fromPos >= 0) {
-        const moved = list.splice(fromPos, 1)[0]
-        list.splice(target, 0, moved)
-        drag.curIndex = target
-        drag.moved = true
-        // 拖动行视觉位移补偿（因为数组已重排，行会跳到新位置，需回退补偿让手指下的行不跳）
-        const setDataObj = {}
-        setDataObj[listKey] = list
-        // 位移基数改为相对"当前数组位置"，用剩余 offset 近似，避免抖动
-        const residual = offset - (target - drag.fromIndex) * drag.rowHeight
-        setDataObj.dragOffset = residual
-        this.setData(setDataObj)
-        return
-      }
-    }
-    this.setData({ dragOffset: Math.round(offset - (drag.curIndex - drag.fromIndex) * drag.rowHeight) })
+    drag.moved = drag.moved || Math.abs(offset) > 3
+    // 仅让拖动行跟随手指；不实时改数组，松手时一次性重排（避免数组交换与位移补偿的抖动）。
+    this.setData({ dragOffset: offset })
   },
 
   onDragEnd: function () {
@@ -175,12 +152,27 @@ Page(themeService.page({
     if (!drag) return
     this._drag = null
     this._dragEndedAt = Date.now()
-    this.setData({ dragGroup: '', dragId: '', dragOffset: 0 })
-    if (!drag.moved) return
     const listKey = drag.group === 'asset' ? 'assets' : 'liabilities'
-    const ids = this.data[listKey].map(function (a) { return a.accountId })
-    const changed = ids.length !== drag.original.length || ids.some(function (id, i) { return id !== drag.original[i] })
-    if (!changed) return
+    if (!drag.moved) { this.setData({ dragGroup: '', dragId: '', dragOffset: 0 }); return }
+    // 目标位置 = 起始位 + 位移折算的行数（一次重排）
+    const list = this.data[listKey].slice()
+    let target = drag.fromIndex + Math.round(this.data.dragOffset / drag.rowHeight)
+    if (target < 0) target = 0
+    if (target > list.length - 1) target = list.length - 1
+    this.setData({ dragGroup: '', dragId: '', dragOffset: 0 })
+    if (target === drag.fromIndex) return
+    const fromPos = list.findIndex(function (a) { return a.accountId === drag.id })
+    if (fromPos < 0) return
+    const moved = list.splice(fromPos, 1)[0]
+    list.splice(target, 0, moved)
+    const setDataObj = {}
+    setDataObj[listKey] = list
+    this.setData(setDataObj)
+    this.saveOrder(list.map(function (a) { return a.accountId }))
+  },
+
+  // 提交新的账户顺序（同一组内的 accountId 数组）。失败则重载恢复服务端顺序。
+  saveOrder: function (ids) {
     const self = this
     api.callApi('accounts.reorder', { accountIds: ids, requestId: api.createRequestId() })
       .then(function () { if (wx.showToast) wx.showToast({ title: '已排序', icon: 'none' }) })
