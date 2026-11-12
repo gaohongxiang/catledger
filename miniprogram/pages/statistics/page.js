@@ -286,8 +286,11 @@ function createStatisticsPage(dependencies) {
     },
 
     selectDay: function (event) {
-      const row = this.data.daily[Number(event.currentTarget.dataset.index)]
-      if (row) this.setData({ selectedDay: row })
+      // 日历格数据在 charts.calendar（含 netText/hasIncome 等），按 date 取；daily 只有收支额，缺净额。
+      const date = event.currentTarget.dataset.date
+      const calendar = (this.data.charts && this.data.charts.calendar) || []
+      const row = date ? calendar.find(cell => cell.date === date) : null
+      if (row && !row.blank) this.setData({ selectedDay: row })
     },
 
     openUnclassifiedCategory: function (event) {

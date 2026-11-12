@@ -69,7 +69,7 @@
     </view>
     <view wx:else class="compose-calendar">
       <view class="calendar-grid"><text wx:for="{{weekdays}}" wx:key="*this" class="calendar-weekday">{{item}}</text></view>
-      <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : item.tone + ' heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.ariaText}}"><text>{{item.dayText}}</text><view wx:if="{{item.hasIncome && item.hasExpense}}" class="calendar-dot calendar-dot-both"></view><view wx:elif="{{item.hasIncome}}" class="calendar-dot calendar-dot-income"></view></view></view>
+      <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : item.tone + ' heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" data-date="{{item.date}}" aria-role="button" aria-label="{{item.blank ? '' : item.ariaText}}"><text>{{item.dayText}}</text><view wx:if="{{item.hasIncome && item.hasExpense}}" class="calendar-dot calendar-dot-both"></view><view wx:elif="{{item.hasIncome}}" class="calendar-dot calendar-dot-income"></view></view></view>
       <view wx:if="{{selectedDay}}" class="calendar-detail">
         <text class="calendar-detail-date">{{selectedDay.date}}</text>
         <view class="calendar-detail-row"><text class="cd-label">收入</text><text class="cd-value income-color money-number">{{selectedDay.incomeText}}</text></view>

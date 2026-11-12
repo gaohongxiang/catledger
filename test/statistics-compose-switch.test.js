@@ -73,3 +73,22 @@ test('分段第三项「日历」：compositionKind=calendar，categoryKind 置�
   assert.equal(page.data.categoryKind, '')
   assert.equal(page.data.selectedDay, null)
 })
+
+test('日历点某天：selectedDay 带净额/收入/支出（取自 charts.calendar 而非 daily）', async () => {
+  const h = runtime()
+  h.respond = (action, data) => action === 'statistics.get'
+    ? { ok: true, data: { month: data.month, trendEndMonth: data.trendEndMonth,
+        summary: { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' },
+        daily: [{ date: '2026-08-05', incomeMinor: '3000002', expenseMinor: '11609' }],
+        cashFlowTrend: [], metrics: {}, liabilities: null,
+        expenseCategories: [], incomeCategories: [], categoryComparisons: { expense: {} } } }
+    : undefined
+  const page = h.page('statistics'); page.onLoad(); await page.loadStatistics()
+  page.selectCompositionKind({ currentTarget: { dataset: { kind: 'calendar' } } })
+  page.selectDay({ currentTarget: { dataset: { date: '2026-08-05', index: 0 } } })
+  assert.ok(page.data.selectedDay, '应选中某天')
+  assert.equal(page.data.selectedDay.incomeText, '¥30,000.02')
+  assert.equal(page.data.selectedDay.expenseText, '¥116.09')
+  assert.notEqual(page.data.selectedDay.netText, undefined, '净额不能是 undefined')
+  assert.equal(page.data.selectedDay.netText, '¥29,883.93')
+})
