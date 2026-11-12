@@ -72,6 +72,20 @@ async function unpaidDebtByAccount(c,uid) {
 }
 // 各负债账户「所有生效分期计划的全期总利息」合计——含已还期次，口径等同贷款页"总利息"
 // （buildView 的 summary.totalInterestMinor，按未取消期次求和）。只统计未归档/未删除的计划。
+// 「已还」口径：期次完成以逐期视图的一致判断为准（complete = 已还/部分未还里已补齐），
+// 与 unpaidDebtByAccount 的未还口径互补。已还利息 = 全期总利息 − 未还利息。
+function paidInterestByAccount(c,uid) {
+  return loadLivePlanSummaries(c,uid).then(plans=>{
+    const totals=new Map()
+    for(const {accountId,summary} of plans){
+      const total=BigInt(summary.totalInterestMinor||'0')
+      const unpaid=BigInt(summary.unpaidInterestMinor||'0')
+      const paid=total>unpaid?total-unpaid:0n
+      if(paid>0n)totals.set(accountId,(totals.get(accountId)||0n)+paid)
+    }
+    return new Map([...totals].map(([accountId,minor])=>[accountId,minor.toString()]))
+  })
+}
 async function totalInterestByAccount(c,uid) {
   const plans=await loadLivePlanSummaries(c,uid)
   const totals=new Map()
@@ -276,4 +290,4 @@ function createInstallmentService({getPool,selectLoan}) {
   }
   return {installments,installment,planCandidates,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,reconcileInstallmentSources,archiveInstallment,removeInstallmentItem}
 }
-module.exports={createInstallmentService,loadView,populateTracking,unpaidDebtByAccount,totalInterestByAccount}
+module.exports={createInstallmentService,loadView,populateTracking,unpaidDebtByAccount,totalInterestByAccount,paidInterestByAccount}

@@ -3,7 +3,9 @@ const { validMetadata } = require('./read-metadata')
 const { bytes } = require('./read-observer')
 const KEY = 'catledger_read_snapshots_v1'
 // 账单资料扩展了账户读取结构；旧快照即使数据修订相同也必须重新读取。
-const SCHEMA = 2, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
+// schema 3：statistics.get 增加 liabilities（负债占比与分期利息）分块，旧快照缺此字段必须作废重读，
+// 否则冷启动会先渲染没有「负债与分期」的旧画面，直到下拉刷新才补上。
+const SCHEMA = 3, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
 const ACTIONS = new Set(['dashboard.get', 'catalog.get', 'accounts.list', 'categories.list', 'statistics.get', 'transactions.list'])
 function actionOf(key) { return typeof key === 'string' ? key.slice(0, key.indexOf(':')) : '' }
 function complete(action, value) {

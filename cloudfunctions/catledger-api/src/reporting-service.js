@@ -142,7 +142,7 @@ async function queryStatisticsMetrics(connection, uid, range) {
   }
 }
 
-function monthSequence(month, count = 6) {
+function monthSequence(month, count = 12) {
   parseMonth(month)
   const [year, monthNumber] = month.split('-').map(Number)
   const values = []
@@ -167,8 +167,70 @@ function summaryFromTrend(cashFlowTrend, month) {
   }
 }
 
-async function queryMonthlyCashFlowTrend(connection, uid, month) {
-  const months = monthSequence(month)
+// 环比（上月）/ 同比（去年同月）对比：从趋势序列按月份取值，点缺失即视为无数据（不当作 0）。
+// 只返回选中月份能取到的对比项；源月不在趋势窗口或为「空月」时返回 null，页面不显示该项，避免显示假 0%。
+function shiftMonthKey(month, delta) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const cursor = new Date(Date.UTC(year, monthNumber - 1 + delta, 1))
+  return `${String(cursor.getUTCFullYear()).padStart(4, '0')}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function comparisonOf(current, previous) {
+  if (!previous) return null
+  const currentExpense = BigInt(current.expenseMinor)
+  const previousExpense = BigInt(previous.expenseMinor)
+  const currentIncome = BigInt(current.incomeMinor)
+  const previousIncome = BigInt(previous.incomeMinor)
+  // 差值为分（当前 − 对比基期），前端按符号决定涨/降文案；基期为 0 时百分比无法有意义，ratePpm 记 null。
+  const expenseDelta = currentExpense - previousExpense
+  const incomeDelta = currentIncome - previousIncome
+  return {
+    month: previous.month,
+    expense: {
+      deltaMinor: expenseDelta.toString(),
+      ratePpm: previousExpense > 0n ? Number((expenseDelta * 1000000n) / previousExpense) : null
+    },
+    income: {
+      deltaMinor: incomeDelta.toString(),
+      ratePpm: previousIncome > 0n ? Number((incomeDelta * 1000000n) / previousIncome) : null
+    }
+  }
+}
+
+function buildComparisons(cashFlowTrend, month) {
+  const byMonth = new Map((cashFlowTrend || []).map(row => [row.month, row]))
+  const current = byMonth.get(month)
+  if (!current) return { previousMonth: null, lastYearMonth: null }
+  return {
+    previousMonth: comparisonOf(current, byMonth.get(shiftMonthKey(month, -1))),
+    lastYearMonth: comparisonOf(current, byMonth.get(shiftMonthKey(month, -12)))
+  }
+}
+
+// 分类环比：以本月「大类」聚合为骨架，对齐上月同一 categoryId（含未分类 null）的支出，
+// 产出每类 previousMinor / deltaMinor / ratePpm；上月无此分类 previousMinor=0、ratePpm=null。
+// 只对支出侧做（收入分类排行不需要环比噪音），与 buildComparisons 的百万分率口径一致。
+function buildCategoryComparisons(currentCategories, previousCategories) {
+  const previous = new Map()
+  for (const row of previousCategories || []) previous.set(row.categoryId == null ? '' : String(row.categoryId), BigInt(row.amountMinor))
+  const result = {}
+  for (const row of currentCategories || []) {
+    const key = row.categoryId == null ? '' : String(row.categoryId)
+    const currentMinor = BigInt(row.amountMinor)
+    const previousMinor = previous.get(key) || 0n
+    const delta = currentMinor - previousMinor
+    result[key] = {
+      categoryId: row.categoryId == null ? null : row.categoryId,
+      previousMinor: previousMinor.toString(),
+      deltaMinor: delta.toString(),
+      ratePpm: previousMinor > 0n ? Number((delta * 1000000n) / previousMinor) : null
+    }
+  }
+  return result
+}
+
+async function queryMonthlyCashFlowTrend(connection, uid, month, count = 12) {
+  const months = monthSequence(month, count)
   const endRange = parseMonth(month)
   const [rows] = await connection.execute(
     `SELECT DATE_FORMAT(occurred_local_date, '%Y-%m') AS localMonth,
@@ -268,13 +330,28 @@ function createReportingService({ getPool }) {
         const range = parseMonth(month)
         const summary = await queryMonthlySummary(connection, uid, range)
         const categories = await queryCategoryStatistics(connection, uid, range, summary)
+        // 上月分类聚合（仅供支出分类环比；单独一次查询，口径与本月同）。
+        const previousMonth = shiftMonthKey(month, -1)
+        const previousRange = parseMonth(previousMonth)
+        const previousSummary = await queryMonthlySummary(connection, uid, previousRange)
+        const previousCategories = await queryCategoryStatistics(connection, uid, previousRange, previousSummary)
         const daily = await queryDailyStatistics(connection, uid, range)
-        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth)
+        // 图表只展示近 6 个月；同比需要「去年同月」，故单独用 13 个月窗口算对比，不为图表多带数据。
+        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth, 6)
+        const comparisonTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth, 13)
         const quality = await queryStatisticsMetrics(connection, uid, range)
+        // 负债占比与分期利息是「当前时点」数据，与所选月份无关；口径见 liability-summary.js。
+        const accounts = await listAccountsForUser(connection, uid)
+        const { paidInterestByAccount } = require('./installment-service')
+        const paidInterest = await paidInterestByAccount(connection, uid)
+        const { liabilities } = require('./liability-summary').liabilitySummary(accounts, paidInterest)
         return {
           month,
           trendEndMonth,
           summary,
+          liabilities,
+          comparisons: buildComparisons(comparisonTrend, month),
+          categoryComparisons: { expense: buildCategoryComparisons(categories.expenseCategories, previousCategories.expenseCategories) },
           daily,
           cashFlowTrend,
           metrics: {
@@ -294,6 +371,6 @@ function createReportingService({ getPool }) {
   return { dashboard, statistics }
 }
 
-module.exports = { createReportingService, monthSequence, summaryFromTrend, netWorthOf }
+module.exports = { createReportingService, monthSequence, summaryFromTrend, netWorthOf, buildComparisons, buildCategoryComparisons }
 
 module.exports.rollupCategories = rollupCategories

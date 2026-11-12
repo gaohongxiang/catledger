@@ -15,7 +15,7 @@ test('月内累计按分精确累加，退款负净支出向上抵减且坐标�
   assert.equal(view.cumulativeDays[1].cumulativeMinor, '9007199254741001')
   assert.equal(view.cumulativeEndText, '¥90,071,992,547,410.01')
   assert.equal(view.calendar[0].blank, true)
-  assert.equal(view.calendar[2].level, 'refund')
+  assert.equal(view.calendar[2].tone, 'refund')
   assert.doesNotMatch(source(view.cumulativeChart), /NaN|Infinity/)
   assert.equal(view.dailyChart, undefined)
 })
@@ -70,4 +70,23 @@ test('缓存连续使用超过原TTL仍复用；回前台仅启动一次校验�
   assert.ok(cache.token('statistics'))
   await cache.mutate(['transactions'], async () => {})
   assert.equal(cache.token('statistics'), null)
+})
+
+test('日历同时表达收支：净收入日绿色 tone、双收支日有圆点、明细带收入/支出/净额', () => {
+  const view = buildStatisticsView({ month: '2026-09', daily: [
+    day('2026-09-01', '5000', '2000'),   // 净收入 +30
+    day('2026-09-02', '0', '3000'),      // 净支出
+    day('2026-09-03', '0', '0')          // 无收支
+  ] }, {})
+  const d1 = view.calendar.find(c => c.date === '2026-09-01')
+  const d2 = view.calendar.find(c => c.date === '2026-09-02')
+  const d3 = view.calendar.find(c => c.date === '2026-09-03')
+  assert.equal(d1.tone, 'net-income')
+  assert.equal(d1.hasIncome, true); assert.equal(d1.hasExpense, true)
+  assert.equal(d1.incomeText, '¥50.00'); assert.equal(d1.expenseText, '¥20.00'); assert.equal(d1.netText, '¥30.00')
+  assert.equal(d2.tone, 'net-expense')
+  assert.equal(d3.tone, 'none')
+  // 退款抵减日归到 refund tone
+  const refund = buildStatisticsView({ month: '2026-09', daily: [day('2026-09-04', '0', '-900')] }, {}).calendar.find(c => c.date === '2026-09-04')
+  assert.equal(refund.tone, 'refund')
 })

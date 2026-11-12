@@ -1,4 +1,4 @@
-const { buildStatisticsView } = require('./model')
+const { buildStatisticsView, buildLiabilityView, buildMetricsView, categoryDeltaText } = require('./model')
 const pageReadSession = require('../../services/page-read-session')
 const readCache = require('../../services/read-cache')
 const loginGuard = require('../../services/login-guard')
@@ -6,18 +6,34 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const { bandColorFor } = require('../../utils/category-palette')
 
-function prepareCategories(rows, ring) {
+function prepareCategories(rows, ring, comparisons) {
   return (rows || []).map(function (row) {
     const positive = Number(row.amountMinor) > 0
     const percentage = positive && Number(ring.totalMinor) > 0 ? Number(row.amountMinor) / Number(ring.totalMinor) * 100 : 0
     const legend = ring.legend.find(item => item.name === row.name) || ring.legend[ring.legend.length - 1]
+    const key = row.categoryId == null ? '' : String(row.categoryId)
+    const comparison = comparisons ? comparisons[key] : null
     return Object.assign({}, row, {
       children: (row.children || []).map(child => Object.assign({}, child, { amountText: money.formatMinor(child.amountMinor) })),
       color: positive && legend ? legend.color : '#958b82',
       bandColor: bandColorFor(row.name, row.systemKey),
       amountText: money.formatMinor(row.amountMinor),
       shareText: Number(row.amountMinor) < 0 ? '退款抵减' : (percentage % 1 === 0 ? percentage.toFixed(0) : percentage.toFixed(1)) + '%',
-      barWidth: Math.max(0, Math.min(100, percentage)) + '%'
+      barWidth: Math.max(0, Math.min(100, percentage)) + '%',
+      delta: Number(row.amountMinor) < 0 ? null : categoryDeltaText(comparison)
+    })
+  })
+}
+
+// 把环图图例（name/categoryId/amountText/shareText/color）补上环比 delta，供「图例即排行」直接渲染。
+// 收入图例没有 delta（不做收入环比），comparisons 传 null 即可。
+function prepareRingLegend(ring, comparisons) {
+  if (!ring) return { src: '', totalText: '', hasNegative: false, legend: [] }
+  return Object.assign({}, ring, {
+    legend: (ring.legend || []).map(function (item) {
+      const key = item.categoryId == null ? '' : String(item.categoryId)
+      const comparison = comparisons ? comparisons[key] : null
+      return Object.assign({}, item, { delta: comparison ? categoryDeltaText(comparison) : null })
     })
   })
 }
@@ -52,17 +68,39 @@ function prepareCategoryGroups(groups) {
   })
 }
 
+function monthParts(month) {
+  const parts = String(month || '').split('-')
+  return { monthYear: parts[0] || '', monthNumber: String(Number(parts[1]) || 0) }
+}
+
+// 月份条：以当前所选月为中心，前 5 后 1 共 7 个 chip；跨年时 chip 仍只显示「月」，
+// 年份由标题统一标注（当前视图年份）。点击 chip 直接切到该月。
+function buildMonthOptions(month) {
+  const options = []
+  for (let offset = -5; offset <= 1; offset += 1) {
+    const value = time.shiftMonth(month, offset)
+    options.push({ value: value, year: Number(value.slice(0, 4)), month: Number(value.slice(5)) })
+  }
+  return options
+}
+
 function createStatisticsPage(dependencies) {
   const { app, api, themeService, wx } = dependencies
   return {
     data: {
       loggedIn: false,
-      categoryKind: '', expandedCategoryId: '', completionCategoryIndex: -1,
+      categoryKind: '', compositionKind: 'expense', expandedCategoryId: '', completionCategoryIndex: -1,
+      rings: { expense: null, income: null },
       charts: null,
       selectedCumulative: null,
       weekdays: ['一', '二', '三', '四', '五', '六', '日'],
       month: time.currentMonth(),
       monthLabel: '',
+      monthYear: '',
+      monthNumber: '',
+      monthOptions: [],
+      netTone: '',
+      summaryScopeAll: false,
       loading: false,
       hasLoaded: false,
       errorMessage: '',
@@ -76,6 +114,8 @@ function createStatisticsPage(dependencies) {
       expenseCategories: [],
       incomeCategories: [],
       metrics: {},
+      liabilityView: { hasLiabilities: false, rows: [], interestRows: [] },
+      metricsView: {},
       uncategorized: { transactionCount: 0, amountText: '¥0.00' },
       categorySheetOpen: false,
       categorySheetLoading: false,
@@ -88,7 +128,8 @@ function createStatisticsPage(dependencies) {
 
     onLoad: function (options) {
       this.openCompletionAfterLoad = Boolean(options && options.completeCategories === '1')
-      this.setData({ monthLabel: time.monthLabel(this.data.month) })
+      const p = monthParts(this.data.month)
+      this.setData({ monthLabel: time.monthLabel(this.data.month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(this.data.month) })
     },
 
     onShow: function () {
@@ -106,7 +147,7 @@ function createStatisticsPage(dependencies) {
           return this._statisticsLoad.then(() => { if (current()) return this.onShow() })
         }
         const month = time.currentMonth()
-        if (this.data.month !== month) this.setData({ month: month, monthLabel: time.monthLabel(month), hasLoaded: false, categoryKind: '' })
+        if (this.data.month !== month) { const p = monthParts(month); this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(month), hasLoaded: false, categoryKind: '' }) }
         app.globalData.openStatisticsCompletion = false
         this.openCompletionAfterLoad = true
       }
@@ -124,7 +165,7 @@ function createStatisticsPage(dependencies) {
         if (key !== this._chartTheme) {
           this._chartTheme = key
           const charts = buildStatisticsView(this._statisticsResult, tokens)
-          this.setData({ charts: charts, expenseCategories: prepareCategories(this._statisticsResult.expenseCategories, charts.expenseRing), incomeCategories: prepareCategories(this._statisticsResult.incomeCategories, charts.incomeRing) })
+          this.setData({ charts: charts, expenseCategories: prepareCategories(this._statisticsResult.expenseCategories, charts.expenseRing, this._statisticsResult.categoryComparisons && this._statisticsResult.categoryComparisons.expense), incomeCategories: prepareCategories(this._statisticsResult.incomeCategories, charts.incomeRing), rings: { expense: prepareRingLegend(charts.expenseRing, this._statisticsResult.categoryComparisons && this._statisticsResult.categoryComparisons.expense), income: prepareRingLegend(charts.incomeRing, null) }, liabilityView: buildLiabilityView(this._statisticsResult.liabilities, tokens), metricsView: buildMetricsView(this._statisticsResult.metrics, this._statisticsResult.comparisons, this._statisticsResult.month) })
         }
       }
     },
@@ -140,7 +181,7 @@ function createStatisticsPage(dependencies) {
     },
 
     beginReadSession: function () {
-      return pageReadSession.begin(this, ['expandedCategoryId', 'completionCategoryIndex', 'categoryKind', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
+      return pageReadSession.begin(this, ['expandedCategoryId', 'completionCategoryIndex', 'categoryKind', 'compositionKind', 'rings', 'monthYear', 'monthNumber', 'monthOptions', 'netTone', 'summaryScopeAll', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'metricsView', 'liabilityView', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
     },
 
     promptLogin: function () { loginGuard.run(this, this.loadStatistics.bind(this)) },
@@ -176,6 +217,8 @@ function createStatisticsPage(dependencies) {
             incomeText: money.formatMinor(result.summary.incomeMinor),
             expenseText: money.formatMinor(result.summary.expenseMinor),
             netText: money.formatMinor(result.summary.netIncomeMinor),
+            netTone: String(result.summary.netIncomeMinor || '0').charAt(0) === '-' ? 'hero-amount-neg' : '',
+            summaryScopeAll: Boolean(result.summaryScope && result.summaryScope === 'all'),
             cashFlowTrend: trend,
             daily: prepareDaily(result.daily),
             metrics: {
@@ -188,8 +231,14 @@ function createStatisticsPage(dependencies) {
               transactionCount: uncategorized.transactionCount || 0,
               amountText: money.formatMinor(uncategorized.amountMinor || '0')
             },
-            expenseCategories: prepareCategories(result.expenseCategories, charts.expenseRing),
-            incomeCategories: prepareCategories(result.incomeCategories, charts.incomeRing)
+            expenseCategories: prepareCategories(result.expenseCategories, charts.expenseRing, result.categoryComparisons && result.categoryComparisons.expense),
+            incomeCategories: prepareCategories(result.incomeCategories, charts.incomeRing),
+            rings: {
+              expense: prepareRingLegend(charts.expenseRing, result.categoryComparisons && result.categoryComparisons.expense),
+              income: prepareRingLegend(charts.incomeRing, null)
+            },
+            liabilityView: buildLiabilityView(result.liabilities, tokens),
+            metricsView: buildMetricsView(result.metrics, result.comparisons, result.month)
           })
           if (!snapshot && self.openCompletionAfterLoad) {
             self.openCompletionAfterLoad = false
@@ -207,16 +256,25 @@ function createStatisticsPage(dependencies) {
       return this._statisticsLoad
     },
 
-    selectCategoryKind: function (event) {
+    selectCompositionKind: function (event) {
       const kind = event.currentTarget.dataset.kind
-      if (kind === 'expense' || kind === 'income') this.setData({ categoryKind: this.data.categoryKind === kind ? '' : kind })
+      if (kind === 'expense' || kind === 'income' || kind === 'calendar') {
+        // 日历视图不是分类维度：categoryKind 仅用于分类展开，日历时置空。
+        this.setData({ compositionKind: kind, categoryKind: (kind === 'calendar' ? '' : kind), expandedCategoryId: '', selectedDay: null })
+      }
     },
 
     chooseMonth: function (event) {
       if (this.data.loading || this.data.categorySaving) return
       const month = event.detail.value
-      this.setData({ month: month, monthLabel: time.monthLabel(month), hasLoaded: false, categoryKind: '' })
+      const p = monthParts(month)
+      this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(month), hasLoaded: false, categoryKind: '' })
       return this.loadStatistics()
+    },
+
+    pickMonth: function (event) {
+      const value = event.currentTarget.dataset.value
+      if (value && value !== this.data.month) return this.chooseMonth({ detail: { value: value } })
     },
 
     previousMonth: function () { return this.chooseMonth({ detail: { value: time.shiftMonth(this.data.month, -1) } }) },

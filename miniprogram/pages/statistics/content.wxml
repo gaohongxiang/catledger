@@ -1,53 +1,82 @@
 <view class="page-canvas statistics-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
-  <view class="month-switcher">
-    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
-    <date-field granularity="month" value="{{month}}" bindchange="chooseMonth"><text class="month-current money-number">{{monthLabel}}</text></date-field>
-    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><chevron-icon size="{{30}}" /></view>
+  <view class="stats-head">
+    <text class="stats-head-title">收支统计</text>
+    <text class="stats-head-sep">·</text>
+    <text class="stats-head-year">{{monthYear}}年</text>
   </view>
+  <scroll-view class="month-strip" scroll-x show-scrollbar="{{false}}">
+    <view class="month-strip-inner">
+      <view wx:for="{{monthOptions}}" wx:key="value" class="month-chip {{item.value === month ? 'month-chip-active' : ''}}" role="button" data-value="{{item.value}}" bindtap="pickMonth" aria-label="切换到 {{item.year}}年{{item.month}}月">{{item.month}}月</view>
+    </view>
+  </scroll-view>
 
-  <view class="summary-strip {{incomeText.length > 12 || expenseText.length > 12 || netText.length > 12 ? 'summary-strip-stacked' : ''}}">
-    <view class="inline-sync summary-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
-    <view class="summary-cell"><text class="summary-label">收入</text><text class="summary-value money-number income-color">{{hasLoaded ? incomeText : '—'}}</text></view>
-    <view class="summary-divider"></view>
-    <view class="summary-cell"><text class="summary-label">支出</text><text class="summary-value money-number expense-color">{{hasLoaded ? expenseText : '—'}}</text></view>
-    <view class="summary-divider"></view>
-    <view class="summary-cell"><text class="summary-label">结余</text><text class="summary-value money-number">{{hasLoaded ? netText : '—'}}</text></view>
+  <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+  <view class="inline-sync stats-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
+
+  <view class="hero-card">
+    <text class="hero-label">{{summaryScopeAll ? '累计结余' : '本月结余'}}</text>
+    <text class="hero-amount money-number {{netTone}}">{{hasLoaded ? netText : '—'}}</text>
+    <view class="hero-split">
+      <view class="hero-side">
+        <text class="hero-side-label">收入</text>
+        <text class="hero-side-value money-number income-color">{{hasLoaded ? incomeText : '—'}}</text>
+        <view wx:if="{{hasLoaded && (metricsView.incomeVsPrevious || metricsView.incomeVsLastYear)}}" class="hero-side-cmp">
+          <text wx:if="{{metricsView.incomeVsPrevious}}" class="cmp cmp-{{metricsView.incomeVsPrevious.tone}}">环比{{metricsView.incomeVsPrevious.arrow}}{{metricsView.incomeVsPrevious.text}}</text>
+          <text wx:if="{{metricsView.incomeVsLastYear}}" class="cmp cmp-{{metricsView.incomeVsLastYear.tone}}">同比{{metricsView.incomeVsLastYear.arrow}}{{metricsView.incomeVsLastYear.text}}</text>
+        </view>
+      </view>
+      <view class="hero-side-divider"></view>
+      <view class="hero-side">
+        <text class="hero-side-label">支出</text>
+        <text class="hero-side-value money-number expense-color">{{hasLoaded ? expenseText : '—'}}</text>
+        <view wx:if="{{hasLoaded && (metricsView.expenseVsPrevious || metricsView.expenseVsLastYear)}}" class="hero-side-cmp">
+          <text wx:if="{{metricsView.expenseVsPrevious}}" class="cmp cmp-{{metricsView.expenseVsPrevious.tone}}">环比{{metricsView.expenseVsPrevious.arrow}}{{metricsView.expenseVsPrevious.text}}</text>
+          <text wx:if="{{metricsView.expenseVsLastYear}}" class="cmp cmp-{{metricsView.expenseVsLastYear.tone}}">同比{{metricsView.expenseVsLastYear.arrow}}{{metricsView.expenseVsLastYear.text}}</text>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{hasLoaded}}" class="hero-metrics">
+      <view class="hero-metric"><text class="hero-metric-v money-number">{{metricsView.transactionCount}}</text><text class="hero-metric-l">笔</text></view>
+      <view class="hero-metric-dot"></view>
+      <view class="hero-metric"><text class="hero-metric-l">日均支出</text><text class="hero-metric-v money-number">{{metricsView.averageDailyExpenseText}}</text></view>
+      <view class="hero-metric-dot"></view>
+      <view class="hero-metric"><text class="hero-metric-l">单笔最大</text><text class="hero-metric-v money-number">{{metricsView.largestExpenseText}}</text></view>
+    </view>
   </view>
 
   <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看收支统计"><button class="guest-login-button" size="mini" bindtap="promptLogin"><text class="guest-login-label">登录</text></button></ui-state>
-  <skeleton-rows wx:elif="{{!hasLoaded && !errorMessage}}" rows="{{4}}" />
+  <skeleton-rows wx:elif="{{!hasLoaded && !errorMessage}}" rows="{{5}}" />
   <block wx:if="{{hasLoaded}}">
   <section-header class="stats-section" compact title="收支构成" />
-  <view class="composition-card">
-    <view class="composition-pair">
-      <view class="composition-column">
-      <button class="composition-choice {{categoryKind === 'expense' ? 'composition-selected' : ''}}" data-kind="expense" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'expense' ? '收起支出分类' : '展开支出分类'}}">
-        <text class="band-label">支出</text>
-        <view class="band" aria-hidden="true"><block wx:for="{{expenseCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
-        <ticker-number class="composition-amount expense-color money-number" value="{{expenseText}}" />
-        <text class="composition-toggle">{{categoryKind === 'expense' ? '收起分类' : '展开分类'}}</text>
-      </button>
-      </view>
-      <view class="composition-column">
-      <button class="composition-choice {{categoryKind === 'income' ? 'composition-selected' : ''}}" data-kind="income" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'income' ? '收起收入分类' : '展开收入分类'}}">
-        <text class="band-label">收入</text>
-        <view class="band" aria-hidden="true"><block wx:for="{{incomeCategories}}" wx:key="categoryId"><view wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></block></view>
-        <ticker-number class="composition-amount income-color money-number" value="{{incomeText}}" />
-        <text class="composition-toggle">{{categoryKind === 'income' ? '收起分类' : '展开分类'}}</text>
-      </button>
+  <view class="compose-card">
+    <view class="segmented">
+      <view class="segmented-item {{compositionKind === 'expense' ? 'segmented-active' : ''}}" role="button" data-kind="expense" bindtap="selectCompositionKind">支出</view>
+      <view class="segmented-item {{compositionKind === 'income' ? 'segmented-active' : ''}}" role="button" data-kind="income" bindtap="selectCompositionKind">收入</view>
+      <view class="segmented-item {{compositionKind === 'calendar' ? 'segmented-active' : ''}}" role="button" data-kind="calendar" bindtap="selectCompositionKind">日历</view>
+    </view>
+    <view wx:if="{{compositionKind !== 'calendar'}}" class="compose-body">
+      <image wx:if="{{compositionKind === 'expense' ? rings.expense.src : rings.income.src}}" class="compose-ring" src="{{compositionKind === 'expense' ? rings.expense.src : rings.income.src}}" mode="aspectFit" aria-label="{{compositionKind === 'expense' ? '支出' : '收入'}}构成环图" />
+      <view wx:else class="compose-ring compose-ring-empty">暂无数据</view>
+      <view class="compose-legend">
+        <view wx:for="{{compositionKind === 'expense' ? rings.expense.legend : rings.income.legend}}" wx:key="name" class="legend-item">
+          <view class="legend-dot" style="background: {{item.color}};"></view>
+          <text class="legend-name">{{item.name}}</text>
+          <view class="legend-meta"><text class="legend-amount money-number">{{item.amountText}}</text><text class="legend-share">{{item.shareText}}</text><text wx:if="{{item.delta}}" class="legend-delta delta-{{item.delta.tone}}">{{item.delta.text}}</text></view>
+        </view>
+        <text wx:if="{{(compositionKind === 'expense' ? rings.expense.legend.length : rings.income.legend.length) === 0}}" class="legend-empty">这个月还没有{{compositionKind === 'expense' ? '支出' : '收入'}}。</text>
       </view>
     </view>
-    <view wx:if="{{categoryKind}}" class="composition-details">
-      <text class="composition-detail-title">{{categoryKind === 'expense' ? '支出分类' : '收入分类'}}</text>
-      <block wx:if="{{categoryKind === 'expense' ? expenseCategories.length : incomeCategories.length}}">
-        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-unclassified="{{!item.categoryId}}" data-id="{{item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="button">
-          <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" system-key="{{item.systemKey}}" icon-kind="{{item.categoryId ? '' : 'uncategorized'}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId || item.children.length}}" direction="{{expandedCategoryId === item.categoryId ? 'down' : 'right'}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
-          <view wx:if="{{expandedCategoryId === item.categoryId && item.children.length}}" class="category-breakdown"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="categoryId" class="breakdown-row"><text>{{child.name}}</text><text class="money-number">{{child.amountText}}</text></view></view>
-        </view>
-      </block>
-      <text wx:else class="composition-empty">这个月还没有{{categoryKind === 'expense' ? '支出' : '收入'}}。</text>
-      <text wx:if="{{categoryKind === 'expense' ? charts.expenseRing.hasNegative : charts.incomeRing.hasNegative}}" class="ring-footnote">占比按正净额分类合计计算，退款抵减为负的分类单列。</text>
+    <view wx:else class="compose-calendar">
+      <view class="calendar-grid"><text wx:for="{{weekdays}}" wx:key="*this" class="calendar-weekday">{{item}}</text></view>
+      <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : item.tone + ' heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.ariaText}}"><text>{{item.dayText}}</text><view wx:if="{{item.hasIncome && item.hasExpense}}" class="calendar-dot calendar-dot-both"></view><view wx:elif="{{item.hasIncome}}" class="calendar-dot calendar-dot-income"></view></view></view>
+      <view wx:if="{{selectedDay}}" class="calendar-detail">
+        <text class="calendar-detail-date">{{selectedDay.date}}</text>
+        <view class="calendar-detail-row"><text class="cd-label">收入</text><text class="cd-value income-color money-number">{{selectedDay.incomeText}}</text></view>
+        <view class="calendar-detail-row"><text class="cd-label">支出</text><text class="cd-value expense-color money-number">{{selectedDay.expenseText}}</text></view>
+        <view class="calendar-detail-row"><text class="cd-label">净额</text><text class="cd-value money-number">{{selectedDay.netText}}</text></view>
+      </view>
+      <view wx:else class="chart-detail"><text>点日期看当天收支 · 绿=净收入 金=净支出</text></view>
     </view>
   </view>
 
@@ -64,16 +93,43 @@
     <view class="graph-axis"><text wx:for="{{cashFlowTrend}}" wx:key="month" class="{{selectedTrend.month === item.month ? 'axis-month-selected' : ''}}">{{item.monthText}}月</text></view>
   </view>
 
-  <section-header class="stats-section" compact title="支出日历"><text class="section-note">颜色越深，净支出越多</text></section-header>
-  <view class="graph-surface calendar-surface">
-    <view class="calendar-grid"><text wx:for="{{weekdays}}" wx:key="*this" class="calendar-weekday">{{item}}</text></view>
-    <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : 'heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.date + '净支出' + item.expenseText}}"><text>{{item.dayText}}</text></view></view>
-    <view class="chart-detail"><text wx:if="{{selectedDay}}">{{selectedDay.date}} · 净支出 {{selectedDay.expenseText}}</text><text wx:else>点击日期查看金额；绿色表示当天退款抵减后净支出为负。</text></view>
+
+
+
+
+  <view wx:if="{{hasLoaded && liabilityView.hasLiabilities}}" class="liability-block">
+    <section-header class="stats-section" compact title="负债与分期"><text class="section-note">当前时点</text></section-header>
+    <view class="liability-card">
+      <view class="liability-group-title"><text>负债占比</text><text class="liability-group-total">合计 {{liabilityView.debtTotalText}}</text></view>
+      <view class="liability-ring-row">
+        <image wx:if="{{liabilityView.debtRing && !liabilityView.debtRing.empty}}" class="liability-ring" src="{{liabilityView.debtRing.src}}" mode="aspectFit" aria-label="负债占比环图" />
+        <view class="liability-legend">
+          <view wx:for="{{liabilityView.debtRing.legend}}" wx:key="name" class="liability-legend-row">
+            <view class="liability-legend-dot" style="background: {{item.color}};"></view>
+            <text class="liability-legend-name">{{item.name}}</text>
+            <text class="liability-legend-share">{{item.shareText}}</text>
+            <text class="liability-legend-amount money-number">{{item.amountText}}</text>
+          </view>
+        </view>
+      </view>
+      <block wx:if="{{liabilityView.hasInterest}}">
+        <view class="liability-divider"></view>
+        <view class="liability-group-title"><text>分期利息</text><text class="liability-group-total">全期合计 {{liabilityView.interestTotalText}}</text></view>
+        <view class="liability-interest-note">含已还期次；已还 {{liabilityView.paidInterestTotalText}} · 待付 {{liabilityView.unpaidInterestTotalText}}</view>
+        <view class="liability-ring-row">
+          <image wx:if="{{liabilityView.interestRing && !liabilityView.interestRing.empty}}" class="liability-ring" src="{{liabilityView.interestRing.src}}" mode="aspectFit" aria-label="分期利息占比环图" />
+          <view class="liability-legend">
+            <view wx:for="{{liabilityView.interestRing.legend}}" wx:key="name" class="liability-legend-row">
+              <view class="liability-legend-dot" style="background: {{item.color}};"></view>
+              <text class="liability-legend-name">{{item.name}}</text>
+              <text class="liability-legend-share">{{item.shareText}}</text>
+              <text class="liability-legend-amount money-number">{{item.amountText}}</text>
+            </view>
+          </view>
+        </view>
+      </block>
+    </view>
   </view>
-
-
-
-
   </block>
   <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
 
