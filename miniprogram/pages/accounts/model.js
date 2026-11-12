@@ -92,8 +92,18 @@ function decorateAccount(account) {
 function buildAccountsView(accounts, totals) {
   const prepared = (accounts || []).map(decorateAccount)
   const active = prepared.filter(function (account) { return !account.archived })
-  const assets = active.filter(function (account) { return account.nature === 'asset' })
-  const liabilities = active.filter(function (account) { return account.nature === 'liability' })
+  // 按金额从大到小：资产比余额（displayBalanceMinor），负债比欠款（debtMinor）。
+  // 金额是整数分字符串，用 BigInt 比较避免溢出；相等时保持后端原顺序（稳定排序）。
+  const byAmountDesc = function (field) {
+    return function (a, b) {
+      const av = BigInt(a[field] == null ? '0' : a[field])
+      const bv = BigInt(b[field] == null ? '0' : b[field])
+      if (av === bv) return 0
+      return av > bv ? -1 : 1
+    }
+  }
+  const assets = active.filter(function (account) { return account.nature === 'asset' }).sort(byAmountDesc('displayBalanceMinor'))
+  const liabilities = active.filter(function (account) { return account.nature === 'liability' }).sort(byAmountDesc('debtMinor'))
   // 合计一律走共享展示层 presentTotals（后端 accountTotals 的唯一真源），前端不再自己累加，
   // 也与首页净值卡同一套格式与「其中利息」口径。
   const sum = presentTotals(totals)

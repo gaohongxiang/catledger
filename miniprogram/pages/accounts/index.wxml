@@ -25,12 +25,11 @@
   <view wx:if="{{assets.length > 0}}" class="account-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark asset-mark" aria-hidden="true"></view><text class="group-title serif-title">资产账户</text><text class="group-count money-number">{{assets.length}}</text></view><text wx:if="{{assetCorrectionCount > 0}}" class="group-alert">{{assetCorrectionCount}} 个待校正</text></view>
     <view class="account-list">
-      <view wx:for="{{assets}}" wx:key="accountId" class="account-row row-enter {{dragging && dragId === item.accountId ? 'account-row-ghost' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" data-index="{{index}}" data-group="asset" bindtap="openAccountDetail" bindlongpress="onDragStart" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
+      <view wx:for="{{assets}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
-        <image wx:if="{{dragging && dragId === item.accountId}}" class="account-drag-handle" src="/assets/icons/drag-handle.svg" mode="aspectFit" />
-        <chevron-icon wx:else size="{{26}}" />
+        <chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>
@@ -38,12 +37,11 @@
   <view wx:if="{{hasLoaded}}" class="account-group liability-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text wx:if="{{installmentPlanPromptCount > 0}}" class="group-alert group-alert-inline">{{installmentPlanPromptCount}} 个账户有分期待处理</text></view>
     <view class="account-list">
-      <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter {{dragging && dragId === item.accountId ? 'account-row-ghost' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" data-index="{{index}}" data-group="liability" bindtap="openAccountDetail" bindlongpress="onDragStart" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
+      <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}<text wx:if="{{item.needsInstallmentPlan}}" class="account-row-warn"> · 有分期待处理</text></text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
-        <image wx:if="{{dragging && dragId === item.accountId}}" class="account-drag-handle" src="/assets/icons/drag-handle.svg" mode="aspectFit" />
-        <chevron-icon wx:else size="{{26}}" />
+        <chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>
@@ -68,14 +66,6 @@
       <text wx:if="{{formMode === 'correct'}}" class="sheet-note">系统会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view><button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button><button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
     </view>
-  </view>
-</view>
-<view wx:if="{{dragging}}" class="drag-overlay" catchtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
-  <view class="drag-float" style="top: {{dragFloatTop}}px;">
-    <view class="account-type-icon"><image src="{{themeIconRoot}}/{{dragItem.iconPath}}" mode="aspectFit" /></view>
-    <view class="account-row-main"><text class="account-row-name">{{dragItem.name}}</text><text class="account-row-type">{{dragItem.typeLabel}}</text></view>
-    <view class="account-row-end"><text class="account-row-balance money-number {{dragItem.amountTone}}">{{dragItem.balanceText}}</text></view>
-    <image class="account-drag-handle" src="/assets/icons/drag-handle.svg" mode="aspectFit" />
   </view>
 </view>
 <login-sheet id="page-login-sheet" />

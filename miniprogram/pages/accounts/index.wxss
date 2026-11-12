@@ -96,30 +96,6 @@
 .account-row:last-child { border-bottom: 0; }
 .account-row-active { background: var(--theme-accent-soft, #f0e2ce); }
 
-/* 拖动排序：长按时出现全屏透明遮罩拦截页面滚动，浮层显示被拖动的行跟随手指；
-   原行留一个淡出的占位（ghost），松手后一次性重排并保存。 */
-.drag-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-}
-.drag-float {
-  position: fixed;
-  left: 24rpx;
-  right: 24rpx;
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
-  box-sizing: border-box;
-  padding: 22rpx 24rpx;
-  background: var(--theme-surface-raised, #fffaf2);
-  border: 1rpx solid var(--theme-line);
-  border-radius: var(--theme-radius-large, 24rpx);
-  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, .22);
-  pointer-events: none;
-}
-.account-row-ghost { opacity: .35; }
-.account-drag-handle { flex: 0 0 auto; width: 40rpx; height: 40rpx; opacity: .8; }
 
 .account-type-icon {
   display: flex;

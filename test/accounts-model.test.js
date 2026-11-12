@@ -12,18 +12,21 @@ test('资产账户区分待校正，负债账户按欠款显示待还/已还清�
   ]
   const view = buildAccountsView(accounts, netWorthTotals(accounts))
 
+  const liab = id => view.liabilities.find(a => a.accountId === id)
   assert.equal(view.assetCorrectionCount, 1)
   assert.equal(view.assets[0].stateText, '待校正')
   assert.equal(view.assets[0].amountTone, 'amount-warning')
   // 欠款为 0 → 已还清，不再是「溢缴余额」
-  assert.equal(view.liabilities[0].stateText, '已还清')
-  assert.equal(view.liabilities[0].balanceLabel, '欠款')
-  assert.equal(view.liabilities[0].balanceText, '¥0.00')
+  assert.equal(liab('paid').stateText, '已还清')
+  assert.equal(liab('paid').balanceLabel, '欠款')
+  assert.equal(liab('paid').balanceText, '¥0.00')
   // 欠款 > 0 → 待还
-  assert.equal(view.liabilities[1].stateText, '待还')
-  assert.equal(view.liabilities[1].amountTone, 'amount-liability')
-  assert.equal(view.liabilities[1].balanceLabel, '欠款')
-  assert.equal(view.liabilities[1].balanceText, '¥7.00')
+  assert.equal(liab('card').stateText, '待还')
+  assert.equal(liab('card').amountTone, 'amount-liability')
+  assert.equal(liab('card').balanceLabel, '欠款')
+  assert.equal(liab('card').balanceText, '¥7.00')
+  // 按金额降序：欠款多的 card(7) 排在欠款 0 的 paid 之前
+  assert.deepEqual(view.liabilities.map(a => a.accountId), ['card', 'paid'])
   // 合计取后端真源：资产含负余额（-100），负债用欠款（700）
   assert.equal(view.totals.assetsText, '-¥1.00')
   assert.equal(view.totals.liabilitiesText, '¥7.00')
@@ -71,15 +74,17 @@ test('有分期计划（无账单）时即使欠款为 0 也按已还清显示',
   assert.equal(view.liabilities[0].stateText, '已还清')
 })
 
-test('账户按后端给出的顺序保序展示（sortOrder 已由后端排序），资产/负债各自保序', function () {
-  // 后端 accounts.list 已按 (nature, sort_order, created_at) 排序返回；前端 filter 不得打乱。
+test('账户按金额从大到小排序：资产按余额、负债按欠款，各自降序', function () {
   const accounts = [
-    { accountId: 'a2', name: '资产二', type: 'cash', nature: 'asset', bookBalanceMinor: '0', displayBalanceMinor: '0', archived: false, sortOrder: 0 },
-    { accountId: 'a1', name: '资产一', type: 'bank', nature: 'asset', bookBalanceMinor: '0', displayBalanceMinor: '0', archived: false, sortOrder: 1 },
-    { accountId: 'l1', name: '负债一', type: 'credit', nature: 'liability', bookBalanceMinor: '-100', displayBalanceMinor: '100', debtMinor: '100', debtDirection: 'debt', archived: false, sortOrder: 0 }
+    { accountId: 'a_small', name: '小额', type: 'cash', nature: 'asset', bookBalanceMinor: '100', displayBalanceMinor: '100', archived: false },
+    { accountId: 'a_big', name: '大额', type: 'bank', nature: 'asset', bookBalanceMinor: '900000', displayBalanceMinor: '900000', archived: false },
+    { accountId: 'a_mid', name: '中额', type: 'wallet', nature: 'asset', bookBalanceMinor: '5000', displayBalanceMinor: '5000', archived: false },
+    { accountId: 'l_small', name: '小欠', type: 'credit', nature: 'liability', bookBalanceMinor: '-100', displayBalanceMinor: '100', debtMinor: '100', debtDirection: 'debt', archived: false },
+    { accountId: 'l_big', name: '大欠', type: 'credit', nature: 'liability', bookBalanceMinor: '-90000', displayBalanceMinor: '90000', debtMinor: '90000', debtDirection: 'debt', archived: false }
   ]
-  const view = buildAccountsView(accounts, { assets: '0', liabilities: '100', netWorth: '-100', totalInterest: '0' })
-  assert.deepEqual(view.assets.map(a => a.accountId), ['a2', 'a1'])
-  assert.deepEqual(view.liabilities.map(a => a.accountId), ['l1'])
-  assert.equal(view.assets[0].sortOrder, 0)
+  const view = buildAccountsView(accounts, { assets: '0', liabilities: '0', netWorth: '0', totalInterest: '0' })
+  // 资产：余额降序
+  assert.deepEqual(view.assets.map(a => a.accountId), ['a_big', 'a_mid', 'a_small'])
+  // 负债：欠款降序
+  assert.deepEqual(view.liabilities.map(a => a.accountId), ['l_big', 'l_small'])
 })
