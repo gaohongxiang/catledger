@@ -358,15 +358,16 @@ test('加载下一页期间发生写入时重读首屏，不把旧分页与新�
 
  test('统计作为Tab重复进入复用数据，退出登录后不残留统计或发起读取', async () => {
   const h = runtime(), page = h.page('statistics')
-  let selected
-  page.getTabBar = () => ({ setData: data => { selected = data.selected } })
+  let activeKeySet = 0
+  page.getTabBar = () => ({ setData: () => {}, setActiveKey: () => { activeKeySet++ } })
   page.onLoad()
   page.onShow()
   await page.loadStatistics()
   const count = h.calls.length
   page.onHide()
   page.onShow()
-  assert.equal(selected, 2)
+  // 高亮由 host.selectTab 唯一驱动，统计面板 onShow 不再私下写 activeKey（避免第二来源）。
+  assert.equal(activeKeySet, 0, '统计面板不应自行设置底栏高亮')
   assert.equal(h.calls.length, count)
   h.app.approved = false
   h.cache.reset()

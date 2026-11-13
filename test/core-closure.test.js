@@ -11,8 +11,18 @@ function read(relativePath) {
 }
 
 test('protected subpages and the main host share the same login sheet component', () => {
+  // 账户/分类已并入宿主面板：登录门禁与 login-sheet 落在 panel/content，index 只是重定向。
+  const panelPages = new Set(['accounts', 'categories'])
   for (const page of ['accounts', 'categories', 'transaction-editor', 'import-workbench']) {
     const directory = path.posix.dirname(pageRoute(page))
+    if (panelPages.has(page)) {
+      const config = JSON.parse(read(`miniprogram/${directory}/panel.json`))
+      assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
+      assert.match(read(`miniprogram/${directory}/content.wxml`), /id="page-login-sheet"/)
+      assert.match(read(`miniprogram/${directory}/page.js`), /loginGuard\.run/)
+      assert.match(read(`miniprogram/${directory}/index.js`), /legacyPage/)
+      continue
+    }
     const config = JSON.parse(read(`miniprogram/${directory}/index.json`))
     assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
     assert.match(read(`miniprogram/${directory}/index.wxml`), /id="page-login-sheet"/)

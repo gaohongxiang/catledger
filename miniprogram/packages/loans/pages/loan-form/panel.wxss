@@ -1,0 +1,2 @@
+@import './index.wxss';
+.panel-scroll { height: 100%; }

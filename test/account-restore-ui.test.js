@@ -39,7 +39,7 @@ test('停用列表进入原账户详情后可以恢复，原 ID、版本和余�
   assert.equal(page.data.account.bookBalanceMinor, '123400')
   assert.equal(h.api.isFresh('catalog.get'), false)
   assert.equal(h.calls.some(c => ['accounts.create', 'accounts.correctBalance', 'loans.syncCharges', 'loans.configureCharges'].includes(c.action)), false)
-  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/content.wxml'), 'utf8')
   assert.match(template, /bindtap="restore"[^>]*>恢复使用<\/button>/)
 })
 
@@ -182,7 +182,7 @@ test('彻底删除无流水账户成功后退回列表；有记录时提示并�
   assert.equal(page.data.errorMessage, '')
   // 内联展示该账户流水（不跳转）；模板里有勾选与删除按钮
   assert.equal(h.navigation.some(url => String(url).indexOf('/pages/account-transactions') >= 0), false)
-  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/content.wxml'), 'utf8')
   assert.match(template, /bindtap="removeAccount"[^>]*>彻底删除<\/button>/)
   assert.match(template, /bindtap="deleteRemoveRecords"/)
   // 第二次：用户清完流水回来再删 -> 成功退回列表
@@ -223,7 +223,7 @@ test('被流水挡住时内联列出流水，删除后自动重试彻底删除�
   // 余额调整类不可选（selectable=false）
   assert.equal(page.data.removeRecords[0].selectable, false)
   // 模板含内联删除入口
-  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  const template = readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/content.wxml'), 'utf8')
   assert.match(template, /bindtap="deleteRemoveRecords"/)
 })
 

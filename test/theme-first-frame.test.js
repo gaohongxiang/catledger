@@ -2,10 +2,11 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { tabs, HOST_ROUTE } = require('../miniprogram/shell/tabs')
+const { tabs, subpages, HOST_ROUTE } = require('../miniprogram/shell/tabs')
 
 const ROOT = path.join(__dirname, '..')
-const legacyTabs = new Map(tabs.map(tab => [tab.route, tab]))
+const legacyTabs = new Map(tabs.map(tab => [tab.route, { id: tab.id, kind: 'tab' }]))
+Object.keys(subpages).forEach(id => { legacyTabs.set(subpages[id].route, { id: id, kind: 'subpage' }) })
 
 function relative(file) { return path.relative(ROOT, file) }
 
@@ -35,8 +36,10 @@ test('主宿主与独立页面使用主题生命周期，旧主入口只转发�
   for (const route of declaredPageRoutes()) {
     const source = fs.readFileSync(path.join(ROOT, 'miniprogram', route + '.js'), 'utf8')
     if (legacyTabs.has(route)) {
-      assert.match(source, /require\(['"]\.\.\/\.\.\/shell\/router['"]\)/, route)
-      assert.ok(source.includes("Page(legacyPage('" + legacyTabs.get(route).id + "'))"), route + ' 必须跳转对应主入口')
+      const entry = legacyTabs.get(route)
+      assert.match(source, /require\(['"][.\/]*shell\/router['"]\)/, route + ' 必须引用统一路由')
+      // 主 tab 用 legacyPage，二级页用 legacyRedirect；都只负责跳转宿主。
+      assert.match(source, new RegExp("Page\\(legacy(?:Page|Redirect)\\('" + entry.id + "'\\)\\)"), route + ' 必须跳转对应宿主面板')
       assert.doesNotMatch(source, /create\w+Page|\.page\(|data\s*:/, route + ' 兼容页不能重新拥有业务或原生主题')
       continue
     }
@@ -73,7 +76,7 @@ test('主宿主与独立页面以主题 page-meta 开头，兼容入口没有第
     const markup = firstMarkup(path.join(ROOT, 'miniprogram', route + '.wxml'))
     const label = relative(markup.file)
     if (legacyTabs.has(route)) {
-      assert.match(markup.source, /^<view\s*\/>$/, label + ' 兼容页只能是空跳转入口')
+      assert.match(markup.source, /^<view\s*\/>$/, label + ' 兼容/二级页只能是空跳转入口')
       return
     }
     if (!/^<page-meta\b/.test(markup.source)) {

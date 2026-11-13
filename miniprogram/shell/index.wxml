@@ -1,4 +1,4 @@
-<!-- 页面外壳使用统一主题快照；原生配色由主题生命周期提前同步，page-meta 维护根节点与声明式属性。 -->
+<!-- 页面外壳：统一主题快照；底栏常驻。所有主 tab 与二级页都是宿主内面板。 -->
 <page-meta
   background-text-style="{{themeBackgroundTextStyle}}"
   background-color="{{themePageColor}}"
@@ -13,6 +13,114 @@
   <view class="shell-panel" hidden="{{activeTab !== 'home'}}"><home-panel wx:if="{{mounted.home}}" id="panel-home" bind:panelready="registerPanel" /></view>
   <view class="shell-panel" hidden="{{activeTab !== 'transactions'}}"><transactions-panel wx:if="{{mounted.transactions}}" id="panel-transactions" bind:panelready="registerPanel" /></view>
   <view class="shell-panel" hidden="{{activeTab !== 'statistics'}}"><statistics-panel wx:if="{{mounted.statistics}}" id="panel-statistics" bind:panelready="registerPanel" /></view>
+  <view class="shell-panel" hidden="{{activeTab !== 'accounts'}}"><accounts-panel wx:if="{{mounted.accounts}}" id="panel-accounts" bind:panelready="registerPanel" /></view>
+  <view class="shell-panel" hidden="{{activeTab !== 'categories'}}"><categories-panel wx:if="{{mounted.categories}}" id="panel-categories" bind:panelready="registerPanel" /></view>
   <view class="shell-panel" hidden="{{activeTab !== 'profile'}}"><profile-panel wx:if="{{mounted.profile}}" id="panel-profile" bind:panelready="registerPanel" /></view>
+  <!-- 二级页面板：惰性挂载，底栏常驻，带返回条。 -->
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'theme'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'theme'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">主题</text>
+    </view>
+    <view class="subpage-body"><theme-panel wx:if="{{mounted.theme}}" id="panel-theme" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'data-privacy'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'data-privacy'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">数据与隐私</text>
+    </view>
+    <view class="subpage-body"><data-privacy-panel wx:if="{{mounted.data-privacy}}" id="panel-data-privacy" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'about'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'about'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">关于</text>
+    </view>
+    <view class="subpage-body"><about-panel wx:if="{{mounted.about}}" id="panel-about" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'import-history'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'import-history'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">导入记录</text>
+    </view>
+    <view class="subpage-body"><import-history-panel wx:if="{{mounted.import-history}}" id="panel-import-history" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'account-detail'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'account-detail'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">账户详情</text>
+    </view>
+    <view class="subpage-body"><account-detail-panel wx:if="{{mounted.account-detail}}" id="panel-account-detail" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'account-transactions'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'account-transactions'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">账户账目</text>
+    </view>
+    <view class="subpage-body"><account-transactions-panel wx:if="{{mounted.account-transactions}}" id="panel-account-transactions" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loans'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loans'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">贷款与还款</text>
+    </view>
+    <view class="subpage-body"><loans-panel wx:if="{{mounted.loans}}" id="panel-loans" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loan-detail'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loan-detail'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">贷款详情</text>
+    </view>
+    <view class="subpage-body"><loan-detail-panel wx:if="{{mounted.loan-detail}}" id="panel-loan-detail" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loan-form'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loan-form'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">贷款</text>
+    </view>
+    <view class="subpage-body"><loan-form-panel wx:if="{{mounted.loan-form}}" id="panel-loan-form" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loan-payment'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loan-payment'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">还款</text>
+    </view>
+    <view class="subpage-body"><loan-payment-panel wx:if="{{mounted.loan-payment}}" id="panel-loan-payment" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loan-plan'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loan-plan'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">分期计划</text>
+    </view>
+    <view class="subpage-body"><loan-plan-panel wx:if="{{mounted.loan-plan}}" id="panel-loan-plan" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'loan-link'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'loan-link'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">关联</text>
+    </view>
+    <view class="subpage-body"><loan-link-panel wx:if="{{mounted.loan-link}}" id="panel-loan-link" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'repayment-entry'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'repayment-entry'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">还款</text>
+    </view>
+    <view class="subpage-body"><repayment-entry-panel wx:if="{{mounted.repayment-entry}}" id="panel-repayment-entry" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'installment-sources'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'installment-sources'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">分期来源</text>
+    </view>
+    <view class="subpage-body"><installment-sources-panel wx:if="{{mounted.installment-sources}}" id="panel-installment-sources" bind:panelready="registerPanel" /></view>
+  </view>
+  <view class="shell-panel shell-subpage" hidden="{{activeTab !== 'due-this-month'}}">
+    <view class="subpage-bar" hidden="{{activeTab !== 'due-this-month'}}" style="background:{{themeNavBackground}};color:{{themeNavFront}}">
+      <view class="subpage-back" role="button" aria-label="返回" bindtap="back"><view class="subpage-back-arrow"></view></view>
+      <text class="subpage-title">本月待还</text>
+    </view>
+    <view class="subpage-body"><due-this-month-panel wx:if="{{mounted.due-this-month}}" id="panel-due-this-month" bind:panelready="registerPanel" /></view>
+  </view>
   <main-tabs id="main-tabs" bind:tabchange="switchTab" />
 </view>

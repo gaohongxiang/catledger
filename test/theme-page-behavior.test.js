@@ -50,7 +50,18 @@ function pageRuntime() {
     }, { filename })
     return module.exports
   }
-  runtime.loadPage = route => runtime.page(load(path.join(root, route + '.js')))
+  runtime.loadPage = route => {
+    // 二级页/主 tab 的业务在 page.js 工厂里；整页 index.js 只是重定向。
+    const pageFile = path.join(root, route.replace(/index$/, '') , 'page.js')
+    let definition
+    try { definition = load(pageFile) } catch (_) { definition = null }
+    if (definition) {
+      const create = definition[Object.keys(definition)[0]]
+      const def = typeof create === 'function' ? create({ app: runtime.app, api: runtime.api, themeService: runtime.service, wx: runtime.wx }) : create
+      return runtime.page(runtime.service.page(def))
+    }
+    return runtime.page(load(path.join(root, route + '.js')))
+  }
   runtime.loadPanel = (route, host = { getTabBar: () => null }) => {
     const component = runtime.component(load(path.join(root, route + '.js')))
     component.triggerEvent = () => {}

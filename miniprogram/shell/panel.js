@@ -1,7 +1,9 @@
 const theme = require('../theme/service')
 const { resolveTab } = require('./tabs')
 
-const lifecycleKeys = new Set(['onLoad', 'onShow', 'onHide', 'onUnload', 'onReady', 'onPullDownRefresh', 'onReachBottom', 'onPageScroll'])
+// onReachBottom 既可能是滚动触底（由 reachPanelBottom 调），也可能是内容里的“加载更多”按钮 tap；
+// 两者都应可调用，故不排除，作为普通 method 保留。
+const lifecycleKeys = new Set(['onLoad', 'onShow', 'onHide', 'onUnload', 'onReady', 'onPullDownRefresh', 'onPageScroll'])
 function call(definition, name, instance, argument) {
   if (typeof definition[name] === 'function') return definition[name].call(instance, argument)
 }
@@ -35,7 +37,8 @@ function panel(id, definition) {
         if (this._host || this._panelDisposed) return
         this._host = host
         this.route = resolveTab(id).route
-        call(definition, 'onLoad', this, {})
+        // 传入宿主为该二级面板保存的进入参数（如 loanId/accountId），否则空对象。
+        call(definition, 'onLoad', this, (this._host.subpageParams && this._host.subpageParams(id)) || {})
         call(definition, 'onReady', this)
       },
       activate: function () {

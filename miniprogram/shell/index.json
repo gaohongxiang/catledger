@@ -6,6 +6,23 @@
     "transactions-panel": "/pages/transactions/panel",
     "statistics-panel": "/pages/statistics/panel",
     "profile-panel": "/pages/profile/panel",
-    "main-tabs": "/custom-tab-bar/index"
+    "main-tabs": "/custom-tab-bar/index",
+    "accounts-panel": "/pages/accounts/panel",
+    "categories-panel": "/pages/categories/panel",
+    "theme-panel": "/pages/theme/panel",
+    "data-privacy-panel": "/pages/data-privacy/panel",
+    "about-panel": "/pages/about/panel",
+    "import-history-panel": "/packages/finance/pages/import-history/panel",
+    "account-detail-panel": "/pages/account-detail/panel",
+    "account-transactions-panel": "/pages/account-transactions/panel",
+    "loans-panel": "/packages/loans/pages/loans/panel",
+    "loan-detail-panel": "/packages/loans/pages/loan-detail/panel",
+    "loan-form-panel": "/packages/loans/pages/loan-form/panel",
+    "loan-payment-panel": "/packages/loans/pages/loan-payment/panel",
+    "loan-plan-panel": "/packages/loans/pages/loan-plan/panel",
+    "loan-link-panel": "/packages/loans/pages/loan-link/panel",
+    "repayment-entry-panel": "/packages/loans/pages/repayment-entry/panel",
+    "installment-sources-panel": "/packages/loans/pages/installment-sources/panel",
+    "due-this-month-panel": "/packages/loans/pages/due-this-month/panel"
   }
 }

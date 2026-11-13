@@ -49,7 +49,7 @@ module.exports = {
   openInstallmentSources: function () {
     // 已入账页直接带本批 updateId：列表只列这一批待补来源，计划名也取本批账单里的计划名。
     const updateId = this.data.update && this.data.update.updateId
-    wx.navigateTo({ url: '/packages/loans/pages/installment-sources/index' + (updateId ? '?updateId=' + encodeURIComponent(updateId) : '') })
+    require('../../../../shell/router').openSubpageUrl('/packages/loans/pages/installment-sources/index' + (updateId ? '?updateId=' + encodeURIComponent(updateId) : '') )
   },
 
   backFinalDetail: function () {
@@ -114,7 +114,7 @@ module.exports = {
   },
 
   openImportHistory: function () {
-    if (!this.data.busy) wx.navigateTo({ url: '/packages/finance/pages/import-history/index' })
+    if (!this.data.busy) require('../../../../shell/router').openSubpageUrl('/packages/finance/pages/import-history/index')
   },
 
   openFinalDetail: async function (event) {

@@ -1,0 +1,10 @@
+{
+  "component": true,
+  "usingComponents": {
+    "page-head": "/components/page-head/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index",
+    "login-sheet": "/components/login-sheet/index",
+    "date-field": "/components/date-field/index"
+  }
+}

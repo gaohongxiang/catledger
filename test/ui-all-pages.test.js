@@ -211,8 +211,9 @@ for (const route of routes) {
     const markup = readMarkup(path.join(root, 'miniprogram', route + '.wxml'))
     const style = read('miniprogram/' + (accountTransactions ? 'pages/transactions/index' : route) + '.wxss')
     if (accountTransactions) {
-      assert.match(read('miniprogram/' + route + '.wxml'), /include src="\.\.\/transactions\/content\.wxml"/)
-      assert.match(read('miniprogram/' + route + '.wxss'), /@import "\.\.\/transactions\/index\.wxss"/)
+      // account-transactions 现为统一二级页：整页 redirect，内容在 panel（复用 transactions content）。
+      assert.match(read('miniprogram/' + route + '.js'), /legacyRedirect/)
+      assert.match(read('miniprogram/pages/account-transactions/panel.wxml'), /include src="\.\/content\.wxml"/)
     }
     const { page } = runtime(route)
     if (factories[route]) {
@@ -297,28 +298,43 @@ function statisticsResult() {
     daily: [{ date: '2026-08-01', incomeMinor: '0', expenseMinor: '20000', incomeHeightPermille: 0, expenseHeightPermille: 1000 }],
     expenseCategories: [{ categoryId: 'test', name: '合成分类', amountMinor: '0', shareBasisPoints: 0 }], incomeCategories: [] }
 }
-test('统计展示保留金额、比例与零值，点击仅选择已有读模型', async () => {
+test('统计展示保留金额、趋势与日历净额，构成切换仅选择已有读模型', async () => {
   const { page, calls } = runtime('pages/statistics/index', () => Promise.resolve(statisticsResult()))
   await page.loadStatistics()
   assert.equal(page.data.hasLoaded, true)
+  // 结余卡三栏金额
+  assert.equal(page.data.incomeText, '¥0.00')
+  assert.equal(page.data.expenseText, '¥200.00')
+  assert.equal(page.data.netText, '-¥200.00')
+  // 趋势柱图 SVG 与上下限
   const monthlySvg = decodeURIComponent(page.data.charts.monthlyChart.src.split(',').slice(1).join(','))
   assert.equal((monthlySvg.match(/<rect /g) || []).length, 1)
   assert.equal(page.data.charts.monthlyChart.maxText, '¥200.00')
   assert.equal(page.data.charts.monthlyChart.minText, '¥0.00')
-  assert.equal(page.data.expenseCategories[0].barWidth, '0%')
+  // 日历格带净额/收支明细，按 date 选中
+  const cell = page.data.charts.calendar.find(row => row.date === '2026-08-01')
+  assert.ok(cell && !cell.blank)
+  assert.equal(cell.expenseText, '¥200.00')
+  assert.equal(cell.netText, '-¥200.00')
+  page.selectDay({ currentTarget: { dataset: { date: '2026-08-01' } } })
+  assert.equal(page.data.selectedDay.expenseText, '¥200.00')
+  // 趋势选中
   page.selectTrend({ currentTarget: { dataset: { index: 0 } } })
-  page.selectDay({ currentTarget: { dataset: { index: 0 } } })
   assert.equal(page.data.selectedTrend.expenseText, '¥200.00')
-  assert.equal(page.data.selectedDay.incomeText, '¥0.00')
-  assert.equal(page.data.categoryKind, '')
-  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'income' } } })
+  // 构成切换：支出/收入/日历，日历清空 categoryKind
+  assert.equal(page.data.compositionKind, 'expense')
+  page.selectCompositionKind({ currentTarget: { dataset: { kind: 'income' } } })
+  assert.equal(page.data.compositionKind, 'income')
   assert.equal(page.data.categoryKind, 'income')
-  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'invalid' } } })
-  assert.equal(page.data.categoryKind, 'income')
-  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'income' } } })
+  page.selectCompositionKind({ currentTarget: { dataset: { kind: 'calendar' } } })
+  assert.equal(page.data.compositionKind, 'calendar')
   assert.equal(page.data.categoryKind, '')
-  assert.deepEqual(calls.map(c=>c.name),['loans.dueCharges','statistics.get'])
+  page.selectCompositionKind({ currentTarget: { dataset: { kind: 'invalid' } } })
+  assert.equal(page.data.compositionKind, 'calendar', '非法 kind 不改变')
+  // 只读已有读模型：仅 loans.dueCharges + statistics.get
+  assert.deepEqual(calls.map(c=>c.name), ['loans.dueCharges','statistics.get'])
 })
+
 test('统计读取中不能改月份，下一月读取失败不在新标题下显示上月图表', async () => {
   const { page } = runtime('pages/statistics/index', () => Promise.reject(new Error('合成错误')))
   page.data.month = '2026-08'; page.data.loading = true
@@ -370,7 +386,7 @@ test('分类拖拽命中行高与最终布局相同，排序限定同级', () =>
   assert.equal(page.categoryDrag.rowHeight, 58)
   assert.deepEqual(page.categoryDrag.siblings.map(row => row.id), ['a'])
   assert.match(read('miniprogram/pages/categories/index.wxss'), /height:\s*116rpx;\s*min-height:\s*116rpx/)
-  assert.match(read('miniprogram/pages/categories/index.js'), /categoryModel.reorder\(drag.siblings, drag.index, drag.target\)/)
+  assert.match(read('miniprogram/pages/categories/page.js'), /categoryModel.reorder\(drag.siblings, drag.index, drag.target\)/)
 })
 
 test('记账目录失败仍能编辑本地草稿，重试成功后允许选择账户', async () => {
@@ -385,11 +401,12 @@ test('记账目录失败仍能编辑本地草稿，重试成功后允许选择�
 
 test('各编辑弹层错误可见，金额/名称拥有标签，保存继续保留禁用门禁', () => {
   for (const route of ['accounts', 'categories', 'statistics']) {
-    const markup = readMarkup(path.join(root, 'miniprogram/pages', route, route === 'statistics' ? 'panel.wxml' : 'index.wxml'))
+    const markup = readMarkup(path.join(root, 'miniprogram/pages', route, route === 'statistics' ? 'panel.wxml' : 'content.wxml'))
     assert.match(markup, /class="sheet-error"/)
   }
   for (const route of ['accounts', 'transaction-editor']) {
-    const markup = read('miniprogram/pages/' + route + '/index.wxml')
+    const markupFile = route === 'accounts' ? 'content.wxml' : 'index.wxml'
+    const markup = readMarkup(path.join(root, 'miniprogram/pages', route, markupFile))
     assert.match(markup, /aria-label=/)
     assert.match(markup, /cursor-spacing=/)
     assert.match(markup, /disabled="{{(?:busy|saving)/)

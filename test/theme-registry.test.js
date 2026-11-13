@@ -89,7 +89,12 @@ test('三套主题共享收支语义：浅底用原色，深底用同色相的�
     const expected = theme.semanticTone === 'dark' ? dark : light
     assert.equal(theme.tokens.income, light.income)
     assert.equal(theme.tokens.expense, light.expense)
-    assert.equal(presentation.semanticStyle, '--sem-income:' + expected.income + ';--sem-expense:' + expected.expense + ';')
+    // 语义输出同时携带浅底(随主题 tone)与深底(per-theme hero 色)两套：深色卡片取 -on-dark。
+    // 深底收支色按各主题 hero 底色单独调（heroIncome/heroExpense），不再是一套固定亮色。
+    assert.equal(presentation.semanticStyle,
+      '--sem-income:' + expected.income + ';--sem-expense:' + expected.expense + ';' +
+      '--sem-income-on-dark:' + theme.tokens.heroIncome + ';--sem-expense-on-dark:' + theme.tokens.heroExpense + ';')
+    assert.ok(theme.tokens.heroIncome && theme.tokens.heroExpense, item.id + ' 需声明 hero 收支色')
     assert.doesNotMatch(presentation.themeStyle, /--theme-(?:income|expense):/)
   })
 

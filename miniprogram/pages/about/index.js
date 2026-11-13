@@ -1,3 +1,2 @@
-const themeService = require('../../theme/service')
-
-Page(themeService.page({}))
+const { legacyRedirect } = require('../../shell/router')
+Page(legacyRedirect('about'))

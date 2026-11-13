@@ -48,7 +48,7 @@ test('月份条：全年 12 月横滑、当前月高亮、未来月置灰', () =
 })
 
 test('Hero 结余卡：结余为主大字，收入/支出对称分列带环比', () => {
-  assert.match(markup, /class="hero-card"/)
+  assert.match(markup, /class="hero-card on-dark-surface"/)
   assert.match(markup, /class="hero-amount money-number/)
   assert.match(markup, /class="hero-split"/)
   // 收入、支出两个 hero-side
@@ -80,7 +80,7 @@ test('支出日历并入收支构成卡（第三视图），不再独立成块�
   assert.match(markup, /class="compose-calendar"/)
   const liabIdx = markup.indexOf('负债与分期')
   const composeIdx = markup.indexOf('class="compose-card"')
-  const heroIdx = markup.indexOf('class="hero-card"')
+  const heroIdx = markup.indexOf('class="hero-card on-dark-surface"')
   assert.ok(heroIdx > 0 && heroIdx < composeIdx, 'Hero 卡在构成卡之前')
   assert.ok(composeIdx > 0 && liabIdx > composeIdx, '负债块在构成卡之后（页面底部）')
 })

@@ -111,32 +111,50 @@ for (const tab of ['review', 'category']) {
   })
 }
 
-for (const kind of ['accountChoice', 'directory']) {
-  test(kind + ' 弹层搜索输入不被异步结果替换，迟到响应不回填', async t => {
-    const h = runtime(fixture(2)), page = h.page
-    t.after(() => page.onUnload())
-    await flush()
-    const handler = kind === 'accountChoice' ? 'bindAccountChoiceSearch' : 'searchDirectory'
-    let release
-    const matching = { accountId: 'synthetic-result', categoryId: 'synthetic-result', name: '合成名称', kind: 'expense', type: 'wallet' }
-    h.intercept = (action, query) => action !== 'financeUpdates.options' ? undefined : query.query === '旧词'
-      ? new Promise(resolve => { release = resolve })
-      : { protocolVersion: 2, viewVersion: 'v1', items: query.query ? [matching] : [], total: query.query ? 1 : 0, nextCursor: null }
-    if (kind === 'accountChoice') page.setData({ accountChoiceSheet: { issueId: 'synthetic-issue' } })
-    else await page.openDirectory({ currentTarget: { dataset: { target: 'category' } } })
-    await enter(page, handler, '旧词')
-    for (const value of ['合', '合成', '合', '']) {
-      await enter(page, handler, value)
-      assert.equal(kind === 'accountChoice' ? page.data.accountChoiceQuery : page.data.directorySheet.query, value)
-      assert.ok(h.calls.some(call => call.action === 'financeUpdates.options' && (call.input.query || '') === value))
-      const rows = kind === 'accountChoice' ? page.data.accountChoiceResults : page.data.directorySheet.items
-      assert.equal(rows.length, value ? 1 : 0)
-      if (value) assert.equal(rows[0].name, matching.name)
-      if (kind === 'accountChoice') assert.equal(page.data.choiceLoading, false)
-      else assert.equal(page.data.directorySheet.loading, false)
-    }
-    const before = JSON.stringify(page.data)
-    release({ protocolVersion: 2, viewVersion: 'v1', items: [matching], total: 1, nextCursor: null }); await flush()
-    assert.equal(JSON.stringify(page.data), before)
-  })
-}
+test('accountChoice 弹层搜索：输入不被异步结果替换，迟到响应不回填（网络目录）', async t => {
+  const h = runtime(fixture(2)), page = h.page
+  t.after(() => page.onUnload())
+  await flush()
+  let release
+  const matching = { accountId: 'synthetic-result', name: '合成名称', type: 'wallet' }
+  h.intercept = (action, query) => action !== 'financeUpdates.options' ? undefined : query.query === '旧词'
+    ? new Promise(resolve => { release = resolve })
+    : { protocolVersion: 2, viewVersion: 'v1', items: query.query ? [matching] : [], total: query.query ? 1 : 0, nextCursor: null }
+  page.setData({ accountChoiceSheet: { issueId: 'synthetic-issue' } })
+  await enter(page, 'bindAccountChoiceSearch', '旧词')
+  for (const value of ['合', '合成', '合', '']) {
+    await enter(page, 'bindAccountChoiceSearch', value)
+    assert.equal(page.data.accountChoiceQuery, value)
+    assert.ok(h.calls.some(call => call.action === 'financeUpdates.options' && (call.input.query || '') === value))
+    const rows = page.data.accountChoiceResults
+    assert.equal(rows.length, value ? 1 : 0)
+    if (value) assert.equal(rows[0].name, matching.name)
+    assert.equal(page.data.choiceLoading, false)
+  }
+  const before = JSON.stringify(page.data)
+  release({ protocolVersion: 2, viewVersion: 'v1', items: [matching], total: 1, nextCursor: null }); await flush()
+  assert.equal(JSON.stringify(page.data), before)
+})
+
+test('分类目录弹层搜索：本机过滤、查询值同步、迟到目录响应不回填', async t => {
+  const h = runtime(fixture(2)), page = h.page
+  t.after(() => page.onUnload())
+  await flush()
+  // 打开分类目录：首次拉一次整份目录后，搜索完全在本机过滤，不再逐次请求。
+  await page.openDirectory({ currentTarget: { dataset: { target: 'category' } } })
+  const catalogCalls = h.calls.filter(c => c.action === 'financeUpdates.options' && c.input.kind === 'categories').length
+  assert.ok(catalogCalls >= 1, '打开目录应拉一次分类目录')
+  const before = h.calls.length
+  for (const value of ['合', '合成']) {
+    await enter(page, 'searchDirectory', value)
+    assert.equal(page.data.directorySheet.query, value)
+    // 本机过滤：不再逐次发网络请求
+    assert.equal(h.calls.length, before, '分类目录搜索应本机过滤，不发请求')
+    const rows = page.data.directorySheet.items
+    assert.ok(rows.length >= 1 && rows.every(row => String(row.name || '').includes(value)), '应只含匹配项')
+    assert.equal(page.data.directorySheet.loading, false)
+  }
+  await enter(page, 'searchDirectory', '')
+  assert.equal(page.data.directorySheet.query, '')
+  assert.ok(page.data.directorySheet.items.length >= 1, '清空查询恢复全部')
+})

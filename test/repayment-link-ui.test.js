@@ -20,7 +20,8 @@ const sourceResult = { source: { transactionIds: [transaction.transactionId], fi
 const copy = value => JSON.parse(JSON.stringify(value))
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function runtime(route, responder) {
-  const filename = path.join(__dirname, '../miniprogram', pageRoute(route) + '.js')
+  const dir = path.join(__dirname, '../miniprogram', pageRoute(route).replace(/index$/, ''))
+  const filename = path.join(dir, 'page.js')
   const calls = [], routes = [], storage = new Map()
   let definition, request = 0
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
@@ -36,7 +37,9 @@ function runtime(route, responder) {
       read: key => storage.get(key), write: (key, v) => storage.set(key, v), remove: key => storage.delete(key), requestId: api.createRequestId,
       call: (_, action, data) => api.callApi(action, data) })
   })
-  definition = load(filename)
+  const factory = load(filename)
+  const create = factory[Object.keys(factory)[0]]
+  definition = create({ app, api, themeService: { page: d => d, component: d => d }, wx: chrome })
   const page = { ...definition, data: copy(definition.data), setData(patch) {
     for (const [key, value] of Object.entries(patch)) {
       const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let dst = this.data
@@ -231,7 +234,7 @@ test('贷款首页真实待办数量来自服务端；零时入口隐藏',async(
   h.respond=action=>action==='loans.list'?{ok:true,data:{items:[],nextCursor:null,pendingRepaymentCount:count}}:undefined
   page.onLoad();await page.loadLoans();assert.equal(page.data.pendingRepaymentCount,0)
   count=2;await page.loadLoans(true);assert.equal(page.data.pendingRepaymentCount,2)
-  assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/packages/loans/pages/loans/index.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
+  assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/packages/loans/pages/loans/content.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
 })
 
 test('手动借款还款显式确认全部分项；成功离开旧记账表单，避免再记普通转账',async()=>{

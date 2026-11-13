@@ -29,9 +29,7 @@ function createProfilePage(dependencies) {
     onShow: function () {
       this.beginReadSession()
       this._nicknameRequestId = null
-      if (this.getTabBar()) {
-        this.getTabBar().setData({ selected: 3, hidden: false })
-      }
+      // 底栏高亮由 host.selectTab 统一驱动（activeKey），面板不再写 selected 下标。
       const loggedIn = app.hasLoginApproval()
       const profile = app.globalData.profile || {}
       this.setData({
@@ -209,7 +207,7 @@ function createProfilePage(dependencies) {
         this.promptWechatLogin(this.openAccounts.bind(this))
         return
       }
-      wx.navigateTo({ url: '/pages/accounts/index' })
+      require('../../shell/router').openTab('accounts')
     },
 
     openCategories: function () {
@@ -217,7 +215,7 @@ function createProfilePage(dependencies) {
         this.promptWechatLogin(this.openCategories.bind(this))
         return
       }
-      wx.navigateTo({ url: '/pages/categories/index' })
+      require('../../shell/router').openTab('categories')
     },
 
     openImportHistory: function () {
@@ -225,11 +223,11 @@ function createProfilePage(dependencies) {
         this.promptWechatLogin(this.openImportHistory.bind(this))
         return
       }
-      wx.navigateTo({ url: '/packages/finance/pages/import-history/index' })
+      require('../../shell/router').openSubpageUrl('/packages/finance/pages/import-history/index')
     },
 
     openTheme: function () {
-      wx.navigateTo({ url: '/pages/theme/index' })
+      require('../../shell/router').openSubpageUrl('/pages/theme/index')
     },
 
     promptWechatLogin: function (afterLogin) {
@@ -265,11 +263,11 @@ function createProfilePage(dependencies) {
     },
 
     showPrivacy: function () {
-      wx.navigateTo({ url: '/pages/data-privacy/index' })
+      require('../../shell/router').openSubpageUrl('/pages/data-privacy/index')
     },
 
     openAbout: function () {
-      wx.navigateTo({ url: '/pages/about/index' })
+      require('../../shell/router').openSubpageUrl('/pages/about/index')
     },
 
     logoutAccount: function () {

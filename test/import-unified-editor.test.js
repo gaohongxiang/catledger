@@ -384,7 +384,8 @@ test('花呗信用购还款还入账户定位到已确认的同一个负债账�
 })
 
 test('只选择一个还入账户就按全额还款保存，不再留下未完成分配', () => {
-  const raw = base('repayment', { fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', label: '支付宝花呗｜信用购', candidates: [] } } },
+  // 用普通还款账户名（勿用“花呗/信用购”——它们同属一个负债账户，规则已豁免还款分配）。
+  const raw = base('repayment', { fieldSources: { fundsProjection: { to: { referenceKind: 'aggregate', label: '招商银行信用卡', candidates: [] } } },
     reasonCodes: ['repayment_allocation_required'] })
   const row = publicRow(raw)
   const draft = model.change(row, model.create(row), 'parts', [{ accountId: credit.accountId, amountInput: '' }])

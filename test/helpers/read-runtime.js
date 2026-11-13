@@ -109,7 +109,9 @@ function runtime(savedStorage, options = {}) {
   }
   h.component = () => {
     const definition = load(path.join(root, 'custom-tab-bar/index.js'))
-    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)),
+    const events = []
+    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)), events,
+      triggerEvent(name, detail) { events.push({ name, detail }) },
       selectComponent: () => ({ show: options => { h.loginOptions = options } }),
       setData(patch) { Object.assign(this.data, patch) } }
   }

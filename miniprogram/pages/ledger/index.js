@@ -21,8 +21,9 @@ Page(themeService.page({
 
 
   onShow: function () {
+    // 底栏高亮由 host.selectTab 统一驱动（activeKey），此处只复位可见性。
     if (this.getTabBar()) {
-      this.getTabBar().setData({ selected: 2, hidden: false })
+      this.getTabBar().setData({ hidden: false })
     }
     const loggedIn = app.hasLoginApproval()
     this.setData({ loggedIn: loggedIn })

@@ -36,3 +36,7 @@ project.private.config.json
 .archify/
 .tmp-ui-preview.png
 date-picker-preview.png
+
+# 本地工具/临时产物（不入库）
+.claude/
+.tmp-test/

@@ -1,4 +1,28 @@
 .main-shell { position: fixed; inset: 0; background: var(--theme-page); }
-home-panel, transactions-panel, statistics-panel, profile-panel { display: block; height: 100%; }
+home-panel, transactions-panel, statistics-panel, profile-panel,
+accounts-panel, categories-panel, theme-panel, data-privacy-panel, about-panel,
+import-history-panel, account-detail-panel, account-transactions-panel,
+loans-panel, loan-detail-panel, loan-form-panel, loan-payment-panel, loan-plan-panel,
+loan-link-panel, repayment-entry-panel, installment-sources-panel, due-this-month-panel { display: block; height: 100%; }
 
 .shell-panel { height: 100%; }
+
+/* 二级页面板：顶部返回条 + 内容区。底栏常驻在 shell 最下方。 */
+.shell-subpage { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+.subpage-bar {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 88rpx;
+  padding: 0 20rpx;
+}
+.subpage-back { display: flex; width: 72rpx; height: 72rpx; align-items: center; justify-content: center; }
+.subpage-back-arrow {
+  width: 18rpx;
+  height: 18rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(45deg);
+}
+.subpage-title { margin-left: 8rpx; font-size: var(--font-title, 36rpx); font-weight: 500; }
+.subpage-body { flex: 1 1 auto; min-height: 0; }

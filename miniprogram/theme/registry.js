@@ -42,6 +42,9 @@ const TOKEN_NAMES = [
   'heroInk',
   'heroValueInk',
   'heroMuted',
+  // 深底 hero 卡内的收支语义色：按各主题 hero 底色单独调，低饱和、与底色协调，不刺眼。
+  'heroIncome',
+  'heroExpense',
   'danger',
   'dangerSoft',
   'shadowSoft',
@@ -72,6 +75,7 @@ const THEMES = [
       accent: '#D8B25E', accentStrong: '#EFD79A', accentSoft: '#2A2318', onAccent: '#14120F',
       secondary: '#C9A55C', secondarySoft: '#262016', line: '#332C22', border: '#4A3E2C',
       heroStart: '#171410', heroEnd: '#2A2114', heroInk: '#F4EBDC', heroValueInk: '#E7C77E', heroMuted: '#A99672',
+      heroIncome: '#9BC5A8', heroExpense: '#E0A08C',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
       warning: '#F0B45E', warningSoft: '#2E2416', danger: '#E08A6F', dangerSoft: '#3A2118',
       shadowSoft: '0 10rpx 30rpx rgba(0,0,0,.45)', shadowLifted: '0 10rpx 24rpx rgba(0,0,0,.55)', shimmer: 'rgba(216,178,94,.16)',
@@ -89,6 +93,7 @@ const THEMES = [
       accent: '#2F5A87', accentStrong: '#24486E', accentSoft: '#DCE8F5', onAccent: '#FFFFFF',
       secondary: '#4A6E92', secondarySoft: '#E4ECF6', line: '#DDE7F2', border: '#C2D2E4',
       heroStart: '#2F5A87', heroEnd: '#3E6E9F', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#DCE8F5',
+      heroIncome: '#C7E8D6', heroExpense: '#FFC4B3',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
       warning: '#B45309', warningSoft: '#FFF3E6', danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(47,90,135,.07)', shadowLifted: '0 8rpx 22rpx rgba(36,72,110,.10)', shimmer: 'rgba(255,255,255,.7)',
@@ -106,6 +111,7 @@ const THEMES = [
       accent: '#8E6F9F', accentStrong: '#7A5C8B', accentSoft: '#EFE4F5', onAccent: '#FFFFFF',
       secondary: '#7A6B85', secondarySoft: '#F0E8F7', line: '#EAE0F0', border: '#D5C6DF',
       heroStart: '#826795', heroEnd: '#9E83B0', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#F0E8F7',
+      heroIncome: '#DCF0E1', heroExpense: '#FFD3D6',
       income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense,
       warning: '#B45309', warningSoft: '#FFF3E6', danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(142,111,159,.08)', shadowLifted: '0 8rpx 22rpx rgba(122,92,139,.10)', shimmer: 'rgba(255,255,255,.7)',
@@ -160,9 +166,16 @@ function serializeTokens(tokens, prefix) {
 // 深浅两套只按主题的 semanticTone 切换，色相与含义不变。
 function serializeSemanticColors(tokens, prefix) {
   const variablePrefix = prefix || '--sem-'
-  return Object.keys(SEMANTIC_TOKENS).map(function (name) {
+  const base = Object.keys(SEMANTIC_TOKENS).map(function (name) {
     return variablePrefix + toCssName(name) + ':' + tokens[name]
-  }).join(';') + ';'
+  })
+  // 深色卡片（hero 等）专用收支色：按各主题 hero 底色单独调（tokens.heroIncome/heroExpense），
+  // 低饱和、与底色协调。不同主题各取各的，不再用一套固定艳色压所有底色。
+  const onDark = [
+    variablePrefix + 'income-on-dark:' + tokens.heroIncome,
+    variablePrefix + 'expense-on-dark:' + tokens.heroExpense
+  ]
+  return base.concat(onDark).join(';') + ';'
 }
 
 function serializeSemanticTokens(prefix, tone) {

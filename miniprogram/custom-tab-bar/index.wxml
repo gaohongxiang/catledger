@@ -21,17 +21,14 @@
 
 <view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} ui-refined" style="{{themeStyle}}">
   <view class="tab-side tab-side-left">
-    <block wx:for="{{tabs}}" wx:key="pagePath">
+    <block wx:for="{{tabsLeft}}" wx:key="key">
       <view
-        wx:if="{{index < 2}}"
-        class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
-        data-index="{{index}}"
+        class="tab-item {{item.key === activeKey ? 'tab-item-selected' : ''}}"
+        data-key="{{item.key}}"
         bindtap="switchTab"
       >
-        <view class="tab-icon-wrap">
-          <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
-        </view>
-        <text class="tab-label">{{item.text}}</text>
+        <view class="tab-icon-wrap"><image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{item.key === activeKey ? item.selectedIconPath : item.iconPath}}" /></view>
+        <view class="tab-label-wrap"><text class="tab-label">{{item.text}}</text><view wx:if="{{item.kind !== 'single'}}" class="tab-caret"></view></view>
       </view>
     </block>
   </view>
@@ -44,18 +41,30 @@
   </view>
 
   <view class="tab-side tab-side-right">
-    <block wx:for="{{tabs}}" wx:key="pagePath">
+    <block wx:for="{{tabsRight}}" wx:key="key">
       <view
-        wx:if="{{index >= 2}}"
-        class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
-        data-index="{{index}}"
+        class="tab-item {{item.key === activeKey ? 'tab-item-selected' : ''}}"
+        data-key="{{item.key}}"
         bindtap="switchTab"
       >
-        <view class="tab-icon-wrap">
-          <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
-        </view>
-        <text class="tab-label">{{item.text}}</text>
+        <view class="tab-icon-wrap"><image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{item.key === activeKey ? item.selectedIconPath : item.iconPath}}" /></view>
+        <view class="tab-label-wrap"><text class="tab-label">{{item.text}}</text><view wx:if="{{item.kind !== 'single'}}" class="tab-caret"></view></view>
       </view>
     </block>
+  </view>
+</view>
+
+<view wx:if="{{choiceOpen && !hidden}}" class="choice-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="closeChoice" catchtouchmove="keepChoiceOpen">
+  <view class="choice-sheet" catchtap="keepChoiceOpen">
+    <view class="choice-heading"><text>{{choiceOpen === 'records' ? '选择查看内容' : '选择管理内容'}}</text></view>
+    <block wx:if="{{choiceOpen === 'records'}}">
+      <view class="choice-option" role="button" data-id="transactions" bindtap="chooseRecords"><text class="choice-title">明细</text><text class="choice-note">看每一笔收支记录</text></view>
+      <view class="choice-option" role="button" data-id="statistics" bindtap="chooseRecords"><text class="choice-title">统计</text><text class="choice-note">看图表、分类与趋势</text></view>
+    </block>
+    <block wx:else>
+      <view class="choice-option" role="button" data-id="accounts" bindtap="chooseAccounts"><view class="choice-title-row"><text class="choice-title">账户</text><text wx:if="{{accountCount > 0}}" class="choice-count">{{accountCount}}</text></view><text class="choice-note">管理资产、负债账户</text></view>
+      <view class="choice-option" role="button" data-id="categories" bindtap="chooseAccounts"><view class="choice-title-row"><text class="choice-title">分类</text><text wx:if="{{categoryCount > 0}}" class="choice-count">{{categoryCount}}</text></view><text class="choice-note">管理收支分类</text></view>
+    </block>
+    <view class="choice-cancel" role="button" bindtap="closeChoice">取消</view>
   </view>
 </view>

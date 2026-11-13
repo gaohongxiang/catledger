@@ -180,8 +180,8 @@ test('账户流水入口拒绝旧全量响应；换用户不恢复原账户名�
 
 test('账户详情贷款列表可按时间/金额排序', () => {
   const fs = require('node:fs'), path = require('node:path')
-  const src = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.js'), 'utf8')
-  const wxml = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/index.wxml'), 'utf8')
+  const src = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/page.js'), 'utf8')
+  const wxml = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/account-detail/content.wxml'), 'utf8')
   assert.match(src, /_splitLoans\(/)
   assert.match(src, /setLoanSort\(/)
   assert.match(src, /accountLoanSort: 'time'/)

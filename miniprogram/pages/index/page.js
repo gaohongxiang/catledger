@@ -122,9 +122,7 @@ function createHomePage(dependencies) {
     },
 
     onShow: function () {
-      if (this.getTabBar()) {
-        this.getTabBar().setData({ selected: 0 })
-      }
+      // 底栏高亮由 host.selectTab 统一驱动（activeKey），面板不再写 selected 下标。
       const loggedIn = app.hasLoginApproval()
       this.setData({
         loggedIn: loggedIn,
@@ -405,7 +403,7 @@ function createHomePage(dependencies) {
         this.promptWechatLogin(this.openLoans.bind(this))
         return
       }
-      wx.navigateTo({ url: '/packages/loans/pages/due-this-month/index' })
+      require('../../shell/router').openSubpageUrl('/packages/loans/pages/due-this-month/index')
     },
 
     openStatistics: function () {

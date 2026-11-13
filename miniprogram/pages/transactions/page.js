@@ -100,9 +100,6 @@ return Object.assign({
     this.resetSelection()
     this.setData({ selectionMode: false, deleteRetryCount: 0 })
     this._batchRequest = null
-    if (!accountMode && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 1 })
-    }
     const loggedIn = app.hasLoginApproval()
     this.setData({ loggedIn: loggedIn })
     if (loggedIn && (!accountMode || this.data.returnAccountId)) {

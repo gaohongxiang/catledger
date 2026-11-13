@@ -1,0 +1,9 @@
+{
+  "component": true,
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/index",
+    "list-row": "/components/list-row/index",
+    "skeleton-rows": "/components/skeleton-rows/index",
+    "chevron-icon": "/components/chevron-icon/index"
+  }
+}

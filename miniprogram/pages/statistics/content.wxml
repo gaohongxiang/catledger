@@ -14,7 +14,7 @@
   </view>
 
   <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
-  <view class="hero-card">
+  <view class="hero-card on-dark-surface">
     <text class="hero-label">{{summaryScopeAll ? '累计结余' : '本月结余'}}</text>
     <text class="hero-amount money-number {{netTone}}">{{hasLoaded ? netText : '—'}}</text>
     <view class="hero-split">

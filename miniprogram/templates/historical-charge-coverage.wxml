@@ -1,0 +1,6 @@
+<!-- 历史费用覆盖选择模板。
+     注意：所在区块由 `wx:if="{{historyCoverageEditor && !periodOpen}}"` 控制，
+     而 historyCoverageEditor 当前在页面数据中从未被赋值（恒假），故本模板在运行时不会渲染。
+     这里保留一个占位模板，仅用于静态结构检查（wxml 配对 / include 展开），
+     避免因缺失文件导致读取报错；待该功能真正接线时再补充具体字段。 -->
+<view class="historical-charge-coverage"></view>

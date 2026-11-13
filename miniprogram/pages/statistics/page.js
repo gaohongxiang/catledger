@@ -152,7 +152,7 @@ function createStatisticsPage(dependencies) {
       this.setData({ loggedIn: app.hasLoginApproval() })
       this.beginReadSession()
       const tabBar = this.getTabBar && this.getTabBar()
-      if (tabBar) tabBar.setData({ selected: 2, hidden: false })
+      if (tabBar) tabBar.setData({ hidden: false })
       if (!app.hasLoginApproval()) {
         this.openCompletionAfterLoad = false
         return

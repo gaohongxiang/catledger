@@ -23,6 +23,9 @@ page {
      页面根节点（深色主题用同色相的提亮版）；这里只是注入前的兜底，改色以 registry 为准。 */
   --sem-income: #477153;
   --sem-expense: #B54738;
+  /* 深色语境语义色兜底（真值由 registry 注入 --sem-*-on-dark）。深底容器加 .on-dark-surface 即自动切用。 */
+  --sem-income-on-dark: #9BC5A8;
+  --sem-expense-on-dark: #E0A08C;
   min-height: 100%;
   color: #2c2823;
   /* 页面根节点由 page-meta 使用当前主题着色；初始化期间透出已同步的原生底色，
@@ -215,6 +218,17 @@ button::after { border: 0; }
   margin: 0;
 }
 @keyframes inline-sync-spin { to { transform: rotate(360deg); } }
+
+/* 收支语义色工具类：唯一入口。
+   - 浅色语境（默认）：.income-color / .expense-color 取 --sem-* (随主题页面底色)。
+   - 深色语境：深底容器加 .on-dark-surface，其内的收支类自动切到 --sem-*-on-dark（深底亮色）。
+   这样任何深色卡片（hero 等）只要带一个标记类就全对，不为单个页面写覆盖。 */
+.income-color { color: var(--sem-income, #477153); }
+.expense-color { color: var(--sem-expense, #B54738); }
+.on-dark-surface .income-color { color: var(--sem-income-on-dark, #6FB08A); }
+.on-dark-surface .expense-color { color: var(--sem-expense-on-dark, #DE8571); }
+.on-dark-surface .cmp-up { color: var(--sem-expense-on-dark, #DE8571); background: rgba(255, 255, 255, .14); }
+.on-dark-surface .cmp-down { color: var(--sem-income-on-dark, #6FB08A); background: rgba(255, 255, 255, .14); }
 
 /* 全页面共用的状态与文本工具；不包含业务状态推断。 */
 .page-secondary { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }

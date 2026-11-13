@@ -1,0 +1,11 @@
+{
+  "component": true,
+  "usingComponents": {
+    "category-tile": "/components/category-tile/index",
+    "empty-cat": "/components/empty-cat/index",
+    "skeleton-rows": "/components/skeleton-rows/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
+  }
+}

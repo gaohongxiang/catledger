@@ -3,7 +3,7 @@
 
 /* ---------- 页头：标题+年份（年份并入标题，不分两行） ---------- */
 .stats-head { display: flex; align-items: baseline; gap: 8rpx; padding: 14rpx var(--layout-content-inset, 20rpx) 4rpx; }
-.year-switch { display: inline-flex; align-items: center; gap: 2rpx; margin-left: auto; }
+.year-switch { display: inline-flex; align-items: center; gap: 2rpx; }
 .year-label { font-size: 28rpx; font-weight: 500; color: var(--theme-ink, #F4EBDC); padding: 0 8rpx; }
 .year-arrow { display: flex; width: 52rpx; height: 52rpx; align-items: center; justify-content: center; border-radius: 50%; color: var(--theme-text-muted); }
 .year-arrow:active { background: var(--theme-surface-muted); }
@@ -18,13 +18,13 @@
 .month-chip { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; font-size: 22rpx; color: var(--theme-text-muted); background: transparent; box-sizing: border-box; }
 .month-chip-future { opacity: .32; }
 .month-chip-active { background: var(--theme-accent, #d97732); color: #fff; border-color: var(--theme-accent, #d97732); font-weight: 600; }
-.stats-sync { display: flex; align-items: center; padding: 0; }
+.stats-sync { display: flex; align-items: center; padding: 0; margin-left: auto; }
 
 /* ---------- Hero 结余卡：结余大字 + 收支对称 + 指标行 ---------- */
 .hero-card { margin: 4rpx var(--layout-content-inset, 20rpx) 4rpx; padding: 28rpx 30rpx 22rpx; background: linear-gradient(135deg, var(--theme-hero-start, #171410), var(--theme-hero-end, #2A2114)); border: 1rpx solid var(--theme-border, #4A3E2C); border-radius: var(--theme-radius-xl, 32rpx); box-shadow: var(--theme-shadow-soft, 0 10rpx 30rpx rgba(0,0,0,.35)); }
 .hero-label { display: block; font-size: var(--font-caption, 24rpx); color: var(--theme-hero-muted, var(--theme-text-muted)); }
 .hero-amount { display: block; margin-top: 4rpx; font-size: 62rpx; font-weight: 700; line-height: 1.1; color: var(--theme-hero-value-ink, #E7C77E); overflow-wrap: anywhere; }
-.hero-amount-neg { color: var(--theme-hero-ink, var(--sem-expense, #b54738)); }
+.hero-amount-neg { color: var(--sem-expense-on-dark, #DE8571); }
 .hero-split { display: flex; align-items: stretch; margin-top: 20rpx; padding-top: 18rpx; border-top: 1rpx solid var(--theme-border, rgba(255,255,255,.12)); }
 .hero-side { flex: 1; min-width: 0; }
 .hero-side-label { display: block; font-size: var(--font-caption, 24rpx); color: var(--theme-hero-ink, var(--theme-text-muted)); opacity: .72; }
@@ -60,8 +60,6 @@
 .legend-share { font-size: 22rpx; color: var(--theme-text-muted); font-variant-numeric: tabular-nums; }
 .legend-delta { font-size: 20rpx; padding: 1rpx 8rpx; border-radius: 6rpx; font-variant-numeric: tabular-nums; }
 .legend-empty { font-size: var(--font-caption, 24rpx); color: var(--theme-text-muted); }
-.income-color { color: var(--sem-income, #477153); }
-.expense-color { color: var(--sem-expense, #b54738); }
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
