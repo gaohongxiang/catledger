@@ -139,3 +139,18 @@ test('普通失效保留独立可展示快照，但新鲜读取、写屏障与�
   assert.equal(cache.snapshot('other-query'),null)
   cache.reset();assert.equal(cache.snapshot(key),null)
 })
+
+test('统计旧结构缓存（缺 repaymentPressure/负债率）不命中 fresh，强制重拉新结构', async () => {
+  const cache = createReadCache(), key = stableKey('statistics.get', { month: '2026-09' }), policy = READ_POLICIES['statistics.get']
+  // 第一次加载返回旧结构（liabilities 缺新字段）
+  const oldValue = { summary: { incomeMinor: '0', expenseMinor: '0' }, cashFlowTrend: [], liabilities: { debtTotalMinor: '1000', accounts: [] } }
+  let calls = 0
+  await cache.read(key, policy, async () => { calls++; return oldValue })
+  // TTL Infinity，但结构不完整 -> peek 不返回、isFresh 为 false
+  assert.equal(cache.peek(key), null, '旧结构不应命中')
+  // 再读应触发第二次加载（重拉），返回完整结构
+  const full = { summary: { incomeMinor: '0', expenseMinor: '0' }, cashFlowTrend: [], liabilities: { debtTotalMinor: '1000', liabilitiesRatioBasisPoints: 5000, repaymentPressure: { monthDueMinor: '0' }, accounts: [] } }
+  await cache.read(key, policy, async () => { calls++; return full })
+  assert.equal(calls, 2, '旧结构未命中，触发了重拉')
+  assert.ok(cache.peek(key), '完整结构可命中')
+})

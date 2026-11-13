@@ -154,12 +154,23 @@ function buildLiabilityView(liabilities, tokens) {
   // 两张环图：负债占比按各卡欠款；利息占比按各卡全期利息。缺 token 时留 null，模板按空处理。
   const debtRing = tokens ? liabilityRing(rows.map(row => ({ name: row.nameText, amountMinor: row.debtMinor })), colors) : null
   const interestRing = tokens ? liabilityRing(rows.filter(row => row.hasInterest).map(row => ({ name: row.nameText, amountMinor: row.interestMinor })), colors) : null
+  // 负债率：basis points → 百分比文本；资产为 0（null）显示「—」。
+  const ratioBp = source.liabilitiesRatioBasisPoints
+  const ratioText = ratioBp == null ? '—' : (Number(ratioBp) / 100).toFixed(1) + '%'
+  // 还款压力：本月待还 + 未来 12 个月合计。
+  const pressure = source.repaymentPressure || {}
   return {
     hasLiabilities: rows.length > 0,
     debtTotalText: money.formatMinor(source.debtTotalMinor || '0'),
     interestTotalText: money.formatMinor(source.interestTotalMinor || '0'),
     paidInterestTotalText: money.formatMinor(source.paidInterestTotalMinor || '0'),
     unpaidInterestTotalText: money.formatMinor(unpaidInterest),
+    ratioText: ratioText,
+    ratioEmpty: ratioBp == null,
+    monthDueText: money.formatMinor(pressure.monthDueMinor || '0'),
+    monthDueCount: Number(pressure.monthPeriodCount || 0),
+    upcomingText: money.formatMinor(pressure.upcomingMinor || '0'),
+    upcomingCount: Number(pressure.upcomingPeriodCount || 0),
     debtRing: debtRing,
     interestRing: interestRing,
     rows: rows,

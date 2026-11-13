@@ -2,18 +2,18 @@
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <view class="stats-head">
     <text class="stats-head-title">收支统计</text>
-    <text class="stats-head-sep">·</text>
-    <text class="stats-head-year">{{monthYear}}年</text>
-  </view>
-  <scroll-view class="month-strip" scroll-x show-scrollbar="{{false}}">
-    <view class="month-strip-inner">
-      <view wx:for="{{monthOptions}}" wx:key="value" class="month-chip {{item.value === month ? 'month-chip-active' : ''}}" role="button" data-value="{{item.value}}" bindtap="pickMonth" aria-label="切换到 {{item.year}}年{{item.month}}月">{{item.month}}月</view>
+    <view class="year-switch">
+      <view class="year-arrow {{canPrevYear ? '' : 'year-arrow-disabled'}}" role="button" aria-label="上一年" bindtap="previousYear"><chevron-icon direction="left" size="{{24}}" /></view>
+      <date-field granularity="month" value="{{month}}" bindchange="chooseMonth"><text class="year-label money-number">{{viewYear}}年</text></date-field>
+      <view class="year-arrow {{canNextYear ? '' : 'year-arrow-disabled'}}" role="button" aria-label="下一年" bindtap="nextYear"><chevron-icon size="{{24}}" /></view>
     </view>
-  </scroll-view>
+    <view class="inline-sync stats-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
+  </view>
+  <view class="month-strip">
+    <view wx:for="{{monthOptions}}" wx:key="value" class="month-chip {{item.value === month ? 'month-chip-active' : ''}} {{item.future ? 'month-chip-future' : ''}}" role="button" data-value="{{item.value}}" bindtap="pickMonth" aria-label="{{item.future ? item.month + '月（未到）' : '切换到' + item.year + '年' + item.month + '月'}}">{{item.month}}</view>
+  </view>
 
   <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
-  <view class="inline-sync stats-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
-
   <view class="hero-card">
     <text class="hero-label">{{summaryScopeAll ? '累计结余' : '本月结余'}}</text>
     <text class="hero-amount money-number {{netTone}}">{{hasLoaded ? netText : '—'}}</text>
@@ -80,17 +80,17 @@
     </view>
   </view>
 
-  <section-header class="stats-section" compact title="近六个月"><view class="chart-legend"><text class="legend-income">收入</text><text class="legend-expense">支出</text></view></section-header>
+  <section-header class="stats-section" compact title="收支趋势"><view class="chart-legend"><text class="legend-income">收入</text><text class="legend-expense">支出</text></view></section-header>
   <view class="graph-surface">
     <view class="trend-selection" wx:if="{{selectedTrend}}">
       <text class="trend-selected-month">{{selectedTrend.monthLabel}}</text>
       <view class="trend-selection-values"><view><text class="trend-value-label">收入</text><text class="income-color money-number">{{selectedTrend.incomeText}}</text></view><view><text class="trend-value-label">支出</text><text class="expense-color money-number">{{selectedTrend.expenseText}}</text></view></view>
     </view>
-    <view class="graph-scale"><text>上限 {{charts.monthlyChart.maxText}}</text><text>下限 {{charts.monthlyChart.minText}}</text></view>
-    <view class="graph-image-wrap"><image class="graph-image" src="{{charts.monthlyChart.src}}" mode="scaleToFill" aria-label="近六个月收支柱状图" />
+    <view class="graph-scale"><text class="graph-range">{{trendRangeLabel}}</text><text>上限 {{charts.monthlyChart.maxText}}</text><text>下限 {{charts.monthlyChart.minText}}</text></view>
+    <view class="graph-image-wrap"><image class="graph-image" src="{{charts.monthlyChart.src}}" mode="scaleToFill" aria-label="收支趋势柱状图" />
       <view class="graph-hit"><view wx:for="{{cashFlowTrend}}" wx:key="month" class="graph-hit-column" bindtap="selectTrend" data-index="{{index}}" aria-role="button" aria-label="{{item.month}}，收入{{item.incomeText}}，支出{{item.expenseText}}"></view></view>
     </view>
-    <view class="graph-axis"><text wx:for="{{cashFlowTrend}}" wx:key="month" class="{{selectedTrend.month === item.month ? 'axis-month-selected' : ''}}">{{item.monthText}}月</text></view>
+    <view class="graph-axis"><text wx:for="{{cashFlowTrend}}" wx:key="month" class="{{selectedTrend.month === item.month ? 'axis-month-selected' : ''}}">{{item.axisMonth}}月</text></view>
   </view>
 
 
@@ -100,7 +100,19 @@
   <view wx:if="{{hasLoaded && liabilityView.hasLiabilities}}" class="liability-block">
     <section-header class="stats-section" compact title="负债与分期"><text class="section-note">当前时点</text></section-header>
     <view class="liability-card">
-      <view class="liability-group-title"><text>负债占比</text><text class="liability-group-total">合计 {{liabilityView.debtTotalText}}</text></view>
+      <view class="liability-kpis">
+        <view class="liability-kpi"><text class="liability-kpi-label">当前总负债</text><text class="liability-kpi-value money-number">{{liabilityView.debtTotalText}}</text></view>
+        <view class="liability-kpi"><text class="liability-kpi-label">负债率</text><text class="liability-kpi-value money-number {{liabilityView.ratioEmpty ? 'liability-kpi-empty' : ''}}">{{liabilityView.ratioText}}</text></view>
+        <view class="liability-kpi"><text class="liability-kpi-label">{{monthNumber}}月待还</text><text class="liability-kpi-value money-number">{{liabilityView.monthDueText}}</text></view>
+        <view class="liability-kpi"><text class="liability-kpi-label">未来12个月</text><text class="liability-kpi-value money-number">{{liabilityView.upcomingText}}</text></view>
+      </view>
+      <view wx:if="{{liabilityView.hasInterest}}" class="liability-kpi liability-kpi-interest">
+        <text class="liability-kpi-label">全期利息</text>
+        <text class="liability-kpi-value money-number">{{liabilityView.interestTotalText}}</text>
+        <text class="liability-kpi-sub">已还 {{liabilityView.paidInterestTotalText}} · 待付 {{liabilityView.unpaidInterestTotalText}}</text>
+      </view>
+      <view class="liability-divider"></view>
+      <view class="liability-group-title"><text>当前总负债占比</text></view>
       <view class="liability-ring-row">
         <image wx:if="{{liabilityView.debtRing && !liabilityView.debtRing.empty}}" class="liability-ring" src="{{liabilityView.debtRing.src}}" mode="aspectFit" aria-label="负债占比环图" />
         <view class="liability-legend">
@@ -114,8 +126,7 @@
       </view>
       <block wx:if="{{liabilityView.hasInterest}}">
         <view class="liability-divider"></view>
-        <view class="liability-group-title"><text>分期利息</text><text class="liability-group-total">全期合计 {{liabilityView.interestTotalText}}</text></view>
-        <view class="liability-interest-note">含已还期次；已还 {{liabilityView.paidInterestTotalText}} · 待付 {{liabilityView.unpaidInterestTotalText}}</view>
+        <view class="liability-group-title"><text>全期利息占比</text></view>
         <view class="liability-ring-row">
           <image wx:if="{{liabilityView.interestRing && !liabilityView.interestRing.empty}}" class="liability-ring" src="{{liabilityView.interestRing.src}}" mode="aspectFit" aria-label="分期利息占比环图" />
           <view class="liability-legend">

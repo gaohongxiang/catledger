@@ -153,6 +153,34 @@ function monthSequence(month, count = 12) {
   return values
 }
 
+// 两个 'YYYY-MM' 之间的月数（含首含尾）。
+function monthsBetween(fromMonth, toMonth) {
+  const [fy, fm] = fromMonth.split('-').map(Number)
+  const [ty, tm] = toMonth.split('-').map(Number)
+  return (ty - fy) * 12 + (tm - fm) + 1
+}
+
+// 该用户最早一笔有效收支/退款所在的月份（'YYYY-MM'），无数据返回 null。
+async function earliestTransactionMonth(connection, uid) {
+  const [rows] = await connection.execute(
+    `SELECT DATE_FORMAT(MIN(occurred_local_date), '%Y-%m') AS earliestMonth
+       FROM catledger_transactions
+      WHERE uid = ? AND deleted_at IS NULL AND type IN ('income', 'expense', 'refund')`,
+    [uid]
+  )
+  return rows[0] && rows[0].earliestMonth ? String(rows[0].earliestMonth) : null
+}
+
+// 自适应窗口：从「最早有数据月 → 结束月」的月数，夹在 [min, max]（默认 6~12）。
+// 数据不足 min 时补空到 min，避免柱子挤在角落；超过 max 时只取最近 max 个月。
+// 最早月晚于结束月（或没数据）时取 min 个月。
+function adaptiveWindowCount(earliestMonth, endMonth, min = 6, max = 12) {
+  if (!earliestMonth) return min
+  const span = monthsBetween(earliestMonth, endMonth)
+  if (!Number.isFinite(span) || span <= 0) return min
+  return Math.max(min, Math.min(max, span))
+}
+
 function summaryFromTrend(cashFlowTrend, month) {
   const current = cashFlowTrend.find((row) => row.month === month) || {
     incomeMinor: '0',
@@ -230,7 +258,11 @@ function buildCategoryComparisons(currentCategories, previousCategories) {
 }
 
 async function queryMonthlyCashFlowTrend(connection, uid, month, count = 12) {
-  const months = monthSequence(month, count)
+  // count='auto' 时按最早有数据月自适应（6~12 格），否则用固定月数。
+  const resolvedCount = count === 'auto'
+    ? adaptiveWindowCount(await earliestTransactionMonth(connection, uid), month)
+    : count
+  const months = monthSequence(month, resolvedCount)
   const endRange = parseMonth(month)
   const [rows] = await connection.execute(
     `SELECT DATE_FORMAT(occurred_local_date, '%Y-%m') AS localMonth,
@@ -294,7 +326,7 @@ function createReportingService({ getPool }) {
           search: null,
           pageSize: 5
         }, null)
-        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, month)
+        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, month, 'auto')
         const summary = summaryScope === 'all'
           ? await queryMonthlySummary(connection, uid, null)
           : summaryFromTrend(cashFlowTrend, month)
@@ -337,14 +369,26 @@ function createReportingService({ getPool }) {
         const previousCategories = await queryCategoryStatistics(connection, uid, previousRange, previousSummary)
         const daily = await queryDailyStatistics(connection, uid, range)
         // 图表只展示近 6 个月；同比需要「去年同月」，故单独用 13 个月窗口算对比，不为图表多带数据。
-        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth, 6)
+        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth, 'auto')
         const comparisonTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth, 13)
         const quality = await queryStatisticsMetrics(connection, uid, range)
         // 负债占比与分期利息是「当前时点」数据，与所选月份无关；口径见 liability-summary.js。
         const accounts = await listAccountsForUser(connection, uid)
         const { paidInterestByAccount } = require('./installment-service')
         const paidInterest = await paidInterestByAccount(connection, uid)
-        const { liabilities } = require('./liability-summary').liabilitySummary(accounts, paidInterest)
+        // 合计走 accountTotals（与首页/账户页同一真源），负债率由同一函数派生；还款压力复用贷款域纯查询。
+        const totals = accountTotals(accounts)
+        // 本月待还跟随所选月(month)；未来12个月锚定真实当月(trendEndMonth)，不受选择器影响。
+        const { repaymentPressureQuery } = require('./home-alerts')
+        const repaymentPressure = await repaymentPressureQuery(connection, uid, month, 12, trendEndMonth)
+        const liabilityBase = require('./liability-summary').liabilitySummary(accounts, paidInterest).liabilities
+        const liabilities = Object.assign({}, liabilityBase, {
+          // 合计与负债率：来自 accountTotals 唯一真源，不在此重算。
+          debtTotalMinor: totals.liabilitiesMinor,
+          interestTotalMinor: totals.liabilitiesInterestMinor,
+          liabilitiesRatioBasisPoints: totals.liabilitiesRatioBasisPoints,
+          repaymentPressure
+        })
         return {
           month,
           trendEndMonth,
@@ -371,6 +415,6 @@ function createReportingService({ getPool }) {
   return { dashboard, statistics }
 }
 
-module.exports = { createReportingService, monthSequence, summaryFromTrend, netWorthOf, buildComparisons, buildCategoryComparisons }
+module.exports = { createReportingService, monthSequence, summaryFromTrend, netWorthOf, buildComparisons, buildCategoryComparisons, adaptiveWindowCount }
 
 module.exports.rollupCategories = rollupCategories

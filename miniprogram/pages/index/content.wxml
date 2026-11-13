@@ -92,7 +92,7 @@
         <view class="statistics-card-heading">
           <view class="statistics-card-title">
             <view class="statistics-icon"><image src="{{themeIconRoot}}/statistics.svg" mode="aspectFit" /></view>
-            <text>近半年收支趋势</text>
+            <text>收支趋势</text>
           </view>
           <view class="trend-legend">
             <view class="trend-legend-item"><view class="trend-dot trend-dot-income"></view><text>收入</text></view>
@@ -122,7 +122,7 @@
         <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{2}}" />
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>
         <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总收支趋势…</view>
-        <view wx:elif="{{trendReady}}" class="statistics-card-empty">近半年还没有收支</view>
+        <view wx:elif="{{trendReady}}" class="statistics-card-empty">近期还没有收支</view>
         <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
       </view>
     </view>

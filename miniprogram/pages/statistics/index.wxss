@@ -3,16 +3,22 @@
 
 /* ---------- 页头：标题+年份（年份并入标题，不分两行） ---------- */
 .stats-head { display: flex; align-items: baseline; gap: 8rpx; padding: 14rpx var(--layout-content-inset, 20rpx) 4rpx; }
+.year-switch { display: inline-flex; align-items: center; gap: 2rpx; margin-left: auto; }
+.year-label { font-size: 28rpx; font-weight: 500; color: var(--theme-ink, #F4EBDC); padding: 0 8rpx; }
+.year-arrow { display: flex; width: 52rpx; height: 52rpx; align-items: center; justify-content: center; border-radius: 50%; color: var(--theme-text-muted); }
+.year-arrow:active { background: var(--theme-surface-muted); }
+.year-arrow-disabled { opacity: .3; pointer-events: none; }
 .stats-head-title { font-size: 34rpx; font-weight: 600; color: var(--theme-ink, #F4EBDC); }
 .stats-head-sep { font-size: 26rpx; color: var(--theme-text-muted); }
 .stats-head-year { font-size: 26rpx; color: var(--theme-text-muted); }
 
 /* ---------- 月份条：横向 chips，当前月金色高亮 ---------- */
-.month-strip { width: 100%; height: 74rpx; white-space: nowrap; padding: 6rpx 0 10rpx; box-sizing: border-box; }
+.month-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2rpx; padding: 8rpx var(--layout-content-inset, 20rpx) 10rpx; box-sizing: border-box; }
 .month-strip-inner { display: inline-flex; gap: 14rpx; padding: 0 var(--layout-content-inset, 20rpx); }
-.month-chip { flex: 0 0 auto; min-width: 88rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; color: var(--theme-text-muted); background: var(--theme-surface); border: 1rpx solid var(--theme-line); }
+.month-chip { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; font-size: 22rpx; color: var(--theme-text-muted); background: transparent; box-sizing: border-box; }
+.month-chip-future { opacity: .32; }
 .month-chip-active { background: var(--theme-accent, #d97732); color: #fff; border-color: var(--theme-accent, #d97732); font-weight: 600; }
-.stats-sync { display: flex; justify-content: center; padding: 0 0 6rpx; }
+.stats-sync { display: flex; align-items: center; padding: 0; }
 
 /* ---------- Hero 结余卡：结余大字 + 收支对称 + 指标行 ---------- */
 .hero-card { margin: 4rpx var(--layout-content-inset, 20rpx) 4rpx; padding: 28rpx 30rpx 22rpx; background: linear-gradient(135deg, var(--theme-hero-start, #171410), var(--theme-hero-end, #2A2114)); border: 1rpx solid var(--theme-border, #4A3E2C); border-radius: var(--theme-radius-xl, 32rpx); box-shadow: var(--theme-shadow-soft, 0 10rpx 30rpx rgba(0,0,0,.35)); }
@@ -323,7 +329,9 @@
 @media (prefers-reduced-motion: reduce) {
   .composition-card, .graph-surface { animation: none; }
 }
-.graph-scale { display: flex; justify-content: space-between; gap: var(--layout-space-2); color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); padding: 0 12rpx 8rpx; overflow-wrap: anywhere; }
+.graph-scale { display: flex; align-items: baseline; gap: var(--layout-space-2); color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); padding: 0 12rpx 8rpx; overflow-wrap: anywhere; }
+.graph-range { color: var(--theme-text-subtle, var(--theme-text-muted)); margin-right: auto; }
+.graph-scale text:nth-last-child(2) { margin-left: auto; }
 .graph-scale text:last-child { text-align: right; }
 .graph-image-wrap { position: relative; height: 220rpx; }
 .graph-image { display: block; width: 100%; height: 220rpx; }
@@ -440,6 +448,18 @@
 .liability-block { margin-bottom: var(--layout-space-4); }
 .liability-card { margin: 0 var(--layout-content-inset, 20rpx); background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-xl, 32rpx); padding: 8rpx 24rpx 22rpx; }
 .liability-group-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--layout-space-3); padding: 14rpx 0 6rpx; font-size: var(--font-caption, 24rpx); color: var(--theme-text-muted); }
+.liability-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4rpx 8rpx; padding: 8rpx 0 4rpx; }
+.liability-kpi { display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10rpx; padding: 16rpx 8rpx; min-width: 0; border-bottom: 1rpx solid var(--theme-line); }
+.liability-kpi-label { font-size: 22rpx; color: var(--theme-text-muted); white-space: nowrap; flex: 0 0 auto; }
+.liability-kpi-value { font-size: 28rpx; font-weight: 600; color: var(--theme-ink); white-space: nowrap; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.liability-kpi-empty { color: var(--theme-text-muted); font-weight: 400; }
+/* 全期利息（C）：与上面四格同一套 2 列网格——标签和值按列对齐（值落在第一列值的位置），
+   已还/待付小字占第二列右对齐。这样数值和上面「当前总负债」等严格对齐。 */
+.liability-kpi-interest { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4rpx 8rpx; padding: 16rpx 8rpx; border-bottom: 1rpx solid var(--theme-line); }
+.liability-kpi-interest .liability-kpi-label { grid-column: 1; grid-row: 1; }
+.liability-kpi-interest .liability-kpi-value { grid-column: 1; grid-row: 1; justify-self: end; margin-left: 0; }
+.liability-kpi-interest .liability-kpi-sub { grid-column: 2; grid-row: 1; align-self: end; font-size: 18rpx; color: var(--theme-text-muted); text-align: right; white-space: nowrap; }
+.liability-kpi-sub { font-size: 18rpx; color: var(--theme-text-muted); }
 .liability-group-total { color: var(--theme-ink, #F4EBDC); font-variant-numeric: tabular-nums; }
 .liability-ring-row { display: flex; align-items: center; gap: var(--layout-space-4); padding: 8rpx 0 4rpx; }
 .liability-ring { flex: 0 0 auto; width: 200rpx; height: 200rpx; }

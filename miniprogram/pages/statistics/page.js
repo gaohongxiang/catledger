@@ -39,10 +39,13 @@ function prepareRingLegend(ring, comparisons) {
 }
 
 function prepareTrend(rows) {
+  // 轴只显示月份；跨年区间由 graph-scale 的 trendRangeLabel 统一标注（避免逐格标年挤压）。
   return (rows || []).map(function (row) {
+    const monthNo = Number(row.month.slice(5))
     return Object.assign({}, row, {
-      monthText: String(Number(row.month.slice(5))),
+      monthText: String(monthNo),
       monthLabel: time.monthLabel(row.month),
+      axisMonth: monthNo,
       incomeText: money.formatMinor(row.incomeMinor),
       expenseText: money.formatMinor(row.expenseMinor)
     })
@@ -73,15 +76,21 @@ function monthParts(month) {
   return { monthYear: parts[0] || '', monthNumber: String(Number(parts[1]) || 0) }
 }
 
-// 月份条：以当前所选月为中心，前 5 后 1 共 7 个 chip；跨年时 chip 仍只显示「月」，
-// 年份由标题统一标注（当前视图年份）。点击 chip 直接切到该月。
-function buildMonthOptions(month) {
+// 月份条：给定年份的全年 12 个月。当前月（真实当月且同年）高亮；晚于当前月的置灰不可点。
+// 年份由页头「‹ 年 ›」切换，月份条只负责在年内选月，回看任意年份一步到位。
+function buildMonthOptions(year, realMonth) {
   const options = []
-  for (let offset = -5; offset <= 1; offset += 1) {
-    const value = time.shiftMonth(month, offset)
-    options.push({ value: value, year: Number(value.slice(0, 4)), month: Number(value.slice(5)) })
+  for (let m = 1; m <= 12; m += 1) {
+    const value = year + '-' + String(m).padStart(2, '0')
+    options.push({ value: value, year: Number(year), month: m, future: value > realMonth })
   }
   return options
+}
+
+// 年份切换可用性：上一年永远可点（能一直往前翻）；下一年不能超过真实当前年。
+function yearSwitchState(viewYear, realMonth) {
+  const realYear = Number(String(realMonth || '').slice(0, 4)) || Number(viewYear)
+  return { canPrevYear: Number(viewYear) > 1900, canNextYear: Number(viewYear) < realYear }
 }
 
 function createStatisticsPage(dependencies) {
@@ -98,6 +107,10 @@ function createStatisticsPage(dependencies) {
       monthLabel: '',
       monthYear: '',
       monthNumber: '',
+      viewYear: '',
+      realCurrentMonth: '',
+      canPrevYear: true,
+      canNextYear: false,
       monthOptions: [],
       netTone: '',
       summaryScopeAll: false,
@@ -108,6 +121,7 @@ function createStatisticsPage(dependencies) {
       expenseText: '¥0.00',
       netText: '¥0.00',
       cashFlowTrend: [],
+      trendRangeLabel: '',
       daily: [],
       selectedTrend: null,
       selectedDay: null,
@@ -129,7 +143,9 @@ function createStatisticsPage(dependencies) {
     onLoad: function (options) {
       this.openCompletionAfterLoad = Boolean(options && options.completeCategories === '1')
       const p = monthParts(this.data.month)
-      this.setData({ monthLabel: time.monthLabel(this.data.month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(this.data.month) })
+      const real = time.currentMonth()
+      this.setData({ monthLabel: time.monthLabel(this.data.month), monthYear: p.monthYear, monthNumber: p.monthNumber,
+        viewYear: p.monthYear, realCurrentMonth: real, monthOptions: buildMonthOptions(p.monthYear, real), ...yearSwitchState(p.monthYear, real) })
     },
 
     onShow: function () {
@@ -147,7 +163,7 @@ function createStatisticsPage(dependencies) {
           return this._statisticsLoad.then(() => { if (current()) return this.onShow() })
         }
         const month = time.currentMonth()
-        if (this.data.month !== month) { const p = monthParts(month); this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(month), hasLoaded: false, categoryKind: '' }) }
+        if (this.data.month !== month) { const p = monthParts(month); this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, viewYear: p.monthYear, monthOptions: buildMonthOptions(p.monthYear, this.data.realCurrentMonth || time.currentMonth()), ...yearSwitchState(p.monthYear, this.data.realCurrentMonth || time.currentMonth()), hasLoaded: false, categoryKind: '' }) }
         app.globalData.openStatisticsCompletion = false
         this.openCompletionAfterLoad = true
       }
@@ -181,7 +197,7 @@ function createStatisticsPage(dependencies) {
     },
 
     beginReadSession: function () {
-      return pageReadSession.begin(this, ['expandedCategoryId', 'completionCategoryIndex', 'categoryKind', 'compositionKind', 'rings', 'monthYear', 'monthNumber', 'monthOptions', 'netTone', 'summaryScopeAll', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'metricsView', 'liabilityView', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
+      return pageReadSession.begin(this, ['expandedCategoryId', 'completionCategoryIndex', 'categoryKind', 'compositionKind', 'rings', 'monthYear', 'monthNumber', 'monthOptions', 'viewYear', 'realCurrentMonth', 'canPrevYear', 'canNextYear', 'netTone', 'summaryScopeAll', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'trendRangeLabel', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'metricsView', 'liabilityView', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
     },
 
     promptLogin: function () { loginGuard.run(this, this.loadStatistics.bind(this)) },
@@ -206,20 +222,23 @@ function createStatisticsPage(dependencies) {
           self._chartTheme = [tokens.income, tokens.expense, tokens.accent, tokens.line, tokens.textMuted].join('|')
           const charts = buildStatisticsView(result, tokens)
           const trend = prepareTrend(result.cashFlowTrend)
+          const trendRangeLabel = trend.length ? (time.monthLabel(trend[0].month) + ' – ' + time.monthLabel(trend[trend.length - 1].month)) : ''
           const metrics = result.metrics || {}
           const uncategorized = result.uncategorized || {}
           self.setData({
             charts: charts,
             selectedCumulative: null,
             hasLoaded: true,
-            errorMessage: snapshot ? '正在更新，当前显示上次结果' : '',
-            selectedTrend: trend.find(row => row.month === selectedTrendMonth) || trend[trend.length - 1] || null, selectedDay: null,
+            errorMessage: '',
+            // 默认不选中任何月（避免顶部挂一块全 0 的当前月）；仅当用户此前点过某柱时恢复它。
+            selectedTrend: (selectedTrendMonth && trend.find(row => row.month === selectedTrendMonth)) || null, selectedDay: null,
             incomeText: money.formatMinor(result.summary.incomeMinor),
             expenseText: money.formatMinor(result.summary.expenseMinor),
             netText: money.formatMinor(result.summary.netIncomeMinor),
             netTone: String(result.summary.netIncomeMinor || '0').charAt(0) === '-' ? 'hero-amount-neg' : '',
             summaryScopeAll: Boolean(result.summaryScope && result.summaryScope === 'all'),
             cashFlowTrend: trend,
+            trendRangeLabel: trendRangeLabel,
             daily: prepareDaily(result.daily),
             metrics: {
               transactionCount: metrics.transactionCount || 0,
@@ -268,14 +287,33 @@ function createStatisticsPage(dependencies) {
       if (this.data.loading || this.data.categorySaving) return
       const month = event.detail.value
       const p = monthParts(month)
-      this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, monthOptions: buildMonthOptions(month), hasLoaded: false, categoryKind: '' })
+      this.setData({ month: month, monthLabel: time.monthLabel(month), monthYear: p.monthYear, monthNumber: p.monthNumber, viewYear: p.monthYear, monthOptions: buildMonthOptions(p.monthYear, this.data.realCurrentMonth || time.currentMonth()), ...yearSwitchState(p.monthYear, this.data.realCurrentMonth || time.currentMonth()), hasLoaded: false, categoryKind: '' })
       return this.loadStatistics()
     },
 
     pickMonth: function (event) {
       const value = event.currentTarget.dataset.value
+      // 未来月置灰不可点（chip 也 disabled，这里再兜一层）
+      const real = this.data.realCurrentMonth
+      if (value && real && value > real) return
       if (value && value !== this.data.month) return this.chooseMonth({ detail: { value: value } })
     },
+
+    // 年份切换：切到上/下一年时，落点月份=该年与当前所选月号相同、但不晚于真实当月。
+    shiftYear: function (delta) {
+      const parts = monthParts(this.data.month)
+      const year = Number(parts.monthYear) + delta
+      const real = this.data.realCurrentMonth || time.currentMonth()
+      const realParts = monthParts(real)
+      // 目标年晚于当前年 → 不允许（没有未来年份）；目标年=当前年时，月份夹到真实当月。
+      let monthNo = Number(parts.monthNumber)
+      if (year > Number(realParts.monthYear)) return
+      if (year === Number(realParts.monthYear) && monthNo > Number(realParts.monthNumber)) monthNo = Number(realParts.monthNumber)
+      const value = year + '-' + String(monthNo).padStart(2, '0')
+      return this.chooseMonth({ detail: { value: value } })
+    },
+    previousYear: function () { return this.shiftYear(-1) },
+    nextYear: function () { return this.shiftYear(1) },
 
     previousMonth: function () { return this.chooseMonth({ detail: { value: time.shiftMonth(this.data.month, -1) } }) },
     nextMonth: function () { return this.chooseMonth({ detail: { value: time.shiftMonth(this.data.month, 1) } }) },
@@ -384,4 +422,4 @@ function createStatisticsPage(dependencies) {
   }
 }
 
-module.exports = { createStatisticsPage }
+module.exports = { createStatisticsPage, buildMonthOptions }

@@ -16,19 +16,48 @@ function respond(h, month) {
     : undefined
 }
 
-test('月份条给出 7 个 chip，当前月在其中；点击 chip 切到该月并带上次月选项', async () => {
+test('月份条给出全年 12 个 chip，当前月在其中且非未来；点击切月', async () => {
   const h = runtime()
   const page = h.page('statistics')
   page.onLoad()
   const current = page.data.month
   await page.loadStatistics()
-  assert.equal(page.data.monthOptions.length, 7)
-  assert.ok(page.data.monthOptions.some(o => o.value === current))
-  const target = page.data.monthOptions[0].value
+  assert.equal(page.data.monthOptions.length, 12, '全年 12 个月')
+  const cur = page.data.monthOptions.find(o => o.value === current)
+  assert.ok(cur && cur.future === false, '当前月不是未来月')
+  // 未来月（若存在）必须标 future
+  const real = page.data.realCurrentMonth
+  for (const o of page.data.monthOptions) assert.equal(o.future, o.value > real)
   h.respond = respond(h)
-  await page.pickMonth({ currentTarget: { dataset: { value: target } } })
-  assert.equal(page.data.month, target)
-  assert.equal(page.data.monthOptions.length, 7)
+  const past = page.data.monthOptions[0]
+  await page.pickMonth({ currentTarget: { dataset: { value: past.value } } })
+  assert.equal(page.data.month, past.value)
+})
+
+test('未来月不可点击（pickMonth 拒绝）', async () => {
+  const h = runtime(); h.respond = respond(h)
+  const page = h.page('statistics'); page.onLoad(); await page.loadStatistics()
+  const future = page.data.monthOptions.find(o => o.future)
+  if (!future) return // 当年 12 月就是当前月时无未来月
+  const before = page.data.month
+  await page.pickMonth({ currentTarget: { dataset: { value: future.value } } })
+  assert.equal(page.data.month, before, '未来月不应切换')
+})
+
+test('年份切换：上一年可切，落点同年月号；下一年不超过真实当前年', async () => {
+  const h = runtime(); h.respond = respond(h)
+  const page = h.page('statistics'); page.onLoad(); await page.loadStatistics()
+  const viewYear = Number(page.data.viewYear)
+  await page.previousYear()
+  assert.equal(Number(page.data.viewYear), viewYear - 1, '上一年生效')
+  assert.equal(Number(String(page.data.month).slice(0, 4)), viewYear - 1)
+  // 下一年回到当前年，然后再点不应超过
+  await page.nextYear()
+  assert.equal(Number(page.data.viewYear), viewYear)
+  assert.equal(page.data.canNextYear, false, '当前年不能再往下一年')
+  const m = page.data.month
+  await page.nextYear()
+  assert.equal(page.data.month, m, '超过真实当前年时不切换')
 })
 
 test('Hero 结余大字、netTone，收入/支出分列带比率', async () => {

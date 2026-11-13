@@ -27,10 +27,19 @@ function createReadCache(options) {
     error.code = 'SESSION_CHANGED'
     throw error
   }
+  // 结构完整性闸门：statistics 结果必须带 liabilities.repaymentPressure / 负债率等新字段，
+  // 否则视为旧结构缓存（TTL 为 Infinity 时不会自然过期），直接判不 fresh，触发一次网络重拉。
+  function structureOk(key, value) {
+    if (typeof key !== 'string' || key.indexOf('statistics.get:') !== 0) return true
+    const l = value && value.liabilities
+    return !!l && l.debtTotalMinor !== undefined && l.repaymentPressure !== undefined && l.liabilitiesRatioBasisPoints !== undefined
+  }
   function fresh(key) {
     const entry = entries.get(key)
-    return entry && !validation && !entry.dirty && entry.expiresAt > now() &&
-      ![...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ? entry : null
+    if (!entry || validation || entry.dirty || entry.expiresAt <= now() ||
+      [...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ||
+      !structureOk(key, entry.value)) return null
+    return entry
   }
   function persist() {
     if (!persistent || !scope || persistQueued) return
@@ -181,7 +190,7 @@ function createReadCache(options) {
     peek(key) { const entry = fresh(key); return entry ? clone(entry.value) : null },
     snapshot(key) {
       const entry = entries.get(key)
-      if (!entry) return null
+      if (!entry || !structureOk(key, entry.value)) return null
       entries.delete(key); entries.set(key, entry)
       return { value: clone(entry.value), fresh: Boolean(fresh(key)), updatedAt: entry.updatedAt, source: entry.source }
     },

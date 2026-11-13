@@ -25,11 +25,15 @@ function accountTotals(accounts) {
       assets += BigInt(account.bookBalanceMinor || '0')
     }
   }
+  // 负债率 = 负债 ÷ 资产（basis points，万分比）。资产为 0 时无法有意义计算，返回 null，页面显示「—」。
+  // 这是「负债有多重」的比率，和「各账户占负债多少」（liability-summary 的 debtShareBasisPoints）是两个维度。
+  const liabilitiesRatioBasisPoints = assets > 0n ? Number((liabilities * 10000n) / assets) : null
   return {
     assetsMinor: assets.toString(),
     liabilitiesMinor: liabilities.toString(),
     netWorthMinor: (assets - liabilities).toString(),
-    liabilitiesInterestMinor: liabilitiesInterest.toString()
+    liabilitiesInterestMinor: liabilitiesInterest.toString(),
+    liabilitiesRatioBasisPoints
   }
 }
 

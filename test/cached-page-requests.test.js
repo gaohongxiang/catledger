@@ -341,10 +341,14 @@ test('加载下一页期间发生写入时重读首屏，不把旧分页与新�
   await page.loadStatistics()
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
   h.calls.length = 0
+  // 默认不选中趋势月（避免顶部挂全 0 的当前月）；先点一根柱，切月后应保留该选择
+  assert.equal(page.data.selectedTrend, null, '默认不选中趋势月')
+  page.selectTrend({ currentTarget: { dataset: { index: 0 } } })
+  const picked = page.data.selectedTrend.month
   await page.chooseMonth({ detail: { value: '2025-01' } })
   assert.equal(page.data.month, '2025-01')
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
-  assert.equal(page.data.selectedTrend.month, currentMonth)
+  assert.equal(page.data.selectedTrend.month, picked, '切月后保留已选中的趋势月')
   assert.deepEqual(h.calls.map(call => call.action), ['loans.dueCharges','statistics.get'])
   assert.equal(h.calls[1].data.trendEndMonth, currentMonth)
   await page.chooseMonth({ detail: { value: '2025-02' } })

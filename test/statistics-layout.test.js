@@ -13,21 +13,38 @@ function rule(selector) {
   return match[1]
 }
 
-test('页头：标题「收支统计」+年份并入标题（时间不分两行）', () => {
+test('页头：标题 + 年份切换器（‹ 年 ›），可切年份', () => {
   assert.match(markup, /class="stats-head"/)
   assert.match(markup, /class="stats-head-title">收支统计/)
-  assert.match(markup, /class="stats-head-year">\{\{monthYear\}\}年/)
-  // 时间只出现一次，不要旧的独立 year 行
+  assert.match(markup, /class="year-switch"/)
+  assert.match(markup, /class="year-label money-number">\{\{viewYear\}\}年/)
+  assert.match(markup, /bindtap="previousYear"/)
+  assert.match(markup, /bindtap="nextYear"/)
   assert.doesNotMatch(markup, /class="stats-header"/)
-  assert.doesNotMatch(markup, /class="month-control"/)
+  // 标题在最左，年份切换紧随其后
+  const head = markup.slice(markup.indexOf('class="stats-head"'), markup.indexOf('class="month-strip"'))
+  assert.ok(head.indexOf('stats-head-title') < head.indexOf('year-switch'), '标题应在最左，年份切换在其后')
+  // 标题行左对齐，不 space-between
+  assert.doesNotMatch(rule('.stats-head'), /justify-content:\s*space-between/)
 })
 
-test('月份条：横向 chips、当前月高亮、点击切换月份', () => {
+test('月份条：12 个月等分一屏不滚动，选中月高亮', () => {
+  // 不是 scroll-view，避免滚动定位错乱
+  assert.doesNotMatch(markup, /scroll-into-view/)
+  assert.match(markup, /class="month-strip"/)
+  // 等分：每个 chip flex:1
+  assert.match(rule('.month-chip'), /aspect-ratio:\s*1/)
+  assert.match(rule('.month-strip'), /display:\s*grid/)
+})
+
+test('月份条：全年 12 月横滑、当前月高亮、未来月置灰', () => {
   assert.match(markup, /class="month-strip"/)
   assert.match(markup, /wx:for="\{\{monthOptions\}\}"/)
-  assert.match(markup, /month-chip \{\{item\.value === month \? 'month-chip-active' : ''\}\}/)
+  assert.match(markup, /month-chip-active/)
+  assert.match(markup, /month-chip-future/)
   assert.match(markup, /bindtap="pickMonth"/)
   assert.match(rule('.month-chip-active'), /background:\s*var\(--theme-accent/)
+  assert.ok(rule('.month-chip-future'))
 })
 
 test('Hero 结余卡：结余为主大字，收入/支出对称分列带环比', () => {

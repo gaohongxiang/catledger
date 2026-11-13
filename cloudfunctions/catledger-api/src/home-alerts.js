@@ -36,6 +36,47 @@ const DUE_DETAIL_SQL = `
    HAVING outstanding > 0
    ORDER BY t.due_date, t.period_id`
 
+// 未来 months 个月（含本月）到期、未取消、未归档贷款的未还本息费合计。
+// 与本月待还同口径（同一扣减有效还款的子查询），只是到期日范围放宽——供统计页「还款压力」用。
+const UPCOMING_TOTAL_SQL = `
+  SELECT COUNT(*) AS periodCount, COALESCE(SUM(x.outstanding), 0) AS dueMinor
+    FROM (
+      SELECT t.principal_minor + t.interest_minor + t.fee_minor
+             - COALESCE((SELECT SUM(a.principal_minor + a.interest_minor + a.fee_minor)
+                           FROM catledger_loan_period_allocations a
+                           JOIN catledger_loan_payments p
+                             ON p.uid = a.uid AND p.payment_id = a.payment_id AND p.status = 'active'
+                          WHERE a.uid = t.uid AND a.period_id = t.period_id AND a.active = 1), 0) AS outstanding
+        FROM catledger_loan_periods t
+        JOIN catledger_loans l ON l.uid = t.uid AND l.loan_id = t.loan_id
+       WHERE t.uid = ? AND t.cancelled = 0 AND l.archived_at IS NULL AND l.deleted_at IS NULL
+         AND t.due_date >= ? AND t.due_date < ?
+    ) x
+   WHERE x.outstanding > 0`
+
+// 还款压力查询
+async function repaymentPressureQuery(connection, uid, month, months = 12, fromMonth) {
+  // month：本月待还的口径月（跟随所选月）；fromMonth：未来窗口起点月（默认=month）。
+  // 统计页传 fromMonth=真实当月，让「未来12个月」锚定当前时点，不受月份选择器影响。
+  const range = parseMonth(month)
+  const windowStart = fromMonth || month
+  const [y, m] = windowStart.split('-').map(Number)
+  const endCursor = new Date(Date.UTC(y, m - 1 + months - 1, 1))
+  const endMonth = `${String(endCursor.getUTCFullYear()).padStart(4, '0')}-${String(endCursor.getUTCMonth() + 1).padStart(2, '0')}`
+  const endRange = parseMonth(endMonth)
+  const windowStartRange = parseMonth(windowStart)
+  const [[monthRow]] = await connection.execute(DUE_THIS_MONTH_SQL, [uid, range.startDate, range.endDate])
+  // 未来窗口下界用 windowStart 的月初（不是所选月的），否则选了推后的月会漏掉真实当月及之前。
+  const [[upcomingRow]] = await connection.execute(UPCOMING_TOTAL_SQL, [uid, windowStartRange.startDate, endRange.endDate])
+  return {
+    month, months, windowStartMonth: windowStart,
+    monthDueMinor: String((monthRow && monthRow.dueMinor) == null ? '0' : monthRow.dueMinor),
+    monthPeriodCount: Number(monthRow && monthRow.periodCount) || 0,
+    upcomingMinor: String((upcomingRow && upcomingRow.dueMinor) == null ? '0' : upcomingRow.dueMinor),
+    upcomingPeriodCount: Number(upcomingRow && upcomingRow.periodCount) || 0
+  }
+}
+
 function createHomeAlertsService({ getPool }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
   return {
@@ -55,8 +96,16 @@ function createHomeAlertsService({ getPool }) {
             periodNumber: Number(r.periodNumber), dueDate: r.dueDate, outstandingMinor: String(r.outstanding == null ? '0' : r.outstanding) }))
         }
       })
+    },
+
+    // 还款压力（统计页用）：本月待还 + 未来 months 个月（默认 12）未还本息费合计。
+    // 与本月待还/贷款页同口径，避免第三套算法；返回 { monthDueMinor, monthPeriodCount, upcomingMinor, upcomingPeriodCount, months }。
+    repaymentPressure(context) {
+      const month = (context.data || {}).month
+      const months = (context.data || {}).months || 12
+      return read(context, (connection, uid) => repaymentPressureQuery(connection, uid, month, months))
     }
   }
 }
 
-module.exports = { createHomeAlertsService, DUE_THIS_MONTH_SQL }
+module.exports = { createHomeAlertsService, repaymentPressureQuery, DUE_THIS_MONTH_SQL }

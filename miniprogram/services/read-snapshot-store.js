@@ -3,16 +3,17 @@ const { validMetadata } = require('./read-metadata')
 const { bytes } = require('./read-observer')
 const KEY = 'catledger_read_snapshots_v1'
 // 账单资料扩展了账户读取结构；旧快照即使数据修订相同也必须重新读取。
-// schema 3：statistics.get 增加 liabilities（负债占比与分期利息）分块，旧快照缺此字段必须作废重读，
-// 否则冷启动会先渲染没有「负债与分期」的旧画面，直到下拉刷新才补上。
-const SCHEMA = 3, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
+// schema 4：statistics.get 的 liabilities 增加 liabilitiesRatioBasisPoints / repaymentPressure；
+// 旧快照即使 schema 3 也可能缺这些字段导致负债率/还款压力显示 0，必须整体作废重读。
+// 同时 complete() 要求 liabilities 存在且含 repaymentPressure，杜绝再回退到缺字段的旧结构。
+const SCHEMA = 4, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
 const ACTIONS = new Set(['dashboard.get', 'catalog.get', 'accounts.list', 'categories.list', 'statistics.get', 'transactions.list'])
 function actionOf(key) { return typeof key === 'string' ? key.slice(0, key.indexOf(':')) : '' }
 function complete(action, value) {
   if (!validMetadata(value) || value.unchanged) return false
   if (action === 'dashboard.get') return Array.isArray(value.accounts) && value.summary && Array.isArray(value.recentTransactions)
   if (action === 'catalog.get') return Array.isArray(value.accounts) && Array.isArray(value.categories)
-  if (action === 'statistics.get') return value.summary && Array.isArray(value.cashFlowTrend)
+  if (action === 'statistics.get') return value.summary && Array.isArray(value.cashFlowTrend) && !!value.liabilities && value.liabilities.debtTotalMinor !== undefined
   if (action === 'transactions.list') return Array.isArray(value.transactions) && Object.prototype.hasOwnProperty.call(value, 'nextCursor')
   return Array.isArray(value[action === 'accounts.list' ? 'accounts' : 'categories'])
 }

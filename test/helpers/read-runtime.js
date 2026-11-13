@@ -59,7 +59,7 @@ function runtime(savedStorage, options = {}) {
       else if (action === 'loans.installmentSources') result = { items: [], nextCursor: null }
       else if (action === 'loans.retainedCharges') result = { items: [],total:0,nextCursor:null }
       else if (action === 'transactions.refundable') result = { transactions: [] }
-      else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }] }
+      else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }], liabilities: { debtTotalMinor: '0', interestTotalMinor: '0', paidInterestTotalMinor: '0', liabilitiesRatioBasisPoints: null, repaymentPressure: { month: data.month, months: 12, monthDueMinor: '0', monthPeriodCount: 0, upcomingMinor: '0', upcomingPeriodCount: 0 }, accounts: [] } }
       else { balance = '10100'; h.revision = String(Number(h.revision) + 1); result = { saved: true } }
       return { result: wrap({ ok: true, data: result }) }
     } }
